@@ -86,6 +86,8 @@ class MainActivity : Activity() {
     private var lastSelectedAnswer = ""
     private var checkInCompleted = false
     private var practiceTimeConfirmed = false
+    private var selectedPracticeLevel = "推薦"
+    private var selectedPracticeType = "全部題型"
 
     private val student = PrototypeRepository.student
     private val modules = PrototypeRepository.modules
@@ -491,6 +493,7 @@ class MainActivity : Activity() {
         shell("今天先做這個", "把英文練習縮到現在做得到的一小步")
         root.addView(currentTaskFocus())
         root.addView(taskRouteCard())
+        root.addView(practiceCenterEntryCard())
         root.addView(ui.secondaryButton("查看今日學習契約") { renderLearningContract() })
         section("做完第一步後")
         studyTasks.drop(1).forEach { root.addView(taskCard(it)) }
@@ -506,7 +509,7 @@ class MainActivity : Activity() {
             persistState()
             renderTaskQueue()
         })
-        root.addView(ui.primaryButton("開始第一個任務") { renderLesson() })
+        root.addView(ui.primaryButton("進入練習中心選題") { renderStudentPracticeCatalog() })
         bottomNav()
     }
 
@@ -831,16 +834,34 @@ class MainActivity : Activity() {
         }
         screen = Screen.QuestionBank
         val bankItems = stateStore.questionBankItems()
-        val recommended = bankItems.filter { it.skill.contains("文法") || it.skill.contains("閱讀") }.take(6)
-        shell("可選練習", "學生只看到與今天路徑相關的題型")
+        val recommended = recommendedPracticeItems(bankItems)
+        val filtered = filteredPracticeItems(bankItems).ifEmpty { recommended }
+        val typeCounts = bankItems.groupingBy { normalizedQuestionType(it) }.eachCount()
+        shell("練習中心", "選難度、題型，也可以直接挑戰更難的題目")
         root.addView(studentRouteStatusCard())
-        root.addView(card("開放規則", "這裡不是完整後台題庫。English+ 只開放和今天狀態相符的題型，避免學生一開始被大量題目淹沒。", ColorToken.PrimarySoft))
+        root.addView(card("這裡可以自己選題", "你不一定只能做系統安排的簡單題。可以先照推薦做，也可以切到會考基準、進階挑戰、閱讀、克漏字或翻譯題。", ColorToken.PrimarySoft))
         root.addView(metricRow(
-            Metric("今日時間", "$minutes 分", ColorToken.Primary),
-            Metric("目前心情", mood.label, ColorToken.Success),
-            Metric("可挑戰", "${recommended.size} 組", ColorToken.Accent)
+            Metric("題庫", "${bankItems.size} 題", ColorToken.Primary),
+            Metric("題型", "${typeCounts.size} 類", ColorToken.Success),
+            Metric("目前顯示", "${filtered.size} 題", ColorToken.Accent)
         ))
-        recommended.forEach { root.addView(studentPracticeOptionCard(it)) }
+        root.addView(practiceRecommendationCard(recommended))
+        section("選擇難度")
+        practiceLevelOptions(bankItems).forEach { level ->
+            root.addView(practiceFilterChip(level, selectedPracticeLevel == level) {
+                selectedPracticeLevel = level
+                renderStudentPracticeCatalog()
+            })
+        }
+        section("選擇題型")
+        practiceTypeOptions(bankItems).forEach { type ->
+            root.addView(practiceFilterChip(type, selectedPracticeType == type) {
+                selectedPracticeType = type
+                renderStudentPracticeCatalog()
+            })
+        }
+        section("題目清單")
+        filtered.take(20).forEach { root.addView(studentPracticeOptionCard(it)) }
         root.addView(ui.primaryButton("回今天任務") { renderTaskQueue() })
         root.addView(ui.secondaryButton("回我的地圖") { renderMap() })
         bottomNav()
@@ -2210,6 +2231,25 @@ class MainActivity : Activity() {
         return ui.margins(box, 0, 8, 0, 16)
     }
 
+    private fun practiceCenterEntryCard(): View {
+        val bankItems = stateStore.questionBankItems()
+        val challengeCount = bankItems.count { it.level == "B1" }
+        val typeCount = bankItems.map { normalizedQuestionType(it) }.distinct().size
+        val box = ui.container(ColorToken.Card, ColorToken.Border)
+        box.addView(ui.statusPill("練習中心", ColorToken.Accent))
+        box.addView(ui.label("想挑戰難一點，可以自己選題", 18, ColorToken.Ink, true).apply {
+            setPadding(0, ui.dp(10), 0, ui.dp(4))
+        })
+        box.addView(metricRow(
+            Metric("目前題庫", "${bankItems.size}", ColorToken.Primary),
+            Metric("題型", "$typeCount", ColorToken.Success),
+            Metric("進階題", "$challengeCount", ColorToken.Accent)
+        ))
+        box.addView(ui.body("這一輪先把入口改成可選難度與題型；後續大量題庫會直接接到同一個分類系統。", "#334155"))
+        box.addView(ui.primaryButton("打開練習中心") { renderStudentPracticeCatalog() })
+        return ui.margins(box, 0, 8, 0, 12)
+    }
+
     private fun taskRouteCard(): View {
         val box = ui.container(ColorToken.Card, ColorToken.Border)
         box.addView(ui.statusPill("今日安排", ColorToken.Primary))
@@ -2609,13 +2649,118 @@ class MainActivity : Activity() {
         top.addView(ui.label(item.skill, 17, ColorToken.Ink, true), LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f))
         top.addView(ui.statusPill(item.level, ColorToken.Accent))
         box.addView(top)
-        box.addView(ui.body("${item.unit}｜${item.question.type}", ColorToken.Muted).apply { setPadding(0, ui.dp(6), 0, 0) })
+        box.addView(ui.body("${item.unit}｜${normalizedQuestionType(item)}", ColorToken.Muted).apply { setPadding(0, ui.dp(6), 0, 0) })
         box.addView(ui.body(item.question.prompt.take(90), "#334155").apply { setPadding(0, ui.dp(6), 0, 0) })
-        box.addView(ui.body("點選後會進入今日任務答題，不會開啟老師端題庫管理。", ColorToken.Success).apply {
+        box.addView(ui.body("點選後會直接切到這一題，不再只重複同一個簡單題。", ColorToken.Success).apply {
             setPadding(0, ui.dp(6), 0, 0)
         })
-        box.setOnClickListener { renderLesson() }
+        box.setOnClickListener { startPracticeItem(item) }
         return ui.margins(box, 0, 8, 0, 8)
+    }
+
+    private fun practiceFilterChip(label: String, selected: Boolean, action: () -> Unit): View {
+        val fill = if (selected) ColorToken.PrimarySoft else ColorToken.Card
+        val stroke = if (selected) ColorToken.Primary else ColorToken.Border
+        val box = ui.container(fill, stroke)
+        val row = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+        }
+        row.addView(ui.label(label, 16, ColorToken.Ink, true), LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f))
+        row.addView(ui.statusPill(if (selected) "已選" else "選擇", if (selected) ColorToken.Primary else ColorToken.Muted))
+        box.addView(row)
+        box.setOnClickListener { action() }
+        return ui.margins(box, 0, 6, 0, 6)
+    }
+
+    private fun practiceRecommendationCard(items: List<QuestionBankItem>): View {
+        val recommendedLevel = when {
+            confidence >= 70 -> "B1 進階挑戰"
+            confidence >= 50 -> "A2 會考基準"
+            else -> "A1/A2 弱點修復"
+        }
+        val box = ui.container(ColorToken.SuccessSoft, ColorToken.Border)
+        box.addView(ui.statusPill("系統推薦", ColorToken.Success))
+        box.addView(ui.label(recommendedLevel, 18, ColorToken.Ink, true).apply {
+            setPadding(0, ui.dp(10), 0, ui.dp(4))
+        })
+        box.addView(ui.body("根據目前心情、信心值與錯題紀錄，建議先從這一組開始；如果想挑戰，可以往下切換進階難度。", "#334155"))
+        items.take(3).forEach { item ->
+            box.addView(ui.secondaryButton("${item.level}｜${normalizedQuestionType(item)}｜${item.skill.take(8)}") {
+                startPracticeItem(item)
+            })
+        }
+        return ui.margins(box, 0, 8, 0, 12)
+    }
+
+    private fun practiceLevelOptions(items: List<QuestionBankItem>): List<String> {
+        val base = mutableListOf("推薦", "全部難度", "弱點修復")
+        if (items.any { it.level == "A1" }) base.add("基礎 A1")
+        if (items.any { it.level == "A2" }) base.add("會考基準 A2")
+        if (items.any { it.level == "B1" }) base.add("進階挑戰 B1")
+        return base.distinct()
+    }
+
+    private fun practiceTypeOptions(items: List<QuestionBankItem>): List<String> {
+        return listOf("全部題型") + items.map { normalizedQuestionType(it) }.distinct().sorted()
+    }
+
+    private fun filteredPracticeItems(items: List<QuestionBankItem>): List<QuestionBankItem> {
+        return items.filter { item ->
+            val levelMatch = when (selectedPracticeLevel) {
+                "推薦" -> recommendedPracticeItems(items).contains(item)
+                "全部難度" -> true
+                "弱點修復" -> item.question.concept.contains("be") || item.question.concept.contains("文法") || item.skill.contains("文法")
+                "基礎 A1" -> item.level == "A1"
+                "會考基準 A2" -> item.level == "A2"
+                "進階挑戰 B1" -> item.level == "B1"
+                else -> true
+            }
+            val typeMatch = selectedPracticeType == "全部題型" || normalizedQuestionType(item) == selectedPracticeType
+            levelMatch && typeMatch
+        }
+    }
+
+    private fun recommendedPracticeItems(items: List<QuestionBankItem>): List<QuestionBankItem> {
+        val preferredLevel = when {
+            mood == Mood.Low -> setOf("A1", "A2")
+            confidence >= 70 -> setOf("B1", "A2")
+            confidence >= 50 -> setOf("A2", "B1")
+            else -> setOf("A1", "A2")
+        }
+        val preferredTypes = when {
+            wrongAttempts > 0 -> setOf("填空題", "選擇題")
+            confidence >= 70 -> setOf("閱讀理解", "克漏字", "翻譯/句子重組")
+            else -> setOf("選擇題", "填空題", "閱讀理解")
+        }
+        return items
+            .filter { it.level in preferredLevel }
+            .sortedByDescending { if (normalizedQuestionType(it) in preferredTypes) 1 else 0 }
+            .take(12)
+            .ifEmpty { items.take(12) }
+    }
+
+    private fun normalizedQuestionType(item: QuestionBankItem): String {
+        val type = item.question.type
+        return when {
+            type.contains("填空") -> "填空題"
+            type.contains("克漏") -> "克漏字"
+            type.contains("閱讀") || type.contains("讀") -> "閱讀理解"
+            type.contains("翻譯") || type.contains("重組") -> "翻譯/句子重組"
+            type.contains("選擇") -> "選擇題"
+            else -> type.ifBlank { "選擇題" }
+        }
+    }
+
+    private fun startPracticeItem(item: QuestionBankItem) {
+        val index = questions.indexOfFirst {
+            it.prompt == item.question.prompt && it.answer == item.question.answer
+        }
+        if (index >= 0) currentQuestionIndex = index
+        wrongAttempts = 0
+        lastSelectedAnswer = ""
+        lastAnswerMessage = "已切換到 ${item.level}｜${normalizedQuestionType(item)}。先做這一題，再依結果推薦下一步。"
+        renderLesson()
     }
 
     private fun studentLearningEvidenceCard(row: StudentRow): View {
