@@ -71,6 +71,46 @@ class PrototypeRepositoryTest {
     }
 
     @Test
+    fun adaptiveRecommendationsRepairAfterWrongAnswer() {
+        val current = PrototypeRepository.questionBankItems.first { it.questionType == "reading" && it.difficultyBand == "challenge" }
+        val recommendations = PrototypeRepository.adaptivePracticeRecommendations(
+            current = current,
+            wasCorrect = false,
+            confidence = 38,
+            moodLabel = "Low",
+            wrongAttempts = 2
+        )
+
+        assertEquals("wrong-answer repair should return three next steps", 3, recommendations.size)
+        assertTrue("repair path should avoid repeating the same item", recommendations.none { it.id == current.id })
+        assertTrue(
+            "repair path should prefer lower-pressure items",
+            recommendations.all { it.difficultyBand == "foundation" || "repair" in it.recommendationTags || it.emotionalFit == "low" }
+        )
+        assertTrue("repair path should not jump to the hardest challenge", recommendations.all { it.challengeScore <= 4 })
+    }
+
+    @Test
+    fun adaptiveRecommendationsUpgradeAfterCorrectHighConfidenceAnswer() {
+        val current = PrototypeRepository.questionBankItems.first { it.questionType == "choice" && it.difficultyBand == "cap-standard" }
+        val recommendations = PrototypeRepository.adaptivePracticeRecommendations(
+            current = current,
+            wasCorrect = true,
+            confidence = 78,
+            moodLabel = "Good",
+            wrongAttempts = 0
+        )
+
+        assertEquals("correct-answer upgrade should return three next steps", 3, recommendations.size)
+        assertTrue("upgrade path should avoid repeating the same item", recommendations.none { it.id == current.id })
+        assertTrue(
+            "upgrade path should prefer CAP-standard or challenge questions",
+            recommendations.all { it.difficultyBand in setOf("cap-standard", "challenge") }
+        )
+        assertTrue("upgrade path should include at least one harder challenge", recommendations.any { it.challengeScore >= current.challengeScore })
+    }
+
+    @Test
     fun productPrototypeKeepsBothStudentAndMentorTracks() {
         assertTrue("student task track should have several short tasks", PrototypeRepository.studyTasks.size >= 4)
         assertTrue("mentor roster should contain multiple students", PrototypeRepository.roster.size >= 5)

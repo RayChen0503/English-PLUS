@@ -535,6 +535,58 @@ object PrototypeRepository {
         }
     }
 
+    fun adaptivePracticeRecommendations(
+        current: QuestionBankItem?,
+        wasCorrect: Boolean,
+        confidence: Int,
+        moodLabel: String,
+        wrongAttempts: Int,
+        limit: Int = 3
+    ): List<QuestionBankItem> {
+        val pool = questionBankItems.filter { it.id != current?.id }
+        if (pool.isEmpty()) return emptyList()
+
+        val currentType = current?.questionType
+        val currentChallenge = current?.challengeScore ?: 2
+        val lowEnergy = moodLabel.equals("Low", ignoreCase = true) || confidence < 45 || wrongAttempts > 0
+
+        val ranked = if (wasCorrect && !lowEnergy) {
+            pool
+                .filter { it.difficultyBand in setOf("cap-standard", "challenge") }
+                .sortedWith(
+                    compareByDescending<QuestionBankItem> { if (it.questionType == currentType) 1 else 0 }
+                        .thenByDescending { if (it.challengeScore >= currentChallenge) 1 else 0 }
+                        .thenByDescending { it.challengeScore }
+                        .thenBy { it.estimatedSeconds }
+                )
+        } else if (wasCorrect) {
+            pool
+                .filter { it.difficultyBand in setOf("foundation", "cap-standard") }
+                .sortedWith(
+                    compareByDescending<QuestionBankItem> { if (it.questionType == currentType) 1 else 0 }
+                        .thenBy { it.challengeScore }
+                        .thenBy { it.estimatedSeconds }
+                )
+        } else {
+            pool
+                .filter {
+                    it.difficultyBand == "foundation" ||
+                        "repair" in it.recommendationTags ||
+                        it.emotionalFit == "low"
+                }
+                .sortedWith(
+                    compareByDescending<QuestionBankItem> { if (it.questionType == currentType) 1 else 0 }
+                        .thenByDescending { if ("repair" in it.recommendationTags) 1 else 0 }
+                        .thenBy { it.challengeScore }
+                        .thenBy { it.estimatedSeconds }
+                )
+        }
+
+        return ranked.take(limit).ifEmpty {
+            pool.sortedWith(compareBy<QuestionBankItem> { it.challengeScore }.thenBy { it.estimatedSeconds }).take(limit)
+        }
+    }
+
     private fun difficultyBandFor(type: String, typeIndex: Int): String {
         return when (levelFor(type, typeIndex)) {
             "A1" -> "foundation"

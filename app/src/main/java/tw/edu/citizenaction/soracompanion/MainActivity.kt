@@ -630,9 +630,9 @@ class MainActivity : Activity() {
         screen = Screen.Lesson
         shell("答對了", "先確認結果，再決定下一步")
         root.addView(successSummaryCard(q))
-        root.addView(card("下一步", "系統會把這次成功記錄為「句型修復」進度，不需要一次補完整章。", ColorToken.PrimarySoft))
+        root.addView(adaptiveNextStepCard(q, true))
         root.addView(ui.primaryButton("做一個 20 秒反思") { renderReflection() })
-        root.addView(ui.primaryButton("繼續下一題") { renderLesson() })
+        root.addView(ui.secondaryButton("照原順序繼續下一題") { renderLesson() })
         root.addView(ui.secondaryButton("回學習地圖") { renderMap() })
         bottomNav()
     }
@@ -675,6 +675,7 @@ class MainActivity : Activity() {
         root.addView(supportStepCard("01", "我看見你卡在這裡", q.prompt, ColorToken.WarningSoft, ColorToken.Warning))
         root.addView(supportStepCard("02", "先把概念拆小", "${q.explanation}\n現在只要先記住這一個規則，不需要一次背完 am / is / are。", ColorToken.VioletSoft, ColorToken.Primary))
         root.addView(supportStepCard("03", "你可以選下一步", "回到同一題再試一次；如果仍然不舒服，English+ 會幫你把狀況整理給志工。", ColorToken.PrimarySoft, ColorToken.Success))
+        root.addView(adaptiveNextStepCard(q, false))
         root.addView(ui.primaryButton("回題目再試一次") { renderLesson() })
         root.addView(ui.secondaryButton("交給志工接力") { renderHelpRequest() })
         bottomNav()
@@ -2660,7 +2661,7 @@ class MainActivity : Activity() {
         top.addView(ui.label(item.skill, 17, ColorToken.Ink, true), LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f))
         top.addView(ui.statusPill(item.level, ColorToken.Accent))
         box.addView(top)
-        box.addView(ui.body("${item.unit}｜${normalizedQuestionType(item)}", ColorToken.Muted).apply { setPadding(0, ui.dp(6), 0, 0) })
+        box.addView(ui.body("${item.unit}｜${normalizedQuestionType(item)}｜挑戰 ${item.challengeScore}｜約 ${item.estimatedSeconds} 秒", ColorToken.Muted).apply { setPadding(0, ui.dp(6), 0, 0) })
         box.addView(ui.body(item.question.prompt.take(90), "#334155").apply { setPadding(0, ui.dp(6), 0, 0) })
         box.addView(ui.body("點選後會直接切到這一題，不再只重複同一個簡單題。", ColorToken.Success).apply {
             setPadding(0, ui.dp(6), 0, 0)
@@ -2697,11 +2698,56 @@ class MainActivity : Activity() {
         })
         box.addView(ui.body("根據目前心情、信心值與錯題紀錄，建議先從這一組開始；如果想挑戰，可以往下切換進階難度。", "#334155"))
         items.take(3).forEach { item ->
-            box.addView(ui.secondaryButton("${item.level}｜${normalizedQuestionType(item)}｜${item.skill.take(8)}") {
+            box.addView(ui.secondaryButton("${item.level}｜${normalizedQuestionType(item)}｜挑戰 ${item.challengeScore}") {
                 startPracticeItem(item)
             })
         }
         return ui.margins(box, 0, 8, 0, 12)
+    }
+
+    private fun adaptiveNextStepCard(question: Question, wasCorrect: Boolean): View {
+        val current = questionBankItemFor(question)
+        val recommendations = PrototypeRepository.adaptivePracticeRecommendations(
+            current = current,
+            wasCorrect = wasCorrect,
+            confidence = confidence,
+            moodLabel = mood.name,
+            wrongAttempts = wrongAttempts
+        )
+        val fill = if (wasCorrect) ColorToken.SuccessSoft else ColorToken.WarningSoft
+        val accent = if (wasCorrect) ColorToken.Success else ColorToken.Warning
+        val title = if (wasCorrect) "適性推薦：可以往上挑戰" else "適性推薦：先做修復題"
+        val detail = if (wasCorrect) {
+            "你剛剛答對了，系統會優先給同題型或更高挑戰值的題目；如果信心還不高，會停在會考基準難度。"
+        } else {
+            "你剛剛還沒答對，系統會先給同概念、低壓或修復標籤的題目，避免直接跳到更難的文章題。"
+        }
+        val box = ui.container(fill, ColorToken.Border)
+        box.addView(ui.statusPill("下一題不是固定順序", accent))
+        box.addView(ui.label(title, 18, ColorToken.Ink, true).apply {
+            setPadding(0, ui.dp(10), 0, ui.dp(4))
+        })
+        box.addView(ui.body(detail, "#334155"))
+        current?.let {
+            box.addView(metricRow(
+                Metric("本題", normalizedQuestionType(it), ColorToken.Primary),
+                Metric("挑戰", "${it.challengeScore}/6", accent),
+                Metric("約", "${it.estimatedSeconds} 秒", ColorToken.Success)
+            ))
+        }
+        recommendations.forEach { item ->
+            box.addView(ui.secondaryButton("${item.level}｜${normalizedQuestionType(item)}｜挑戰 ${item.challengeScore}｜${item.skill.take(10)}") {
+                startPracticeItem(item)
+            })
+        }
+        box.addView(ui.secondaryButton("回練習中心自己挑題") { renderStudentPracticeCatalog() })
+        return ui.margins(box, 0, 8, 0, 12)
+    }
+
+    private fun questionBankItemFor(question: Question): QuestionBankItem? {
+        return stateStore.questionBankItems().firstOrNull {
+            it.question.prompt == question.prompt && it.question.answer == question.answer
+        }
     }
 
     private fun practiceLevelOptions(items: List<QuestionBankItem>): List<String> {
@@ -2733,22 +2779,15 @@ class MainActivity : Activity() {
     }
 
     private fun recommendedPracticeItems(items: List<QuestionBankItem>): List<QuestionBankItem> {
-        val preferredLevel = when {
-            mood == Mood.Low -> setOf("foundation", "cap-standard")
-            confidence >= 70 -> setOf("challenge", "cap-standard")
-            confidence >= 50 -> setOf("cap-standard", "challenge")
-            else -> setOf("foundation", "cap-standard")
-        }
-        val preferredTypes = when {
-            wrongAttempts > 0 -> setOf("填空題", "選擇題")
-            confidence >= 70 -> setOf("閱讀理解", "克漏字", "翻譯/句子重組")
-            else -> setOf("選擇題", "填空題", "閱讀理解")
-        }
-        return items
-            .filter { it.difficultyBand in preferredLevel || it.level in preferredLevel }
-            .sortedByDescending { if (normalizedQuestionType(it) in preferredTypes) 1 else 0 }
-            .take(12)
-            .ifEmpty { items.take(12) }
+        val seed = PrototypeRepository.adaptivePracticeRecommendations(
+            current = null,
+            wasCorrect = confidence >= 60,
+            confidence = confidence,
+            moodLabel = mood.name,
+            wrongAttempts = wrongAttempts,
+            limit = 12
+        )
+        return seed.filter { candidate -> items.any { it.id == candidate.id } }.ifEmpty { items.take(12) }
     }
 
     private fun normalizedQuestionType(item: QuestionBankItem): String {
