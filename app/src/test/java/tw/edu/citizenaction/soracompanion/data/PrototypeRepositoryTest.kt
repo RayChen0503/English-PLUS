@@ -111,6 +111,39 @@ class PrototypeRepositoryTest {
     }
 
     @Test
+    fun teacherQuestionBankReviewSummaryCoversReviewAndChallengeStatus() {
+        val summary = PrototypeRepository.teacherQuestionBankReviewSummary()
+
+        assertEquals("summary total should match seeded bank", PrototypeRepository.questionBankItems.size, summary.totalItems)
+        assertTrue("teacher should see approved items", summary.approvedItems > 0)
+        assertTrue("teacher should see draft items awaiting review", summary.draftItems > 0)
+        assertTrue("teacher should see challenge items", summary.challengeItems > 0)
+        assertTrue("teacher should see repair-tagged items", summary.repairItems > 0)
+        assertTrue("summary should expose type counts", summary.typeCounts.size >= 5)
+    }
+
+    @Test
+    fun teacherProgressSnapshotTranslatesStudentSignalsIntoNextAction() {
+        val steady = PrototypeRepository.teacherProgressSnapshot(
+            learningEvents = 12,
+            repairedMistakes = 4,
+            confidence = 72,
+            pendingSync = 0
+        )
+        val urgent = PrototypeRepository.teacherProgressSnapshot(
+            learningEvents = 3,
+            repairedMistakes = 0,
+            confidence = 34,
+            pendingSync = 5
+        )
+
+        assertEquals("steady learner should be marked observe", "持續觀察", steady.riskLabel)
+        assertTrue("steady learner should mention challenge", steady.nextAction.contains("挑戰") || steady.nextAction.contains("進階"))
+        assertEquals("low confidence with pending sync should be marked relay", "需要接力", urgent.riskLabel)
+        assertTrue("urgent learner should mention teacher or volunteer relay", urgent.nextAction.contains("老師") || urgent.nextAction.contains("志工"))
+    }
+
+    @Test
     fun productPrototypeKeepsBothStudentAndMentorTracks() {
         assertTrue("student task track should have several short tasks", PrototypeRepository.studyTasks.size >= 4)
         assertTrue("mentor roster should contain multiple students", PrototypeRepository.roster.size >= 5)

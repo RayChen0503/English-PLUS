@@ -67,6 +67,23 @@ data class QuestionBankItem(
     val sourceYear: String = "prototype"
 )
 
+data class QuestionBankReviewSummary(
+    val totalItems: Int,
+    val approvedItems: Int,
+    val draftItems: Int,
+    val challengeItems: Int,
+    val repairItems: Int,
+    val typeCounts: Map<String, Int>,
+    val difficultyCounts: Map<String, Int>
+)
+
+data class TeacherProgressSnapshot(
+    val riskLabel: String,
+    val nextAction: String,
+    val evidenceLine: String,
+    val syncLine: String
+)
+
 data class Breakpoint(
     val title: String,
     val severity: String,

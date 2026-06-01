@@ -16,6 +16,7 @@ import tw.edu.citizenaction.soracompanion.model.MistakeRecord
 import tw.edu.citizenaction.soracompanion.model.OfflinePack
 import tw.edu.citizenaction.soracompanion.model.Question
 import tw.edu.citizenaction.soracompanion.model.QuestionBankItem
+import tw.edu.citizenaction.soracompanion.model.QuestionBankReviewSummary
 import tw.edu.citizenaction.soracompanion.model.ReflectionPrompt
 import tw.edu.citizenaction.soracompanion.model.StudentProfile
 import tw.edu.citizenaction.soracompanion.model.StudentRow
@@ -23,6 +24,7 @@ import tw.edu.citizenaction.soracompanion.model.StudyTask
 import tw.edu.citizenaction.soracompanion.model.SupportMessage
 import tw.edu.citizenaction.soracompanion.model.SyncRecord
 import tw.edu.citizenaction.soracompanion.model.TeacherAction
+import tw.edu.citizenaction.soracompanion.model.TeacherProgressSnapshot
 import tw.edu.citizenaction.soracompanion.model.WeeklySignal
 
 object PrototypeRepository {
@@ -585,6 +587,40 @@ object PrototypeRepository {
         return ranked.take(limit).ifEmpty {
             pool.sortedWith(compareBy<QuestionBankItem> { it.challengeScore }.thenBy { it.estimatedSeconds }).take(limit)
         }
+    }
+
+    fun teacherQuestionBankReviewSummary(): QuestionBankReviewSummary {
+        return QuestionBankReviewSummary(
+            totalItems = questionBankItems.size,
+            approvedItems = questionBankItems.count { it.reviewState == "approved" },
+            draftItems = questionBankItems.count { it.reviewState != "approved" },
+            challengeItems = questionBankItems.count { it.difficultyBand == "challenge" || it.challengeScore >= 5 },
+            repairItems = questionBankItems.count { "repair" in it.recommendationTags || it.emotionalFit == "low" },
+            typeCounts = questionBankItems.groupingBy { it.questionType }.eachCount(),
+            difficultyCounts = questionBankItems.groupingBy { it.difficultyBand }.eachCount()
+        )
+    }
+
+    fun teacherProgressSnapshot(
+        learningEvents: Int,
+        repairedMistakes: Int,
+        confidence: Int,
+        pendingSync: Int
+    ): TeacherProgressSnapshot {
+        val riskLabel = when {
+            confidence < 45 || pendingSync >= 4 -> "需要接力"
+            repairedMistakes >= 3 && confidence >= 60 -> "持續觀察"
+            learningEvents <= 2 -> "需要暖身"
+            else -> "持續觀察"
+        }
+        val nextAction = when (riskLabel) {
+            "需要接力" -> "請老師或志工先看錯題修復與情緒紀錄，再用同概念低壓題接力。"
+            "需要暖身" -> "先安排 3 到 5 分鐘入門題，確認學生願意開始。"
+            else -> if (confidence >= 70) "可以安排進階挑戰題，觀察是否能穩定完成。" else "維持會考基準題，觀察錯題是否被修復。"
+        }
+        val evidenceLine = "學習事件 $learningEvents 筆｜錯題修復 $repairedMistakes 筆｜信心 $confidence%"
+        val syncLine = if (pendingSync > 0) "仍有 $pendingSync 筆待同步，老師端判讀前需補傳。" else "資料已同步，可作為本次判讀依據。"
+        return TeacherProgressSnapshot(riskLabel, nextAction, evidenceLine, syncLine)
     }
 
     private fun difficultyBandFor(type: String, typeIndex: Int): String {

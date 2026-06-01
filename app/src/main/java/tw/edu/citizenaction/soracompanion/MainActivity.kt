@@ -784,9 +784,11 @@ class MainActivity : Activity() {
             Metric("錯題修復", "$repairedMistakeCount", ColorToken.Success),
             Metric("待同步", "$offlinePendingCount", if (offlinePendingCount > 0) ColorToken.Warning else ColorToken.Success)
         ))
+        root.addView(teacherProgressSnapshotCard())
         root.addView(card("目前班級觀察", "${student.name} 已完成情緒檢測與短任務路徑；若連續錯題或低信心，會進入接力優先序。", ColorToken.SuccessSoft))
         section("學生證據摘要")
         currentRoster().forEach { row -> root.addView(studentLearningEvidenceCard(row)) }
+        root.addView(ui.secondaryButton("查看題庫審閱狀態") { renderQuestionBank() })
         root.addView(ui.primaryButton("回學生列表") { renderRoster() })
         root.addView(ui.secondaryButton("查看接力優先序") { renderHandoffBoard() })
         bottomNav()
@@ -805,6 +807,7 @@ class MainActivity : Activity() {
         val bandCounts = bankItems.groupingBy { it.difficultyBand }.eachCount()
         shell("正式題庫中心", "依程度、單元、技能管理 English+ 題目")
         root.addView(questionBankSummaryCard())
+        root.addView(questionBankReviewDashboardCard())
         root.addView(metricRow(
             Metric("題目", "${bankItems.size} 題", ColorToken.Primary),
             Metric("題型", "${typeCounts.size} 類", ColorToken.Success),
@@ -2018,6 +2021,26 @@ class MainActivity : Activity() {
         return ui.margins(box, 0, 8, 0, 12)
     }
 
+    private fun questionBankReviewDashboardCard(): View {
+        val summary = PrototypeRepository.teacherQuestionBankReviewSummary()
+        val typeLine = summary.typeCounts.entries.joinToString("、") { "${it.key}:${it.value}" }.take(110)
+        val box = ui.container(ColorToken.PrimarySoft, ColorToken.Border)
+        box.addView(ui.statusPill("老師審閱儀表板", ColorToken.Primary))
+        box.addView(ui.label("先看能不能派題，再看題型缺口", 18, ColorToken.Ink, true).apply {
+            setPadding(0, ui.dp(10), 0, ui.dp(4))
+        })
+        box.addView(metricRow(
+            Metric("已審", "${summary.approvedItems}", ColorToken.Success),
+            Metric("待審", "${summary.draftItems}", ColorToken.Warning),
+            Metric("挑戰題", "${summary.challengeItems}", ColorToken.Accent)
+        ))
+        box.addView(ui.body("修復題：${summary.repairItems} 題｜題型分布：$typeLine", "#334155"))
+        box.addView(ui.body("派題建議：學生端優先使用已審與修復標籤題；挑戰題適合信心 70% 以上或已完成同概念修復者。", ColorToken.Primary).apply {
+            setPadding(0, ui.dp(6), 0, 0)
+        })
+        return ui.margins(box, 0, 8, 0, 12)
+    }
+
     private fun questionBankItemCard(item: QuestionBankItem): View {
         val box = ui.container(ColorToken.Card, ColorToken.Border)
         val top = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
@@ -2321,11 +2344,14 @@ class MainActivity : Activity() {
 
     private fun successSummaryCard(question: Question): View {
         val box = ui.sectionBand(ColorToken.SuccessSoft)
-        box.addView(ui.statusPill("答對", ColorToken.Success))
-        box.addView(ui.label("答對了，這一題完成", 24, ColorToken.Ink, true).apply {
+        box.addView(ui.statusPill("答對 / 已記錄", ColorToken.Success))
+        box.addView(ui.label("這題完成了，答案很清楚", 24, ColorToken.Ink, true).apply {
             setPadding(0, ui.dp(12), 0, ui.dp(4))
         })
-        box.addView(ui.body("你的答案：${question.answer}\n${question.explanation}", "#334155"))
+        box.addView(answerCompareStrip("你的答案", question.answer, "正確答案", question.answer, ColorToken.Success))
+        box.addView(ui.body("為什麼：${question.explanation}", "#334155").apply {
+            setPadding(0, ui.dp(8), 0, 0)
+        })
         box.addView(metricRow(
             Metric("任務", "$completedTasks", ColorToken.Primary),
             Metric("信心", "$confidence%", ColorToken.Success),
@@ -2346,6 +2372,13 @@ class MainActivity : Activity() {
             setPadding(0, ui.dp(12), 0, ui.dp(4))
         })
         box.addView(ui.body(subtitle, "#334155"))
+        box.addView(answerCompareStrip(
+            "你選的",
+            selectedAnswer.ifBlank { "未記錄" },
+            "正確答案",
+            question.answer,
+            color
+        ))
         box.addView(metricRow(
             Metric("你的答案", selectedAnswer.ifBlank { "未記錄" }, color),
             Metric("正確答案", question.answer, ColorToken.Success),
@@ -2355,6 +2388,17 @@ class MainActivity : Activity() {
             setPadding(0, ui.dp(8), 0, 0)
         })
         return ui.margins(box, 0, 8, 0, 16)
+    }
+
+    private fun answerCompareStrip(leftLabel: String, leftValue: String, rightLabel: String, rightValue: String, accent: String): View {
+        val same = leftValue == rightValue
+        val box = ui.container(ColorToken.Card, accent)
+        box.addView(metricRow(
+            Metric(leftLabel, leftValue, accent),
+            Metric(rightLabel, rightValue, ColorToken.Success),
+            Metric("判讀", if (same) "一致" else "不同", if (same) ColorToken.Success else ColorToken.Warning)
+        ))
+        return ui.margins(box, 0, 8, 0, 8)
     }
 
     private fun contractPreviewCard(contract: LearningContract): View {
@@ -2837,6 +2881,29 @@ class MainActivity : Activity() {
         })
         box.setOnClickListener { renderStudentDetail(row) }
         return ui.margins(box, 0, 8, 0, 8)
+    }
+
+    private fun teacherProgressSnapshotCard(): View {
+        val snapshot = PrototypeRepository.teacherProgressSnapshot(
+            learningEvents = learningEventCount,
+            repairedMistakes = repairedMistakeCount,
+            confidence = confidence,
+            pendingSync = offlinePendingCount
+        )
+        val color = if (snapshot.riskLabel == "需要接力") ColorToken.Warning else ColorToken.Success
+        val box = ui.container(if (snapshot.riskLabel == "需要接力") ColorToken.WarningSoft else ColorToken.SuccessSoft, ColorToken.Border)
+        box.addView(ui.statusPill(snapshot.riskLabel, color))
+        box.addView(ui.label("目前判讀", 18, ColorToken.Ink, true).apply {
+            setPadding(0, ui.dp(10), 0, ui.dp(4))
+        })
+        box.addView(ui.body(snapshot.evidenceLine, "#334155"))
+        box.addView(ui.body(snapshot.syncLine, ColorToken.Muted).apply {
+            setPadding(0, ui.dp(6), 0, 0)
+        })
+        box.addView(ui.body("下一步：${snapshot.nextAction}", color).apply {
+            setPadding(0, ui.dp(6), 0, 0)
+        })
+        return ui.margins(box, 0, 8, 0, 12)
     }
 
     private fun taskCard(task: StudyTask): View {
