@@ -10,7 +10,7 @@ class PrototypeRepositoryTest {
     fun questionBankItemsHaveValidQuestionPayloads() {
         val items = PrototypeRepository.questionBankItems
 
-        assertTrue("question bank should contain enough inner-pilot items", items.size >= 120)
+        assertTrue("question bank should contain enough inner-pilot items", items.size >= 1000)
         assertEquals("question bank ids should be unique", items.size, items.map { it.id }.distinct().size)
 
         items.forEach { item ->
@@ -19,6 +19,24 @@ class PrototypeRepositoryTest {
             assertFalse("concept should not be blank for ${item.id}", item.question.concept.isBlank())
             assertFalse("repair hint should not be blank for ${item.id}", item.question.repairHint.isBlank())
         }
+    }
+
+    @Test
+    fun largeQuestionBankProvidesSelectableDifficultyAndTypeCoverage() {
+        val items = PrototypeRepository.questionBankItems
+        val cleanTypes = items.map { it.questionType }.toSet()
+        val bands = items.map { it.difficultyBand }.toSet()
+
+        assertTrue("third round should expose an approximately 1000-item practice bank", items.size in 1000..1100)
+        assertTrue("should include foundation questions", bands.contains("foundation"))
+        assertTrue("should include CAP-standard questions", bands.contains("cap-standard"))
+        assertTrue("should include challenge questions", bands.contains("challenge"))
+        assertTrue("should include choice questions", cleanTypes.contains("choice"))
+        assertTrue("should include fill blank questions", cleanTypes.contains("fill-blank"))
+        assertTrue("should include cloze questions", cleanTypes.contains("cloze"))
+        assertTrue("should include reading questions", cleanTypes.contains("reading"))
+        assertTrue("should include translation or reordering questions", cleanTypes.contains("translation-reorder"))
+        assertTrue("challenge score should support harder selectable items", items.any { it.challengeScore >= 5 })
     }
 
     @Test

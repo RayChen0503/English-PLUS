@@ -399,7 +399,7 @@ class EnglishPlusDatabase(context: Context) : SQLiteOpenHelper(context, DB_NAME,
     }
 
     fun seedQuestionBank(items: List<QuestionBankItem>) {
-        if (questionBankCount() > 0) return
+        if (questionBankCount() >= items.size) return
         items.forEach { saveQuestionBankItem(it) }
     }
 

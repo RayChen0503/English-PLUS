@@ -247,7 +247,268 @@ object PrototypeRepository {
             )
         }
 
+        questions.addAll(buildLargeCapStyleQuestions(1000 - questions.size))
         return questions
+    }
+
+    @Suppress("UNCHECKED_CAST")
+    private fun buildLargeCapStyleQuestions(targetCount: Int): List<Question> {
+        if (targetCount <= 0) return emptyList()
+        val generated = mutableListOf<Question>()
+        var serial = 1
+
+        fun add(question: Question) {
+            if (generated.size < targetCount) generated.add(question)
+        }
+
+        val subjects = listOf(
+            "The new student" to "is",
+            "My classmates" to "are",
+            "The science report" to "is",
+            "Those old photos" to "are",
+            "A healthy breakfast" to "is",
+            "The train tickets" to "are",
+            "Our English teacher" to "is",
+            "The two puppies" to "are",
+            "This math problem" to "is",
+            "The city buses" to "are",
+            "Her favorite song" to "is",
+            "Many visitors" to "are",
+            "The school library" to "is",
+            "These blue jackets" to "are",
+            "A pair of shoes" to "is",
+            "The basketball players" to "are"
+        )
+        val grammarContexts = listOf(
+            "important to the club",
+            "ready for the trip",
+            "popular with students",
+            "near the night market",
+            "different from mine",
+            "useful for the project",
+            "late for practice",
+            "quiet after lunch"
+        )
+        repeat(7) { round ->
+            subjects.forEachIndexed { index, (subject, answer) ->
+                val context = grammarContexts[(round + index) % grammarContexts.size]
+                add(
+                    Question(
+                        "$subject ___ $context. (${round + 1}-${index + 1})",
+                        listOf("am", "is", "are", "be"),
+                        answer,
+                        "$subject needs the be verb '$answer' in this sentence.",
+                        "be verb agreement ${round + 1}-${index + 1}",
+                        "選擇題",
+                        "Look at the subject first, then choose the matching be verb."
+                    )
+                )
+            }
+        }
+
+        val fillTemplates = listOf(
+            Triple("The train left ___ we arrived at the station.", "before", "Use before to show the earlier action."),
+            Triple("Mina has practiced piano ___ she was seven.", "since", "Since introduces the starting point of time."),
+            Triple("The teacher asked us ___ quietly in the hallway.", "to walk", "Ask someone to do something uses to V."),
+            Triple("This bag is too heavy for Leo ___ carry alone.", "to", "Too adjective for someone to V."),
+            Triple("I am interested ___ learning about animals.", "in", "Be interested in is the correct phrase."),
+            Triple("The game was canceled ___ the heavy rain.", "because of", "Because of is followed by a noun phrase."),
+            Triple("Neither Amy nor her sisters ___ free tonight.", "are", "The verb agrees with the nearer subject sisters."),
+            Triple("Please remember ___ off the lights before leaving.", "to turn", "Remember to V means do not forget to do it."),
+            Triple("The soup smells ___, so I want to try it.", "good", "Smell is a linking verb followed by an adjective."),
+            Triple("Kevin is the boy ___ helped me find my wallet.", "who", "Who refers to a person in a relative clause."),
+            Triple("The more you read, the ___ you will understand.", "more", "The more..., the more... shows parallel change."),
+            Triple("I do not know ___ the museum is open today.", "whether", "Whether introduces an uncertain choice."),
+            Triple("The room needs ___ before the guests arrive.", "cleaning", "Need V-ing can mean need to be done."),
+            Triple("She spoke slowly so that everyone could ___ her.", "understand", "Could is followed by a base verb."),
+            Triple("If you heat water to 100 degrees, it ___.", "boils", "A scientific fact uses the simple present.")
+        )
+        repeat(9) { round ->
+            fillTemplates.forEachIndexed { index, item ->
+                val wrongA = if (item.second.startsWith("to ")) item.second.removePrefix("to ") else "will ${item.second}"
+                add(
+                    Question(
+                        "${item.first} (${round + 1}-${index + 1})",
+                        listOf(item.second, wrongA, "${item.second}ed", "to ${item.second}").distinct().take(4),
+                        item.second,
+                        item.third,
+                        "grammar fill blank ${round + 1}-${index + 1}",
+                        "填空題",
+                        "Read the words before and after the blank before choosing."
+                    )
+                )
+            }
+        }
+
+        val clozeStories = listOf(
+            listOf(
+                "A small town started a night market for young sellers. Students made snacks, postcards, and small toys. Many visitors came because the event felt friendly and local. The town hopes the market will ___ every summer.",
+                "continue",
+                listOf("continue", "hide", "break", "borrow"),
+                "The story says the town hopes the market happens again."
+            ),
+            listOf(
+                "Lily was afraid of speaking English in class. Her teacher asked her to record one short sentence every day. After three weeks, Lily became more ___ and raised her hand.",
+                "confident",
+                listOf("confident", "crowded", "expensive", "empty"),
+                "Practice made Lily less afraid, so confident fits."
+            ),
+            listOf(
+                "The school garden was dry after many hot days. Students carried water in the morning and checked the plants after lunch. Their work helped the vegetables ___ again.",
+                "grow",
+                listOf("grow", "forget", "sleep", "answer"),
+                "Water helps plants grow."
+            ),
+            listOf(
+                "Tom wanted to buy a new game, but he wrote down his spending first. He found that he bought drinks every afternoon. To save money, he decided to bring water from home ___.",
+                "instead",
+                listOf("instead", "already", "almost", "outside"),
+                "Instead shows he changed to another choice."
+            ),
+            listOf(
+                "A bus driver found a phone on a seat. He gave it to the station office and wrote down the bus number. The owner later thanked him for being ___.",
+                "honest",
+                listOf("honest", "noisy", "late", "hungry"),
+                "Returning a lost phone shows honesty."
+            ),
+            listOf(
+                "Many students check messages before sleeping. The light and sounds may make it harder to rest. Turning off notifications can help students sleep ___.",
+                "better",
+                listOf("better", "earlier than", "louder", "heavier"),
+                "The article is about improving sleep."
+            ),
+            listOf(
+                "The museum guide asked visitors not to touch the paintings. Hands may leave oil on old works. This rule helps ___ the art.",
+                "protect",
+                listOf("protect", "invite", "cancel", "forget"),
+                "The rule keeps the paintings safe."
+            ),
+            listOf(
+                "The team lost its first two games. Instead of giving up, the players watched videos and practiced passing. In the final game, they played much ___.",
+                "better",
+                listOf("better", "empty", "silent", "alone"),
+                "Practice improved their performance."
+            )
+        )
+        repeat(16) { round ->
+            clozeStories.forEachIndexed { index, story ->
+                add(
+                    Question(
+                        "Cloze ${round + 1}-${index + 1}: ${story[0] as String}",
+                        story[2] as List<String>,
+                        story[1] as String,
+                        story[3] as String,
+                        "cloze context ${round + 1}-${index + 1}",
+                        "克漏字",
+                        "Use the whole paragraph, not only the blank."
+                    )
+                )
+            }
+        }
+
+        val readingItems = listOf(
+            Triple("A notice says the art room will be closed after 4 p.m. because teachers are preparing for an exhibition.", "Why will the art room close early?", "Teachers are preparing for an exhibition."),
+            Triple("A text says: I missed the first bus. Please start the meeting without me. I will arrive at 9:20.", "What does the writer want others to do?", "Start the meeting first."),
+            Triple("A poster says: Bring your own cup and get five dollars off any drink before noon.", "How can customers save money?", "Bring their own cup before noon."),
+            Triple("An email says the homework file should be uploaded by Friday night. Late files will not be checked until Monday.", "When should students upload the file?", "By Friday night."),
+            Triple("A weather report says it will be sunny in the morning but rainy after 2 p.m.", "When should people carry an umbrella?", "In the afternoon."),
+            Triple("A library sign says students may borrow three books for two weeks and renew them online once.", "How can students keep books longer?", "Renew them online once."),
+            Triple("A club message says new members should meet at the gym gate and wear comfortable shoes.", "Where should new members meet?", "At the gym gate."),
+            Triple("A news note says volunteers cleaned the beach and collected twenty bags of trash.", "What did the volunteers do?", "They cleaned the beach.")
+        )
+        repeat(16) { round ->
+            readingItems.forEachIndexed { index, item ->
+                add(
+                    Question(
+                        "Reading ${round + 1}-${index + 1}: ${item.first}\n${item.second}",
+                        listOf(item.third, "Buy a new ticket.", "Wait for next month.", "Close the classroom."),
+                        item.third,
+                        "The answer is directly supported by the notice or message.",
+                        "reading detail ${round + 1}-${index + 1}",
+                        "閱讀理解",
+                        "Find the key phrase in the text before choosing."
+                    )
+                )
+            }
+        }
+
+        val translationItems = listOf(
+            "我每天放學後練習英文。" to "I practice English after school every day.",
+            "如果明天下雨，我們會待在家。" to "If it rains tomorrow, we will stay home.",
+            "這本書太難了，我看不懂。" to "This book is too difficult for me to understand.",
+            "你可以告訴我車站在哪裡嗎？" to "Can you tell me where the station is?",
+            "他今天早起是為了準時到校。" to "He got up early today to get to school on time.",
+            "老師請我們分組討論這個故事。" to "The teacher asked us to discuss the story in groups.",
+            "我不知道他明天會不會來。" to "I do not know whether he will come tomorrow.",
+            "這是我讀過最有趣的故事。" to "This is the most interesting story I have ever read.",
+            "離開教室前請關燈。" to "Please turn off the lights before leaving the classroom.",
+            "雖然很熱，他還是去練棒球。" to "Even though it was hot, he still went to practice baseball."
+        )
+        repeat(12) { round ->
+            translationItems.forEachIndexed { index, item ->
+                val answer = item.second
+                add(
+                    Question(
+                        "Translation ${round + 1}-${index + 1}: Choose the best English sentence for: ${item.first}",
+                        listOf(
+                            answer,
+                            answer.replace("I ", "Me "),
+                            answer.replace(" is ", " are "),
+                            answer.replace(" to ", " for ")
+                        ).distinct().take(4),
+                        answer,
+                        "The correct sentence keeps the meaning and natural English word order.",
+                        "translation reorder ${round + 1}-${index + 1}",
+                        "翻譯/句子重組",
+                        "Check subject, verb, and time phrase order."
+                    )
+                )
+            }
+        }
+
+        val vocabularySets = listOf(
+            Triple("The word 'reduce' is closest in meaning to ___.", "make less", listOf("make less", "make louder", "arrive late", "draw quickly")),
+            Triple("The word 'local' means ___.", "from the area", listOf("from the area", "very expensive", "not careful", "full of light")),
+            Triple("The word 'prepare' means ___.", "get ready", listOf("get ready", "fall asleep", "take away", "speak loudly")),
+            Triple("The word 'notice' means ___.", "a written message", listOf("a written message", "a kind of fruit", "a bus driver", "a rainy day")),
+            Triple("The word 'improve' means ___.", "become better", listOf("become better", "become smaller only", "close a shop", "miss a bus")),
+            Triple("The word 'provide' means ___.", "give something needed", listOf("give something needed", "forget a plan", "paint a wall", "run away")),
+            Triple("The word 'avoid' means ___.", "stay away from", listOf("stay away from", "look forward to", "take care of", "get along with")),
+            Triple("The word 'suggest' means ___.", "give an idea", listOf("give an idea", "hide a book", "break a rule", "clean a window"))
+        )
+        repeat(12) { round ->
+            vocabularySets.forEachIndexed { index, item ->
+                add(
+                    Question(
+                        "Vocabulary ${round + 1}-${index + 1}: ${item.first}",
+                        item.third,
+                        item.second,
+                        "This word meaning fits common junior-high reading contexts.",
+                        "vocabulary meaning ${round + 1}-${index + 1}",
+                        "選擇題",
+                        "Use the sentence meaning to choose the closest phrase."
+                    )
+                )
+            }
+        }
+
+        while (generated.size < targetCount) {
+            val n = serial++
+            val answer = if (n % 2 == 0) "because" else "although"
+            add(
+                Question(
+                    "Challenge mixed grammar $n: Mia wanted to join the activity, ___ she had to finish her report first.",
+                    listOf(answer, "or", "since then", "during"),
+                    answer,
+                    "The connector must match the relationship between the two ideas.",
+                    "mixed connector challenge $n",
+                    if (n % 3 == 0) "克漏字" else "填空題",
+                    "Read both clauses and decide whether the ideas contrast or explain a reason."
+                )
+            )
+        }
+
+        return generated
     }
 
     private fun buildQuestionBankItems(sourceQuestions: List<Question>): List<QuestionBankItem> {
@@ -284,6 +545,11 @@ object PrototypeRepository {
     }
 
     private fun questionTypeFor(type: String): String {
+        if (type == "填空題") return "fill-blank"
+        if (type == "克漏字") return "cloze"
+        if (type == "閱讀理解") return "reading"
+        if (type == "翻譯/句子重組") return "translation-reorder"
+        if (type == "選擇題") return "choice"
         return when {
             type.contains("填空") -> "fill-blank"
             type.contains("克漏") -> "cloze"
@@ -344,6 +610,11 @@ object PrototypeRepository {
     }
 
     private fun levelFor(type: String, typeIndex: Int): String {
+        if (type == "選擇題") return if (typeIndex <= 80) "A1" else if (typeIndex <= 180) "A2" else "B1"
+        if (type == "填空題") return if (typeIndex <= 80) "A2" else "B1"
+        if (type == "克漏字") return if (typeIndex <= 60) "A2" else "B1"
+        if (type == "閱讀理解") return if (typeIndex <= 60) "A2" else "B1"
+        if (type == "翻譯/句子重組") return if (typeIndex <= 60) "A2" else "B1"
         return when (type) {
             "選擇題" -> if (typeIndex <= 8) "A1" else "A2"
             "填空題" -> if (typeIndex <= 8) "A2" else "B1"
@@ -354,6 +625,11 @@ object PrototypeRepository {
     }
 
     private fun unitFor(type: String): String {
+        if (type == "選擇題") return "基礎文法與字彙"
+        if (type == "填空題") return "會考文法填空"
+        if (type == "克漏字") return "篇章克漏字"
+        if (type == "閱讀理解") return "閱讀理解"
+        if (type == "翻譯/句子重組") return "翻譯與句子重組"
         return when (type) {
             "填空題" -> "會考文法填空"
             "克漏字" -> "會考克漏字"
@@ -364,6 +640,11 @@ object PrototypeRepository {
     }
 
     private fun skillFor(type: String): String {
+        if (type == "選擇題") return "grammar-vocabulary"
+        if (type == "填空題") return "grammar"
+        if (type == "克漏字") return "cloze-context"
+        if (type == "閱讀理解") return "reading"
+        if (type == "翻譯/句子重組") return "translation-reorder"
         return when (type) {
             "填空題" -> "文法"
             "克漏字" -> "克漏字"
