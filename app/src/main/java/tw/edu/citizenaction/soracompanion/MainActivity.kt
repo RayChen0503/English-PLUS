@@ -84,6 +84,8 @@ class MainActivity : Activity() {
     private var customTaskCount = 0
     private var lastAnswerMessage = "還沒有作答，先從一題短任務開始。"
     private var lastSelectedAnswer = ""
+    private var checkInCompleted = false
+    private var practiceTimeConfirmed = false
 
     private val student = PrototypeRepository.student
     private val modules = PrototypeRepository.modules
@@ -215,6 +217,27 @@ class MainActivity : Activity() {
         recordLearningEvent("account_login", "切換登入：${account.displayName}", "角色：${account.roleLabel}｜班級/群組：${account.classCode}")
     }
 
+    private fun resetStudentFlow() {
+        checkInCompleted = false
+        practiceTimeConfirmed = false
+    }
+
+    private fun renderStudentTaskEntry() {
+        when {
+            !checkInCompleted -> renderCheckIn()
+            !practiceTimeConfirmed -> renderPracticeTimeSetup()
+            else -> renderTaskQueue()
+        }
+    }
+
+    private fun renderStudentSupportEntry() {
+        if (!checkInCompleted) renderCheckIn() else renderBreakpoints()
+    }
+
+    private fun renderStudentMapEntry() {
+        if (!practiceTimeConfirmed) renderPracticeTimeSetup() else renderMap()
+    }
+
     private fun renderRoleGateway() {
         screen = Screen.Home
         shell("English+", "先選擇今天的使用身分")
@@ -228,6 +251,7 @@ class MainActivity : Activity() {
         ) {
             val studentAccount = accountList().firstOrNull { AuthContract.isStudentRole(it.roleLabel) } ?: currentAccount()
             selectAccount(studentAccount)
+            resetStudentFlow()
             renderHome()
         })
         root.addView(roleEntryCard(
@@ -239,6 +263,7 @@ class MainActivity : Activity() {
         ) {
             val mentorAccount = accountList().firstOrNull { AuthContract.isStaffRole(it.roleLabel) } ?: currentAccount()
             selectAccount(mentorAccount)
+            resetStudentFlow()
             renderHome()
         })
         root.addView(card("目前展示帳號", "${currentAccount().displayName}｜${currentAccount().roleLabel}\n也可以進入後到帳號中心切換班級或登入方式。", ColorToken.Card))
@@ -461,6 +486,14 @@ class MainActivity : Activity() {
     }
 
     private fun renderTaskQueue() {
+        if (role == Role.Student && !checkInCompleted) {
+            renderCheckIn()
+            return
+        }
+        if (role == Role.Student && !practiceTimeConfirmed) {
+            renderPracticeTimeSetup()
+            return
+        }
         screen = Screen.Lesson
         shell("今天先做這個", "把英文練習縮到現在做得到的一小步")
         root.addView(currentTaskFocus())
@@ -499,17 +532,39 @@ class MainActivity : Activity() {
             })
         }
         root.addView(selectedMoodResponse())
+        root.addView(checkInGateCard())
+        root.addView(ui.primaryButton("完成心情檢測，下一步選時間") {
+            checkInCompleted = true
+            persistState()
+            renderPracticeTimeSetup()
+        })
+        root.addView(ui.secondaryButton("先回學生首頁") { renderHome() })
+        bottomNav()
+    }
+
+    private fun renderPracticeTimeSetup() {
+        screen = Screen.CheckIn
+        shell("選擇今天練習時間", "先決定做多久，再開始作題")
+        root.addView(practiceTimeIntroCard())
         section("今天能用多久？")
         listOf(3, 5, 8, 12).forEach { value ->
             root.addView(durationChoice(value, value == minutes) {
                 minutes = value
                 persistState()
-                renderCheckIn()
+                renderPracticeTimeSetup()
             })
         }
         root.addView(planPreviewCard())
-        root.addView(ui.primaryButton("完成檢測，選擇今天練習時間") { renderTaskQueue() })
-        root.addView(ui.secondaryButton("先回學生首頁") { renderHome() })
+        root.addView(ui.primaryButton("確認時間，查看今日任務") {
+            practiceTimeConfirmed = true
+            persistState()
+            renderTaskQueue()
+        })
+        root.addView(ui.secondaryButton("回心情檢測調整狀態") {
+            checkInCompleted = false
+            practiceTimeConfirmed = false
+            renderCheckIn()
+        })
         bottomNav()
     }
 
@@ -1564,9 +1619,9 @@ class MainActivity : Activity() {
         if (role == Role.Student) {
             nav.addView(navDestination("H", "首頁", screen == Screen.Home || screen == Screen.Account) { renderHome() }, ui.weightParams())
             nav.addView(navDestination("C", "檢測", screen == Screen.CheckIn) { renderCheckIn() }, ui.weightParams())
-            nav.addView(navDestination("T", "任務", screen == Screen.Lesson || screen == Screen.AiCoach || screen == Screen.Contract || screen == Screen.Reflection) { renderTaskQueue() }, ui.weightParams())
-            nav.addView(navDestination("S", "支持", screen == Screen.Breakpoints || screen == Screen.Handoff || screen == Screen.Intervention || screen == Screen.HelpRequest) { renderBreakpoints() }, ui.weightParams())
-            nav.addView(navDestination("M", "地圖", screen == Screen.Map || screen == Screen.Report || screen == Screen.Journey || screen == Screen.QuestionBank) { renderMap() }, ui.weightParams())
+            nav.addView(navDestination("T", "任務", screen == Screen.Lesson || screen == Screen.AiCoach || screen == Screen.Contract || screen == Screen.Reflection) { renderStudentTaskEntry() }, ui.weightParams())
+            nav.addView(navDestination("S", "支持", screen == Screen.Breakpoints || screen == Screen.Handoff || screen == Screen.Intervention || screen == Screen.HelpRequest) { renderStudentSupportEntry() }, ui.weightParams())
+            nav.addView(navDestination("M", "地圖", screen == Screen.Map || screen == Screen.Report || screen == Screen.Journey || screen == Screen.QuestionBank) { renderStudentMapEntry() }, ui.weightParams())
         } else {
             nav.addView(navDestination("W", "工作台", screen == Screen.Home || screen == Screen.Account) { renderHome() }, ui.weightParams())
             nav.addView(navDestination("R", "學生", screen == Screen.Roster || screen == Screen.StudentDetail || screen == Screen.StudentManager) { renderRoster() }, ui.weightParams())
@@ -1711,6 +1766,31 @@ class MainActivity : Activity() {
         })
         box.addView(ui.body(response, "#334155"))
         return ui.margins(box, 0, 8, 0, 12)
+    }
+
+    private fun checkInGateCard(): View {
+        val box = ui.container(ColorToken.Card, ColorToken.Border)
+        box.addView(ui.statusPill("下一步才選時間", ColorToken.Primary))
+        box.addView(ui.label("先確認狀態，再決定練多久", 18, ColorToken.Ink, true).apply {
+            setPadding(0, ui.dp(12), 0, ui.dp(4))
+        })
+        box.addView(ui.body("這一頁只做心情檢測。English+ 不會在同一屏塞任務、地圖和作題入口，避免一開始就太亂。", "#334155"))
+        return ui.margins(box, 0, 8, 0, 12)
+    }
+
+    private fun practiceTimeIntroCard(): View {
+        val box = ui.sectionBand(ColorToken.PrimarySoft)
+        box.addView(ui.statusPill("STEP 2", ColorToken.Primary))
+        box.addView(ui.label("依照 ${mood.label} 安排今天的量", 21, ColorToken.Ink, true).apply {
+            setPadding(0, ui.dp(12), 0, ui.dp(4))
+        })
+        box.addView(ui.body("你剛剛完成了心情檢測。現在只要選今天願意投入的時間，下一頁才會出現今日任務。", "#334155"))
+        box.addView(metricRow(
+            Metric("狀態", mood.planName, mood.color),
+            Metric("建議", "${mood.defaultMinutes} 分", ColorToken.Accent),
+            Metric("信心", "$confidence%", ColorToken.Success)
+        ))
+        return ui.margins(box, 0, 8, 0, 16)
     }
 
     private fun planPreviewCard(): View {
