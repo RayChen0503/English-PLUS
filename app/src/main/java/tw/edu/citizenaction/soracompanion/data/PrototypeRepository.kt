@@ -260,9 +260,87 @@ object PrototypeRepository {
                 skill = skillFor(question.type),
                 source = if (index < 8) "English+ seed" else "English+ CAP-style original",
                 question = question,
-                reviewState = if (index < 80) "approved" else "draft"
+                reviewState = if (index < 80) "approved" else "draft",
+                importBatchId = "cap-style-v2",
+                difficultyBand = difficultyBandFor(question.type, typeIndex),
+                questionType = questionTypeFor(question.type),
+                tags = tagsFor(question.type, question.concept),
+                recommendationTags = recommendationTagsFor(question.type, typeIndex),
+                emotionalFit = emotionalFitFor(question.type, typeIndex),
+                estimatedSeconds = estimatedSecondsFor(question.type),
+                challengeScore = challengeScoreFor(question.type, typeIndex),
+                sourceYear = "original-2026"
             )
         }
+    }
+
+    private fun difficultyBandFor(type: String, typeIndex: Int): String {
+        return when (levelFor(type, typeIndex)) {
+            "A1" -> "foundation"
+            "A2" -> "cap-standard"
+            "B1" -> "challenge"
+            else -> "cap-standard"
+        }
+    }
+
+    private fun questionTypeFor(type: String): String {
+        return when {
+            type.contains("填空") -> "fill-blank"
+            type.contains("克漏") -> "cloze"
+            type.contains("閱讀") || type.contains("讀") -> "reading"
+            type.contains("翻譯") || type.contains("重組") -> "translation-reorder"
+            type.contains("選擇") -> "choice"
+            else -> "choice"
+        }
+    }
+
+    private fun tagsFor(type: String, concept: String): List<String> {
+        val base = mutableListOf("cap-style", questionTypeFor(type))
+        if (concept.contains("be", ignoreCase = true)) base.add("be-verb")
+        if (concept.contains("if", ignoreCase = true)) base.add("conditionals")
+        if (concept.contains("閱讀") || questionTypeFor(type) == "reading") base.add("reading-skill")
+        if (questionTypeFor(type) == "translation-reorder") base.add("sentence-order")
+        return base.distinct()
+    }
+
+    private fun recommendationTagsFor(type: String, typeIndex: Int): List<String> {
+        val tags = mutableListOf<String>()
+        when (difficultyBandFor(type, typeIndex)) {
+            "foundation" -> tags.addAll(listOf("repair", "low-pressure"))
+            "cap-standard" -> tags.addAll(listOf("daily-practice", "cap-baseline"))
+            "challenge" -> tags.addAll(listOf("challenge", "confidence-high"))
+        }
+        if (questionTypeFor(type) in listOf("reading", "cloze")) tags.add("longer-focus")
+        return tags.distinct()
+    }
+
+    private fun emotionalFitFor(type: String, typeIndex: Int): String {
+        return when {
+            difficultyBandFor(type, typeIndex) == "foundation" -> "low"
+            questionTypeFor(type) in listOf("reading", "cloze") -> "steady"
+            difficultyBandFor(type, typeIndex) == "challenge" -> "high-confidence"
+            else -> "balanced"
+        }
+    }
+
+    private fun estimatedSecondsFor(type: String): Int {
+        return when (questionTypeFor(type)) {
+            "reading" -> 120
+            "cloze" -> 100
+            "translation-reorder" -> 90
+            "fill-blank" -> 55
+            else -> 45
+        }
+    }
+
+    private fun challengeScoreFor(type: String, typeIndex: Int): Int {
+        val base = when (difficultyBandFor(type, typeIndex)) {
+            "foundation" -> 1
+            "cap-standard" -> 3
+            "challenge" -> 5
+            else -> 2
+        }
+        return (base + if (questionTypeFor(type) in listOf("reading", "cloze")) 1 else 0).coerceIn(1, 6)
     }
 
     private fun levelFor(type: String, typeIndex: Int): String {

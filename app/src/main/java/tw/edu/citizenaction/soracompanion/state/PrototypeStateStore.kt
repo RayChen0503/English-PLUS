@@ -177,12 +177,12 @@ class PrototypeStateStore(context: Context) {
         database.seedQuestionBank(items)
     }
 
-    fun questionBankItems(limit: Int = 80): List<QuestionBankItem> {
+    fun questionBankItems(limit: Int = 1000): List<QuestionBankItem> {
         return database.loadQuestionBank(limit)
     }
 
     fun questionBankQuestions(): List<Question> {
-        return database.loadQuestionBank(80).map { it.question }
+        return database.loadQuestionBank(1000).map { it.question }
     }
 
     fun markOfflineSyncItemsSynced() {
@@ -276,6 +276,14 @@ class PrototypeStateStore(context: Context) {
                     .put("source", item.source)
                     .put("reviewState", item.reviewState)
                     .put("importBatchId", item.importBatchId)
+                    .put("difficultyBand", item.difficultyBand)
+                    .put("questionType", item.questionType)
+                    .put("tags", JSONArray(item.tags))
+                    .put("recommendationTags", JSONArray(item.recommendationTags))
+                    .put("emotionalFit", item.emotionalFit)
+                    .put("estimatedSeconds", item.estimatedSeconds)
+                    .put("challengeScore", item.challengeScore)
+                    .put("sourceYear", item.sourceYear)
                     .put("prompt", item.question.prompt)
                     .put("options", JSONArray(item.question.options))
                     .put("answer", item.question.answer)

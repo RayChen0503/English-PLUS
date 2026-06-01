@@ -800,19 +800,28 @@ class MainActivity : Activity() {
         val bankItems = stateStore.questionBankItems()
         val skillCounts = bankItems.groupingBy { it.skill }.eachCount()
         val levelCounts = bankItems.groupingBy { it.level }.eachCount()
+        val typeCounts = bankItems.groupingBy { it.questionType }.eachCount()
+        val bandCounts = bankItems.groupingBy { it.difficultyBand }.eachCount()
         shell("正式題庫中心", "依程度、單元、技能管理 English+ 題目")
         root.addView(questionBankSummaryCard())
         root.addView(metricRow(
             Metric("題目", "${bankItems.size} 題", ColorToken.Primary),
-            Metric("技能", "${skillCounts.size} 類", ColorToken.Success),
-            Metric("程度", levelCounts.keys.joinToString("/").ifBlank { "A1" }, ColorToken.Accent)
+            Metric("題型", "${typeCounts.size} 類", ColorToken.Success),
+            Metric("難度帶", "${bandCounts.size} 組", ColorToken.Accent)
         ))
-        root.addView(card("題庫導入狀態", "目前練習流程已改由 SQLite 題庫載入。這一版先建立正式題庫資料表、種子題、分類檢視與後續後台/API 匯入接口的資料結構。", ColorToken.PrimarySoft))
+        root.addView(card("第二輪題庫資料結構", "目前題庫已支援 difficultyBand、questionType、tags、recommendationTags、emotionalFit、estimatedSeconds、challengeScore、sourceYear。後續 1000 題會依這些欄位匯入，不再只靠題幹與答案硬塞。", ColorToken.PrimarySoft))
         root.addView(card(
-            "第五輪正式題庫規則",
-            "題庫已加入 schema v${QuestionBankContract.QUESTION_BANK_SCHEMA_VERSION}、importId、審核狀態與匯入批次。老師端可以發布正式題目；學生端維持唯讀，避免未審題目進入練習。",
+            "正式題庫規則",
+            "題庫 schema v${QuestionBankContract.QUESTION_BANK_SCHEMA_VERSION} 保留 importId、審核狀態、匯入批次與推薦 metadata。老師端可以發布正式題目；學生端維持唯讀，避免未審題目進入練習。",
             ColorToken.SuccessSoft
         ))
+        section("難度與題型")
+        bandCounts.forEach { (band, count) ->
+            root.addView(timelineCard(band, "$count 題｜${levelCounts.keys.joinToString("/")}", ColorToken.Accent))
+        }
+        typeCounts.forEach { (type, count) ->
+            root.addView(timelineCard(type, "$count 題｜可作為學生端題型篩選", ColorToken.Success))
+        }
         section("技能分類")
         skillCounts.forEach { (skill, count) ->
             root.addView(timelineCard(skill, "$count 題｜可作為老師後台篩選與分級派題依據", ColorToken.Primary))
@@ -1992,6 +2001,7 @@ class MainActivity : Activity() {
         val bankItems = stateStore.questionBankItems()
         val skillCount = bankItems.map { it.skill }.distinct().size
         val unitCount = bankItems.map { it.unit }.distinct().size
+        val typeCount = bankItems.map { it.questionType }.distinct().size
         val box = ui.container(ColorToken.SuccessSoft, ColorToken.Border)
         box.addView(ui.statusPill("題庫已本機化", ColorToken.Success))
         box.addView(ui.label("English+ 正式題庫骨架", 18, ColorToken.Ink, true).apply {
@@ -1999,10 +2009,10 @@ class MainActivity : Activity() {
         })
         box.addView(metricRow(
             Metric("題目", "${bankItems.size} 題", ColorToken.Primary),
-            Metric("單元", "$unitCount 組", ColorToken.Accent),
+            Metric("題型", "$typeCount 類", ColorToken.Accent),
             Metric("技能", "$skillCount 類", ColorToken.Success)
         ))
-        box.addView(ui.body("練習題已從展示清單升級為 SQLite 題庫，保留 level、unit、skill、source 欄位，後續可接分級題庫或老師後台匯入。", "#334155"))
+        box.addView(ui.body("練習題已從展示清單升級為 SQLite 題庫，保留 level、unit、skill、source 與推薦 metadata。後續可接 1000 題分級題庫或老師後台匯入。單元：$unitCount 組。", "#334155"))
         box.addView(ui.secondaryButton("打開題庫中心") { renderQuestionBank() })
         return ui.margins(box, 0, 8, 0, 12)
     }
@@ -2014,6 +2024,7 @@ class MainActivity : Activity() {
         top.addView(ui.statusPill(item.level, ColorToken.Primary))
         box.addView(top)
         box.addView(ui.body("${item.unit}｜${item.skill}｜${item.source}｜${item.reviewState}", ColorToken.Muted).apply { setPadding(0, ui.dp(7), 0, 0) })
+        box.addView(ui.body("題型：${item.questionType}｜難度帶：${item.difficultyBand}｜挑戰分：${item.challengeScore}｜建議情緒：${item.emotionalFit}", ColorToken.Primary))
         box.addView(ui.body("答案：${item.question.answer}\n提示：${item.question.repairHint}", "#334155"))
         box.setOnClickListener {
             val index = questions.indexOfFirst { it.prompt == item.question.prompt && it.answer == item.question.answer }
@@ -2233,7 +2244,7 @@ class MainActivity : Activity() {
 
     private fun practiceCenterEntryCard(): View {
         val bankItems = stateStore.questionBankItems()
-        val challengeCount = bankItems.count { it.level == "B1" }
+        val challengeCount = bankItems.count { it.difficultyBand == "challenge" || it.level == "B1" }
         val typeCount = bankItems.map { normalizedQuestionType(it) }.distinct().size
         val box = ui.container(ColorToken.Card, ColorToken.Border)
         box.addView(ui.statusPill("練習中心", ColorToken.Accent))
@@ -2710,10 +2721,10 @@ class MainActivity : Activity() {
             val levelMatch = when (selectedPracticeLevel) {
                 "推薦" -> recommendedPracticeItems(items).contains(item)
                 "全部難度" -> true
-                "弱點修復" -> item.question.concept.contains("be") || item.question.concept.contains("文法") || item.skill.contains("文法")
-                "基礎 A1" -> item.level == "A1"
-                "會考基準 A2" -> item.level == "A2"
-                "進階挑戰 B1" -> item.level == "B1"
+                "弱點修復" -> item.recommendationTags.contains("repair") || item.question.concept.contains("be") || item.question.concept.contains("文法") || item.skill.contains("文法")
+                "基礎 A1" -> item.level == "A1" || item.difficultyBand == "foundation"
+                "會考基準 A2" -> item.level == "A2" || item.difficultyBand == "cap-standard"
+                "進階挑戰 B1" -> item.level == "B1" || item.difficultyBand == "challenge"
                 else -> true
             }
             val typeMatch = selectedPracticeType == "全部題型" || normalizedQuestionType(item) == selectedPracticeType
@@ -2723,10 +2734,10 @@ class MainActivity : Activity() {
 
     private fun recommendedPracticeItems(items: List<QuestionBankItem>): List<QuestionBankItem> {
         val preferredLevel = when {
-            mood == Mood.Low -> setOf("A1", "A2")
-            confidence >= 70 -> setOf("B1", "A2")
-            confidence >= 50 -> setOf("A2", "B1")
-            else -> setOf("A1", "A2")
+            mood == Mood.Low -> setOf("foundation", "cap-standard")
+            confidence >= 70 -> setOf("challenge", "cap-standard")
+            confidence >= 50 -> setOf("cap-standard", "challenge")
+            else -> setOf("foundation", "cap-standard")
         }
         val preferredTypes = when {
             wrongAttempts > 0 -> setOf("填空題", "選擇題")
@@ -2734,15 +2745,20 @@ class MainActivity : Activity() {
             else -> setOf("選擇題", "填空題", "閱讀理解")
         }
         return items
-            .filter { it.level in preferredLevel }
+            .filter { it.difficultyBand in preferredLevel || it.level in preferredLevel }
             .sortedByDescending { if (normalizedQuestionType(it) in preferredTypes) 1 else 0 }
             .take(12)
             .ifEmpty { items.take(12) }
     }
 
     private fun normalizedQuestionType(item: QuestionBankItem): String {
-        val type = item.question.type
+        val type = item.questionType.ifBlank { item.question.type }
         return when {
+            type == "fill-blank" -> "填空題"
+            type == "cloze" -> "克漏字"
+            type == "reading" -> "閱讀理解"
+            type == "translation-reorder" -> "翻譯/句子重組"
+            type == "choice" -> "選擇題"
             type.contains("填空") -> "填空題"
             type.contains("克漏") -> "克漏字"
             type.contains("閱讀") || type.contains("讀") -> "閱讀理解"

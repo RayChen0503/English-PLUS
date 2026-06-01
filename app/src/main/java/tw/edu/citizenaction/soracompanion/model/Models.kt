@@ -56,7 +56,15 @@ data class QuestionBankItem(
     val question: Question,
     val updatedAt: Long = System.currentTimeMillis(),
     val reviewState: String = "draft",
-    val importBatchId: String = "seed"
+    val importBatchId: String = "seed",
+    val difficultyBand: String = level,
+    val questionType: String = question.type,
+    val tags: List<String> = emptyList(),
+    val recommendationTags: List<String> = emptyList(),
+    val emotionalFit: String = "balanced",
+    val estimatedSeconds: Int = 60,
+    val challengeScore: Int = 1,
+    val sourceYear: String = "prototype"
 )
 
 data class Breakpoint(
