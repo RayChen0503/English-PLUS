@@ -107,7 +107,9 @@ data class CheckInResult(
     val recommendedMinutes: Int,
     val title: String,
     val nextStep: String,
-    val supportMessage: String
+    val supportMessage: String,
+    val challengeWanted: Boolean = false,
+    val preferredQuestionTypes: List<String> = emptyList()
 )
 
 

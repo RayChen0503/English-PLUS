@@ -147,19 +147,24 @@ class PrototypeRepositoryTest {
     fun emotionalCheckInUsesShortChoiceBasedQuestions() {
         val questions = PrototypeRepository.emotionalCheckInQuestions
 
-        assertEquals("check-in should stay short enough for students", 5, questions.size)
-        assertTrue("every check-in question should be choice based", questions.all { it.options.size in 3..4 })
-        assertTrue("check-in should cover mood, energy, confidence, control and support", questions.map { it.dimension }.toSet().containsAll(setOf("mood", "energy", "confidence", "control", "support")))
+        assertEquals("check-in should stay short enough for students", 4, questions.size)
+        assertTrue("every check-in question should be choice based", questions.all { it.options.size in 2..5 })
+        assertTrue("check-in should cover mood, time, challenge and practice type", questions.map { it.dimension }.toSet().containsAll(setOf("mood", "time", "challenge", "practice_type")))
     }
-
     @Test
     fun emotionalCheckInRoutesLowReadinessToRepairOrRelay() {
-        val lowAnswers = PrototypeRepository.emotionalCheckInQuestions.associate { question ->
-            question.id to question.options.minBy { it.score }.id
-        }
-        val strongAnswers = PrototypeRepository.emotionalCheckInQuestions.associate { question ->
-            question.id to question.options.maxBy { it.score }.id
-        }
+        val lowAnswers = mapOf(
+            "mood_scale" to "mood-1",
+            "time_scale" to "time-1",
+            "challenge" to "challenge-no",
+            "practice_types" to "type-choice"
+        )
+        val strongAnswers = mapOf(
+            "mood_scale" to "mood-5",
+            "time_scale" to "time-5",
+            "challenge" to "challenge-yes",
+            "practice_types" to "type-reading,type-cloze"
+        )
 
         val lowResult = PrototypeRepository.evaluateEmotionalCheckIn(lowAnswers)
         val strongResult = PrototypeRepository.evaluateEmotionalCheckIn(strongAnswers)
@@ -168,6 +173,8 @@ class PrototypeRepositoryTest {
         assertTrue("low readiness should keep practice short", lowResult.recommendedMinutes <= 5)
         assertTrue("strong readiness should unlock challenge", strongResult.route == "challenge")
         assertTrue("strong readiness should raise confidence", strongResult.confidence >= 70)
+        assertTrue("challenge answer should be carried into the result", strongResult.challengeWanted)
+        assertTrue("multi-selected practice types should be carried into the result", strongResult.preferredQuestionTypes.containsAll(listOf("閱讀理解", "克漏字")))
     }
 
     @Test

@@ -94,6 +94,7 @@ class MainActivity : Activity() {
     private var todayReflected = false
     private var selectedPracticeLevel = "推薦"
     private var selectedPracticeType = "全部題型"
+    private var selectedPracticeTypes = setOf("全部題型")
     private val checkInAnswers = mutableMapOf<String, String>()
 
     private val student = PrototypeRepository.student
@@ -528,12 +529,13 @@ class MainActivity : Activity() {
 
     private fun renderCheckIn() {
         screen = Screen.CheckIn
-        shell("心情檢測", "5 題內完成")
+        shell("心情檢測", "4 題內完成")
         val checkInQuestions = PrototypeRepository.emotionalCheckInQuestions
-        val complete = checkInAnswers.keys.containsAll(checkInQuestions.map { it.id })
+        val answeredCount = checkInQuestions.count { isCheckInQuestionAnswered(it.id) }
+        val complete = checkInQuestions.all { isCheckInQuestionAnswered(it.id) }
         val result = if (complete) PrototypeRepository.evaluateEmotionalCheckIn(checkInAnswers) else null
         root.addView(checkInIntroCard())
-        root.addView(checkInProgressCard(checkInQuestions.size, checkInAnswers.size, result))
+        root.addView(checkInProgressCard(checkInQuestions.size, answeredCount, result))
         checkInQuestions.forEachIndexed { index, question ->
             root.addView(checkInQuestionCard(index + 1, question))
         }
@@ -544,7 +546,7 @@ class MainActivity : Activity() {
                 renderPracticeTimeSetup()
             })
         } else {
-            root.addView(card("還差 ${checkInQuestions.size - checkInAnswers.size} 題", "全部選完後，才會安排今天的練習時間與任務。", ColorToken.Card))
+            root.addView(card("還差 ${checkInQuestions.size - answeredCount} 題", "完成後會依照時間、挑戰意願與題型偏好安排任務。", ColorToken.Card))
         }
         root.addView(ui.secondaryButton("先回學生首頁") { renderHome() })
         bottomNav()
@@ -557,6 +559,13 @@ class MainActivity : Activity() {
         checkInCompleted = true
         practiceTimeConfirmed = false
         lastAnswerMessage = result.supportMessage
+        selectedPracticeLevel = when {
+            result.challengeWanted -> "進階挑戰 B1"
+            result.route == "repair" -> "弱點修復"
+            else -> "推薦"
+        }
+        selectedPracticeTypes = if (result.preferredQuestionTypes.isNotEmpty()) result.preferredQuestionTypes.toSet() else setOf("全部題型")
+        selectedPracticeType = selectedPracticeTypes.firstOrNull() ?: "全部題型"
         if (result.route == "relay") {
             breakpoints.add(0, Breakpoint("今日需要陪伴", "高", "心情檢測顯示學生希望老師或志工知道", "先改成低壓題與支持出口。", "請老師/志工確認學生是否需要陪練。"))
         }
@@ -887,7 +896,7 @@ class MainActivity : Activity() {
         val typeCounts = bankItems.groupingBy { normalizedQuestionType(it) }.eachCount()
         shell("練習中心", "選難度、題型，也可以直接挑戰更難的題目")
         root.addView(studentRouteStatusCard())
-        root.addView(card("這裡可以自己選題", "你不一定只能做系統安排的簡單題。可以先照推薦做，也可以切到會考基準、進階挑戰、閱讀、克漏字或翻譯題。", ColorToken.PrimarySoft))
+        root.addView(card("已依心情檢測套用推薦", "目前難度：$selectedPracticeLevel\n題型：${selectedPracticeTypes.joinToString("、")}", ColorToken.PrimarySoft))
         root.addView(metricRow(
             Metric("題庫", "${bankItems.size} 題", ColorToken.Primary),
             Metric("題型", "${typeCounts.size} 類", ColorToken.Success),
@@ -903,8 +912,14 @@ class MainActivity : Activity() {
         }
         section("選擇題型")
         practiceTypeOptions(bankItems).forEach { type ->
-            root.addView(practiceFilterChip(type, selectedPracticeType == type) {
-                selectedPracticeType = type
+            val selected = (type == "全部題型" && selectedPracticeTypes.contains("全部題型")) || selectedPracticeTypes.contains(type)
+            root.addView(practiceFilterChip(type, selected) {
+                selectedPracticeTypes = when {
+                    type == "全部題型" -> setOf("全部題型")
+                    selectedPracticeTypes.contains(type) -> selectedPracticeTypes.minus(type).ifEmpty { setOf("全部題型") }
+                    else -> selectedPracticeTypes.minus("全部題型").plus(type)
+                }
+                selectedPracticeType = selectedPracticeTypes.firstOrNull() ?: "全部題型"
                 renderStudentPracticeCatalog()
             })
         }
@@ -1933,7 +1948,7 @@ class MainActivity : Activity() {
         box.addView(ui.label("先看今天適合怎麼練", 21, ColorToken.Ink, true).apply {
             setPadding(0, ui.dp(12), 0, ui.dp(4))
         })
-        box.addView(ui.body("選 5 題就好。系統會依狀態安排低壓修復、一般練習或進階挑戰。", "#334155"))
+        box.addView(ui.body("只回答 4 題。心情、時間、挑戰意願與題型偏好會直接改變今天的練習路線。", "#334155"))
         return ui.margins(box, 0, 8, 0, 16)
     }
 
@@ -1949,17 +1964,41 @@ class MainActivity : Activity() {
     }
 
     private fun checkInQuestionCard(index: Int, question: CheckInQuestion): View {
-        val selectedId = checkInAnswers[question.id]
+        val selectedIds = selectedCheckInOptionIds(question.id)
         val box = ui.container(ColorToken.Card, ColorToken.Border)
-        box.addView(ui.statusPill("第 $index 題", if (selectedId == null) ColorToken.Primary else ColorToken.Success))
+        box.addView(ui.statusPill("第 $index 題", if (selectedIds.isEmpty()) ColorToken.Primary else ColorToken.Success))
         box.addView(ui.label(question.title, 18, ColorToken.Ink, true).apply {
             setPadding(0, ui.dp(10), 0, ui.dp(4))
         })
         box.addView(ui.body(question.prompt, ColorToken.Muted))
         question.options.forEach { option ->
-            box.addView(checkInOptionCard(question, option, option.id == selectedId))
+            box.addView(checkInOptionCard(question, option, option.id in selectedIds))
         }
         return ui.margins(box, 0, 8, 0, 12)
+    }
+
+    private fun selectedCheckInOptionIds(questionId: String): Set<String> {
+        return checkInAnswers[questionId]
+            ?.split(",")
+            ?.map { it.trim() }
+            ?.filter { it.isNotEmpty() }
+            ?.toSet()
+            ?: emptySet()
+    }
+
+    private fun isCheckInQuestionAnswered(questionId: String): Boolean {
+        return selectedCheckInOptionIds(questionId).isNotEmpty()
+    }
+
+    private fun updateCheckInAnswer(question: CheckInQuestion, option: CheckInOption) {
+        if (question.id == "practice_types") {
+            val selected = selectedCheckInOptionIds(question.id).toMutableSet()
+            if (selected.contains(option.id)) selected.remove(option.id) else selected.add(option.id)
+            if (selected.isEmpty()) checkInAnswers.remove(question.id) else checkInAnswers[question.id] = selected.joinToString(",")
+        } else {
+            checkInAnswers[question.id] = option.id
+        }
+        renderCheckIn()
     }
 
     private fun checkInOptionCard(question: CheckInQuestion, option: CheckInOption, selected: Boolean): View {
@@ -1970,14 +2009,13 @@ class MainActivity : Activity() {
             else -> ColorToken.Primary
         }
         val box = ui.container(if (selected) ColorToken.PrimarySoft else ColorToken.Surface, if (selected) color else ColorToken.Border)
-        box.addView(ui.statusPill(if (selected) "已選" else "選項", color))
+        box.addView(ui.statusPill(if (selected) "已選" else if (question.id == "practice_types") "可複選" else "選項", color))
         box.addView(ui.label(option.label, 16, ColorToken.Ink, true).apply {
             setPadding(0, ui.dp(8), 0, ui.dp(2))
         })
         box.addView(ui.body(option.helper, ColorToken.Muted))
         box.setOnClickListener {
-            checkInAnswers[question.id] = option.id
-            renderCheckIn()
+            updateCheckInAnswer(question, option)
         }
         return ui.margins(box, 0, 8, 0, 4)
     }
@@ -3008,7 +3046,7 @@ class MainActivity : Activity() {
                 "進階挑戰 B1" -> item.level == "B1" || item.difficultyBand == "challenge"
                 else -> true
             }
-            val typeMatch = selectedPracticeType == "全部題型" || normalizedQuestionType(item) == selectedPracticeType
+            val typeMatch = selectedPracticeTypes.contains("全部題型") || selectedPracticeTypes.contains(normalizedQuestionType(item))
             levelMatch && typeMatch
         }
     }
