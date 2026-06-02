@@ -242,43 +242,47 @@ class MainActivity : Activity() {
 
     private fun renderRoleGateway() {
         screen = Screen.Home
-        shell("English+", "先選擇今天的使用身分")
-        hero("今天你要用哪一端？", "學生端先接住情緒，再進入短練習；老師/志工端先看需要接力的學生與下一步。")
+        shell("English+", "選擇身分")
+        hero("你是誰？", "先選身分，再登入帳號。")
         root.addView(roleEntryCard(
-            label = "學生端",
-            title = "我今天要練英文",
-            detail = "進入後會先做一個很短的情緒檢測。完成後，才會出現今日任務、作題時間和學習地圖。",
+            label = "學生",
+            title = "我是學生",
+            detail = "",
             fill = ColorToken.PrimarySoft,
-            actionText = "進入學生端"
+            actionText = "選擇學生帳號"
         ) {
-            val studentAccount = accountList().firstOrNull { AuthContract.isStudentRole(it.roleLabel) } ?: currentAccount()
-            selectAccount(studentAccount)
-            resetStudentFlow()
-            renderHome()
+            renderRoleLogin(Role.Student)
         })
         root.addView(roleEntryCard(
-            label = "老師/志工端",
-            title = "我要看學生狀態",
-            detail = "這裡是接力工作台，只顯示班級訊號、需要關懷的學生、陪伴建議與任務指派，不混用學生學習地圖。",
+            label = "老師 / 志工",
+            title = "我是老師或志工",
+            detail = "",
             fill = ColorToken.SuccessSoft,
-            actionText = "進入老師/志工端"
+            actionText = "選擇老師帳號"
         ) {
-            val mentorAccount = accountList().firstOrNull { AuthContract.isStaffRole(it.roleLabel) } ?: currentAccount()
-            selectAccount(mentorAccount)
-            resetStudentFlow()
-            renderHome()
+            renderRoleLogin(Role.Mentor)
         })
-        root.addView(card("目前展示帳號", "${currentAccount().displayName}｜${currentAccount().roleLabel}\n也可以進入後到帳號中心切換班級或登入方式。", ColorToken.Card))
-        root.addView(ui.secondaryButton("帳號與班級資料") { renderAccountCenter() })
+    }
+
+    private fun renderRoleLogin(targetRole: Role) {
+        screen = Screen.Account
+        val isStudent = targetRole == Role.Student
+        val accounts = accountList().filter {
+            if (isStudent) AuthContract.isStudentRole(it.roleLabel) else AuthContract.isStaffRole(it.roleLabel)
+        }
+        shell("English+", if (isStudent) "學生登入" else "老師/志工登入")
+        hero(if (isStudent) "選擇學生帳號" else "選擇老師或志工帳號", "登入後進入你的今日頁面。")
+        accounts.forEach { root.addView(accountLoginCard(it)) }
+        root.addView(ui.secondaryButton("回到身分選擇") { renderRoleGateway() })
     }
 
     private fun renderHome() {
         screen = Screen.Home
         shell("English+", if (role == Role.Student) "學生端" else "老師/志工端")
         if (role == Role.Student) {
-            hero("先完成心情檢測", "English+ 會先知道你今天的狀態，再安排作題時間與英文短任務。")
+            hero("先做心情檢測", "完成後再開始今天的英文任務。")
         } else {
-            hero("先看需要接力的人", "老師/志工端聚焦班級訊號、學生卡點與下一步陪伴，不顯示學生個人學習地圖。")
+            hero("今天要先接住誰？", "先看班級訊號，再處理需要陪伴的學生。")
         }
         if (role == Role.Student) {
             studentHome()
@@ -293,8 +297,6 @@ class MainActivity : Activity() {
         root.addView(studentFirstStepCard())
         root.addView(flowStrip("心情檢測", "選練習時間", "開始短任務", "答題回饋"))
         root.addView(lockedStudentPreviewCard())
-        section("學生端只保留自己的事")
-        root.addView(card("這裡不顯示老師工作台", "學生端首頁先處理「我今天能不能開始」。學習地圖、錯題與支援會在完成心情檢測後，依序出現在練習流程裡。", ColorToken.PrimarySoft))
         root.addView(ui.secondaryButton("帳號與班級資料") { renderAccountCenter() })
         root.addView(ui.secondaryButton("回到身分選擇") { renderRoleGateway() })
     }
@@ -1666,7 +1668,9 @@ class MainActivity : Activity() {
         box.addView(ui.label(title, 22, ColorToken.Ink, true).apply {
             setPadding(0, ui.dp(12), 0, ui.dp(4))
         })
-        box.addView(ui.body(detail, "#334155"))
+        if (detail.isNotBlank()) {
+            box.addView(ui.body(detail, "#334155"))
+        }
         box.addView(ui.primaryButton(actionText) { action() })
         return ui.margins(box, 0, 8, 0, 14)
     }
@@ -1677,7 +1681,7 @@ class MainActivity : Activity() {
         box.addView(ui.label("先處理最需要人的一位", 23, ColorToken.Ink, true).apply {
             setPadding(0, ui.dp(12), 0, ui.dp(4))
         })
-        box.addView(ui.body("老師端不再把所有功能攤在首頁。English+ 先整理班級訊號，再把今天最值得真人接力的下一步放到最前面。", "#334155"))
+        box.addView(ui.body("先看風險最高的學生，再安排今天的接力。", "#334155"))
         box.addView(metricRow(
             Metric("待關懷", "2 位", ColorToken.Warning),
             Metric("高風險", "1 位", ColorToken.Danger),
@@ -1708,7 +1712,6 @@ class MainActivity : Activity() {
             setPadding(0, ui.dp(10), 0, ui.dp(4))
         })
         box.addView(flowStrip("學生證據", "待辦接力", "協作同步", "週報回饋"))
-        box.addView(ui.body("每個入口都對應一個老師任務，不再讓老師從學生地圖或題庫後台裡找功能。", "#334155"))
         return ui.margins(box, 0, 8, 0, 12)
     }
 
@@ -2129,25 +2132,22 @@ class MainActivity : Activity() {
         val fill = if (AuthContract.isStudentRole(account.roleLabel)) ColorToken.PrimarySoft else ColorToken.SuccessSoft
         val color = if (AuthContract.isStudentRole(account.roleLabel)) ColorToken.Primary else ColorToken.Success
         val box = ui.container(fill, ColorToken.Border)
-        box.addView(ui.statusPill(if (stateStore.hasRemoteAuthEndpoint()) "正式登入準備" else "展示登入", color))
+        box.addView(ui.statusPill(if (AuthContract.isStudentRole(account.roleLabel)) "學生" else "老師 / 志工", color))
         box.addView(ui.label("${account.displayName}｜${account.roleLabel}", 17, ColorToken.Ink, true).apply {
             setPadding(0, ui.dp(10), 0, ui.dp(4))
         })
-        box.addView(ui.body("班級/群組代碼：${account.classCode}", "#334155"))
-        box.addView(ui.body("可用本機展示帳號，也可在帳號中心接校內/Firebase 登入端點。", ColorToken.Muted).apply {
-            setPadding(0, ui.dp(6), 0, 0)
-        })
+        box.addView(ui.body(account.classCode, "#334155"))
         return ui.margins(box, 0, 8, 0, 12)
     }
 
     private fun remoteAuthStatusCard(): View {
         val hasEndpoint = stateStore.hasRemoteAuthEndpoint()
         val box = ui.container(if (hasEndpoint) ColorToken.SuccessSoft else ColorToken.WarningSoft, ColorToken.Border)
-        box.addView(ui.statusPill(if (hasEndpoint) "正式登入端點已設定" else "本機展示登入", if (hasEndpoint) ColorToken.Success else ColorToken.Warning))
-        box.addView(ui.label(if (hasEndpoint) "可呼叫校內/Firebase 登入 API" else "尚未接正式登入服務", 18, ColorToken.Ink, true).apply {
+        box.addView(ui.statusPill(if (hasEndpoint) "登入服務已連線" else "使用快速登入", if (hasEndpoint) ColorToken.Success else ColorToken.Warning))
+        box.addView(ui.label(if (hasEndpoint) "可使用校內帳號登入" else "目前可用預設帳號登入", 18, ColorToken.Ink, true).apply {
             setPadding(0, ui.dp(12), 0, ui.dp(4))
         })
-        box.addView(ui.body("${stateStore.authSessionSummary()}\n\n端點：${stateStore.remoteAuthEndpoint().ifBlank { "尚未設定" }}", "#334155"))
+        box.addView(ui.body(stateStore.authSessionSummary(), "#334155"))
         return ui.margins(box, 0, 8, 0, 12)
     }
 
@@ -2165,10 +2165,6 @@ class MainActivity : Activity() {
             "學生帳號：$studentCount\n老師/志工帳號：$staffCount\n正式登入端點：$endpointState\n支援路線：Firebase Auth、Google Sign-In、校內 SSO 後端代理",
             "#334155"
         ))
-        box.addView(ui.body(
-            "目前仍保留 demo mode，避免沒有 Firebase 專案時展示流程中斷；正式上線時，demo 帳號會降級為測試模式。",
-            ColorToken.Muted
-        ).apply { setPadding(0, ui.dp(8), 0, 0) })
         return ui.margins(box, 0, 8, 0, 12)
     }
 
@@ -2423,6 +2419,22 @@ class MainActivity : Activity() {
             renderAccountCenter()
         }
         return ui.margins(box, 0, 8, 0, 8)
+    }
+
+    private fun accountLoginCard(account: LocalAccount): View {
+        val isStudent = AuthContract.isStudentRole(account.roleLabel)
+        val box = ui.container(if (isStudent) ColorToken.PrimarySoft else ColorToken.SuccessSoft, ColorToken.Border)
+        val top = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
+        top.addView(ui.label(account.displayName, 20, ColorToken.Ink, true), LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f))
+        top.addView(ui.statusPill(account.roleLabel, if (isStudent) ColorToken.Primary else ColorToken.Success))
+        box.addView(top)
+        box.addView(ui.body(account.classCode, "#334155").apply { setPadding(0, ui.dp(8), 0, 0) })
+        box.addView(ui.primaryButton("登入") {
+            selectAccount(account)
+            resetStudentFlow()
+            renderHome()
+        })
+        return ui.margins(box, 0, 8, 0, 12)
     }
 
     private fun aiScenarioCard(scenario: AiScenario): View {
