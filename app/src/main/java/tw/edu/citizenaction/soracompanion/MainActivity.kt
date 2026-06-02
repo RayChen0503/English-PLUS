@@ -72,6 +72,8 @@ class MainActivity : Activity() {
     private lateinit var root: LinearLayout
     private lateinit var ui: UiKit
     private lateinit var stateStore: PrototypeStateStore
+    private var currentScrollView: ScrollView? = null
+    private var pendingScrollY: Int? = null
 
     private var role = Role.Student
     private var screen = Screen.Home
@@ -245,7 +247,7 @@ class MainActivity : Activity() {
     private fun renderStudentTaskEntry() {
         when {
             !checkInCompleted -> renderCheckIn()
-            !practiceTimeConfirmed -> renderPracticeTimeSetup()
+            !practiceTimeConfirmed -> confirmPracticeTimeAndPlanToday()
             else -> renderTaskQueue()
         }
     }
@@ -255,7 +257,7 @@ class MainActivity : Activity() {
     }
 
     private fun renderStudentMapEntry() {
-        if (!practiceTimeConfirmed) renderPracticeTimeSetup() else renderMap()
+        if (!practiceTimeConfirmed) confirmPracticeTimeAndPlanToday() else renderMap()
     }
 
     private fun renderRoleGateway() {
@@ -549,7 +551,7 @@ class MainActivity : Activity() {
         }
         result?.let { root.addView(checkInResultCard(it)) }
         if (complete && result != null) {
-            root.addView(ui.primaryButton("完成檢測，下一步選時間") {
+            root.addView(ui.primaryButton("完成檢測，產生今日任務") {
                 applyCheckInResult(result)
                 renderCheckInAiSupport(result)
             })
@@ -613,7 +615,7 @@ class MainActivity : Activity() {
         root.addView(card("給你的話", support.studentFeedback, ColorToken.SuccessSoft))
         root.addView(card("老師/志工摘要", support.handoffSummary, ColorToken.Card))
         recordLearningEvent("ai_emotional_support", "真 AI 情緒支持", support.diagnosis)
-        root.addView(ui.primaryButton("下一步選時間") { renderPracticeTimeSetup() })
+        root.addView(ui.primaryButton("產生今日任務") { confirmPracticeTimeAndPlanToday() })
         root.addView(ui.secondaryButton("重新做心情檢測") {
             checkInCompleted = false
             practiceTimeConfirmed = false
@@ -629,36 +631,22 @@ class MainActivity : Activity() {
         root.addView(checkInResultCard(result))
         root.addView(card("給你的話", result.supportMessage, ColorToken.SuccessSoft))
         root.addView(card("今天先這樣做", result.nextStep, ColorToken.PrimarySoft))
-        root.addView(ui.primaryButton("下一步選時間") { renderPracticeTimeSetup() })
+        root.addView(ui.primaryButton("產生今日任務") { confirmPracticeTimeAndPlanToday() })
         bottomNav()
     }
+    private fun confirmPracticeTimeAndPlanToday() {
+        practiceTimeConfirmed = true
+        todayAnsweredFirstQuestion = false
+        todayReflected = false
+        aiDailyPlanItemIds = emptyList()
+        aiDailyPlanTitle = ""
+        aiDailyPlanMessage = ""
+        aiDailyPlanSource = ""
+        persistState()
+        renderAiDailyPlanThenTaskQueue()
+    }
     private fun renderPracticeTimeSetup() {
-        screen = Screen.CheckIn
-        shell("選擇今天練習時間", "先決定做多久，再開始作題")
-        root.addView(practiceTimeIntroCard())
-        section("今天能用多久？")
-        listOf(3, 5, 8, 12).forEach { value ->
-            root.addView(durationChoice(value, value == minutes) {
-                minutes = value
-                persistState()
-                renderPracticeTimeSetup()
-            })
-        }
-        root.addView(planPreviewCard())
-        root.addView(todayProgressCard())
-        root.addView(ui.primaryButton("確認時間，查看今日任務") {
-            practiceTimeConfirmed = true
-            todayAnsweredFirstQuestion = false
-            todayReflected = false
-            persistState()
-            renderTaskQueue()
-        })
-        root.addView(ui.secondaryButton("回心情檢測調整狀態") {
-            checkInCompleted = false
-            practiceTimeConfirmed = false
-            renderCheckIn()
-        })
-        bottomNav()
+        confirmPracticeTimeAndPlanToday()
     }
 
     private fun renderAiDailyPlanThenTaskQueue() {
@@ -2026,8 +2014,15 @@ class MainActivity : Activity() {
             setPadding(ui.dp(16), ui.dp(24), ui.dp(16), ui.dp(24))
             background = ui.solid(ColorToken.Surface)
         }
+        currentScrollView = scroll
         scroll.addView(root)
         setContentView(scroll)
+        pendingScrollY?.let { y ->
+            scroll.post {
+                scroll.scrollTo(0, y)
+                pendingScrollY = null
+            }
+        }
         root.addView(ui.eyebrow("${navigationArea()} / English+"))
         root.addView(ui.label(title, 28, ColorToken.Ink, true).apply { setPadding(0, ui.dp(8), 0, ui.dp(4)) })
         root.addView(ui.body(subtitle, ColorToken.Muted))
@@ -2370,6 +2365,7 @@ class MainActivity : Activity() {
         } else {
             checkInAnswers[question.id] = option.id
         }
+        pendingScrollY = currentScrollView?.scrollY ?: 0
         renderCheckIn()
     }
 
@@ -3350,7 +3346,7 @@ class MainActivity : Activity() {
             })
         }
         if (plannedItems.isEmpty()) {
-            box.addView(ui.secondaryButton("先去選擇練習時間") { renderPracticeTimeSetup() })
+            box.addView(ui.secondaryButton("產生今日任務") { confirmPracticeTimeAndPlanToday() })
         }
         return ui.margins(box, 0, 8, 0, 12)
     }
