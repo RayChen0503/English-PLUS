@@ -1,4 +1,4 @@
-﻿package tw.edu.citizenaction.soracompanion
+package tw.edu.citizenaction.soracompanion
 
 import android.app.Activity
 import android.content.Context
@@ -35,6 +35,7 @@ import tw.edu.citizenaction.soracompanion.model.CheckInOption
 import tw.edu.citizenaction.soracompanion.model.CheckInQuestion
 import tw.edu.citizenaction.soracompanion.model.CheckInResult
 import tw.edu.citizenaction.soracompanion.model.CollaborationNote
+import tw.edu.citizenaction.soracompanion.model.DailyTaskProgress
 import tw.edu.citizenaction.soracompanion.model.DesignPrinciple
 import tw.edu.citizenaction.soracompanion.model.InterventionStep
 import tw.edu.citizenaction.soracompanion.model.JourneyStep
@@ -89,6 +90,8 @@ class MainActivity : Activity() {
     private var lastSelectedAnswer = ""
     private var checkInCompleted = false
     private var practiceTimeConfirmed = false
+    private var todayAnsweredFirstQuestion = false
+    private var todayReflected = false
     private var selectedPracticeLevel = "推薦"
     private var selectedPracticeType = "全部題型"
     private val checkInAnswers = mutableMapOf<String, String>()
@@ -227,6 +230,8 @@ class MainActivity : Activity() {
         checkInCompleted = false
         practiceTimeConfirmed = false
         checkInAnswers.clear()
+        todayAnsweredFirstQuestion = false
+        todayReflected = false
     }
 
     private fun renderStudentTaskEntry() {
@@ -499,6 +504,8 @@ class MainActivity : Activity() {
         screen = Screen.Lesson
         shell("今天先做這個", "把英文練習縮到現在做得到的一小步")
         root.addView(currentTaskFocus())
+        root.addView(todayProgressCard())
+        root.addView(todayStepListCard())
         root.addView(taskRouteCard())
         root.addView(practiceCenterEntryCard())
         root.addView(ui.secondaryButton("查看今日學習契約") { renderLearningContract() })
@@ -572,8 +579,11 @@ class MainActivity : Activity() {
             })
         }
         root.addView(planPreviewCard())
+        root.addView(todayProgressCard())
         root.addView(ui.primaryButton("確認時間，查看今日任務") {
             practiceTimeConfirmed = true
+            todayAnsweredFirstQuestion = false
+            todayReflected = false
             persistState()
             renderTaskQueue()
         })
@@ -590,6 +600,7 @@ class MainActivity : Activity() {
         val q = questions[currentQuestionIndex]
         shell("今日短任務", "一題一概念，避免二度挫折")
         root.addView(lessonFocusCard())
+        root.addView(todayProgressCard())
         root.addView(questionCard(q))
         root.addView(lessonSupportCard())
         root.addView(lessonExitCard())
@@ -605,6 +616,7 @@ class MainActivity : Activity() {
         root.addView(card("復原任務內容", "只判斷一件事：He 要搭配 is。\n完成後就可以休息，也會算進學習地圖。", ColorToken.PrimarySoft))
         root.addView(ui.primaryButton("完成復原任務") {
             completedTasks += 1
+            todayAnsweredFirstQuestion = true
             confidence = (confidence + 2).coerceAtMost(100)
             persistState()
             renderSuccess(questions.first())
@@ -619,6 +631,7 @@ class MainActivity : Activity() {
             completedTasks += 1
             confidence = (confidence + 4).coerceAtMost(100)
             learningEventCount += 1
+            todayAnsweredFirstQuestion = true
             if (wrongAttempts > 0) repairedMistakeCount += 1
             wrongAttempts = 0
             lastSelectedAnswer = option
@@ -671,6 +684,7 @@ class MainActivity : Activity() {
         confidence = (confidence + prompt.confidenceDelta).coerceIn(0, 100)
         lastAnswerMessage = prompt.platformResponse
         learningEventCount += 1
+        todayReflected = true
         addOfflineSyncItem("課後反思：${prompt.title}", "反思紀錄", prompt.studentChoice)
         persistState()
         recordLearningEvent("reflection", prompt.title, prompt.studentChoice)
@@ -682,6 +696,7 @@ class MainActivity : Activity() {
         shell("反思已保存", "把今天的小進步放回週報")
         root.addView(card("學生選擇", prompt.studentChoice, ColorToken.PrimarySoft))
         root.addView(card("平台回應", prompt.platformResponse, ColorToken.SuccessSoft))
+        root.addView(todayProgressCard())
         root.addView(card("目前信心值", "$confidence%｜下次會從同一個斷點繼續，而不是直接加難度。", ColorToken.Card))
         root.addView(card("已寫入學習紀錄", "學習事件：${learningEventCount} 筆\n修復紀錄：${repairedMistakeCount} 筆\n待同步：${offlinePendingCount} 筆", ColorToken.PrimarySoft))
         root.addView(ui.primaryButton("回學習地圖") { renderMap() })
@@ -2101,6 +2116,80 @@ class MainActivity : Activity() {
         return ui.margins(box, 0, 8, 0, 12)
     }
 
+
+    private fun todayProgress(): DailyTaskProgress {
+        return PrototypeRepository.dailyTaskProgress(
+            checkInCompleted = checkInCompleted,
+            practiceTimeConfirmed = practiceTimeConfirmed,
+            answeredFirstQuestion = todayAnsweredFirstQuestion,
+            reflected = todayReflected,
+            selectedMinutes = minutes
+        )
+    }
+
+    private fun todayProgressCard(): View {
+        val progress = todayProgress()
+        val box = ui.container(ColorToken.PrimarySoft, ColorToken.Border)
+        val top = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+        }
+        top.addView(ui.statusPill("今日進度", ColorToken.Primary))
+        top.addView(ui.label("${progress.progressPercent}%", 18, ColorToken.Primary, true).apply {
+            gravity = Gravity.RIGHT
+        }, LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f))
+        box.addView(top)
+        box.addView(ui.label(progress.currentStep, 22, ColorToken.Ink, true).apply {
+            setPadding(0, ui.dp(12), 0, ui.dp(4))
+        })
+        box.addView(ui.body(progress.nextAction, "#334155"))
+        box.addView(ProgressBar(this, null, android.R.attr.progressBarStyleHorizontal).apply {
+            max = 100
+            this.progress = progress.progressPercent
+            setPadding(0, ui.dp(10), 0, ui.dp(8))
+            layoutParams = ui.fullWidthParams()
+        })
+        box.addView(ui.body("還剩 ${progress.remainingSteps} 步｜約 ${progress.remainingMinutes} 分鐘｜今天總流程 ${progress.totalSteps} 步", ColorToken.Primary).apply {
+            setPadding(0, ui.dp(4), 0, 0)
+        })
+        return ui.margins(box, 0, 8, 0, 12)
+    }
+
+    private fun todayStepListCard(): View {
+        val progress = todayProgress()
+        val box = ui.container(ColorToken.Card, ColorToken.Border)
+        box.addView(ui.label("今天會照這個順序走", 18, ColorToken.Ink, true))
+        progress.steps.forEachIndexed { index, step ->
+            val done = index < progress.completedSteps
+            val current = index == progress.completedSteps && progress.remainingSteps > 0
+            box.addView(todayStepRow(index + 1, step, done, current))
+        }
+        return ui.margins(box, 0, 6, 0, 12)
+    }
+
+    private fun todayStepRow(index: Int, title: String, done: Boolean, current: Boolean): View {
+        val row = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            setPadding(0, ui.dp(8), 0, ui.dp(4))
+        }
+        val color = when {
+            done -> ColorToken.Success
+            current -> ColorToken.Accent
+            else -> ColorToken.Muted
+        }
+        val state = when {
+            done -> "完成"
+            current -> "現在"
+            else -> "待做"
+        }
+        row.addView(ui.statusPill("$index", color))
+        row.addView(ui.label(title, 16, ColorToken.Ink, true).apply {
+            setPadding(ui.dp(10), 0, 0, 0)
+        }, LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f))
+        row.addView(ui.label(state, 14, color, true))
+        return row
+    }
     private fun questionBankReviewDashboardCard(): View {
         val summary = PrototypeRepository.teacherQuestionBankReviewSummary()
         val typeLine = summary.typeCounts.entries.joinToString("、") { "${it.key}:${it.value}" }.take(110)

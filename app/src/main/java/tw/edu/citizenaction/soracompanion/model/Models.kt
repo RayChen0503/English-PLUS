@@ -110,6 +110,17 @@ data class CheckInResult(
     val supportMessage: String
 )
 
+
+data class DailyTaskProgress(
+    val totalSteps: Int,
+    val completedSteps: Int,
+    val remainingSteps: Int,
+    val remainingMinutes: Int,
+    val progressPercent: Int,
+    val currentStep: String,
+    val nextAction: String,
+    val steps: List<String>
+)
 data class Breakpoint(
     val title: String,
     val severity: String,

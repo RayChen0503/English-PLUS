@@ -6,6 +6,7 @@ import tw.edu.citizenaction.soracompanion.model.Breakpoint
 import tw.edu.citizenaction.soracompanion.model.CheckInOption
 import tw.edu.citizenaction.soracompanion.model.CheckInQuestion
 import tw.edu.citizenaction.soracompanion.model.CheckInResult
+import tw.edu.citizenaction.soracompanion.model.DailyTaskProgress
 import tw.edu.citizenaction.soracompanion.model.DesignPrinciple
 import tw.edu.citizenaction.soracompanion.model.HandoffPriority
 import tw.edu.citizenaction.soracompanion.model.HelpRequestOption
@@ -134,6 +135,50 @@ object PrototypeRepository {
         }
     }
 
+
+    fun dailyTaskProgress(
+        checkInCompleted: Boolean,
+        practiceTimeConfirmed: Boolean,
+        answeredFirstQuestion: Boolean,
+        reflected: Boolean,
+        selectedMinutes: Int
+    ): DailyTaskProgress {
+        val steps = listOf("心情檢測", "選練習時間", "完成第一題", "答題回饋")
+        val completedFlags = listOf(checkInCompleted, practiceTimeConfirmed, answeredFirstQuestion, reflected)
+        val completedSteps = completedFlags.count { it }
+        val totalSteps = steps.size
+        val progressPercent = ((completedSteps * 100) / totalSteps).coerceIn(0, 100)
+        val remainingSteps = (totalSteps - completedSteps).coerceAtLeast(0)
+        val remainingMinutes = when {
+            !practiceTimeConfirmed -> selectedMinutes.coerceAtLeast(3)
+            remainingSteps == 0 -> 0
+            else -> ((selectedMinutes * remainingSteps) / totalSteps).coerceAtLeast(1)
+        }
+        val currentStep = when {
+            !checkInCompleted -> "心情檢測"
+            !practiceTimeConfirmed -> "選練習時間"
+            !answeredFirstQuestion -> "完成第一題"
+            !reflected -> "答題回饋"
+            else -> "今日完成"
+        }
+        val nextAction = when (currentStep) {
+            "心情檢測" -> "先回答 5 題狀態題"
+            "選練習時間" -> "決定今天做多久"
+            "完成第一題" -> "開始今天第一題"
+            "答題回饋" -> "看結果並做短反思"
+            else -> "今日任務完成"
+        }
+        return DailyTaskProgress(
+            totalSteps = totalSteps,
+            completedSteps = completedSteps,
+            remainingSteps = remainingSteps,
+            remainingMinutes = remainingMinutes,
+            progressPercent = progressPercent,
+            currentStep = currentStep,
+            nextAction = nextAction,
+            steps = steps
+        )
+    }
     private fun buildQuestions(): List<Question> {
         return listOf(
             Question("He ___ a student.", listOf("am", "is", "are"), "is", "He 是第三人稱單數，要搭配 is。", "be 動詞：He/She/It + is", "選擇題", "先看主詞 He，再選第三人稱單數的 is。"),

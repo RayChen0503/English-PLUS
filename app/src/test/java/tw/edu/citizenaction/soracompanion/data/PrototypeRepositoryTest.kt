@@ -171,6 +171,39 @@ class PrototypeRepositoryTest {
     }
 
     @Test
+    fun dailyTaskProgressShowsRemainingStepsAfterTimeSelection() {
+        val progress = PrototypeRepository.dailyTaskProgress(
+            checkInCompleted = true,
+            practiceTimeConfirmed = true,
+            answeredFirstQuestion = false,
+            reflected = false,
+            selectedMinutes = 8
+        )
+
+        assertEquals("daily flow should have four student-visible steps", 4, progress.totalSteps)
+        assertEquals("check-in and time selection should already be complete", 2, progress.completedSteps)
+        assertEquals("two steps should remain before the day is complete", 2, progress.remainingSteps)
+        assertEquals("progress should be halfway after time selection", 50, progress.progressPercent)
+        assertEquals("next visible step should be the first question", "完成第一題", progress.currentStep)
+        assertTrue("remaining minutes should stay visible", progress.remainingMinutes > 0)
+    }
+
+    @Test
+    fun dailyTaskProgressMarksCompleteWhenAllStepsDone() {
+        val progress = PrototypeRepository.dailyTaskProgress(
+            checkInCompleted = true,
+            practiceTimeConfirmed = true,
+            answeredFirstQuestion = true,
+            reflected = true,
+            selectedMinutes = 5
+        )
+
+        assertEquals("all steps should be complete", 4, progress.completedSteps)
+        assertEquals("nothing should remain", 0, progress.remainingSteps)
+        assertEquals("completed flow should show 100 percent", 100, progress.progressPercent)
+        assertTrue("next action should clearly say the day is complete", progress.nextAction.contains("完成"))
+    }
+    @Test
     fun productPrototypeKeepsBothStudentAndMentorTracks() {
         assertTrue("student task track should have several short tasks", PrototypeRepository.studyTasks.size >= 4)
         assertTrue("mentor roster should contain multiple students", PrototypeRepository.roster.size >= 5)
