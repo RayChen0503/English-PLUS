@@ -144,6 +144,33 @@ class PrototypeRepositoryTest {
     }
 
     @Test
+    fun emotionalCheckInUsesShortChoiceBasedQuestions() {
+        val questions = PrototypeRepository.emotionalCheckInQuestions
+
+        assertEquals("check-in should stay short enough for students", 5, questions.size)
+        assertTrue("every check-in question should be choice based", questions.all { it.options.size in 3..4 })
+        assertTrue("check-in should cover mood, energy, confidence, control and support", questions.map { it.dimension }.toSet().containsAll(setOf("mood", "energy", "confidence", "control", "support")))
+    }
+
+    @Test
+    fun emotionalCheckInRoutesLowReadinessToRepairOrRelay() {
+        val lowAnswers = PrototypeRepository.emotionalCheckInQuestions.associate { question ->
+            question.id to question.options.minBy { it.score }.id
+        }
+        val strongAnswers = PrototypeRepository.emotionalCheckInQuestions.associate { question ->
+            question.id to question.options.maxBy { it.score }.id
+        }
+
+        val lowResult = PrototypeRepository.evaluateEmotionalCheckIn(lowAnswers)
+        val strongResult = PrototypeRepository.evaluateEmotionalCheckIn(strongAnswers)
+
+        assertTrue("low readiness should not become challenge", lowResult.route in setOf("repair", "relay"))
+        assertTrue("low readiness should keep practice short", lowResult.recommendedMinutes <= 5)
+        assertTrue("strong readiness should unlock challenge", strongResult.route == "challenge")
+        assertTrue("strong readiness should raise confidence", strongResult.confidence >= 70)
+    }
+
+    @Test
     fun productPrototypeKeepsBothStudentAndMentorTracks() {
         assertTrue("student task track should have several short tasks", PrototypeRepository.studyTasks.size >= 4)
         assertTrue("mentor roster should contain multiple students", PrototypeRepository.roster.size >= 5)

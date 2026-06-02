@@ -31,6 +31,9 @@ import tw.edu.citizenaction.soracompanion.model.ActionItem
 import tw.edu.citizenaction.soracompanion.model.AiScenario
 import tw.edu.citizenaction.soracompanion.model.AppState
 import tw.edu.citizenaction.soracompanion.model.Breakpoint
+import tw.edu.citizenaction.soracompanion.model.CheckInOption
+import tw.edu.citizenaction.soracompanion.model.CheckInQuestion
+import tw.edu.citizenaction.soracompanion.model.CheckInResult
 import tw.edu.citizenaction.soracompanion.model.CollaborationNote
 import tw.edu.citizenaction.soracompanion.model.DesignPrinciple
 import tw.edu.citizenaction.soracompanion.model.InterventionStep
@@ -88,6 +91,7 @@ class MainActivity : Activity() {
     private var practiceTimeConfirmed = false
     private var selectedPracticeLevel = "推薦"
     private var selectedPracticeType = "全部題型"
+    private val checkInAnswers = mutableMapOf<String, String>()
 
     private val student = PrototypeRepository.student
     private val modules = PrototypeRepository.modules
@@ -222,6 +226,7 @@ class MainActivity : Activity() {
     private fun resetStudentFlow() {
         checkInCompleted = false
         practiceTimeConfirmed = false
+        checkInAnswers.clear()
     }
 
     private fun renderStudentTaskEntry() {
@@ -517,27 +522,41 @@ class MainActivity : Activity() {
 
     private fun renderCheckIn() {
         screen = Screen.CheckIn
-        shell("心情與時間檢測", "從狀態開始，而不是一進來就考試")
+        shell("心情檢測", "5 題內完成")
+        val checkInQuestions = PrototypeRepository.emotionalCheckInQuestions
+        val complete = checkInAnswers.keys.containsAll(checkInQuestions.map { it.id })
+        val result = if (complete) PrototypeRepository.evaluateEmotionalCheckIn(checkInAnswers) else null
         root.addView(checkInIntroCard())
-        section("今天的狀態")
-        Mood.values().forEach { item ->
-            root.addView(moodChoiceCard(item.label, item.description, item.color, item == mood) {
-                mood = item
-                minutes = item.defaultMinutes
-                confidence = (confidence + item.confidenceDelta).coerceIn(0, 100)
-                persistState()
-                renderCheckIn()
-            })
+        root.addView(checkInProgressCard(checkInQuestions.size, checkInAnswers.size, result))
+        checkInQuestions.forEachIndexed { index, question ->
+            root.addView(checkInQuestionCard(index + 1, question))
         }
-        root.addView(selectedMoodResponse())
-        root.addView(checkInGateCard())
-        root.addView(ui.primaryButton("完成心情檢測，下一步選時間") {
-            checkInCompleted = true
-            persistState()
-            renderPracticeTimeSetup()
-        })
+        result?.let { root.addView(checkInResultCard(it)) }
+        if (complete && result != null) {
+            root.addView(ui.primaryButton("完成檢測，下一步選時間") {
+                applyCheckInResult(result)
+                renderPracticeTimeSetup()
+            })
+        } else {
+            root.addView(card("還差 ${checkInQuestions.size - checkInAnswers.size} 題", "全部選完後，才會安排今天的練習時間與任務。", ColorToken.Card))
+        }
         root.addView(ui.secondaryButton("先回學生首頁") { renderHome() })
         bottomNav()
+    }
+
+    private fun applyCheckInResult(result: CheckInResult) {
+        mood = result.mood
+        minutes = result.recommendedMinutes
+        confidence = result.confidence
+        checkInCompleted = true
+        practiceTimeConfirmed = false
+        lastAnswerMessage = result.supportMessage
+        if (result.route == "relay") {
+            breakpoints.add(0, Breakpoint("今日需要陪伴", "高", "心情檢測顯示學生希望老師或志工知道", "先改成低壓題與支持出口。", "請老師/志工確認學生是否需要陪練。"))
+        }
+        addOfflineSyncItem("心情檢測：${result.title}", "情緒檢測", result.nextStep)
+        recordLearningEvent("check_in", result.title, "${result.route} / ${result.supportMessage}")
+        persistState()
     }
 
     private fun renderPracticeTimeSetup() {
@@ -1882,17 +1901,75 @@ class MainActivity : Activity() {
 
     private fun checkInIntroCard(): View {
         val box = ui.sectionBand(ColorToken.AccentSoft)
-        box.addView(ui.statusPill("CHECK IN", ColorToken.Accent))
-        box.addView(ui.label("先讓平台知道今天的你", 21, ColorToken.Ink, true).apply {
+        box.addView(ui.statusPill("約 1 分鐘", ColorToken.Accent))
+        box.addView(ui.label("先看今天適合怎麼練", 21, ColorToken.Ink, true).apply {
             setPadding(0, ui.dp(12), 0, ui.dp(4))
         })
-        box.addView(ui.body("心情不是額外步驟，它會幫你把任務縮到今天還做得到的大小。", "#334155"))
-        box.addView(metricRow(
-            Metric("建議", mood.planName, mood.color),
-            Metric("時間", "${minutes} 分", ColorToken.Primary),
-            Metric("狀態", "$confidence%", ColorToken.Success)
-        ))
+        box.addView(ui.body("選 5 題就好。系統會依狀態安排低壓修復、一般練習或進階挑戰。", "#334155"))
         return ui.margins(box, 0, 8, 0, 16)
+    }
+
+    private fun checkInProgressCard(total: Int, answered: Int, result: CheckInResult?): View {
+        val box = ui.container(ColorToken.Card, ColorToken.Border)
+        box.addView(ui.statusPill("檢測進度", if (answered == total) ColorToken.Success else ColorToken.Primary))
+        box.addView(metricRow(
+            Metric("已完成", "$answered/$total", if (answered == total) ColorToken.Success else ColorToken.Primary),
+            Metric("預估", "1 分鐘", ColorToken.Accent),
+            Metric("路線", result?.title ?: "待判讀", result?.mood?.color ?: ColorToken.Muted)
+        ))
+        return ui.margins(box, 0, 8, 0, 12)
+    }
+
+    private fun checkInQuestionCard(index: Int, question: CheckInQuestion): View {
+        val selectedId = checkInAnswers[question.id]
+        val box = ui.container(ColorToken.Card, ColorToken.Border)
+        box.addView(ui.statusPill("第 $index 題", if (selectedId == null) ColorToken.Primary else ColorToken.Success))
+        box.addView(ui.label(question.title, 18, ColorToken.Ink, true).apply {
+            setPadding(0, ui.dp(10), 0, ui.dp(4))
+        })
+        box.addView(ui.body(question.prompt, ColorToken.Muted))
+        question.options.forEach { option ->
+            box.addView(checkInOptionCard(question, option, option.id == selectedId))
+        }
+        return ui.margins(box, 0, 8, 0, 12)
+    }
+
+    private fun checkInOptionCard(question: CheckInQuestion, option: CheckInOption, selected: Boolean): View {
+        val color = when (option.routeHint) {
+            "challenge" -> ColorToken.Success
+            "relay" -> ColorToken.Warning
+            "repair" -> ColorToken.Accent
+            else -> ColorToken.Primary
+        }
+        val box = ui.container(if (selected) ColorToken.PrimarySoft else ColorToken.Surface, if (selected) color else ColorToken.Border)
+        box.addView(ui.statusPill(if (selected) "已選" else "選項", color))
+        box.addView(ui.label(option.label, 16, ColorToken.Ink, true).apply {
+            setPadding(0, ui.dp(8), 0, ui.dp(2))
+        })
+        box.addView(ui.body(option.helper, ColorToken.Muted))
+        box.setOnClickListener {
+            checkInAnswers[question.id] = option.id
+            renderCheckIn()
+        }
+        return ui.margins(box, 0, 8, 0, 4)
+    }
+
+    private fun checkInResultCard(result: CheckInResult): View {
+        val box = ui.container(if (result.route == "relay" || result.route == "repair") ColorToken.WarningSoft else ColorToken.SuccessSoft, ColorToken.Border)
+        box.addView(ui.statusPill("今日路線", result.mood.color))
+        box.addView(ui.label(result.title, 20, ColorToken.Ink, true).apply {
+            setPadding(0, ui.dp(10), 0, ui.dp(4))
+        })
+        box.addView(ui.body(result.nextStep, "#334155"))
+        box.addView(metricRow(
+            Metric("信心", "${result.confidence}%", result.mood.color),
+            Metric("建議", "${result.recommendedMinutes} 分", ColorToken.Accent),
+            Metric("狀態", result.route, ColorToken.Primary)
+        ))
+        box.addView(ui.body(result.supportMessage, ColorToken.Muted).apply {
+            setPadding(0, ui.dp(8), 0, 0)
+        })
+        return ui.margins(box, 0, 8, 0, 12)
     }
 
     private fun selectedMoodResponse(): View {

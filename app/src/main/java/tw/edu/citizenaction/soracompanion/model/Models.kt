@@ -84,6 +84,32 @@ data class TeacherProgressSnapshot(
     val syncLine: String
 )
 
+data class CheckInOption(
+    val id: String,
+    val label: String,
+    val helper: String,
+    val score: Int,
+    val routeHint: String
+)
+
+data class CheckInQuestion(
+    val id: String,
+    val dimension: String,
+    val title: String,
+    val prompt: String,
+    val options: List<CheckInOption>
+)
+
+data class CheckInResult(
+    val route: String,
+    val mood: Mood,
+    val confidence: Int,
+    val recommendedMinutes: Int,
+    val title: String,
+    val nextStep: String,
+    val supportMessage: String
+)
+
 data class Breakpoint(
     val title: String,
     val severity: String,

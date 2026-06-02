@@ -3,6 +3,9 @@ package tw.edu.citizenaction.soracompanion.data
 import tw.edu.citizenaction.soracompanion.auth.AuthContract
 import tw.edu.citizenaction.soracompanion.model.AiScenario
 import tw.edu.citizenaction.soracompanion.model.Breakpoint
+import tw.edu.citizenaction.soracompanion.model.CheckInOption
+import tw.edu.citizenaction.soracompanion.model.CheckInQuestion
+import tw.edu.citizenaction.soracompanion.model.CheckInResult
 import tw.edu.citizenaction.soracompanion.model.DesignPrinciple
 import tw.edu.citizenaction.soracompanion.model.HandoffPriority
 import tw.edu.citizenaction.soracompanion.model.HelpRequestOption
@@ -13,6 +16,7 @@ import tw.edu.citizenaction.soracompanion.model.LearningModule
 import tw.edu.citizenaction.soracompanion.model.LocalAccount
 import tw.edu.citizenaction.soracompanion.model.MentorCheck
 import tw.edu.citizenaction.soracompanion.model.MistakeRecord
+import tw.edu.citizenaction.soracompanion.model.Mood
 import tw.edu.citizenaction.soracompanion.model.OfflinePack
 import tw.edu.citizenaction.soracompanion.model.Question
 import tw.edu.citizenaction.soracompanion.model.QuestionBankItem
@@ -50,6 +54,85 @@ object PrototypeRepository {
 
     val questions = buildQuestions()
     val questionBankItems = buildQuestionBankItems(questions)
+    val emotionalCheckInQuestions = listOf(
+        CheckInQuestion(
+            id = "mood",
+            dimension = "mood",
+            title = "現在心情比較像哪一個？",
+            prompt = "只選最接近現在的狀態。",
+            options = listOf(
+                CheckInOption("mood-low", "有點卡住", "先不要急著作題。", 1, "repair"),
+                CheckInOption("mood-mid", "普通，可以試試", "先從短題開始。", 2, "standard"),
+                CheckInOption("mood-high", "還不錯，想開始", "可以進入一般練習。", 3, "standard")
+            )
+        ),
+        CheckInQuestion(
+            id = "energy",
+            dimension = "energy",
+            title = "你的能量夠做多久？",
+            prompt = "不是考驗毅力，只是幫你選今天的長度。",
+            options = listOf(
+                CheckInOption("energy-low", "3 分鐘就好", "適合低壓修復。", 1, "repair"),
+                CheckInOption("energy-mid", "5 到 8 分鐘", "適合一組短練習。", 2, "standard"),
+                CheckInOption("energy-high", "10 分鐘以上", "可以加一題挑戰。", 3, "challenge")
+            )
+        ),
+        CheckInQuestion(
+            id = "confidence",
+            dimension = "confidence",
+            title = "今天英文信心大概在哪裡？",
+            prompt = "選你真的覺得接近的。",
+            options = listOf(
+                CheckInOption("confidence-low", "很怕答錯", "先給提示，再作題。", 1, "repair"),
+                CheckInOption("confidence-mid", "可以做基礎題", "先從會考基準題開始。", 2, "standard"),
+                CheckInOption("confidence-high", "想挑戰難一點", "可以開啟進階題。", 3, "challenge")
+            )
+        ),
+        CheckInQuestion(
+            id = "control",
+            dimension = "control",
+            title = "遇到不會的題目時，你覺得自己能控制嗎？",
+            prompt = "這題用來判斷要不要先放更多支援。",
+            options = listOf(
+                CheckInOption("control-low", "會慌，想跳掉", "需要低壓路線。", 1, "repair"),
+                CheckInOption("control-mid", "可以看提示再試", "適合提示型練習。", 2, "standard"),
+                CheckInOption("control-high", "可以自己找規則", "適合挑戰題。", 3, "challenge")
+            )
+        ),
+        CheckInQuestion(
+            id = "support",
+            dimension = "support",
+            title = "今天需要誰陪你一下嗎？",
+            prompt = "需要陪伴也算是很好的選擇。",
+            options = listOf(
+                CheckInOption("support-high", "希望老師或志工知道", "保留接力訊號。", 0, "relay"),
+                CheckInOption("support-ai", "先讓系統提示我", "先由系統拆小。", 2, "repair"),
+                CheckInOption("support-none", "我可以先自己做", "進入自學練習。", 3, "standard")
+            )
+        )
+    )
+
+    fun evaluateEmotionalCheckIn(answers: Map<String, String>): CheckInResult {
+        val selected = emotionalCheckInQuestions.mapNotNull { question ->
+            question.options.firstOrNull { it.id == answers[question.id] }
+        }
+        val total = selected.sumOf { it.score }
+        val asksRelay = selected.any { it.routeHint == "relay" }
+        val challengeSignals = selected.count { it.routeHint == "challenge" }
+        val repairSignals = selected.count { it.routeHint == "repair" }
+        val route = when {
+            asksRelay && total <= 8 -> "relay"
+            repairSignals >= 3 || total <= 7 -> "repair"
+            challengeSignals >= 2 && total >= 12 -> "challenge"
+            else -> "standard"
+        }
+        return when (route) {
+            "relay" -> CheckInResult("relay", Mood.Low, 35, 3, "先接住你", "今天先做 1 題低壓題，老師/志工會看到需要陪伴的訊號。", "你不用自己硬撐，系統會保留求助出口。")
+            "repair" -> CheckInResult("repair", Mood.Low, 44, 3, "低壓修復", "先做 3 分鐘修復題，有提示再作答。", "今天目標是開始，不是拚速度。")
+            "challenge" -> CheckInResult("challenge", Mood.Good, 76, 8, "進階挑戰", "先做一題會考基準題，再開啟挑戰題。", "你今天狀態不錯，可以試更難一點。")
+            else -> CheckInResult("standard", Mood.Okay, 58, 5, "一般練習", "先做 5 分鐘會考基準題，答完再看推薦。", "保持穩定就很好。")
+        }
+    }
 
     private fun buildQuestions(): List<Question> {
         return listOf(
