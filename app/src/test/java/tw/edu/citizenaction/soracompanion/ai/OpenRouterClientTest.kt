@@ -46,4 +46,29 @@ class OpenRouterClientTest {
         assertEquals("志工可用 He is / She is 陪練兩題。", result.handoffSummary)
         assertTrue(result.source.contains("OpenRouter"))
     }
+
+    @Test
+    fun emotionalSupportRequestIncludesCheckInContextAndPreferredTypes() {
+        val body = OpenRouterClient.buildEmotionalSupportRequestBody(
+            model = OpenRouterClient.DEFAULT_MODEL,
+            routeTitle = "進階挑戰",
+            nextStep = "今天先開啟進階挑戰，優先練閱讀理解。",
+            moodLabel = "不錯",
+            minutes = 8,
+            confidence = 74,
+            challengeWanted = true,
+            preferredTypes = listOf("閱讀理解", "克漏字")
+        )
+
+        val messages = body.getJSONArray("messages")
+        val system = messages.getJSONObject(0).getString("content")
+        val user = messages.getJSONObject(1).getString("content")
+
+        assertEquals("openrouter/free", body.getString("model"))
+        assertTrue(system.contains("emotional support"))
+        assertTrue(user.contains("進階挑戰"))
+        assertTrue(user.contains("閱讀理解"))
+        assertTrue(user.contains("克漏字"))
+        assertTrue(user.contains("8"))
+    }
 }

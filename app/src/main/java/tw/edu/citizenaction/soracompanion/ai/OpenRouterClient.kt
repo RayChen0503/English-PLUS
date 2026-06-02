@@ -31,6 +31,29 @@ class OpenRouterClient(
         return parseSupportResponse(response, model)
     }
 
+    fun generateEmotionalSupport(
+        routeTitle: String,
+        nextStep: String,
+        moodLabel: String,
+        minutes: Int,
+        confidence: Int,
+        challengeWanted: Boolean,
+        preferredTypes: List<String>
+    ): AiSupportResult {
+        val body = buildEmotionalSupportRequestBody(
+            model = model,
+            routeTitle = routeTitle,
+            nextStep = nextStep,
+            moodLabel = moodLabel,
+            minutes = minutes,
+            confidence = confidence,
+            challengeWanted = challengeWanted,
+            preferredTypes = preferredTypes
+        )
+        val response = postJson(ENDPOINT, body)
+        return parseSupportResponse(response, model)
+    }
+
     private fun postJson(endpoint: String, body: JSONObject): String {
         val connection = (URL(endpoint).openConnection() as HttpURLConnection).apply {
             requestMethod = "POST"
@@ -90,6 +113,39 @@ class OpenRouterClient(
                     .put(JSONObject().put("role", "system").put("content", system))
                     .put(JSONObject().put("role", "user").put("content", user)))
                 .put("temperature", 0.4)
+                .put("max_tokens", 420)
+        }
+
+        fun buildEmotionalSupportRequestBody(
+            model: String,
+            routeTitle: String,
+            nextStep: String,
+            moodLabel: String,
+            minutes: Int,
+            confidence: Int,
+            challengeWanted: Boolean,
+            preferredTypes: List<String>
+        ): JSONObject {
+            val context = JSONObject()
+                .put("routeTitle", routeTitle)
+                .put("nextStep", nextStep)
+                .put("moodLabel", moodLabel)
+                .put("minutes", minutes)
+                .put("confidence", confidence)
+                .put("challengeWanted", challengeWanted)
+                .put("preferredTypes", JSONArray(preferredTypes))
+
+            val system = "You are English+ emotional support AI for rural junior-high English learning. " +
+                "Reply in Traditional Chinese. Give short emotional support, then one concrete next step. " +
+                "Do not over-diagnose mental health. Return only JSON with diagnosis, studentFeedback, and handoffSummary."
+            val user = "Create emotional support after the student's check-in and explain today's route from this context: $context"
+
+            return JSONObject()
+                .put("model", model.ifBlank { DEFAULT_MODEL })
+                .put("messages", JSONArray()
+                    .put(JSONObject().put("role", "system").put("content", system))
+                    .put(JSONObject().put("role", "user").put("content", user)))
+                .put("temperature", 0.45)
                 .put("max_tokens", 420)
         }
 

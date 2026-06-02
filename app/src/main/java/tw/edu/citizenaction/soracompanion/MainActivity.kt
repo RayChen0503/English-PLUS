@@ -544,7 +544,7 @@ class MainActivity : Activity() {
         if (complete && result != null) {
             root.addView(ui.primaryButton("完成檢測，下一步選時間") {
                 applyCheckInResult(result)
-                renderPracticeTimeSetup()
+                renderCheckInAiSupport(result)
             })
         } else {
             root.addView(card("還差 ${checkInQuestions.size - answeredCount} 題", "完成後會依照時間、挑戰意願與題型偏好安排任務。", ColorToken.Card))
@@ -575,6 +575,56 @@ class MainActivity : Activity() {
         persistState()
     }
 
+
+    private fun renderCheckInAiSupport(result: CheckInResult) {
+        if (!hasTrueAiRoute()) {
+            renderCheckInAiSupportFallback(result, "尚未設定真 AI Key，先使用本機備援支持。")
+            return
+        }
+        screen = Screen.CheckIn
+        shell("AI 情緒支持", "正在呼叫 ${aiRouteLabel()}")
+        root.addView(card("請稍候", "English+ 正在根據你的心情、時間、挑戰意願與題型偏好產生今天的支持語。", ColorToken.PrimarySoft))
+        bottomNav()
+        Thread {
+            try {
+                val support = generateRemoteCheckInSupport(result)
+                runOnUiThread { renderCheckInAiSupportResult(result, support) }
+            } catch (error: Exception) {
+                runOnUiThread {
+                    recordLearningEvent("ai_fallback", "情緒支持真 AI 呼叫失敗", error.message ?: "未知錯誤")
+                    renderCheckInAiSupportFallback(result, "真 AI 呼叫失敗，已改用本機備援：${error.message ?: "未知錯誤"}")
+                }
+            }
+        }.start()
+    }
+
+    private fun renderCheckInAiSupportResult(result: CheckInResult, support: AiSupportResult) {
+        screen = Screen.CheckIn
+        shell("AI 情緒支持", support.source)
+        root.addView(checkInResultCard(result))
+        root.addView(card("AI 分析", support.diagnosis, ColorToken.WarningSoft))
+        root.addView(card("給你的話", support.studentFeedback, ColorToken.SuccessSoft))
+        root.addView(card("老師/志工摘要", support.handoffSummary, ColorToken.Card))
+        recordLearningEvent("ai_emotional_support", "真 AI 情緒支持", support.diagnosis)
+        root.addView(ui.primaryButton("下一步選時間") { renderPracticeTimeSetup() })
+        root.addView(ui.secondaryButton("重新做心情檢測") {
+            checkInCompleted = false
+            practiceTimeConfirmed = false
+            renderCheckIn()
+        })
+        bottomNav()
+    }
+
+    private fun renderCheckInAiSupportFallback(result: CheckInResult, notice: String) {
+        screen = Screen.CheckIn
+        shell("AI 情緒支持備援", "先用本機規則接住狀態")
+        root.addView(card("真 AI 狀態", notice, ColorToken.WarningSoft))
+        root.addView(checkInResultCard(result))
+        root.addView(card("給你的話", result.supportMessage, ColorToken.SuccessSoft))
+        root.addView(card("今天先這樣做", result.nextStep, ColorToken.PrimarySoft))
+        root.addView(ui.primaryButton("下一步選時間") { renderPracticeTimeSetup() })
+        bottomNav()
+    }
     private fun renderPracticeTimeSetup() {
         screen = Screen.CheckIn
         shell("選擇今天練習時間", "先決定做多久，再開始作題")
@@ -712,10 +762,129 @@ class MainActivity : Activity() {
         bottomNav()
     }
 
+    private fun hasTrueAiRoute(): Boolean {
+        val decision = stateStore.aiSecurityDecision(productionMode = false)
+        return decision.canCallRemoteAi && (stateStore.hasAiProxyEndpoint() || stateStore.hasOpenRouterApiKey() || stateStore.hasOpenAiApiKey())
+    }
+
+    private fun aiRouteLabel(): String {
+        return when {
+            stateStore.hasAiProxyEndpoint() -> "HTTPS AI Proxy"
+            stateStore.hasOpenRouterApiKey() -> "OpenRouter ${stateStore.openRouterModel()}"
+            stateStore.hasOpenAiApiKey() -> "OpenAI Responses API"
+            else -> "本機備援"
+        }
+    }
+
+    private fun generateRemoteQuestionSupport(q: Question): AiSupportResult {
+        return when {
+            stateStore.hasAiProxyEndpoint() -> AiProxyClient(stateStore.aiProxyEndpoint()).generateSupport(
+                question = q.prompt,
+                concept = q.concept,
+                answerContext = q.repairHint,
+                moodLabel = mood.label,
+                wrongAttempts = wrongAttempts,
+                classCode = currentAccount().classCode
+            )
+            stateStore.hasOpenRouterApiKey() -> OpenRouterClient(
+                apiKey = stateStore.openRouterApiKey(),
+                model = stateStore.openRouterModel()
+            ).generateSupport(
+                question = q.prompt,
+                concept = q.concept,
+                answerContext = q.repairHint,
+                moodLabel = mood.label,
+                wrongAttempts = wrongAttempts
+            )
+            else -> OpenAiClient(stateStore.openAiApiKey()).generateSupport(
+                question = q.prompt,
+                concept = q.concept,
+                answerContext = q.repairHint,
+                moodLabel = mood.label,
+                wrongAttempts = wrongAttempts
+            )
+        }
+    }
+
+    private fun generateRemoteCheckInSupport(result: CheckInResult): AiSupportResult {
+        val preferred = result.preferredQuestionTypes.ifEmpty { selectedPracticeTypes.filter { it != "全部題型" } }
+        return when {
+            stateStore.hasAiProxyEndpoint() -> AiProxyClient(stateStore.aiProxyEndpoint()).generateSupport(
+                question = "心情檢測結果：${result.title}",
+                concept = "情緒支持與今日任務節奏",
+                answerContext = "${result.nextStep}\n偏好題型：${preferred.joinToString("、")}",
+                moodLabel = mood.label,
+                wrongAttempts = 0,
+                classCode = currentAccount().classCode
+            )
+            stateStore.hasOpenRouterApiKey() -> OpenRouterClient(
+                apiKey = stateStore.openRouterApiKey(),
+                model = stateStore.openRouterModel()
+            ).generateEmotionalSupport(
+                routeTitle = result.title,
+                nextStep = result.nextStep,
+                moodLabel = mood.label,
+                minutes = result.recommendedMinutes,
+                confidence = result.confidence,
+                challengeWanted = result.challengeWanted,
+                preferredTypes = preferred
+            )
+            else -> OpenAiClient(stateStore.openAiApiKey()).generateSupport(
+                question = "心情檢測結果：${result.title}",
+                concept = "情緒支持與今日任務節奏",
+                answerContext = result.nextStep,
+                moodLabel = mood.label,
+                wrongAttempts = 0
+            )
+        }
+    }
     private fun renderAiCoach() {
+        if (hasTrueAiRoute()) {
+            renderLiveAiCoach()
+        } else {
+            renderLocalAiCoach()
+        }
+    }
+
+    private fun renderLiveAiCoach() {
+        screen = Screen.AiCoach
+        val q = questions[currentQuestionIndex]
+        shell("還沒答對", "正在呼叫 ${aiRouteLabel()}")
+        root.addView(answerResultCard(false, q, lastSelectedAnswer))
+        root.addView(card("AI 生成中", "English+ 正在根據這一題、你的選項與目前心情產生個人化提示。", ColorToken.PrimarySoft))
+        bottomNav()
+        Thread {
+            try {
+                val support = generateRemoteQuestionSupport(q)
+                runOnUiThread { renderAiCoachResult(q, support) }
+            } catch (error: Exception) {
+                runOnUiThread {
+                    recordLearningEvent("ai_fallback", "錯題真 AI 呼叫失敗", error.message ?: "未知錯誤")
+                    renderLocalAiCoach("真 AI 呼叫失敗，已改用本機備援：${error.message ?: "未知錯誤"}")
+                }
+            }
+        }.start()
+    }
+
+    private fun renderAiCoachResult(q: Question, support: AiSupportResult) {
+        screen = Screen.AiCoach
+        shell("還沒答對", support.source)
+        root.addView(answerResultCard(false, q, lastSelectedAnswer))
+        root.addView(card("AI 診斷", support.diagnosis, ColorToken.WarningSoft))
+        root.addView(card("給你的提示", support.studentFeedback, ColorToken.SuccessSoft))
+        root.addView(card("老師/志工摘要", support.handoffSummary, ColorToken.Card))
+        root.addView(adaptiveNextStepCard(q, false))
+        recordLearningEvent("ai_wrong_answer_support", "真 AI 錯題支持：${q.concept}", support.diagnosis)
+        root.addView(ui.primaryButton("回題目再試一次") { renderLesson() })
+        root.addView(ui.secondaryButton("交給志工接力") { renderHelpRequest() })
+        bottomNav()
+    }
+
+    private fun renderLocalAiCoach(notice: String? = null) {
         screen = Screen.AiCoach
         val q = questions[currentQuestionIndex]
         shell("還沒答對", "先看清楚答案差在哪裡，再重新嘗試")
+        notice?.let { root.addView(card("真 AI 狀態", it, ColorToken.WarningSoft)) }
         root.addView(answerResultCard(false, q, lastSelectedAnswer))
         root.addView(supportStepCard("01", "我看見你卡在這裡", q.prompt, ColorToken.WarningSoft, ColorToken.Warning))
         root.addView(supportStepCard("02", "先把概念拆小", "${q.explanation}\n現在只要先記住這一個規則，不需要一次背完 am / is / are。", ColorToken.VioletSoft, ColorToken.Primary))
@@ -725,7 +894,6 @@ class MainActivity : Activity() {
         root.addView(ui.secondaryButton("交給志工接力") { renderHelpRequest() })
         bottomNav()
     }
-
     private fun renderHelpRequest() {
         screen = Screen.HelpRequest
         shell("主動求助", "讓學生用自己的話說出卡住的原因")
