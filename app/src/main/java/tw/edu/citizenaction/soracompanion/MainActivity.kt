@@ -20,6 +20,7 @@ import org.json.JSONObject
 import tw.edu.citizenaction.soracompanion.ai.AiSupportResult
 import tw.edu.citizenaction.soracompanion.ai.AiProxyClient
 import tw.edu.citizenaction.soracompanion.ai.OpenAiClient
+import tw.edu.citizenaction.soracompanion.ai.OpenRouterClient
 import tw.edu.citizenaction.soracompanion.auth.AuthClient
 import tw.edu.citizenaction.soracompanion.auth.AuthContract
 import tw.edu.citizenaction.soracompanion.auth.AuthSession
@@ -1259,12 +1260,13 @@ class MainActivity : Activity() {
 
     private fun renderAiLab() {
         screen = Screen.AiLab
-        shell("AI 提示實驗室", "可切換真 OpenAI API 與本機模擬")
+        shell("AI 提示實驗室", "可切換 OpenRouter 真 AI、後端代理與本機備援")
         root.addView(openAiStatusCard())
-        root.addView(card("第六輪 API 安全", "正式遠端 AI 只走 HTTPS 後端代理；手機端 Key 僅作開發展示 fallback，不能作為上架方案。", ColorToken.WarningSoft))
+        root.addView(card("OpenRouter 第一輪接入", "目前預設模型：${stateStore.openRouterModel()}。OpenRouter Key 可作內測原型；正式上架仍建議改成 HTTPS 後端代理，不把正式 Key 放手機。", ColorToken.WarningSoft))
         root.addView(aiProxyEndpointCard())
+        root.addView(openRouterKeyEntryCard())
         root.addView(openAiKeyEntryCard())
-        root.addView(card("使用方式", "設定 OpenAI API Key 後可呼叫 Responses API 產生診斷、學生語氣回饋與志工接力摘要。沒有 Key 或網路失敗時，仍會保留本機模擬。", ColorToken.WarningSoft))
+        root.addView(card("使用方式", "優先順序：HTTPS AI Proxy > OpenRouter free route > OpenAI Key > 本機備援。第一輪先讓真 AI 回饋可用，後續再接每日任務生成。", ColorToken.WarningSoft))
         aiScenarios.forEach { root.addView(aiScenarioCard(it)) }
         root.addView(ui.primaryButton("呼叫真 AI 生成回饋") { renderLiveAiFeedback() })
         root.addView(ui.secondaryButton("改用本機模擬生成") { renderGeneratedAiFeedback() })
@@ -1272,25 +1274,30 @@ class MainActivity : Activity() {
     }
 
     private fun openAiStatusCard(): View {
-        val hasKey = stateStore.hasOpenAiApiKey()
+        val hasRemoteAi = stateStore.hasAiProxyEndpoint() || stateStore.hasOpenRouterApiKey() || stateStore.hasOpenAiApiKey()
+        val provider = when {
+            stateStore.hasAiProxyEndpoint() -> "HTTPS AI Proxy"
+            stateStore.hasOpenRouterApiKey() -> "OpenRouter / ${stateStore.openRouterModel()}"
+            stateStore.hasOpenAiApiKey() -> "OpenAI Responses API"
+            else -> "本機備援"
+        }
         val box = ui.container(
-            if (hasKey) ColorToken.SuccessSoft else ColorToken.WarningSoft,
+            if (hasRemoteAi) ColorToken.SuccessSoft else ColorToken.WarningSoft,
             ColorToken.Border
         )
-        box.addView(ui.statusPill(if (hasKey) "真 AI 已啟用" else "本機模擬模式", if (hasKey) ColorToken.Success else ColorToken.Warning))
-        box.addView(ui.label(if (hasKey) "OpenAI API Key 已儲存在本機" else "尚未設定 OpenAI API Key", 18, ColorToken.Ink, true).apply {
+        box.addView(ui.statusPill(if (hasRemoteAi) "真 AI 已啟用" else "本機備援模式", if (hasRemoteAi) ColorToken.Success else ColorToken.Warning))
+        box.addView(ui.label("目前 AI 路線：$provider", 18, ColorToken.Ink, true).apply {
             layoutParams = ui.fullWidthParams()
         })
         box.addView(ui.body(
-            if (hasKey) {
-                "按下「呼叫真 AI」時會送出目前題目、情緒狀態與錯題次數；如果網路或 API 失敗，會自動回到本機模擬。"
+            if (hasRemoteAi) {
+                "按下「呼叫真 AI」時會送出目前題目、情緒狀態與錯題次數；如果網路或 API 失敗，會自動回到本機備援。"
             } else {
-                "目前不會連線到外部 AI。你可以先用展示模式，或在下方貼上 OpenAI API Key 後啟用真 AI 回饋。"
+                "目前不會連線到外部 AI。你可以先用展示模式，或在下方貼上 OpenRouter API Key 後啟用真 AI 回饋。"
             }
         ))
         return ui.margins(box, 0, 8, 0, 12)
     }
-
     private fun aiProxyEndpointCard(): View {
         val box = ui.container(ColorToken.Card, ColorToken.Border)
         box.addView(ui.label("AI Proxy 端點", 18, ColorToken.Ink, true))
@@ -1321,6 +1328,59 @@ class MainActivity : Activity() {
         return ui.margins(box, 0, 0, 0, 12)
     }
 
+    private fun openRouterKeyEntryCard(): View {
+        val box = ui.container(ColorToken.Card, ColorToken.Border)
+        box.addView(ui.label("OpenRouter Key 設定", 18, ColorToken.Ink, true))
+        box.addView(ui.body("內測原型使用。Key 只存在這台裝置私人設定，不會寫進 GitHub。預設使用 openrouter/free，讓平台從免費模型路由中選擇可用模型。"))
+
+        val keyInput = EditText(this).apply {
+            hint = if (stateStore.hasOpenRouterApiKey()) "已設定，可貼上新 Key 覆蓋" else "貼上 sk-or- 開頭的 OpenRouter API Key"
+            inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_PASSWORD
+            setSingleLine(true)
+            textSize = 15f
+            setTextColor(Color.parseColor(ColorToken.Ink))
+            setHintTextColor(Color.parseColor(ColorToken.Muted))
+            background = ui.rounded(ColorToken.Surface, ColorToken.Border)
+            setPadding(ui.dp(14), ui.dp(12), ui.dp(14), ui.dp(12))
+            layoutParams = ui.fullWidthParams()
+        }
+        box.addView(keyInput)
+
+        val modelInput = EditText(this).apply {
+            hint = OpenRouterClient.DEFAULT_MODEL
+            setText(stateStore.openRouterModel())
+            inputType = InputType.TYPE_CLASS_TEXT
+            setSingleLine(true)
+            textSize = 15f
+            setTextColor(Color.parseColor(ColorToken.Ink))
+            setHintTextColor(Color.parseColor(ColorToken.Muted))
+            background = ui.rounded(ColorToken.Surface, ColorToken.Border)
+            setPadding(ui.dp(14), ui.dp(12), ui.dp(14), ui.dp(12))
+            layoutParams = ui.fullWidthParams()
+        }
+        box.addView(ui.body("模型", ColorToken.Muted).apply { setPadding(0, ui.dp(10), 0, ui.dp(4)) })
+        box.addView(modelInput)
+
+        box.addView(ui.primaryButton("儲存並啟用 OpenRouter 真 AI") {
+            val key = keyInput.text.toString().trim()
+            val model = modelInput.text.toString().trim().ifBlank { OpenRouterClient.DEFAULT_MODEL }
+            if (OpenRouterClient.isLikelyOpenRouterKey(key)) {
+                stateStore.saveOpenRouterApiKey(key)
+                stateStore.saveOpenRouterModel(model)
+                recordLearningEvent("ai_config", "已更新 OpenRouter API Key", "模型：$model")
+            } else {
+                stateStore.saveOpenRouterModel(model)
+                recordLearningEvent("ai_config", "OpenRouter API Key 未更新", "輸入內容不是 sk-or- 開頭；模型設定已保存為 $model。")
+            }
+            renderAiLab()
+        })
+        box.addView(ui.secondaryButton("清除 OpenRouter Key") {
+            stateStore.saveOpenRouterApiKey("")
+            recordLearningEvent("ai_config", "已清除 OpenRouter API Key", "AI 提示實驗室會回到代理、OpenAI Key 或本機備援。")
+            renderAiLab()
+        })
+        return ui.margins(box, 0, 0, 0, 12)
+    }
     private fun openAiKeyEntryCard(): View {
         val box = ui.container(ColorToken.Card, ColorToken.Border)
         box.addView(ui.label("OpenAI Key 設定", 18, ColorToken.Ink, true))
@@ -1358,27 +1418,31 @@ class MainActivity : Activity() {
     }
 
     private fun renderLiveAiFeedback() {
-        val decision = stateStore.aiSecurityDecision(productionMode = true)
+        val decision = stateStore.aiSecurityDecision(productionMode = false)
         if (!decision.canCallRemoteAi) {
             recordLearningEvent("ai_security_fallback", "Remote AI blocked by security contract", decision.warning)
-            renderGeneratedAiFeedback("第六輪 API 安全檢查：${decision.warning}\n已改用本機模擬，不會從手機端送出正式 OpenAI Key。")
+            renderGeneratedAiFeedback("AI 安全檢查：${decision.warning}\n已改用本機備援。")
             return
         }
-        val apiKey = stateStore.openAiApiKey()
-        if (!stateStore.hasAiProxyEndpoint() && !stateStore.hasOpenAiApiKey()) {
-            recordLearningEvent("ai_fallback", "未設定 OpenAI API Key", "使用本機 AI 模擬回饋。")
-            renderGeneratedAiFeedback("尚未設定 OpenAI API Key，已改用本機模擬。")
+        if (!stateStore.hasAiProxyEndpoint() && !stateStore.hasOpenRouterApiKey() && !stateStore.hasOpenAiApiKey()) {
+            recordLearningEvent("ai_fallback", "未設定真 AI Key", "使用本機 AI 備援回饋。")
+            renderGeneratedAiFeedback("尚未設定 OpenRouter 或 OpenAI API Key，已改用本機備援。")
             return
         }
         val q = questions[currentQuestionIndex]
         screen = Screen.AiLab
-        shell("AI 生成中", "正在呼叫 OpenAI Responses API")
+        val routeLabel = when {
+            stateStore.hasAiProxyEndpoint() -> "HTTPS AI Proxy"
+            stateStore.hasOpenRouterApiKey() -> "OpenRouter ${stateStore.openRouterModel()}"
+            else -> "OpenAI Responses API"
+        }
+        shell("AI 生成中", "正在呼叫 $routeLabel")
         root.addView(card("請稍候", "English+ 正在把目前題目、情緒狀態與錯題次數送出，產生短回饋與接力摘要。", ColorToken.PrimarySoft))
         bottomNav()
         Thread {
             try {
-                val result = if (stateStore.hasAiProxyEndpoint()) {
-                    AiProxyClient(stateStore.aiProxyEndpoint()).generateSupport(
+                val result = when {
+                    stateStore.hasAiProxyEndpoint() -> AiProxyClient(stateStore.aiProxyEndpoint()).generateSupport(
                         question = q.prompt,
                         concept = q.concept,
                         answerContext = q.repairHint,
@@ -1386,32 +1450,40 @@ class MainActivity : Activity() {
                         wrongAttempts = wrongAttempts,
                         classCode = currentAccount().classCode
                     )
-                } else {
-                    OpenAiClient(apiKey).generateSupport(
-                    question = q.prompt,
-                    concept = q.concept,
-                    answerContext = q.repairHint,
-                    moodLabel = mood.label,
-                    wrongAttempts = wrongAttempts
-                )
+                    stateStore.hasOpenRouterApiKey() -> OpenRouterClient(
+                        apiKey = stateStore.openRouterApiKey(),
+                        model = stateStore.openRouterModel()
+                    ).generateSupport(
+                        question = q.prompt,
+                        concept = q.concept,
+                        answerContext = q.repairHint,
+                        moodLabel = mood.label,
+                        wrongAttempts = wrongAttempts
+                    )
+                    else -> OpenAiClient(stateStore.openAiApiKey()).generateSupport(
+                        question = q.prompt,
+                        concept = q.concept,
+                        answerContext = q.repairHint,
+                        moodLabel = mood.label,
+                        wrongAttempts = wrongAttempts
+                    )
                 }
                 runOnUiThread { renderLiveAiResult(result) }
             } catch (error: Exception) {
                 runOnUiThread {
-                    recordLearningEvent("ai_fallback", "OpenAI 呼叫失敗", error.message ?: "未知錯誤")
-                    renderGeneratedAiFeedback("OpenAI 呼叫失敗，已改用本機模擬：${error.message ?: "未知錯誤"}")
+                    recordLearningEvent("ai_fallback", "真 AI 呼叫失敗", error.message ?: "未知錯誤")
+                    renderGeneratedAiFeedback("真 AI 呼叫失敗，已改用本機備援：${error.message ?: "未知錯誤"}")
                 }
             }
         }.start()
     }
-
     private fun renderLiveAiResult(result: AiSupportResult) {
         screen = Screen.AiLab
         shell("AI 生成結果", result.source)
         root.addView(card("診斷", result.diagnosis, ColorToken.WarningSoft))
         root.addView(card("給學生的話", result.studentFeedback, ColorToken.SuccessSoft))
         root.addView(card("給志工的摘要", result.handoffSummary, ColorToken.Card))
-        recordLearningEvent("ai_live", "OpenAI 生成回饋", result.diagnosis)
+        recordLearningEvent("ai_live", "真 AI 生成回饋", result.diagnosis)
         root.addView(ui.primaryButton("回今日任務") { renderLesson() })
         root.addView(ui.secondaryButton("回 AI 提示實驗室") { renderAiLab() })
         bottomNav()
@@ -1420,7 +1492,7 @@ class MainActivity : Activity() {
     private fun renderGeneratedAiFeedback(notice: String? = null) {
         screen = Screen.AiLab
         val q = questions[currentQuestionIndex]
-        shell("AI 生成結果模擬", "依目前題型與錯題狀態產生個人化回饋")
+        shell("AI 生成結果備援", "依目前題型與錯題狀態產生個人化回饋")
         notice?.let { root.addView(card("真 AI 狀態", it, ColorToken.WarningSoft)) }
         root.addView(card("輸入資料", "${q.prompt}\n題型：${q.type}\n目前錯誤次數：$wrongAttempts", ColorToken.PrimarySoft))
         root.addView(card("診斷", aiDiagnosis(q), ColorToken.WarningSoft))

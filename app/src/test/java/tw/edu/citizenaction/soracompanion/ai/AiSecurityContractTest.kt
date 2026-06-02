@@ -60,7 +60,22 @@ class AiSecurityContractTest {
         assertEquals(2, payload["aiSecuritySchemaVersion"])
         assertEquals("CLASS-8A", payload["classId"])
         assertEquals("ray-chen", payload["requesterId"])
-        assertEquals("server-held OpenAI key", payload["secretLocation"])
+        assertEquals("server-held AI provider key", payload["secretLocation"])
         assertFalse(payload.keys.any { it.contains("key", ignoreCase = true) && it != "secretLocation" })
+    }
+
+    @Test
+    fun developmentModeAllowsOpenRouterFreeKeyAsDirectPrototypeRoute() {
+        val decision = AiSecurityContract.evaluate(
+            proxyEndpoint = "",
+            localApiKey = "",
+            openRouterApiKey = "sk-or-v1-dev",
+            productionMode = false
+        )
+
+        assertEquals(AiRoute.DirectOpenRouterDevelopment, decision.route)
+        assertTrue(decision.canCallRemoteAi)
+        assertTrue(decision.usesMobileSecret)
+        assertTrue(decision.warning.contains("OpenRouter"))
     }
 }

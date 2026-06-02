@@ -6,6 +6,7 @@ import org.json.JSONObject
 import tw.edu.citizenaction.soracompanion.auth.AuthContract
 import tw.edu.citizenaction.soracompanion.auth.AuthSession
 import tw.edu.citizenaction.soracompanion.ai.AiSecurityContract
+import tw.edu.citizenaction.soracompanion.ai.OpenRouterClient
 import tw.edu.citizenaction.soracompanion.cloud.CloudDataContract
 import tw.edu.citizenaction.soracompanion.cloud.CollaborationSyncContract
 import tw.edu.citizenaction.soracompanion.cloud.QuestionBankContract
@@ -323,8 +324,31 @@ class PrototypeStateStore(context: Context) {
 
     fun hasOpenAiApiKey(): Boolean = openAiApiKey().startsWith("sk-")
 
+    fun saveOpenRouterApiKey(apiKey: String) {
+        prefs.edit().putString("openrouter_api_key", apiKey.trim()).apply()
+    }
+
+    fun openRouterApiKey(): String {
+        return prefs.getString("openrouter_api_key", "")?.trim().orEmpty()
+    }
+
+    fun hasOpenRouterApiKey(): Boolean = OpenRouterClient.isLikelyOpenRouterKey(openRouterApiKey())
+
+    fun saveOpenRouterModel(model: String) {
+        prefs.edit().putString("openrouter_model", model.trim().ifBlank { OpenRouterClient.DEFAULT_MODEL }).apply()
+    }
+
+    fun openRouterModel(): String {
+        return prefs.getString("openrouter_model", OpenRouterClient.DEFAULT_MODEL)?.trim().orEmpty().ifBlank { OpenRouterClient.DEFAULT_MODEL }
+    }
+
     fun aiSecurityDecision(productionMode: Boolean = true) =
-        AiSecurityContract.evaluate(aiProxyEndpoint(), openAiApiKey(), productionMode)
+        AiSecurityContract.evaluate(
+            proxyEndpoint = aiProxyEndpoint(),
+            localApiKey = openAiApiKey(),
+            productionMode = productionMode,
+            openRouterApiKey = openRouterApiKey()
+        )
 
     fun saveAiProxyEndpoint(url: String) {
         prefs.edit().putString("ai_proxy_endpoint", url.trim()).apply()
