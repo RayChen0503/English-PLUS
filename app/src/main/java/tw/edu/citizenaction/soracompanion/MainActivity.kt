@@ -17,6 +17,8 @@ import android.widget.ScrollView
 import java.io.File
 import org.json.JSONArray
 import org.json.JSONObject
+import tw.edu.citizenaction.soracompanion.ai.AiDailyTaskPlan
+import tw.edu.citizenaction.soracompanion.ai.AiQuestionBankOption
 import tw.edu.citizenaction.soracompanion.ai.AiSupportResult
 import tw.edu.citizenaction.soracompanion.ai.AiProxyClient
 import tw.edu.citizenaction.soracompanion.ai.OpenAiClient
@@ -96,6 +98,10 @@ class MainActivity : Activity() {
     private var selectedPracticeLevel = "推薦"
     private var selectedPracticeType = "全部題型"
     private var selectedPracticeTypes = setOf("全部題型")
+    private var aiDailyPlanTitle = ""
+    private var aiDailyPlanMessage = ""
+    private var aiDailyPlanItemIds: List<String> = emptyList()
+    private var aiDailyPlanSource = ""
     private val checkInAnswers = mutableMapOf<String, String>()
 
     private val student = PrototypeRepository.student
@@ -506,6 +512,7 @@ class MainActivity : Activity() {
         shell("今天先做這個", "把英文練習縮到現在做得到的一小步")
         root.addView(currentTaskFocus())
         root.addView(todayProgressCard())
+        root.addView(dailyAiTaskPlanCard())
         root.addView(todayStepListCard())
         root.addView(taskRouteCard())
         root.addView(practiceCenterEntryCard())
@@ -654,6 +661,131 @@ class MainActivity : Activity() {
         bottomNav()
     }
 
+    private fun renderAiDailyPlanThenTaskQueue() {
+        val candidates = dailyPlanCandidateItems(stateStore.questionBankItems())
+        if (candidates.isEmpty()) {
+            aiDailyPlanTitle = "今日任務"
+            aiDailyPlanMessage = "目前沒有可用題庫，先回到今日任務。"
+            aiDailyPlanItemIds = emptyList()
+            aiDailyPlanSource = "Local fallback"
+            renderTaskQueue()
+            return
+        }
+        if (!stateStore.hasOpenRouterApiKey()) {
+            applyLocalDailyTaskPlan(candidates, "尚未設定 OpenRouter Key，先用本機規則依照你的心情、時間與題型偏好排序。")
+            renderTaskQueue()
+            return
+        }
+        screen = Screen.Lesson
+        shell("AI 安排今日任務", "正在從題庫挑選今天最適合的題目")
+        root.addView(card("請稍候", "English+ 正在根據你的心情量表、可用時間、挑戰意願與題型偏好，從現有題庫挑出今日任務。", ColorToken.PrimarySoft))
+        bottomNav()
+        Thread {
+            try {
+                val plan = OpenRouterClient(
+                    apiKey = stateStore.openRouterApiKey(),
+                    model = stateStore.openRouterModel().ifBlank { OpenRouterClient.DEFAULT_MODEL }
+                ).generateDailyTaskPlan(
+                    routeTitle = dailyPlanRouteTitle(),
+                    nextStep = "用 ${minutes} 分鐘完成 ${targetDailyQuestionCount()} 題，先穩定再挑戰。",
+                    moodLabel = mood.label,
+                    minutes = minutes,
+                    confidence = confidence,
+                    challengeWanted = selectedPracticeLevel.contains("B1") || selectedPracticeLevel.contains("挑戰"),
+                    preferredTypes = selectedPracticeTypes.filter { it != "全部題型" },
+                    questionBank = candidates.map { item ->
+                        AiQuestionBankOption(
+                            id = item.id,
+                            level = item.level,
+                            questionType = normalizedQuestionType(item),
+                            concept = item.question.concept,
+                            skill = item.skill,
+                            challengeScore = item.challengeScore,
+                            estimatedSeconds = item.estimatedSeconds
+                        )
+                    }
+                )
+                runOnUiThread {
+                    applyAiDailyTaskPlan(plan, candidates)
+                    renderTaskQueue()
+                }
+            } catch (error: Exception) {
+                runOnUiThread {
+                    recordLearningEvent("ai_daily_plan_fallback", "AI 每日任務失敗", error.message ?: "未知錯誤")
+                    applyLocalDailyTaskPlan(candidates, "真 AI 排任務失敗，已改用本機推薦：${error.message ?: "未知錯誤"}")
+                    renderTaskQueue()
+                }
+            }
+        }.start()
+    }
+
+    private fun dailyPlanRouteTitle(): String {
+        return when {
+            mood == Mood.Low -> "低壓修復"
+            confidence >= 70 -> "挑戰進階"
+            confidence <= 45 -> "基礎補強"
+            else -> "穩定練習"
+        }
+    }
+
+    private fun targetDailyQuestionCount(): Int {
+        return when {
+            minutes <= 3 -> 3
+            minutes <= 5 -> 4
+            minutes <= 8 -> 5
+            else -> 7
+        }
+    }
+
+    private fun dailyPlanCandidateItems(items: List<QuestionBankItem>): List<QuestionBankItem> {
+        val typeFiltered = if (selectedPracticeTypes.contains("全部題型")) {
+            items
+        } else {
+            items.filter { selectedPracticeTypes.contains(normalizedQuestionType(it)) }
+        }
+        val levelFiltered = typeFiltered.filter { item ->
+            when {
+                selectedPracticeLevel.contains("B1") -> item.level == "B1" || item.difficultyBand == "challenge"
+                selectedPracticeLevel.contains("A2") -> item.level == "A2" || item.difficultyBand == "cap-standard"
+                selectedPracticeLevel.contains("A1") || selectedPracticeLevel.contains("修復") -> item.level == "A1" || item.recommendationTags.contains("repair")
+                else -> true
+            }
+        }.ifEmpty { typeFiltered.ifEmpty { items } }
+        val adaptive = PrototypeRepository.adaptivePracticeRecommendations(
+            current = null,
+            wasCorrect = confidence >= 60,
+            confidence = confidence,
+            moodLabel = mood.name,
+            wrongAttempts = wrongAttempts,
+            limit = 30
+        ).filter { candidate -> levelFiltered.any { it.id == candidate.id } }
+        val ranked = levelFiltered.sortedWith(
+            compareByDescending<QuestionBankItem> { selectedPracticeTypes.contains(normalizedQuestionType(it)) }
+                .thenByDescending { if (selectedPracticeLevel.contains("B1")) it.challengeScore else 6 - it.challengeScore }
+                .thenBy { it.estimatedSeconds }
+        )
+        return (adaptive + ranked).distinctBy { it.id }.take(80)
+    }
+
+    private fun applyAiDailyTaskPlan(plan: AiDailyTaskPlan, candidates: List<QuestionBankItem>) {
+        val byId = candidates.associateBy { it.id }
+        val selected = plan.recommendedItemIds.mapNotNull { byId[it] }
+            .ifEmpty { candidates.take(targetDailyQuestionCount()) }
+            .take(targetDailyQuestionCount())
+        aiDailyPlanTitle = plan.title.ifBlank { "今日 AI 任務" }
+        aiDailyPlanMessage = plan.studentMessage.ifBlank { "依照你的狀態，先完成這一小組英文練習。" }
+        aiDailyPlanItemIds = selected.map { it.id }
+        aiDailyPlanSource = plan.source
+        recordLearningEvent("ai_daily_plan", aiDailyPlanTitle, aiDailyPlanItemIds.joinToString(","))
+    }
+
+    private fun applyLocalDailyTaskPlan(candidates: List<QuestionBankItem>, message: String) {
+        val selected = candidates.take(targetDailyQuestionCount())
+        aiDailyPlanTitle = "今日推薦任務"
+        aiDailyPlanMessage = message
+        aiDailyPlanItemIds = selected.map { it.id }
+        aiDailyPlanSource = "Local recommendation"
+    }
     private fun renderLesson() {
         screen = Screen.Lesson
         val q = questions[currentQuestionIndex]
@@ -3198,6 +3330,30 @@ class MainActivity : Activity() {
         return ui.margins(box, 0, 6, 0, 6)
     }
 
+    private fun dailyAiTaskPlanCard(): View {
+        val itemsById = stateStore.questionBankItems().associateBy { it.id }
+        val plannedItems = aiDailyPlanItemIds.mapNotNull { itemsById[it] }
+        val box = ui.container(ColorToken.PrimarySoft, ColorToken.Border)
+        box.addView(ui.statusPill(if (aiDailyPlanSource.contains("OpenRouter")) "真 AI 排序" else "本機排序", ColorToken.Primary))
+        box.addView(ui.label(aiDailyPlanTitle.ifBlank { "今日任務推薦" }, 19, ColorToken.Ink, true).apply {
+            setPadding(0, ui.dp(10), 0, ui.dp(4))
+        })
+        box.addView(ui.body(aiDailyPlanMessage.ifBlank { "完成心情檢測與時間選擇後，系統會把今天要做的題目排成清楚順序。" }, "#334155"))
+        box.addView(metricRow(
+            Metric("時間", "${minutes} 分", ColorToken.Accent),
+            Metric("題數", "${plannedItems.size} 題", ColorToken.Primary),
+            Metric("信心", "${confidence}%", ColorToken.Success)
+        ))
+        plannedItems.forEachIndexed { index, item ->
+            box.addView(ui.secondaryButton("${index + 1}. ${item.level}｜${normalizedQuestionType(item)}｜${item.question.concept.take(18)}") {
+                startPracticeItem(item)
+            })
+        }
+        if (plannedItems.isEmpty()) {
+            box.addView(ui.secondaryButton("先去選擇練習時間") { renderPracticeTimeSetup() })
+        }
+        return ui.margins(box, 0, 8, 0, 12)
+    }
     private fun practiceRecommendationCard(items: List<QuestionBankItem>): View {
         val recommendedLevel = when {
             confidence >= 70 -> "B1 進階挑戰"
@@ -3292,6 +3448,7 @@ class MainActivity : Activity() {
     }
 
     private fun recommendedPracticeItems(items: List<QuestionBankItem>): List<QuestionBankItem> {
+        val plannedByAi = aiDailyPlanItemIds.mapNotNull { id -> items.firstOrNull { it.id == id } }
         val seed = PrototypeRepository.adaptivePracticeRecommendations(
             current = null,
             wasCorrect = confidence >= 60,
@@ -3299,8 +3456,9 @@ class MainActivity : Activity() {
             moodLabel = mood.name,
             wrongAttempts = wrongAttempts,
             limit = 12
-        )
-        return seed.filter { candidate -> items.any { it.id == candidate.id } }.ifEmpty { items.take(12) }
+        ).filter { candidate -> items.any { it.id == candidate.id } }
+        val combined = (plannedByAi + seed + items.take(12)).distinctBy { it.id }
+        return combined.take(12)
     }
 
     private fun normalizedQuestionType(item: QuestionBankItem): String {

@@ -71,4 +71,70 @@ class OpenRouterClientTest {
         assertTrue(user.contains("克漏字"))
         assertTrue(user.contains("8"))
     }
+    @Test
+    fun dailyTaskPlanRequestIncludesCheckInTimeAndQuestionBankIds() {
+        val body = OpenRouterClient.buildDailyTaskPlanRequestBody(
+            model = OpenRouterClient.DEFAULT_MODEL,
+            routeTitle = "低壓修復",
+            nextStep = "先做短題，再做閱讀",
+            moodLabel = "普通",
+            minutes = 8,
+            confidence = 62,
+            challengeWanted = true,
+            preferredTypes = listOf("克漏字", "閱讀測驗"),
+            questionBank = listOf(
+                AiQuestionBankOption(
+                    id = "q-a2-cloze-001",
+                    level = "A2",
+                    questionType = "克漏字",
+                    concept = "連接詞",
+                    skill = "文意判讀",
+                    challengeScore = 4,
+                    estimatedSeconds = 75
+                ),
+                AiQuestionBankOption(
+                    id = "q-b1-reading-002",
+                    level = "B1",
+                    questionType = "閱讀測驗",
+                    concept = "主旨推論",
+                    skill = "段落理解",
+                    challengeScore = 5,
+                    estimatedSeconds = 120
+                )
+            )
+        )
+
+        val user = body.getJSONArray("messages").getJSONObject(1).getString("content")
+
+        assertEquals("openrouter/free", body.getString("model"))
+        assertTrue(user.contains("q-a2-cloze-001"))
+        assertTrue(user.contains("q-b1-reading-002"))
+        assertTrue(user.contains("8"))
+        assertTrue(user.contains("克漏字"))
+        assertTrue(user.contains("閱讀測驗"))
+        assertTrue(body.getInt("max_tokens") <= 700)
+    }
+
+    @Test
+    fun parsesDailyTaskPlanAndDropsIdsThatAreNotInQuestionBank() {
+        val content = JSONObject()
+            .put("title", "今天先修復再挑戰")
+            .put("studentMessage", "先用短題穩住，再做一題閱讀挑戰。")
+            .put("recommendedItemIds", JSONArray().put("q-a2-cloze-001").put("made-up-id").put("q-b1-reading-002"))
+            .toString()
+        val response = JSONObject()
+            .put("choices", JSONArray().put(JSONObject()
+                .put("message", JSONObject().put("content", content))))
+
+        val result = OpenRouterClient.parseDailyTaskPlanResponse(
+            responseText = response.toString(),
+            model = "openrouter/free",
+            allowedIds = setOf("q-a2-cloze-001", "q-b1-reading-002")
+        )
+
+        assertEquals("今天先修復再挑戰", result.title)
+        assertEquals(listOf("q-a2-cloze-001", "q-b1-reading-002"), result.recommendedItemIds)
+        assertTrue(result.studentMessage.contains("短題"))
+        assertTrue(result.source.contains("OpenRouter"))
+    }
 }

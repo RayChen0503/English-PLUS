@@ -8,6 +8,23 @@ import java.io.OutputStreamWriter
 import java.net.HttpURLConnection
 import java.net.URL
 
+data class AiQuestionBankOption(
+    val id: String,
+    val level: String,
+    val questionType: String,
+    val concept: String,
+    val skill: String,
+    val challengeScore: Int,
+    val estimatedSeconds: Int
+)
+
+data class AiDailyTaskPlan(
+    val title: String,
+    val studentMessage: String,
+    val recommendedItemIds: List<String>,
+    val source: String
+)
+
 class OpenRouterClient(
     private val apiKey: String,
     private val model: String = DEFAULT_MODEL
@@ -54,6 +71,30 @@ class OpenRouterClient(
         return parseSupportResponse(response, model)
     }
 
+    fun generateDailyTaskPlan(
+        routeTitle: String,
+        nextStep: String,
+        moodLabel: String,
+        minutes: Int,
+        confidence: Int,
+        challengeWanted: Boolean,
+        preferredTypes: List<String>,
+        questionBank: List<AiQuestionBankOption>
+    ): AiDailyTaskPlan {
+        val body = buildDailyTaskPlanRequestBody(
+            model = model,
+            routeTitle = routeTitle,
+            nextStep = nextStep,
+            moodLabel = moodLabel,
+            minutes = minutes,
+            confidence = confidence,
+            challengeWanted = challengeWanted,
+            preferredTypes = preferredTypes,
+            questionBank = questionBank
+        )
+        val response = postJson(ENDPOINT, body)
+        return parseDailyTaskPlanResponse(response, model, questionBank.map { it.id }.toSet())
+    }
     private fun postJson(endpoint: String, body: JSONObject): String {
         val connection = (URL(endpoint).openConnection() as HttpURLConnection).apply {
             requestMethod = "POST"
@@ -149,6 +190,77 @@ class OpenRouterClient(
                 .put("max_tokens", 420)
         }
 
+        fun buildDailyTaskPlanRequestBody(
+            model: String,
+            routeTitle: String,
+            nextStep: String,
+            moodLabel: String,
+            minutes: Int,
+            confidence: Int,
+            challengeWanted: Boolean,
+            preferredTypes: List<String>,
+            questionBank: List<AiQuestionBankOption>
+        ): JSONObject {
+            val options = JSONArray()
+            questionBank.forEach { item ->
+                options.put(JSONObject()
+                    .put("id", item.id)
+                    .put("level", item.level)
+                    .put("questionType", item.questionType)
+                    .put("concept", item.concept)
+                    .put("skill", item.skill)
+                    .put("challengeScore", item.challengeScore)
+                    .put("estimatedSeconds", item.estimatedSeconds))
+            }
+            val context = JSONObject()
+                .put("routeTitle", routeTitle)
+                .put("nextStep", nextStep)
+                .put("moodLabel", moodLabel)
+                .put("minutes", minutes)
+                .put("confidence", confidence)
+                .put("challengeWanted", challengeWanted)
+                .put("preferredTypes", JSONArray(preferredTypes))
+                .put("questionBank", options)
+
+            val system = "You are English+ daily task planner for rural junior-high English learning. " +
+                "Reply in Traditional Chinese. Choose only IDs from questionBank. " +
+                "Respect time, mood, confidence, preferred question types, and challengeWanted. " +
+                "Return only JSON with title, studentMessage, and recommendedItemIds."
+            val user = "Create today's short practice plan from this context: $context"
+
+            return JSONObject()
+                .put("model", model.ifBlank { DEFAULT_MODEL })
+                .put("messages", JSONArray()
+                    .put(JSONObject().put("role", "system").put("content", system))
+                    .put(JSONObject().put("role", "user").put("content", user)))
+                .put("temperature", 0.35)
+                .put("max_tokens", 650)
+        }
+
+        fun parseDailyTaskPlanResponse(
+            responseText: String,
+            model: String,
+            allowedIds: Set<String>
+        ): AiDailyTaskPlan {
+            val response = JSONObject(responseText.ifBlank { "{}" })
+            val choices = response.optJSONArray("choices") ?: JSONArray()
+            val message = choices.optJSONObject(0)?.optJSONObject("message")
+            val rawContent = message?.optString("content").orEmpty()
+            val content = extractJsonObject(rawContent)
+            val json = JSONObject(content)
+            val ids = mutableListOf<String>()
+            val rawIds = json.optJSONArray("recommendedItemIds") ?: JSONArray()
+            for (index in 0 until rawIds.length()) {
+                val id = rawIds.optString(index).trim()
+                if (id.isNotBlank() && allowedIds.contains(id) && !ids.contains(id)) ids.add(id)
+            }
+            return AiDailyTaskPlan(
+                title = json.optString("title", "今日 AI 任務"),
+                studentMessage = json.optString("studentMessage", "依照你的狀態，先完成一小組剛好的英文練習。"),
+                recommendedItemIds = ids,
+                source = "OpenRouter Chat Completions / $model"
+            )
+        }
         fun parseSupportResponse(responseText: String, model: String): AiSupportResult {
             val response = JSONObject(responseText.ifBlank { "{}" })
             val choices = response.optJSONArray("choices") ?: JSONArray()
