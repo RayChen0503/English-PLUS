@@ -203,6 +203,19 @@ class PrototypeRepositoryTest {
         assertEquals("completed flow should show 100 percent", 100, progress.progressPercent)
         assertTrue("next action should clearly say the day is complete", progress.nextAction.contains("完成"))
     }
+
+    @Test
+    fun roleFlowSpecsKeepStudentAndTeacherNavigationSeparate() {
+        val student = PrototypeRepository.roleFlowSpec(tw.edu.citizenaction.soracompanion.model.Role.Student)
+        val mentor = PrototypeRepository.roleFlowSpec(tw.edu.citizenaction.soracompanion.model.Role.Mentor)
+
+        assertEquals("student nav should stay learning-first", listOf("首頁", "檢測", "任務", "支持", "地圖"), student.navLabels)
+        assertEquals("mentor nav should stay support-workbench-first", listOf("今日", "學生", "接力", "同步", "報告"), mentor.navLabels)
+        assertTrue("student flow should hide teacher workbench language", student.hiddenFromOtherRole.contains("老師工作台"))
+        assertTrue("mentor flow should hide student learning map language", mentor.hiddenFromOtherRole.contains("學習地圖"))
+        assertFalse("student nav should not expose teacher report", student.navLabels.contains("報告"))
+        assertFalse("mentor nav should not expose emotional check-in as its own tab", mentor.navLabels.contains("檢測"))
+    }
     @Test
     fun productPrototypeKeepsBothStudentAndMentorTracks() {
         assertTrue("student task track should have several short tasks", PrototypeRepository.studyTasks.size >= 4)

@@ -23,6 +23,8 @@ import tw.edu.citizenaction.soracompanion.model.Question
 import tw.edu.citizenaction.soracompanion.model.QuestionBankItem
 import tw.edu.citizenaction.soracompanion.model.QuestionBankReviewSummary
 import tw.edu.citizenaction.soracompanion.model.ReflectionPrompt
+import tw.edu.citizenaction.soracompanion.model.Role
+import tw.edu.citizenaction.soracompanion.model.RoleFlowSpec
 import tw.edu.citizenaction.soracompanion.model.StudentProfile
 import tw.edu.citizenaction.soracompanion.model.StudentRow
 import tw.edu.citizenaction.soracompanion.model.StudyTask
@@ -136,6 +138,27 @@ object PrototypeRepository {
     }
 
 
+
+    fun roleFlowSpec(role: Role): RoleFlowSpec {
+        return when (role) {
+            Role.Student -> RoleFlowSpec(
+                roleLabel = "學生端",
+                homeTitle = "先做心情檢測",
+                homeSubtitle = "完成後再開始今天的英文任務。",
+                navLabels = listOf("首頁", "檢測", "任務", "支持", "地圖"),
+                primaryScreens = listOf("情緒檢測", "選練習時間", "今日任務", "練習中心", "學習地圖"),
+                hiddenFromOtherRole = "不顯示老師工作台、班級同步、週報審閱與題庫管理。"
+            )
+            Role.Mentor -> RoleFlowSpec(
+                roleLabel = "老師/志工端",
+                homeTitle = "今天要先接住誰？",
+                homeSubtitle = "先看班級訊號，再處理需要陪伴的學生。",
+                navLabels = listOf("今日", "學生", "接力", "同步", "報告"),
+                primaryScreens = listOf("班級訊號", "學生證據", "接力待辦", "協作同步", "週報摘要"),
+                hiddenFromOtherRole = "不顯示學生心情檢測、學生作題流程與個人學習地圖。"
+            )
+        }
+    }
     fun dailyTaskProgress(
         checkInCompleted: Boolean,
         practiceTimeConfirmed: Boolean,

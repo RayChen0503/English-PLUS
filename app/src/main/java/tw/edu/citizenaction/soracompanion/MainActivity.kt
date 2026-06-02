@@ -288,12 +288,9 @@ class MainActivity : Activity() {
 
     private fun renderHome() {
         screen = Screen.Home
-        shell("English+", if (role == Role.Student) "學生端" else "老師/志工端")
-        if (role == Role.Student) {
-            hero("先做心情檢測", "完成後再開始今天的英文任務。")
-        } else {
-            hero("今天要先接住誰？", "先看班級訊號，再處理需要陪伴的學生。")
-        }
+        val flow = currentRoleFlow()
+        shell("English+", flow.roleLabel)
+        hero(flow.homeTitle, flow.homeSubtitle)
         if (role == Role.Student) {
             studentHome()
         } else {
@@ -406,7 +403,9 @@ class MainActivity : Activity() {
         bottomNav()
     }
 
-    private fun roleLabel(): String = if (role == Role.Student) "學生端" else "老師/志工端"
+    private fun currentRoleFlow() = PrototypeRepository.roleFlowSpec(role)
+
+    private fun roleLabel(): String = currentRoleFlow().roleLabel
 
     private fun renderLearningContract() {
         screen = Screen.Contract
@@ -1790,32 +1789,46 @@ class MainActivity : Activity() {
 
     private fun bottomNav() {
         root.addView(ui.space(16))
+        val labels = currentRoleFlow().navLabels
         val nav = ui.container(ColorToken.Card, ColorToken.Border).apply {
             orientation = LinearLayout.HORIZONTAL
             setPadding(ui.dp(8), ui.dp(8), ui.dp(8), ui.dp(8))
         }
         if (role == Role.Student) {
-            nav.addView(navDestination("H", "首頁", screen == Screen.Home || screen == Screen.Account) { renderHome() }, ui.weightParams())
-            nav.addView(navDestination("C", "檢測", screen == Screen.CheckIn) { renderCheckIn() }, ui.weightParams())
-            nav.addView(navDestination("T", "任務", screen == Screen.Lesson || screen == Screen.AiCoach || screen == Screen.Contract || screen == Screen.Reflection) { renderStudentTaskEntry() }, ui.weightParams())
-            nav.addView(navDestination("S", "支持", screen == Screen.Breakpoints || screen == Screen.Handoff || screen == Screen.Intervention || screen == Screen.HelpRequest) { renderStudentSupportEntry() }, ui.weightParams())
-            nav.addView(navDestination("M", "地圖", screen == Screen.Map || screen == Screen.Report || screen == Screen.Journey || screen == Screen.QuestionBank) { renderStudentMapEntry() }, ui.weightParams())
+            nav.addView(navDestination("H", labels[0], screen == Screen.Home || screen == Screen.Account) { renderHome() }, ui.weightParams())
+            nav.addView(navDestination("C", labels[1], screen == Screen.CheckIn) { renderCheckIn() }, ui.weightParams())
+            nav.addView(navDestination("T", labels[2], screen == Screen.Lesson || screen == Screen.AiCoach || screen == Screen.Contract || screen == Screen.Reflection || screen == Screen.QuestionBank) { renderStudentTaskEntry() }, ui.weightParams())
+            nav.addView(navDestination("S", labels[3], screen == Screen.Breakpoints || screen == Screen.Handoff || screen == Screen.Intervention || screen == Screen.HelpRequest) { renderStudentSupportEntry() }, ui.weightParams())
+            nav.addView(navDestination("M", labels[4], screen == Screen.Map || screen == Screen.Journey) { renderStudentMapEntry() }, ui.weightParams())
         } else {
-            nav.addView(navDestination("W", "今日", screen == Screen.Home || screen == Screen.Account) { renderHome() }, ui.weightParams())
-            nav.addView(navDestination("R", "學生", screen == Screen.Roster || screen == Screen.StudentDetail || screen == Screen.StudentManager) { renderRoster() }, ui.weightParams())
-            nav.addView(navDestination("Q", "接力", screen == Screen.ActionQueue || screen == Screen.Handoff || screen == Screen.Breakpoints || screen == Screen.Mentor) { renderActionQueue() }, ui.weightParams())
-            nav.addView(navDestination("Y", "同步", screen == Screen.SyncCenter || screen == Screen.AiLab) { renderSyncCenter() }, ui.weightParams())
-            nav.addView(navDestination("P", "報告", screen == Screen.Report) { renderWeeklyReport() }, ui.weightParams())
+            nav.addView(navDestination("W", labels[0], screen == Screen.Home || screen == Screen.Account) { renderHome() }, ui.weightParams())
+            nav.addView(navDestination("R", labels[1], screen == Screen.Roster || screen == Screen.StudentDetail || screen == Screen.StudentManager || screen == Screen.QuestionBank) { renderRoster() }, ui.weightParams())
+            nav.addView(navDestination("Q", labels[2], screen == Screen.ActionQueue || screen == Screen.Handoff || screen == Screen.Breakpoints || screen == Screen.Mentor) { renderActionQueue() }, ui.weightParams())
+            nav.addView(navDestination("Y", labels[3], screen == Screen.SyncCenter || screen == Screen.AiLab) { renderSyncCenter() }, ui.weightParams())
+            nav.addView(navDestination("P", labels[4], screen == Screen.Report) { renderWeeklyReport() }, ui.weightParams())
         }
         root.addView(ui.margins(nav, 0, 0, 0, 8))
     }
 
-    private fun navigationArea(): String = when (screen) {
-        Screen.Home, Screen.Account -> "首頁"
-        Screen.Lesson, Screen.AiCoach, Screen.Contract, Screen.Reflection -> "任務"
-        Screen.Breakpoints, Screen.Handoff, Screen.Intervention, Screen.HelpRequest -> "支持"
-        Screen.Profile -> "檔案"
-        else -> "地圖"
+    private fun navigationArea(): String {
+        val labels = currentRoleFlow().navLabels
+        return if (role == Role.Student) {
+            when (screen) {
+                Screen.Home, Screen.Account -> labels[0]
+                Screen.CheckIn -> labels[1]
+                Screen.Lesson, Screen.AiCoach, Screen.Contract, Screen.Reflection, Screen.QuestionBank -> labels[2]
+                Screen.Breakpoints, Screen.Handoff, Screen.Intervention, Screen.HelpRequest -> labels[3]
+                else -> labels[4]
+            }
+        } else {
+            when (screen) {
+                Screen.Home, Screen.Account -> labels[0]
+                Screen.Roster, Screen.StudentDetail, Screen.StudentManager, Screen.QuestionBank -> labels[1]
+                Screen.ActionQueue, Screen.Handoff, Screen.Breakpoints, Screen.Mentor -> labels[2]
+                Screen.SyncCenter, Screen.AiLab -> labels[3]
+                else -> labels[4]
+            }
+        }
     }
 
     private fun navDestination(mark: String, label: String, selected: Boolean, action: () -> Unit): View {

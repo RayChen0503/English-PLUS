@@ -121,6 +121,15 @@ data class DailyTaskProgress(
     val nextAction: String,
     val steps: List<String>
 )
+
+data class RoleFlowSpec(
+    val roleLabel: String,
+    val homeTitle: String,
+    val homeSubtitle: String,
+    val navLabels: List<String>,
+    val primaryScreens: List<String>,
+    val hiddenFromOtherRole: String
+)
 data class Breakpoint(
     val title: String,
     val severity: String,
