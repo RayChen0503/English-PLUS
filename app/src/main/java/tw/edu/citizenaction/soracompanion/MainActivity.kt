@@ -108,6 +108,10 @@ class MainActivity : Activity() {
     private var aiReflectionFeedback = ""
     private var aiMapRouteSuggestion = ""
     private var aiPracticeTypeSuggestion = ""
+    private var recoveryTaskTitle = ""
+    private var recoveryTaskDetail = ""
+    private var recoveryTaskQuestionIndex: Int? = null
+    private var preparedHelpSummary = ""
     private val checkInAnswers = mutableMapOf<String, String>()
 
     private val student = PrototypeRepository.student
@@ -515,6 +519,9 @@ class MainActivity : Activity() {
         root.addView(studentStatusHeader())
         root.addView(studentTodayQuestCard())
         root.addView(dailyAiTaskPlanCard())
+        if (recoveryTaskTitle.isNotBlank()) {
+            root.addView(recoveryTaskCard())
+        }
         root.addView(studentAiPracticePreferenceCard())
         root.addView(studentQuickPracticeCard())
         if (customTaskCount > 0) {
@@ -821,11 +828,17 @@ class MainActivity : Activity() {
     private fun answer(option: String) {
         val q = questions[currentQuestionIndex]
         if (option == q.answer) {
+            val completedRecoveryTask = recoveryTaskQuestionIndex == currentQuestionIndex
             completedTasks += 1
             confidence = (confidence + 4).coerceAtMost(100)
             learningEventCount += 1
             todayAnsweredFirstQuestion = true
-            if (wrongAttempts > 0) repairedMistakeCount += 1
+            if (wrongAttempts > 0 || completedRecoveryTask) repairedMistakeCount += 1
+            if (completedRecoveryTask) {
+                recoveryTaskTitle = ""
+                recoveryTaskDetail = ""
+                recoveryTaskQuestionIndex = null
+            }
             wrongAttempts = 0
             lastSelectedAnswer = option
             lastAnswerMessage = "答對了：${q.explanation}"
@@ -840,6 +853,7 @@ class MainActivity : Activity() {
             learningEventCount += 1
             lastSelectedAnswer = option
             lastAnswerMessage = "你選了 $option。${q.explanation}"
+            prepareRecoveryTask(q, option)
             addOfflineSyncItem("答題卡住：${q.concept}", "學習事件", "學生選擇 $option，需要保留修復提示。")
             persistState()
             recordLearningEvent("answer_wrong", "答題卡住：${q.concept}", "學生選擇 $option；平台保留修復提示與支持出口。")
@@ -919,6 +933,29 @@ class MainActivity : Activity() {
             currentType != null -> currentType
             else -> "填空題"
         }
+    }
+
+    private fun prepareRecoveryTask(q: Question, selected: String) {
+        recoveryTaskTitle = "補救任務：${q.concept}"
+        recoveryTaskDetail = buildString {
+            append("剛剛選了 $selected，先不要加新題。\n")
+            append("先修復：${q.repairHint}\n")
+            append("下一步：回到同一題，用正確規則再試一次。")
+        }
+        recoveryTaskQuestionIndex = currentQuestionIndex
+        selectedPracticeLevel = "弱點修復"
+        selectedPracticeTypes = setOf(normalizedLessonType(q))
+        selectedPracticeType = normalizedLessonType(q)
+        aiPracticeTypeSuggestion = "建議先補：${normalizedLessonType(q)}"
+        recordLearningEvent("recovery_task_created", recoveryTaskTitle, recoveryTaskDetail)
+    }
+
+    private fun startRecoveryTask() {
+        recoveryTaskQuestionIndex?.let { index ->
+            if (index in questions.indices) currentQuestionIndex = index
+        }
+        lastAnswerMessage = recoveryTaskDetail.ifBlank { "先回到剛剛卡住的概念，完成一題就算修復。" }
+        renderLesson()
     }
 
     private fun renderReflectionSaved(prompt: ReflectionPrompt) {
@@ -1060,6 +1097,7 @@ class MainActivity : Activity() {
         root.addView(card("下一步提示", support.studentFeedback, ColorToken.SuccessSoft))
         root.addView(card("老師/志工摘要", support.handoffSummary, ColorToken.Card))
         root.addView(adaptiveNextStepCard(q, false))
+        if (recoveryTaskTitle.isNotBlank()) root.addView(recoveryTaskCard())
         addOfflineSyncItem("AI 錯題詳解：${q.concept}", "真 AI 錯題支持", support.handoffSummary)
         recordLearningEvent("ai_wrong_answer_support", "真 AI 錯題支持：${q.concept}", support.diagnosis)
         root.addView(ui.primaryButton("回題目再試一次") { renderLesson() })
@@ -1077,6 +1115,7 @@ class MainActivity : Activity() {
         root.addView(supportStepCard("02", "先把概念拆小", "${q.explanation}\n現在只要先記住這一個規則，不需要一次背完 am / is / are。", ColorToken.VioletSoft, ColorToken.Primary))
         root.addView(supportStepCard("03", "你可以選下一步", "回到同一題再試一次；如果仍然不舒服，English+ 會幫你把狀況整理給志工。", ColorToken.PrimarySoft, ColorToken.Success))
         root.addView(adaptiveNextStepCard(q, false))
+        if (recoveryTaskTitle.isNotBlank()) root.addView(recoveryTaskCard())
         root.addView(ui.primaryButton("回題目再試一次") { renderLesson() })
         root.addView(ui.secondaryButton("交給志工接力") { renderHelpRequest() })
         bottomNav()
@@ -1093,6 +1132,8 @@ class MainActivity : Activity() {
 
     private fun handleHelpRequest(option: HelpRequestOption) {
         lastAnswerMessage = option.studentText
+        preparedHelpSummary = buildPreparedHelpSummary(option)
+        addOfflineSyncItem("求助摘要：${option.reason}", "老師/志工接力", preparedHelpSummary)
         recordLearningEvent("help_request", option.reason, option.platformAction)
         when (option.route) {
             "AI 先處理" -> renderAiCoach()
@@ -1104,10 +1145,33 @@ class MainActivity : Activity() {
             }
             "離線任務" -> renderOfflinePacks()
             else -> {
-                breakpoints.add(0, Breakpoint(option.reason, "高", option.studentText, option.platformAction, "志工先肯定狀態，再用同一概念做低壓陪練。"))
+                breakpoints.add(0, Breakpoint(option.reason, "高", preparedHelpSummary, option.platformAction, "志工先肯定狀態，再用同一概念做低壓陪練。"))
                 renderHandoff()
             }
         }
+    }
+
+    private fun buildPreparedHelpSummary(option: HelpRequestOption? = null): String {
+        val q = questions.getOrNull(currentQuestionIndex)
+        val selected = lastSelectedAnswer.ifBlank { "尚未記錄選項" }
+        val recovery = recoveryTaskDetail.ifBlank { "目前沒有額外補救任務；可先用一題低壓題確認概念。" }
+        val route = option?.route ?: "接力"
+        val reason = option?.reason ?: breakpoints.firstOrNull()?.title ?: "學生主動求助"
+        val studentText = option?.studentText ?: lastAnswerMessage
+        val concept = q?.concept ?: "目前題目"
+        val prompt = q?.prompt ?: "尚未定位題目"
+        val answer = q?.answer ?: "未記錄"
+        return """
+            學生：${student.name}｜班級/群組：${currentAccount().classCode}
+            求助原因：$reason
+            學生原話：$studentText
+            分流路線：$route
+            最近題目：$prompt
+            概念：$concept
+            學生剛剛選：$selected｜正確答案：$answer
+            補救任務：$recovery
+            建議接力：先肯定學生願意求助，再只帶同一概念 1-2 題，不追加新作業。
+        """.trimIndent()
     }
 
     private fun renderBreakpoints() {
@@ -1122,10 +1186,12 @@ class MainActivity : Activity() {
 
     private fun renderHandoff() {
         screen = Screen.Handoff
+        if (preparedHelpSummary.isBlank()) preparedHelpSummary = buildPreparedHelpSummary()
         shell("雲端志工接力", "把真人時間用在最值得的地方")
         root.addView(preparedHandoffCard())
         root.addView(card("學生摘要", "${student.name}｜${student.location}｜${student.goal}\n目前心情：${mood.label}\n今日任務時間：${minutes} 分鐘", ColorToken.PrimarySoft))
         root.addView(card("斷點摘要", "${breakpoints.first().title}\n證據：${breakpoints.first().evidence}\nAI 已做：${breakpoints.first().aiAction}", ColorToken.WarningSoft))
+        root.addView(card("AI 整理交接摘要", preparedHelpSummary, ColorToken.PrimarySoft))
         root.addView(card("建議陪伴語", "你願意回來做修復任務已經很好。今天我們只看一個規則，先不追完整進度。", ColorToken.SuccessSoft))
         root.addView(card("協作狀態", "志工回覆：${mentorReplyCount} 則\n協作紀錄：${collaborationNotes.size} 筆\n待同步：${offlinePendingCount} 件", ColorToken.Card))
         root.addView(remoteCollaborationStatusCard())
@@ -3864,6 +3930,24 @@ class MainActivity : Activity() {
         }
         return ui.margins(box, 0, 8, 0, 12)
     }
+
+    private fun recoveryTaskCard(): View {
+        val box = ui.container(ColorToken.WarningSoft, ColorToken.Border)
+        box.addView(ui.statusPill("錯題補救", ColorToken.Warning))
+        box.addView(ui.label(recoveryTaskTitle, 19, ColorToken.Ink, true).apply {
+            setPadding(0, ui.dp(10), 0, ui.dp(4))
+        })
+        box.addView(ui.body(recoveryTaskDetail, "#334155"))
+        box.addView(metricRow(
+            Metric("狀態", "待修復", ColorToken.Warning),
+            Metric("題型", selectedPracticeType, ColorToken.Primary),
+            Metric("信心", "$confidence%", if (confidence < 45) ColorToken.Warning else ColorToken.Success)
+        ))
+        box.addView(ui.primaryButton("開始補救任務") { startRecoveryTask() })
+        box.addView(ui.secondaryButton("整理給老師/志工") { renderHelpRequest() })
+        return ui.margins(box, 0, 8, 0, 12)
+    }
+
     private fun practiceRecommendationCard(items: List<QuestionBankItem>): View {
         val recommendedLevel = when {
             confidence >= 70 -> "B1 進階挑戰"
