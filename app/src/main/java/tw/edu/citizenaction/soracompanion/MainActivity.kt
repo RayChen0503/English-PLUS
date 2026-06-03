@@ -312,11 +312,10 @@ class MainActivity : Activity() {
     }
 
     private fun studentHome() {
-        root.addView(classContextCard())
-        root.addView(studentFirstStepCard())
-        root.addView(flowStrip("心情檢測", "AI 排任務", "開始短任務", "答題回饋"))
-        root.addView(ui.secondaryButton("帳號與班級資料") { renderAccountCenter() })
-        root.addView(ui.secondaryButton("回到身分選擇") { renderRoleGateway() })
+        root.addView(studentStatusHeader())
+        root.addView(studentTodayQuestCard())
+        root.addView(studentLearningPathCard())
+        root.addView(studentQuickPracticeCard())
         bottomNav()
     }
 
@@ -515,26 +514,16 @@ class MainActivity : Activity() {
         }
         screen = Screen.Lesson
         shell("今天先做這個", "把英文練習縮到現在做得到的一小步")
-        root.addView(currentTaskFocus())
-        root.addView(todayProgressCard())
+        root.addView(studentStatusHeader())
+        root.addView(studentTodayQuestCard())
         root.addView(dailyAiTaskPlanCard())
-        root.addView(practiceCenterEntryCard())
-        root.addView(ui.secondaryButton("查看今日學習契約") { renderLearningContract() })
-        section("做完第一步後")
-        studyTasks.drop(1).forEach { root.addView(taskCard(it)) }
+        root.addView(studentQuickPracticeCard())
         if (customTaskCount > 0) {
             section("老師新增任務")
             repeat(customTaskCount) { index ->
                 root.addView(taskCard(StudyTask("志工接力任務 ${index + 1}", 3, "低", "由老師端依斷點新增，完成後會回寫週報。", "老師指派")))
             }
         }
-        root.addView(ui.secondaryButton("新增一個低壓自訂任務") {
-            customTaskCount += 1
-            addOfflineSyncItem("老師新增低壓任務", "任務設定", "新增 1 個志工接力低壓任務，待同步到老師端。")
-            persistState()
-            renderTaskQueue()
-        })
-        root.addView(ui.primaryButton("進入練習中心選題") { renderStudentPracticeCatalog() })
         bottomNav()
     }
 
@@ -2150,6 +2139,101 @@ class MainActivity : Activity() {
         return ui.margins(box, 0, 8, 0, 16)
     }
 
+    private fun studentStatusHeader(): View {
+        val box = ui.container(ColorToken.Card, ColorToken.Border)
+        val titleRow = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+        }
+        val titleStack = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
+        titleStack.addView(ui.label("English+", 22, ColorToken.Ink, true))
+        titleStack.addView(ui.body("今天只要完成下一個小關卡", ColorToken.Muted))
+        titleRow.addView(titleStack, LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f))
+        titleRow.addView(ui.statusPill("${completedTasks} 天", ColorToken.Accent))
+        titleRow.addView(ui.statusPill("${confidence}%", ColorToken.Success))
+        box.addView(titleRow)
+        box.addView(ProgressBar(this, null, android.R.attr.progressBarStyleHorizontal).apply {
+            max = 100
+            progress = confidence.coerceIn(0, 100)
+            setPadding(0, ui.dp(12), 0, ui.dp(4))
+        })
+        return ui.margins(box, 0, 8, 0, 12)
+    }
+
+    private fun studentTodayQuestCard(): View {
+        val title = if (!checkInCompleted) "先做 4 題狀態檢測" else "開始今天的英文小任務"
+        val detail = if (!checkInCompleted) {
+            "完成後 English+ 會依照心情、時間與想練的題型安排任務。"
+        } else {
+            "預計 ${minutes} 分鐘，先做一題剛好的題目；卡住時會有 AI 回饋或真人接力。"
+        }
+        val actionText = when {
+            !checkInCompleted -> "開始檢測"
+            !practiceTimeConfirmed -> "產生任務"
+            else -> "開始第一題"
+        }
+        val action = when {
+            !checkInCompleted -> ({ renderCheckIn() })
+            !practiceTimeConfirmed -> ({ confirmPracticeTimeAndPlanToday() })
+            else -> ({ renderLesson() })
+        }
+        val box = ui.container(ColorToken.PrimarySoft, ColorToken.Primary)
+        box.addView(ui.statusPill("今日主線", ColorToken.Primary))
+        box.addView(ui.label(title, 23, ColorToken.Ink, true).apply { setPadding(0, ui.dp(12), 0, ui.dp(6)) })
+        box.addView(ui.body(detail, "#334155"))
+        box.addView(metricRow(
+            Metric("時間", "${minutes} 分", ColorToken.Accent),
+            Metric("題數", "${targetDailyQuestionCount()} 題", ColorToken.Primary),
+            Metric("狀態", mood.label, mood.color)
+        ))
+        box.addView(ui.primaryButton(actionText) { action.invoke() })
+        return ui.margins(box, 0, 8, 0, 14)
+    }
+
+    private fun studentLearningPathCard(): View {
+        val box = ui.container(ColorToken.Card, ColorToken.Border)
+        box.addView(ui.statusPill("學習路徑", ColorToken.Success))
+        box.addView(ui.label("沿著路徑往下完成", 19, ColorToken.Ink, true).apply { setPadding(0, ui.dp(10), 0, ui.dp(4)) })
+        box.addView(pathNode("1", "心情檢測", if (checkInCompleted) "已完成" else "目前關卡", checkInCompleted, !checkInCompleted) { renderCheckIn() })
+        box.addView(pathNode("2", "AI 安排今日任務", if (practiceTimeConfirmed) "已完成" else "下一步", practiceTimeConfirmed, checkInCompleted && !practiceTimeConfirmed) { confirmPracticeTimeAndPlanToday() })
+        box.addView(pathNode("3", "短題練習", if (todayAnsweredFirstQuestion) "已完成" else "待開始", todayAnsweredFirstQuestion, practiceTimeConfirmed && !todayAnsweredFirstQuestion) { renderTaskQueue() })
+        box.addView(pathNode("4", "反思與學習地圖", if (todayReflected) "已完成" else "完成後開啟", todayReflected, todayAnsweredFirstQuestion && !todayReflected) { renderReflection() })
+        return ui.margins(box, 0, 8, 0, 14)
+    }
+
+    private fun pathNode(number: String, title: String, state: String, done: Boolean, active: Boolean, action: () -> Unit): View {
+        val row = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            setPadding(0, ui.dp(8), 0, ui.dp(8))
+            if (active || done) setOnClickListener { action() }
+        }
+        val color = when {
+            done -> ColorToken.Success
+            active -> ColorToken.Primary
+            else -> ColorToken.Muted
+        }
+        row.addView(ui.label(if (done) "✓" else number, 16, "#FFFFFF", true).apply {
+            gravity = Gravity.CENTER
+            setPadding(ui.dp(10), ui.dp(7), ui.dp(10), ui.dp(7))
+            background = ui.rounded(color, color)
+        })
+        val text = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
+        text.addView(ui.label(title, 16, ColorToken.Ink, true))
+        text.addView(ui.body(state, ColorToken.Muted))
+        row.addView(text, LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f).apply { leftMargin = ui.dp(12) })
+        if (active) row.addView(ui.statusPill("開始", ColorToken.Primary))
+        return row
+    }
+
+    private fun studentQuickPracticeCard(): View {
+        val box = ui.container(ColorToken.Surface, ColorToken.Border)
+        box.addView(ui.statusPill("快速入口", ColorToken.Accent))
+        box.addView(ui.label("想自己挑題也可以", 18, ColorToken.Ink, true).apply { setPadding(0, ui.dp(10), 0, ui.dp(4)) })
+        box.addView(ui.body("依難度與題型挑戰更多題目；主線任務仍會保留。", ColorToken.Muted))
+        box.addView(ui.secondaryButton("打開練習中心") { renderStudentPracticeCatalog() })
+        return ui.margins(box, 0, 8, 0, 12)
+    }
     private fun studentFirstStepCard(): View {
         val box = ui.sectionBand(ColorToken.Card)
         box.addView(ui.eyebrow("今天先做這一步"))
