@@ -112,6 +112,8 @@ class MainActivity : Activity() {
     private var recoveryTaskDetail = ""
     private var recoveryTaskQuestionIndex: Int? = null
     private var preparedHelpSummary = ""
+    private var latestTeacherAiSummary = ""
+    private var latestVolunteerDraft = ""
     private val checkInAnswers = mutableMapOf<String, String>()
 
     private val student = PrototypeRepository.student
@@ -332,6 +334,7 @@ class MainActivity : Activity() {
 
     private fun mentorHome() {
         root.addView(mentorCommandCenterCard())
+        root.addView(teacherAiBriefingCard())
         root.addView(mentorPriorityStudentCard())
         root.addView(mentorRouteCard())
         root.addView(mentorWorkspaceEntrancesCard())
@@ -1529,6 +1532,7 @@ class MainActivity : Activity() {
         root.addView(card("目前斷點", row.issue, if (row.risk == "高") ColorToken.WarningSoft else ColorToken.PrimarySoft))
         root.addView(card("最新狀態", row.status, ColorToken.Card))
         root.addView(card("學習證據", "最近任務：${studyTasks.first().title}\n答題事件：${learningEventCount} 筆\n錯題修復：${repairedMistakeCount} 筆\n目前信心：$confidence%", ColorToken.PrimarySoft))
+        root.addView(teacherAiStudentSummaryCard(row))
         root.addView(card("老師下一步", if (row.risk == "高") "先用陪伴腳本降低挫折，再只帶同一概念兩題。" else "保留低壓任務，觀察是否願意回來完成。", ColorToken.SuccessSoft))
         root.addView(ui.primaryButton("查看接力腳本") { renderMentorScript() })
         root.addView(ui.secondaryButton("回學生列表") { renderRoster() })
@@ -1539,6 +1543,7 @@ class MainActivity : Activity() {
         screen = Screen.Mentor
         shell("接力優先序", "先處理最需要真人的一位")
         root.addView(mentorHandoffHeaderCard())
+        root.addView(teacherAiBriefingCard())
         root.addView(remoteCollaborationStatusCard())
         handoffPriorities.forEach { root.addView(priorityCard(it)) }
         section("最新協作紀錄")
@@ -1560,6 +1565,7 @@ class MainActivity : Activity() {
         root.addView(card("處理規則", "先完成高風險學生，再處理協作與報告。每完成一件事，系統都會寫入協作紀錄，方便下一位老師或志工接續。", ColorToken.PrimarySoft))
         root.addView(flowStrip("看待辦", "處理一件", "寫入紀錄", "同步"))
         root.addView(remoteCollaborationStatusCard())
+        root.addView(teacherAiBriefingCard())
         teacherActions.forEach { root.addView(teacherActionCard(it)) }
         root.addView(ui.primaryButton("標記一件待辦已處理") {
             actionDoneCount = (actionDoneCount + 1).coerceAtMost(teacherActions.size)
@@ -2241,6 +2247,93 @@ class MainActivity : Activity() {
         ))
         box.addView(ui.primaryButton("查看第一優先學生") { renderStudentDetail(roster.first()) })
         return ui.margins(box, 0, 8, 0, 14)
+    }
+
+    private fun teacherAiBriefingCard(): View {
+        val roster = currentRoster()
+        val firstHighRisk = roster.firstOrNull { it.risk == "高" } ?: roster.first()
+        val pending = (teacherActions.size - actionDoneCount).coerceAtLeast(0)
+        latestTeacherAiSummary = buildTeacherAiSummary(firstHighRisk)
+        latestVolunteerDraft = buildVolunteerReplyDraft(firstHighRisk)
+        val box = ui.container(ColorToken.SuccessSoft, ColorToken.Success)
+        box.addView(ui.statusPill("AI 接力摘要", ColorToken.Success))
+        box.addView(ui.label("今天先處理：${firstHighRisk.name}", 20, ColorToken.Ink, true).apply {
+            setPadding(0, ui.dp(10), 0, ui.dp(4))
+        })
+        box.addView(ui.body(latestTeacherAiSummary, "#334155"))
+        box.addView(metricRow(
+            Metric("待辦", "$pending 件", if (pending > 0) ColorToken.Warning else ColorToken.Success),
+            Metric("協作", "${collaborationNotes.size} 筆", ColorToken.Primary),
+            Metric("補救", "$repairedMistakeCount 筆", ColorToken.Accent)
+        ))
+        box.addView(ui.secondaryButton("查看這位學生") { renderStudentDetail(firstHighRisk) })
+        box.addView(ui.secondaryButton("存成接力紀錄") {
+            addAiHandoffCollaborationNote(firstHighRisk)
+            renderHandoffBoard()
+        })
+        return ui.margins(box, 0, 8, 0, 14)
+    }
+
+    private fun teacherAiStudentSummaryCard(row: StudentRow): View {
+        val summary = buildTeacherAiSummary(row)
+        val draft = buildVolunteerReplyDraft(row)
+        val box = ui.container(ColorToken.PrimarySoft, ColorToken.Border)
+        box.addView(ui.statusPill("AI 判讀", if (row.risk == "高") ColorToken.Warning else ColorToken.Primary))
+        box.addView(ui.label("老師/志工看這段就能接手", 19, ColorToken.Ink, true).apply {
+            setPadding(0, ui.dp(10), 0, ui.dp(4))
+        })
+        box.addView(ui.body(summary, "#334155"))
+        box.addView(ui.divider())
+        box.addView(ui.label("志工可直接回覆", 16, ColorToken.Ink, true))
+        box.addView(ui.body(draft, ColorToken.Success).apply {
+            setPadding(0, ui.dp(6), 0, 0)
+        })
+        box.addView(ui.secondaryButton("把摘要寫入協作紀錄") {
+            latestTeacherAiSummary = summary
+            latestVolunteerDraft = draft
+            addAiHandoffCollaborationNote(row)
+            renderStudentDetail(row)
+        })
+        return ui.margins(box, 0, 8, 0, 12)
+    }
+
+    private fun buildTeacherAiSummary(row: StudentRow): String {
+        val urgency = when (row.risk) {
+            "高" -> "今天需要真人接力"
+            "中" -> "本週持續追蹤"
+            else -> "保留自學節奏"
+        }
+        val recovery = recoveryTaskTitle.ifBlank { "目前沒有未完成補救任務" }
+        val help = preparedHelpSummary.ifBlank { "尚未有新的學生求助摘要" }
+        return """
+            判斷：$urgency。
+            主要訊號：${row.issue}
+            最新狀態：${row.status}
+            目前學習證據：答題事件 $learningEventCount 筆、錯題修復 $repairedMistakeCount 筆、信心 $confidence%。
+            補救任務：$recovery
+            求助摘要：${help.lineSequence().take(3).joinToString(" / ")}
+            建議：先用低壓語句回應，再只帶同一概念 1-2 題；不要把今日任務加長。
+        """.trimIndent()
+    }
+
+    private fun buildVolunteerReplyDraft(row: StudentRow): String {
+        val concept = questions.getOrNull(currentQuestionIndex)?.concept ?: "剛剛卡住的概念"
+        return if (row.risk == "高" || confidence < 45 || recoveryTaskTitle.isNotBlank()) {
+            "我看到你剛剛卡在「$concept」，願意求助已經很好。今天不用多做，我們只一起看同一個規則，再做 1 題就好。"
+        } else {
+            "你今天已經完成主要任務了。下一步不用急著加題，先保留現在的節奏；如果想挑戰，我再陪你看一題比較難的。"
+        }
+    }
+
+    private fun addAiHandoffCollaborationNote(row: StudentRow) {
+        addCollaborationNote(
+            actor = currentAccount().displayName,
+            roleLabel = currentAccount().roleLabel,
+            target = row.name,
+            note = "${latestTeacherAiSummary.ifBlank { buildTeacherAiSummary(row) }}\n\n回覆草稿：${latestVolunteerDraft.ifBlank { buildVolunteerReplyDraft(row) }}",
+            status = "AI 接力摘要"
+        )
+        addOfflineSyncItem("AI 接力摘要：${row.name}", "老師/志工協作", latestTeacherAiSummary.ifBlank { buildTeacherAiSummary(row) })
     }
 
     private fun mentorRouteCard(): View {
@@ -4286,6 +4379,10 @@ class MainActivity : Activity() {
         box.addView(top)
         box.addView(ui.body("負責：${item.owner}", ColorToken.Muted))
         box.addView(ui.body("下一步：${item.nextAction}", ColorToken.Success))
+        val targetRow = currentRoster().firstOrNull { item.title.contains(it.name) } ?: currentRoster().first()
+        box.addView(ui.divider())
+        box.addView(ui.body("AI 摘要：${buildTeacherAiSummary(targetRow).lineSequence().take(2).joinToString(" / ")}", "#334155"))
+        box.addView(ui.secondaryButton("查看 AI 接力資料") { renderStudentDetail(targetRow) })
         return ui.margins(box, 0, 8, 0, 8)
     }
 
