@@ -324,20 +324,11 @@ class MainActivity : Activity() {
     }
 
     private fun mentorHome() {
-        root.addView(classContextCard())
-        root.addView(mentorDailyCommandCard())
+        root.addView(mentorCommandCenterCard())
         root.addView(mentorPriorityStudentCard())
-        root.addView(mentorWorkflowCard())
-        section("今天的工作入口")
-        root.addView(actionGrid(
-            ActionItem("學生證據", "先看誰需要介入") { renderTeacherLearningEvidence() },
-            ActionItem("待辦處理", "照順序完成接力") { renderActionQueue() },
-            ActionItem("協作同步", "確認雲端與本機") { renderSyncCenter() },
-            ActionItem("週報摘要", "回看班級趨勢") { renderWeeklyReport() }
-        ))
-        section("本週班級訊號")
-        weeklySignals.take(3).forEach { root.addView(signalCard(it)) }
-        root.addView(mentorOperationsSummaryCard())
+        root.addView(mentorRouteCard())
+        root.addView(mentorWorkspaceEntrancesCard())
+        root.addView(mentorSignalStripCard())
         root.addView(ui.secondaryButton("回到身分選擇") { renderRoleGateway() })
         bottomNav()
     }
@@ -1365,13 +1356,8 @@ class MainActivity : Activity() {
 
     private fun renderRoster() {
         screen = Screen.Roster
-        shell("學生證據", "先看風險與最新狀態，再決定要不要介入")
-        root.addView(card("列表用途", "這是老師/志工端的班級觀察頁，不是學生自己的學習地圖。點學生卡片可看接力資料；看整體學習證據可進入證據面板。", ColorToken.PrimarySoft))
-        root.addView(metricRow(
-            Metric("管理中", "${currentRoster().size} 位", ColorToken.Primary),
-            Metric("高風險", "${currentRoster().count { it.risk == "高" }} 位", ColorToken.Danger),
-            Metric("可自學", "${currentRoster().count { it.risk == "低" }} 位", ColorToken.Success)
-        ))
+        shell("學生證據", "先看誰需要接力")
+        root.addView(teacherRosterHeaderCard())
         currentRoster().forEach { row -> root.addView(studentRowCard(row)) }
         root.addView(ui.primaryButton("查看班級學習證據") { renderTeacherLearningEvidence() })
         root.addView(ui.primaryButton("查看 ${student.name} 的斷點") { renderBreakpoints() })
@@ -1398,9 +1384,8 @@ class MainActivity : Activity() {
 
     private fun renderHandoffBoard() {
         screen = Screen.Mentor
-        shell("接力優先序", "把有限的真人時間安排到最需要的地方")
-        root.addView(card("排序規則", "高風險情緒斷點 > 連續錯題 > 重複退出 > 一般複習。AI 可處理低風險，真人處理高價值斷點。", ColorToken.PrimarySoft))
-        root.addView(flowStrip("確認學生", "分派負責人", "回填紀錄", "同步週報"))
+        shell("接力優先序", "先處理最需要真人的一位")
+        root.addView(mentorHandoffHeaderCard())
         root.addView(remoteCollaborationStatusCard())
         handoffPriorities.forEach { root.addView(priorityCard(it)) }
         section("最新協作紀錄")
@@ -2069,6 +2054,107 @@ class MainActivity : Activity() {
             box.addView(ui.body(detail, "#334155"))
         }
         box.addView(ui.primaryButton(actionText) { action() })
+        return ui.margins(box, 0, 8, 0, 14)
+    }
+
+    private fun mentorCommandCenterCard(): View {
+        val roster = currentRoster()
+        val highRisk = roster.count { it.risk == "高" }
+        val middleRisk = roster.count { it.risk == "中" }
+        val pending = (teacherActions.size - actionDoneCount).coerceAtLeast(0)
+        val box = ui.container(ColorToken.PrimarySoft, ColorToken.Primary)
+        box.addView(ui.statusPill("老師工作台", ColorToken.Primary))
+        box.addView(ui.label("今天先接住 $highRisk 位學生", 24, ColorToken.Ink, true).apply {
+            setPadding(0, ui.dp(10), 0, ui.dp(4))
+        })
+        box.addView(ui.body("先看高風險，再派待辦；低風險學生保留自己的學習節奏。", "#334155"))
+        box.addView(metricRow(
+            Metric("高風險", "$highRisk 位", if (highRisk > 0) ColorToken.Danger else ColorToken.Success),
+            Metric("追蹤", "$middleRisk 位", ColorToken.Warning),
+            Metric("待辦", "$pending 件", if (pending > 0) ColorToken.Warning else ColorToken.Success)
+        ))
+        box.addView(ui.primaryButton("查看第一優先學生") { renderStudentDetail(roster.first()) })
+        return ui.margins(box, 0, 8, 0, 14)
+    }
+
+    private fun mentorRouteCard(): View {
+        val box = ui.container(ColorToken.Card, ColorToken.Border)
+        box.addView(ui.statusPill("今日順序", ColorToken.Success))
+        box.addView(ui.label("看訊號，再接力", 19, ColorToken.Ink, true).apply {
+            setPadding(0, ui.dp(10), 0, ui.dp(4))
+        })
+        box.addView(flowStrip("學生證據", "指派待辦", "回填紀錄", "同步週報"))
+        box.addView(ui.body("這個流程只給老師／志工端使用，學生端不會看到接力資料。", ColorToken.Muted))
+        return ui.margins(box, 0, 0, 0, 14)
+    }
+
+    private fun mentorWorkspaceEntrancesCard(): View {
+        val box = ui.container(ColorToken.Card, ColorToken.Border)
+        box.addView(ui.statusPill("工作入口", ColorToken.Primary))
+        box.addView(ui.label("選一件事開始處理", 19, ColorToken.Ink, true).apply {
+            setPadding(0, ui.dp(10), 0, ui.dp(6))
+        })
+        box.addView(actionGrid(
+            ActionItem("學生證據", "看風險與斷點") { renderRoster() },
+            ActionItem("接力優先序", "分派真人協助") { renderHandoffBoard() },
+            ActionItem("待辦處理", "完成回填紀錄") { renderActionQueue() },
+            ActionItem("週報摘要", "輸出班級報告") { renderWeeklyReport() }
+        ))
+        return ui.margins(box, 0, 0, 0, 14)
+    }
+
+    private fun mentorSignalStripCard(): View {
+        val box = ui.container(ColorToken.Surface, ColorToken.Border)
+        box.addView(ui.statusPill("班級訊號", ColorToken.Accent))
+        weeklySignals.take(2).forEach { signal ->
+            val row = LinearLayout(this).apply {
+                orientation = LinearLayout.HORIZONTAL
+                gravity = Gravity.CENTER_VERTICAL
+                setPadding(0, ui.dp(8), 0, ui.dp(8))
+            }
+            val text = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
+            text.addView(ui.label(signal.label, 16, ColorToken.Ink, true))
+            text.addView(ui.body(signal.note, ColorToken.Muted))
+            row.addView(text, LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f))
+            row.addView(ui.statusPill(signal.value, signal.color))
+            box.addView(row)
+        }
+        box.addView(ui.secondaryButton("查看同步中心") { renderSyncCenter() })
+        return ui.margins(box, 0, 0, 0, 14)
+    }
+
+    private fun teacherRosterHeaderCard(): View {
+        val roster = currentRoster()
+        val highRisk = roster.count { it.risk == "高" }
+        val lowRisk = roster.count { it.risk == "低" }
+        val box = ui.container(ColorToken.PrimarySoft, ColorToken.Primary)
+        box.addView(ui.statusPill("班級雷達", ColorToken.Primary))
+        box.addView(ui.label("先看紅色風險卡", 21, ColorToken.Ink, true).apply {
+            setPadding(0, ui.dp(10), 0, ui.dp(4))
+        })
+        box.addView(metricRow(
+            Metric("管理中", "${roster.size} 位", ColorToken.Primary),
+            Metric("高風險", "$highRisk 位", if (highRisk > 0) ColorToken.Danger else ColorToken.Success),
+            Metric("可自學", "$lowRisk 位", ColorToken.Success)
+        ))
+        box.addView(ui.body("點學生卡片即可進入接力資料。", "#334155"))
+        return ui.margins(box, 0, 8, 0, 14)
+    }
+
+    private fun mentorHandoffHeaderCard(): View {
+        val urgent = handoffPriorities.count { it.urgency == "高" }
+        val pending = (teacherActions.size - actionDoneCount).coerceAtLeast(0)
+        val box = ui.container(ColorToken.WarningSoft, ColorToken.Warning)
+        box.addView(ui.statusPill("真人接力", ColorToken.Warning))
+        box.addView(ui.label("先處理 $urgent 個高優先斷點", 21, ColorToken.Ink, true).apply {
+            setPadding(0, ui.dp(10), 0, ui.dp(4))
+        })
+        box.addView(flowStrip("確認學生", "分派負責人", "回填紀錄", "同步週報"))
+        box.addView(metricRow(
+            Metric("高優先", "$urgent 件", if (urgent > 0) ColorToken.Danger else ColorToken.Success),
+            Metric("待辦", "$pending 件", ColorToken.Warning),
+            Metric("協作", "${collaborationNotes.size} 筆", ColorToken.Primary)
+        ))
         return ui.margins(box, 0, 8, 0, 14)
     }
 
