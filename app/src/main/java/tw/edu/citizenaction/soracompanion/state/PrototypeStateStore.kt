@@ -334,6 +334,15 @@ class PrototypeStateStore(context: Context) {
 
     fun hasOpenRouterApiKey(): Boolean = OpenRouterClient.isLikelyOpenRouterKey(openRouterApiKey())
 
+    fun openRouterKeyPreview(): String {
+        val key = openRouterApiKey()
+        return if (hasOpenRouterApiKey() && key.length >= 12) {
+            "${key.take(7)}...${key.takeLast(4)}"
+        } else {
+            "尚未設定"
+        }
+    }
+
     fun saveOpenRouterModel(model: String) {
         prefs.edit().putString("openrouter_model", model.trim().ifBlank { OpenRouterClient.DEFAULT_MODEL }).apply()
     }

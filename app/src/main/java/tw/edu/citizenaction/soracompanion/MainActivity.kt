@@ -572,7 +572,7 @@ class MainActivity : Activity() {
 
     private fun renderCheckInAiSupport(result: CheckInResult) {
         if (!hasTrueAiRoute()) {
-            renderCheckInAiSupportFallback(result, "尚未設定真 AI Key，先使用本機備援支持。")
+            renderCheckInAiSupportFallback(result, "目前尚未啟用外部 AI，English+ 先用內建規則陪你完成今天的第一步。")
             return
         }
         screen = Screen.CheckIn
@@ -611,12 +611,13 @@ class MainActivity : Activity() {
 
     private fun renderCheckInAiSupportFallback(result: CheckInResult, notice: String) {
         screen = Screen.CheckIn
-        shell("AI 情緒支持備援", "先用本機規則接住狀態")
-        root.addView(card("真 AI 狀態", notice, ColorToken.WarningSoft))
+        shell("AI 情緒支持", "先用 English+ 內建輔助")
+        root.addView(card("目前使用內建輔助", notice, ColorToken.WarningSoft))
         root.addView(checkInResultCard(result))
         root.addView(card("給你的話", result.supportMessage, ColorToken.SuccessSoft))
         root.addView(card("今天先這樣做", result.nextStep, ColorToken.PrimarySoft))
         root.addView(ui.primaryButton("產生今日任務") { confirmPracticeTimeAndPlanToday() })
+        root.addView(ui.secondaryButton("設定 OpenRouter 真 AI") { renderAiLab() })
         bottomNav()
     }
     private fun confirmPracticeTimeAndPlanToday() {
@@ -645,7 +646,7 @@ class MainActivity : Activity() {
             return
         }
         if (!stateStore.hasOpenRouterApiKey()) {
-            applyLocalDailyTaskPlan(candidates, "尚未設定 OpenRouter Key，先用本機規則依照你的心情、時間與題型偏好排序。")
+            applyLocalDailyTaskPlan(candidates, "目前尚未啟用 OpenRouter 真 AI，先用 English+ 內建規則依照你的心情、時間與題型偏好排序。")
             renderTaskQueue()
             return
         }
@@ -1509,13 +1510,13 @@ class MainActivity : Activity() {
 
     private fun renderAiLab() {
         screen = Screen.AiLab
-        shell("AI 提示實驗室", "可切換 OpenRouter 真 AI、後端代理與本機備援")
+        shell("AI 設定", "啟用 OpenRouter 真 AI")
         root.addView(openAiStatusCard())
-        root.addView(card("OpenRouter 第一輪接入", "目前預設模型：${stateStore.openRouterModel()}。OpenRouter Key 可作內測原型；正式上架仍建議改成 HTTPS 後端代理，不把正式 Key 放手機。", ColorToken.WarningSoft))
-        root.addView(aiProxyEndpointCard())
+        root.addView(card("目前這一輪要做什麼", "先把 OpenRouter API Key 存在這台裝置，讓心情支持、錯題詳解與每日任務有機會呼叫真 AI。正式上架前仍建議改成後端代理，不把正式 Key 放手機。", ColorToken.PrimarySoft))
         root.addView(openRouterKeyEntryCard())
+        root.addView(aiProxyEndpointCard())
         root.addView(openAiKeyEntryCard())
-        root.addView(card("使用方式", "優先順序：HTTPS AI Proxy > OpenRouter free route > OpenAI Key > 本機備援。第一輪先讓真 AI 回饋可用，後續再接每日任務生成。", ColorToken.WarningSoft))
+        root.addView(card("使用方式", "優先順序：HTTPS AI Proxy > OpenRouter free route > OpenAI Key > English+ 內建輔助。如果 Key 沒設定、額度用完或網路失敗，APP 會自動回到內建輔助。", ColorToken.WarningSoft))
         aiScenarios.forEach { root.addView(aiScenarioCard(it)) }
         root.addView(ui.primaryButton("呼叫真 AI 生成回饋") { renderLiveAiFeedback() })
         root.addView(ui.secondaryButton("改用本機模擬生成") { renderGeneratedAiFeedback() })
@@ -1538,11 +1539,16 @@ class MainActivity : Activity() {
         box.addView(ui.label("目前 AI 路線：$provider", 18, ColorToken.Ink, true).apply {
             layoutParams = ui.fullWidthParams()
         })
+        box.addView(metricRow(
+            Metric("OpenRouter", if (stateStore.hasOpenRouterApiKey()) "已設定" else "未設定", if (stateStore.hasOpenRouterApiKey()) ColorToken.Success else ColorToken.Warning),
+            Metric("Key", stateStore.openRouterKeyPreview(), if (stateStore.hasOpenRouterApiKey()) ColorToken.Success else ColorToken.Muted),
+            Metric("模型", stateStore.openRouterModel(), ColorToken.Primary)
+        ))
         box.addView(ui.body(
             if (hasRemoteAi) {
                 "按下「呼叫真 AI」時會送出目前題目、情緒狀態與錯題次數；如果網路或 API 失敗，會自動回到本機備援。"
             } else {
-                "目前不會連線到外部 AI。你可以先用展示模式，或在下方貼上 OpenRouter API Key 後啟用真 AI 回饋。"
+                "目前不會連線到外部 AI。你可以先用展示模式，或在下方貼上 OpenRouter API Key 後啟用真 AI。"
             }
         ))
         return ui.margins(box, 0, 8, 0, 12)
@@ -1580,7 +1586,12 @@ class MainActivity : Activity() {
     private fun openRouterKeyEntryCard(): View {
         val box = ui.container(ColorToken.Card, ColorToken.Border)
         box.addView(ui.label("OpenRouter Key 設定", 18, ColorToken.Ink, true))
-        box.addView(ui.body("內測原型使用。Key 只存在這台裝置私人設定，不會寫進 GitHub。預設使用 openrouter/free，讓平台從免費模型路由中選擇可用模型。"))
+        box.addView(ui.body("內測原型使用。Key 只存在這台裝置私人設定，不會寫進 GitHub。貼上後，APP 會優先使用 OpenRouter 產生 AI 回覆。"))
+        box.addView(metricRow(
+            Metric("Key", stateStore.openRouterKeyPreview(), if (stateStore.hasOpenRouterApiKey()) ColorToken.Success else ColorToken.Warning),
+            Metric("模型", stateStore.openRouterModel(), ColorToken.Primary),
+            Metric("狀態", if (stateStore.hasOpenRouterApiKey()) "可啟用" else "待設定", if (stateStore.hasOpenRouterApiKey()) ColorToken.Success else ColorToken.Warning)
+        ))
 
         val keyInput = EditText(this).apply {
             hint = if (stateStore.hasOpenRouterApiKey()) "已設定，可貼上新 Key 覆蓋" else "貼上 sk-or- 開頭的 OpenRouter API Key"
@@ -1617,9 +1628,12 @@ class MainActivity : Activity() {
                 stateStore.saveOpenRouterApiKey(key)
                 stateStore.saveOpenRouterModel(model)
                 recordLearningEvent("ai_config", "已更新 OpenRouter API Key", "模型：$model")
+            } else if (key.isBlank() && stateStore.hasOpenRouterApiKey()) {
+                stateStore.saveOpenRouterModel(model)
+                recordLearningEvent("ai_config", "已更新 OpenRouter 模型", "沿用既有 Key；模型：$model")
             } else {
                 stateStore.saveOpenRouterModel(model)
-                recordLearningEvent("ai_config", "OpenRouter API Key 未更新", "輸入內容不是 sk-or- 開頭；模型設定已保存為 $model。")
+                recordLearningEvent("ai_config", "OpenRouter API Key 未更新", "請貼上 sk-or- 開頭的 OpenRouter API Key；模型設定已保存為 $model。")
             }
             renderAiLab()
         })
