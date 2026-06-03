@@ -105,6 +105,9 @@ class MainActivity : Activity() {
     private var aiDailyPlanMessage = ""
     private var aiDailyPlanItemIds: List<String> = emptyList()
     private var aiDailyPlanSource = ""
+    private var aiReflectionFeedback = ""
+    private var aiMapRouteSuggestion = ""
+    private var aiPracticeTypeSuggestion = ""
     private val checkInAnswers = mutableMapOf<String, String>()
 
     private val student = PrototypeRepository.student
@@ -512,6 +515,7 @@ class MainActivity : Activity() {
         root.addView(studentStatusHeader())
         root.addView(studentTodayQuestCard())
         root.addView(dailyAiTaskPlanCard())
+        root.addView(studentAiPracticePreferenceCard())
         root.addView(studentQuickPracticeCard())
         if (customTaskCount > 0) {
             section("老師新增任務")
@@ -621,6 +625,25 @@ class MainActivity : Activity() {
         root.addView(ui.primaryButton("產生今日任務") { confirmPracticeTimeAndPlanToday() })
         root.addView(ui.secondaryButton("設定 OpenRouter 真 AI") { renderAiLab() })
         bottomNav()
+    }
+
+    private fun studentAiPracticePreferenceCard(): View {
+        val hasSuggestion = aiPracticeTypeSuggestion.isNotBlank()
+        val box = ui.container(if (hasSuggestion) ColorToken.PrimarySoft else ColorToken.Surface, ColorToken.Border)
+        box.addView(ui.statusPill(if (hasSuggestion) "題型已調整" else "題型建議", if (hasSuggestion) ColorToken.Primary else ColorToken.Muted))
+        box.addView(ui.label(if (hasSuggestion) aiPracticeTypeSuggestion else "先依心情檢測安排題型", 18, ColorToken.Ink, true).apply {
+            setPadding(0, ui.dp(10), 0, ui.dp(4))
+        })
+        box.addView(ui.body(
+            if (hasSuggestion) {
+                "English+ 會優先用這個題型安排練習；如果你覺得太簡單或太難，可以到練習中心重新選。"
+            } else {
+                "完成反思後，AI 會依答題狀態修正題型偏好。"
+            },
+            "#334155"
+        ))
+        if (hasSuggestion) box.addView(ui.secondaryButton("看這類題型") { renderStudentPracticeCatalog() })
+        return ui.margins(box, 0, 0, 0, 12)
     }
     private fun confirmPracticeTimeAndPlanToday() {
         practiceTimeConfirmed = true
@@ -855,10 +878,47 @@ class MainActivity : Activity() {
         lastAnswerMessage = prompt.platformResponse
         learningEventCount += 1
         todayReflected = true
+        applyAiReflectionAndRouteUpdate(prompt)
         addOfflineSyncItem("課後反思：${prompt.title}", "反思紀錄", prompt.studentChoice)
         persistState()
         recordLearningEvent("reflection", prompt.title, prompt.studentChoice)
         renderReflectionSaved(prompt)
+    }
+
+    private fun applyAiReflectionAndRouteUpdate(prompt: ReflectionPrompt) {
+        val currentQuestion = questions.getOrNull(currentQuestionIndex)
+        val suggestedType = aiSuggestedPracticeType(currentQuestion)
+        selectedPracticeTypes = setOf(suggestedType)
+        selectedPracticeType = suggestedType
+        selectedPracticeLevel = when {
+            wrongAttempts > 0 || confidence < 45 -> "基礎 A1"
+            prompt.confidenceDelta >= 4 || confidence >= 70 -> "進階挑戰 B1"
+            else -> "標準 A2"
+        }
+        aiReflectionFeedback = when {
+            wrongAttempts > 0 || confidence < 45 -> "AI 判斷你今天需要先修復一個小概念，不急著加難度。"
+            prompt.confidenceDelta >= 4 || confidence >= 70 -> "AI 判斷你已經準備好挑戰更高一點的題型，但仍會保留支持節點。"
+            else -> "AI 判斷你適合維持穩定節奏，先把今天的題型做熟。"
+        }
+        aiPracticeTypeSuggestion = "建議題型：$suggestedType"
+        aiMapRouteSuggestion = when (selectedPracticeLevel) {
+            "基礎 A1" -> "地圖已調整為修復路線：先做短題，確認一個概念真的懂。"
+            "進階挑戰 B1" -> "地圖已解鎖挑戰路線：可以進入較長閱讀、克漏字或句子重組。"
+            else -> "地圖已調整為穩定路線：維持 A2 會考基準題型。"
+        }
+        recordLearningEvent("ai_reflection_route", aiReflectionFeedback, "$aiPracticeTypeSuggestion / $aiMapRouteSuggestion")
+    }
+
+    private fun aiSuggestedPracticeType(question: Question?): String {
+        val currentType = question?.let { normalizedLessonType(it) }
+        return when {
+            wrongAttempts > 0 && currentType != null -> currentType
+            selectedPracticeTypes.isNotEmpty() && !selectedPracticeTypes.contains("全部題型") -> selectedPracticeTypes.first()
+            confidence >= 70 -> "閱讀理解"
+            confidence < 45 -> "選擇題"
+            currentType != null -> currentType
+            else -> "填空題"
+        }
     }
 
     private fun renderReflectionSaved(prompt: ReflectionPrompt) {
@@ -866,6 +926,8 @@ class MainActivity : Activity() {
         shell("反思已保存", "把今天的小進步放回週報")
         root.addView(card("學生選擇", prompt.studentChoice, ColorToken.PrimarySoft))
         root.addView(card("平台回應", prompt.platformResponse, ColorToken.SuccessSoft))
+        root.addView(card("AI 反思回饋", aiReflectionFeedback.ifBlank { "English+ 已依照你的反思更新下一步路徑。" }, ColorToken.WarningSoft))
+        root.addView(card("學習地圖更新", "${aiMapRouteSuggestion.ifBlank { "維持目前學習路線。" }}\n${aiPracticeTypeSuggestion.ifBlank { "題型維持原設定。" }}", ColorToken.SuccessSoft))
         root.addView(todayProgressCard())
         root.addView(card("目前信心值", "$confidence%｜下次會從同一個斷點繼續，而不是直接加難度。", ColorToken.Card))
         root.addView(card("已寫入學習紀錄", "學習事件：${learningEventCount} 筆\n修復紀錄：${repairedMistakeCount} 筆\n待同步：${offlinePendingCount} 筆", ColorToken.PrimarySoft))
@@ -1094,6 +1156,7 @@ class MainActivity : Activity() {
         screen = Screen.Map
         shell("學習地圖", "看目前位置和下一關")
         root.addView(studentMapStatusCard())
+        root.addView(studentAiRouteInsightCard())
         root.addView(studentMapPathCard())
         root.addView(studentMapNextActionCard())
         root.addView(studentMapSupportCard())
@@ -2346,6 +2409,29 @@ class MainActivity : Activity() {
             "${targetDailyQuestionCount()} 題"
         ))
         return ui.margins(box, 0, 8, 0, 14)
+    }
+
+    private fun studentAiRouteInsightCard(): View {
+        val hasInsight = aiReflectionFeedback.isNotBlank() || aiMapRouteSuggestion.isNotBlank() || aiPracticeTypeSuggestion.isNotBlank()
+        val box = ui.container(if (hasInsight) ColorToken.SuccessSoft else ColorToken.Surface, if (hasInsight) ColorToken.Success else ColorToken.Border)
+        box.addView(ui.statusPill(if (hasInsight) "AI 已更新路線" else "AI 路線建議", if (hasInsight) ColorToken.Success else ColorToken.Muted))
+        box.addView(ui.label(if (hasInsight) "下一步已依反思調整" else "完成反思後會更新", 18, ColorToken.Ink, true).apply {
+            setPadding(0, ui.dp(10), 0, ui.dp(4))
+        })
+        box.addView(ui.body(
+            if (hasInsight) {
+                listOf(aiReflectionFeedback, aiMapRouteSuggestion, aiPracticeTypeSuggestion)
+                    .filter { it.isNotBlank() }
+                    .joinToString("\n")
+            } else {
+                "完成今日題目和 20 秒反思後，English+ 會依照信心、錯題與題型偏好調整學習地圖。"
+            },
+            "#334155"
+        ))
+        if (hasInsight) {
+            box.addView(ui.secondaryButton("依建議選題") { renderStudentPracticeCatalog() })
+        }
+        return ui.margins(box, 0, 0, 0, 14)
     }
 
     private fun studentMapPathCard(): View {
@@ -3614,9 +3700,9 @@ class MainActivity : Activity() {
     private fun normalizedLessonType(question: Question): String {
         return when {
             question.type.contains("cloze") || question.type.contains("克漏") -> "克漏字"
-            question.type.contains("reading") || question.type.contains("閱讀") -> "閱讀"
-            question.type.contains("fill") || question.type.contains("填") -> "填空"
-            question.type.contains("translation") || question.type.contains("翻") -> "翻譯"
+            question.type.contains("reading") || question.type.contains("閱讀") -> "閱讀理解"
+            question.type.contains("fill") || question.type.contains("填") -> "填空題"
+            question.type.contains("translation") || question.type.contains("翻") -> "翻譯/句子重組"
             else -> "選擇題"
         }
     }
