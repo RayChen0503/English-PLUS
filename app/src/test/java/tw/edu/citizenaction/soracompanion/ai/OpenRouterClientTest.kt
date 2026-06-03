@@ -13,7 +13,7 @@ class OpenRouterClientTest {
             model = OpenRouterClient.DEFAULT_MODEL,
             question = "He ___ a student.",
             concept = "be 動詞",
-            answerContext = "He 要搭配 is。",
+            answerContext = "學生剛剛選：are\n正確答案：is\nHe 要搭配 is。",
             moodLabel = "普通",
             wrongAttempts = 2
         )
@@ -24,6 +24,8 @@ class OpenRouterClientTest {
         assertEquals("user", messages.getJSONObject(1).getString("role"))
         assertTrue(messages.getJSONObject(0).getString("content").contains("Traditional Chinese"))
         assertTrue(messages.getJSONObject(1).getString("content").contains("He ___ a student."))
+        assertTrue(messages.getJSONObject(1).getString("content").contains("學生剛剛選"))
+        assertTrue(messages.getJSONObject(1).getString("content").contains("正確答案"))
         assertTrue(body.getInt("max_tokens") <= 500)
     }
 

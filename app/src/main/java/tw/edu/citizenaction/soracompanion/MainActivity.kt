@@ -594,11 +594,13 @@ class MainActivity : Activity() {
 
     private fun renderCheckInAiSupportResult(result: CheckInResult, support: AiSupportResult) {
         screen = Screen.CheckIn
-        shell("AI 情緒支持", support.source)
+        shell("AI 情緒支持", "真 AI 已回覆")
         root.addView(checkInResultCard(result))
-        root.addView(card("AI 分析", support.diagnosis, ColorToken.WarningSoft))
+        root.addView(aiSourceStatusCard("真 AI 已啟用", support.source, ColorToken.Success))
+        root.addView(card("今天狀態分析", support.diagnosis, ColorToken.WarningSoft))
         root.addView(card("給你的話", support.studentFeedback, ColorToken.SuccessSoft))
         root.addView(card("老師/志工摘要", support.handoffSummary, ColorToken.Card))
+        addOfflineSyncItem("AI 情緒支持：${result.title}", "真 AI 情緒支持", support.handoffSummary)
         recordLearningEvent("ai_emotional_support", "真 AI 情緒支持", support.diagnosis)
         root.addView(ui.primaryButton("產生今日任務") { confirmPracticeTimeAndPlanToday() })
         root.addView(ui.secondaryButton("重新做心情檢測") {
@@ -889,8 +891,8 @@ class MainActivity : Activity() {
         return when {
             stateStore.hasAiProxyEndpoint() -> AiProxyClient(stateStore.aiProxyEndpoint()).generateSupport(
                 question = q.prompt,
-                concept = q.concept,
-                answerContext = q.repairHint,
+                concept = "${q.concept}｜${q.type}",
+                answerContext = wrongAnswerAiContext(q),
                 moodLabel = mood.label,
                 wrongAttempts = wrongAttempts,
                 classCode = currentAccount().classCode
@@ -900,19 +902,31 @@ class MainActivity : Activity() {
                 model = stateStore.openRouterModel()
             ).generateSupport(
                 question = q.prompt,
-                concept = q.concept,
-                answerContext = q.repairHint,
+                concept = "${q.concept}｜${q.type}",
+                answerContext = wrongAnswerAiContext(q),
                 moodLabel = mood.label,
                 wrongAttempts = wrongAttempts
             )
             else -> OpenAiClient(stateStore.openAiApiKey()).generateSupport(
                 question = q.prompt,
-                concept = q.concept,
-                answerContext = q.repairHint,
+                concept = "${q.concept}｜${q.type}",
+                answerContext = wrongAnswerAiContext(q),
                 moodLabel = mood.label,
                 wrongAttempts = wrongAttempts
             )
         }
+    }
+
+    private fun wrongAnswerAiContext(q: Question): String {
+        val selected = lastSelectedAnswer.ifBlank { "學生尚未提供選項" }
+        return """
+            題型：${q.type}
+            學生剛剛選：$selected
+            正確答案：${q.answer}
+            標準解釋：${q.explanation}
+            修復提示：${q.repairHint}
+            請聚焦在學生為什麼可能選錯，以及下一步只要修復哪一個小概念。
+        """.trimIndent()
     }
 
     private fun generateRemoteCheckInSupport(result: CheckInResult): AiSupportResult {
@@ -958,9 +972,9 @@ class MainActivity : Activity() {
     private fun renderLiveAiCoach() {
         screen = Screen.AiCoach
         val q = questions[currentQuestionIndex]
-        shell("還沒答對", "正在呼叫 ${aiRouteLabel()}")
+        shell("錯題詳解", "正在呼叫 ${aiRouteLabel()}")
         root.addView(answerResultCard(false, q, lastSelectedAnswer))
-        root.addView(card("AI 生成中", "English+ 正在根據這一題、你的選項與目前心情產生個人化提示。", ColorToken.PrimarySoft))
+        root.addView(card("AI 生成中", "English+ 正在根據這一題、你的選項、正確答案與目前心情產生個人化提示。", ColorToken.PrimarySoft))
         bottomNav()
         Thread {
             try {
@@ -977,12 +991,14 @@ class MainActivity : Activity() {
 
     private fun renderAiCoachResult(q: Question, support: AiSupportResult) {
         screen = Screen.AiCoach
-        shell("還沒答對", support.source)
+        shell("錯題詳解", "真 AI 已回覆")
         root.addView(answerResultCard(false, q, lastSelectedAnswer))
-        root.addView(card("AI 診斷", support.diagnosis, ColorToken.WarningSoft))
-        root.addView(card("給你的提示", support.studentFeedback, ColorToken.SuccessSoft))
+        root.addView(aiSourceStatusCard("真 AI 詳解", support.source, ColorToken.Success))
+        root.addView(card("看懂錯在哪", support.diagnosis, ColorToken.WarningSoft))
+        root.addView(card("下一步提示", support.studentFeedback, ColorToken.SuccessSoft))
         root.addView(card("老師/志工摘要", support.handoffSummary, ColorToken.Card))
         root.addView(adaptiveNextStepCard(q, false))
+        addOfflineSyncItem("AI 錯題詳解：${q.concept}", "真 AI 錯題支持", support.handoffSummary)
         recordLearningEvent("ai_wrong_answer_support", "真 AI 錯題支持：${q.concept}", support.diagnosis)
         root.addView(ui.primaryButton("回題目再試一次") { renderLesson() })
         root.addView(ui.secondaryButton("交給志工接力") { renderHelpRequest() })
@@ -992,8 +1008,8 @@ class MainActivity : Activity() {
     private fun renderLocalAiCoach(notice: String? = null) {
         screen = Screen.AiCoach
         val q = questions[currentQuestionIndex]
-        shell("還沒答對", "先看清楚答案差在哪裡，再重新嘗試")
-        notice?.let { root.addView(card("真 AI 狀態", it, ColorToken.WarningSoft)) }
+        shell("錯題詳解", "使用 English+ 內建輔助")
+        notice?.let { root.addView(aiSourceStatusCard("目前使用內建輔助", it, ColorToken.Warning)) }
         root.addView(answerResultCard(false, q, lastSelectedAnswer))
         root.addView(supportStepCard("01", "我看見你卡在這裡", q.prompt, ColorToken.WarningSoft, ColorToken.Warning))
         root.addView(supportStepCard("02", "先把概念拆小", "${q.explanation}\n現在只要先記住這一個規則，不需要一次背完 am / is / are。", ColorToken.VioletSoft, ColorToken.Primary))
@@ -2177,6 +2193,13 @@ class MainActivity : Activity() {
             Metric("協作", "${collaborationNotes.size} 筆", ColorToken.Primary)
         ))
         return ui.margins(box, 0, 8, 0, 14)
+    }
+
+    private fun aiSourceStatusCard(title: String, detail: String, color: String): View {
+        val box = ui.container(if (color == ColorToken.Success) ColorToken.SuccessSoft else ColorToken.WarningSoft, color)
+        box.addView(ui.statusPill(title, color))
+        box.addView(ui.body(detail, "#334155").apply { setPadding(0, ui.dp(8), 0, 0) })
+        return ui.margins(box, 0, 8, 0, 12)
     }
 
     private fun mentorDailyCommandCard(): View {
