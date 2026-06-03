@@ -1276,6 +1276,7 @@ class MainActivity : Activity() {
             "題庫 schema v${QuestionBankContract.QUESTION_BANK_SCHEMA_VERSION} 保留 importId、審核狀態、匯入批次與推薦 metadata。老師端可以發布正式題目；學生端維持唯讀，避免未審題目進入練習。",
             ColorToken.SuccessSoft
         ))
+        root.addView(aiQuestionBankLabelSummaryCard(bankItems))
         section("難度與題型")
         bandCounts.forEach { (band, count) ->
             root.addView(timelineCard(band, "$count 題｜${levelCounts.keys.joinToString("/")}", ColorToken.Accent))
@@ -1308,6 +1309,7 @@ class MainActivity : Activity() {
         val filtered = filteredPracticeItems(bankItems).ifEmpty { recommended }
         shell("練習中心", "選一個關卡開始")
         root.addView(practiceHubHeroCard(recommended))
+        root.addView(aiStudentPracticeLabelCard(recommended))
         section("難度關卡")
         root.addView(practiceLevelLaunchCard("推薦", "今日推薦", "依照心情檢測與答題狀態安排", recommended.size, ColorToken.Primary) {
             selectedPracticeLevel = "推薦"
@@ -3188,6 +3190,76 @@ class MainActivity : Activity() {
         return ui.margins(box, 0, 8, 0, 12)
     }
 
+    private fun aiQuestionBankLabelSummaryCard(items: List<QuestionBankItem>): View {
+        val repairCount = items.count { "repair" in it.recommendationTags || it.emotionalFit == "low" }
+        val challengeCount = items.count { it.challengeScore >= 5 || it.difficultyBand == "challenge" }
+        val lowPressureCount = items.count { "low-pressure" in it.recommendationTags || it.estimatedSeconds <= 45 }
+        val box = ui.container(ColorToken.SuccessSoft, ColorToken.Success)
+        box.addView(ui.statusPill("AI 題庫標籤", ColorToken.Success))
+        box.addView(ui.label("把題庫變成可推薦的學習路線", 19, ColorToken.Ink, true).apply {
+            setPadding(0, ui.dp(10), 0, ui.dp(4))
+        })
+        box.addView(ui.body(
+            "English+ 會依照難度、題型、情緒適配、作答時間與挑戰分，把題目標成修復題、低壓題、會考基準題或挑戰題。老師審題時可先看這些標籤，學生端則只看到推薦理由。",
+            "#334155"
+        ))
+        box.addView(metricRow(
+            Metric("修復題", "$repairCount", ColorToken.Success),
+            Metric("挑戰題", "$challengeCount", ColorToken.Warning),
+            Metric("低壓題", "$lowPressureCount", ColorToken.Primary)
+        ))
+        return ui.margins(box, 0, 8, 0, 12)
+    }
+
+    private fun aiStudentPracticeLabelCard(items: List<QuestionBankItem>): View {
+        val first = items.firstOrNull()
+        val labelLine = first?.let { aiQuestionBankLabels(it).joinToString("、") } ?: "尚未有推薦題"
+        val reason = first?.let { aiQuestionRecommendationReason(it) } ?: "完成心情檢測後，English+ 會依照時間、信心與題型偏好挑題。"
+        val box = ui.container(ColorToken.SuccessSoft, ColorToken.Border)
+        box.addView(ui.statusPill("AI 選題理由", ColorToken.Success))
+        box.addView(ui.label("不是隨機出題，是照今天狀態挑", 18, ColorToken.Ink, true).apply {
+            setPadding(0, ui.dp(10), 0, ui.dp(4))
+        })
+        box.addView(ui.body("目前標籤：$labelLine\n推薦原因：$reason", "#334155"))
+        return ui.margins(box, 0, 8, 0, 12)
+    }
+
+    private fun aiQuestionBankLabels(item: QuestionBankItem): List<String> {
+        val labels = mutableListOf<String>()
+        when {
+            "repair" in item.recommendationTags || item.difficultyBand == "foundation" -> labels.add("修復優先")
+            item.difficultyBand == "challenge" || item.challengeScore >= 5 -> labels.add("挑戰題")
+            else -> labels.add("會考基準")
+        }
+        when (item.emotionalFit) {
+            "low" -> labels.add("低壓可做")
+            "high-confidence" -> labels.add("信心高再做")
+            else -> labels.add("穩定練習")
+        }
+        if (item.estimatedSeconds <= 45) labels.add("短時間")
+        if (normalizedQuestionType(item).contains("閱讀") || normalizedQuestionType(item).contains("克漏")) labels.add("需要專注")
+        if (selectedPracticeTypes.contains(normalizedQuestionType(item))) labels.add("符合偏好")
+        return labels.distinct()
+    }
+
+    private fun aiQuestionRecommendationReason(item: QuestionBankItem): String {
+        val type = normalizedQuestionType(item)
+        return when {
+            confidence < 45 || wrongAttempts > 0 || "repair" in item.recommendationTags ->
+                "適合先修復 $type 的小概念，題目壓力較低，不會直接加難度。"
+            confidence >= 70 && item.challengeScore >= 5 ->
+                "你目前信心較高，這題可以拿來挑戰會考偏難題型。"
+            minutes <= 5 && item.estimatedSeconds <= 45 ->
+                "今天時間不多，這題能在短時間內完成，適合放進每日任務。"
+            selectedPracticeTypes.contains(type) ->
+                "這題符合你心情檢測後選擇的題型偏好，可以讓練習更有掌控感。"
+            item.difficultyBand == "cap-standard" ->
+                "這題接近會考基準難度，適合穩定累積分數。"
+            else ->
+                "這題可補足目前題型分布，讓練習不只停在同一種選擇題。"
+        }
+    }
+
 
     private fun todayProgress(): DailyTaskProgress {
         return PrototypeRepository.dailyTaskProgress(
@@ -3290,6 +3362,8 @@ class MainActivity : Activity() {
         box.addView(top)
         box.addView(ui.body("${item.unit}｜${item.skill}｜${item.source}｜${item.reviewState}", ColorToken.Muted).apply { setPadding(0, ui.dp(7), 0, 0) })
         box.addView(ui.body("題型：${item.questionType}｜難度帶：${item.difficultyBand}｜挑戰分：${item.challengeScore}｜建議情緒：${item.emotionalFit}", ColorToken.Primary))
+        box.addView(ui.body("AI 標籤：${aiQuestionBankLabels(item).joinToString("、")}", ColorToken.Success).apply { setPadding(0, ui.dp(6), 0, 0) })
+        box.addView(ui.body("派題理由：${aiQuestionRecommendationReason(item)}", "#334155"))
         box.addView(ui.body("答案：${item.question.answer}\n提示：${item.question.repairHint}", "#334155"))
         box.setOnClickListener {
             val index = questions.indexOfFirst { it.prompt == item.question.prompt && it.answer == item.question.answer }
@@ -4057,6 +4131,7 @@ class MainActivity : Activity() {
         top.addView(ui.statusPill(item.level, ColorToken.Accent))
         box.addView(top)
         box.addView(ui.body("${normalizedQuestionType(item)}｜挑戰 ${item.challengeScore}｜約 ${item.estimatedSeconds} 秒", ColorToken.Muted).apply { setPadding(0, ui.dp(6), 0, 0) })
+        box.addView(ui.body("推薦原因：${aiQuestionRecommendationReason(item)}", ColorToken.Success).apply { setPadding(0, ui.dp(6), 0, 0) })
         box.addView(ui.body(item.question.prompt.take(90), "#334155").apply { setPadding(0, ui.dp(6), 0, 0) })
         box.addView(ui.secondaryButton("開始這題") { startPracticeItem(item) })
         box.setOnClickListener { startPracticeItem(item) }
@@ -4094,7 +4169,8 @@ class MainActivity : Activity() {
             Metric("來源", if (isTrueAi) "OpenRouter" else "內建", if (isTrueAi) ColorToken.Success else ColorToken.Warning)
         ))
         plannedItems.forEachIndexed { index, item ->
-            box.addView(ui.secondaryButton("${index + 1}. ${item.level}｜${normalizedQuestionType(item)}｜${item.question.concept.take(18)}") {
+            val label = aiQuestionBankLabels(item).take(2).joinToString("、")
+            box.addView(ui.secondaryButton("${index + 1}. $label｜${normalizedQuestionType(item)}｜${item.question.concept.take(18)}") {
                 startPracticeItem(item)
             })
         }
