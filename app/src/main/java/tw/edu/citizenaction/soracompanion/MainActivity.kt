@@ -258,7 +258,11 @@ class MainActivity : Activity() {
     }
 
     private fun renderStudentMapEntry() {
-        if (!practiceTimeConfirmed) confirmPracticeTimeAndPlanToday() else renderMap()
+        when {
+            !checkInCompleted -> renderCheckIn()
+            !practiceTimeConfirmed -> confirmPracticeTimeAndPlanToday()
+            else -> renderMap()
+        }
     }
 
     private fun renderRoleGateway() {
@@ -1070,27 +1074,14 @@ class MainActivity : Activity() {
             renderTeacherLearningEvidence()
             return
         }
-        if (!practiceTimeConfirmed) {
-            renderPracticeTimeSetup()
-            return
-        }
+        if (!checkInCompleted) return renderCheckIn()
+        if (!practiceTimeConfirmed) return confirmPracticeTimeAndPlanToday()
         screen = Screen.Map
-        shell("我的學習地圖", "只顯示下一步，不把後台功能丟給學生")
-        root.addView(studentRouteStatusCard())
-        root.addView(card("本週總覽", "完成微任務：$completedTasks\n信心值：$confidence%\n目前重點：${modules[1].title}", ColorToken.PrimarySoft))
-        root.addView(card("地圖規則", "你會先看到已解鎖的下一步。題庫、週報、同步與設計系統由老師端管理，學生端只保留今天需要的任務與回饋。", ColorToken.SuccessSoft))
-        root.addView(ui.primaryButton("繼續今天任務") { renderTaskQueue() })
-        modules.forEach { root.addView(moduleCard(it)) }
-        section("學習紀錄時間線")
-        root.addView(timelineCard("今日答題紀錄", "已累積 ${learningEventCount} 筆學習事件，包含答題、反思、求助與修復。", ColorToken.Primary))
-        root.addView(timelineCard("錯題修復", "已完成 ${repairedMistakeCount} 筆錯題修復；老師端只看到需要協助的摘要。", ColorToken.Success))
-        root.addView(timelineCard("下一次進入", "會先回到心情檢測，再依狀態安排任務，不會直接塞滿所有功能。", ColorToken.Accent))
-        section("錯題修復紀錄")
-        mistakeRecords.forEach { root.addView(mistakeCard(it)) }
-        section("陪伴時間線")
-        supportMessages.forEach { root.addView(messageCard(it)) }
-        root.addView(ui.secondaryButton("看可選練習") { renderQuestionBank() })
-        root.addView(ui.secondaryButton("需要支持") { renderStudentSupportEntry() })
+        shell("學習地圖", "看目前位置和下一關")
+        root.addView(studentMapStatusCard())
+        root.addView(studentMapPathCard())
+        root.addView(studentMapNextActionCard())
+        root.addView(studentMapSupportCard())
         bottomNav()
     }
 
@@ -2194,6 +2185,109 @@ class MainActivity : Activity() {
         box.addView(pathNode("3", "短題練習", if (todayAnsweredFirstQuestion) "已完成" else "待開始", todayAnsweredFirstQuestion, practiceTimeConfirmed && !todayAnsweredFirstQuestion) { renderTaskQueue() })
         box.addView(pathNode("4", "反思與學習地圖", if (todayReflected) "已完成" else "完成後開啟", todayReflected, todayAnsweredFirstQuestion && !todayReflected) { renderReflection() })
         return ui.margins(box, 0, 8, 0, 14)
+    }
+
+    private fun studentMapStatusCard(): View {
+        val completedSteps = listOf(checkInCompleted, practiceTimeConfirmed, todayAnsweredFirstQuestion, todayReflected).count { it }
+        val totalSteps = 5
+        val box = ui.container(ColorToken.PrimarySoft, ColorToken.Primary)
+        val top = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+        }
+        val titleStack = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
+        titleStack.addView(ui.statusPill("今日地圖", ColorToken.Primary))
+        titleStack.addView(ui.label("你在第 ${completedSteps.coerceAtLeast(1)} 關", 24, ColorToken.Ink, true).apply {
+            setPadding(0, ui.dp(10), 0, ui.dp(4))
+        })
+        titleStack.addView(ui.body("先完成亮起來的下一關，再決定要不要挑戰更難題。", "#334155"))
+        top.addView(titleStack, LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f))
+        top.addView(ui.statusPill("${confidence}%", if (confidence >= 60) ColorToken.Success else ColorToken.Warning))
+        box.addView(top)
+        box.addView(ProgressBar(this, null, android.R.attr.progressBarStyleHorizontal).apply {
+            max = totalSteps
+            progress = completedSteps.coerceIn(1, totalSteps)
+            setPadding(0, ui.dp(12), 0, ui.dp(8))
+        })
+        box.addView(flowStrip(
+            mood.label,
+            "${minutes} 分",
+            selectedPracticeLevel,
+            "${targetDailyQuestionCount()} 題"
+        ))
+        return ui.margins(box, 0, 8, 0, 14)
+    }
+
+    private fun studentMapPathCard(): View {
+        val challengeUnlocked = todayReflected || confidence >= 65 || selectedPracticeLevel.contains("B1")
+        val supportActive = wrongAttempts > 0 || confidence < 45
+        val box = ui.container(ColorToken.Card, ColorToken.Border)
+        box.addView(ui.statusPill("主線路徑", ColorToken.Success))
+        box.addView(ui.label("照著亮起的關卡往下走", 19, ColorToken.Ink, true).apply {
+            setPadding(0, ui.dp(10), 0, ui.dp(4))
+        })
+        box.addView(pathNode("1", "狀態檢測", "已完成，今天的任務已依狀態生成", true, false) { renderCheckIn() })
+        box.addView(pathNode("2", "今日任務", "已選定 ${minutes} 分鐘、${targetDailyQuestionCount()} 題", practiceTimeConfirmed, false) { renderTaskQueue() })
+        box.addView(pathNode("3", "第一題練習", if (todayAnsweredFirstQuestion) "已開始累積答題紀錄" else "下一關：先完成一題", todayAnsweredFirstQuestion, !todayAnsweredFirstQuestion) { renderTaskQueue() })
+        box.addView(pathNode("4", "反思整理", if (todayReflected) "已完成今日反思" else "完成一題後解鎖", todayReflected, todayAnsweredFirstQuestion && !todayReflected) { renderReflection() })
+        box.addView(pathNode("5", "挑戰關卡", if (challengeUnlocked) "可挑戰 $selectedPracticeLevel 題組" else "信心到 65% 或完成反思後開啟", false, challengeUnlocked) { renderStudentPracticeCatalog() })
+        box.addView(pathNode("S", "支持節點", if (supportActive) "已亮起：可以找 AI 或老師協助" else "卡住時會自動亮起", false, supportActive) { renderStudentSupportEntry() })
+        return ui.margins(box, 0, 0, 0, 14)
+    }
+
+    private fun studentMapNextActionCard(): View {
+        val title: String
+        val detail: String
+        val actionText: String
+        val action: () -> Unit
+        when {
+            !todayAnsweredFirstQuestion -> {
+                title = "下一關：完成第一題"
+                detail = "先做一題剛好的練習，答完會立刻看到正確與錯誤回饋。"
+                actionText = "開始今日任務"
+                action = { renderTaskQueue() }
+            }
+            !todayReflected -> {
+                title = "下一關：整理今天的斷點"
+                detail = "把剛剛的錯題、卡住原因或信心變化記下來，學習地圖才會往下一關推進。"
+                actionText = "開始反思"
+                action = { renderReflection() }
+            }
+            confidence >= 65 || selectedPracticeLevel.contains("B1") -> {
+                title = "下一關：挑戰更難題型"
+                detail = "目前狀態可以往進階題、閱讀題或克漏字走；如果卡住，支持節點會接住。"
+                actionText = "選擇挑戰題"
+                action = { renderStudentPracticeCatalog() }
+            }
+            else -> {
+                title = "下一關：穩定多練一組"
+                detail = "先用 A1/A2 題型把基礎穩住，等信心提高後再解鎖挑戰關卡。"
+                actionText = "去練習中心"
+                action = { renderStudentPracticeCatalog() }
+            }
+        }
+        val box = ui.container(ColorToken.SuccessSoft, ColorToken.Success)
+        box.addView(ui.statusPill("下一步", ColorToken.Success))
+        box.addView(ui.label(title, 21, ColorToken.Ink, true).apply { setPadding(0, ui.dp(10), 0, ui.dp(4)) })
+        box.addView(ui.body(detail, "#334155"))
+        box.addView(ui.primaryButton(actionText) { action.invoke() })
+        return ui.margins(box, 0, 0, 0, 14)
+    }
+
+    private fun studentMapSupportCard(): View {
+        val needsSupport = wrongAttempts > 0 || confidence < 45
+        val box = ui.container(if (needsSupport) ColorToken.WarningSoft else ColorToken.Surface, if (needsSupport) ColorToken.Warning else ColorToken.Border)
+        box.addView(ui.statusPill(if (needsSupport) "支持已亮起" else "可選支援", if (needsSupport) ColorToken.Warning else ColorToken.Primary))
+        box.addView(ui.label(if (needsSupport) "先修復，再往前" else "卡住時再打開", 18, ColorToken.Ink, true).apply {
+            setPadding(0, ui.dp(10), 0, ui.dp(4))
+        })
+        box.addView(ui.body(
+            if (needsSupport) "系統偵測到卡住或信心偏低，可以先看 AI 說明、錯題提示或交給老師/志工接力。"
+            else "這裡不打擾主線任務；只有需要陪伴、錯題卡住或想問人時再使用。",
+            "#334155"
+        ))
+        box.addView(ui.secondaryButton("打開支持") { renderStudentSupportEntry() })
+        return ui.margins(box, 0, 0, 0, 12)
     }
 
     private fun pathNode(number: String, title: String, state: String, done: Boolean, active: Boolean, action: () -> Unit): View {
