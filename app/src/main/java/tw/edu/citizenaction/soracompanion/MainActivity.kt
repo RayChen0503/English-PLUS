@@ -1379,6 +1379,7 @@ class MainActivity : Activity() {
         root.addView(cloudBackendStatusCard())
         root.addView(cloudBackendSettingsCard())
         root.addView(smartSyncStatusCard())
+        root.addView(aiSyncSummaryCard())
         root.addView(metricRow(
             Metric("待上傳", "${offlinePendingCount} 件", if (offlinePendingCount > 0) ColorToken.Warning else ColorToken.Success),
             Metric("已下載", "${downloadedPackTitles.size} 包", ColorToken.Success),
@@ -1424,6 +1425,7 @@ class MainActivity : Activity() {
 
         shell("智慧同步進行中", "網路與後端端點皆可用，正在補傳本機佇列")
         root.addView(card("真同步檢查通過", "網路可用\n端點：$endpoint\n待補傳：$offlinePendingCount 筆", ColorToken.PrimarySoft))
+        root.addView(aiSyncSummaryCard())
         root.addView(card("補傳內容", "學習紀錄、協作紀錄、題庫摘要、離線佇列與目前學生狀態會一起包成 JSON 送出。", ColorToken.Card))
         bottomNav()
 
@@ -1452,6 +1454,7 @@ class MainActivity : Activity() {
         recordLearningEvent("smart_sync_success", "智慧同步補傳完成", "HTTP ${result.statusCode}")
         shell("智慧同步完成", "本機佇列已補傳到雲端後端")
         root.addView(card("同步成功", "HTTP ${result.statusCode}\n目前待補傳：$offlinePendingCount 筆", ColorToken.SuccessSoft))
+        root.addView(card("AI 同步結論", buildAiSyncSummary(), ColorToken.SuccessSoft))
         root.addView(card("後端回應", result.responseText.ifBlank { "後端未回傳內容" }, ColorToken.Card))
         root.addView(ui.primaryButton("回同步中心") { renderSyncCenter() })
         bottomNav()
@@ -1496,6 +1499,7 @@ class MainActivity : Activity() {
         persistState()
         shell("雲端同步完成", "後端已接收 English+ 本機資料摘要")
         root.addView(card("後端回應", "HTTP ${result.statusCode}\n${result.responseText.ifBlank { "後端未回傳內容" }}", ColorToken.SuccessSoft))
+        root.addView(card("AI 同步結論", buildAiSyncSummary(), ColorToken.SuccessSoft))
         root.addView(card("同步後狀態", "待補傳：${offlinePendingCount} 件\n同步佇列：${offlineSyncItems.size} 筆", ColorToken.Card))
         root.addView(ui.primaryButton("回同步中心") { renderSyncCenter() })
         bottomNav()
@@ -1506,6 +1510,7 @@ class MainActivity : Activity() {
         shell("雲端同步失敗", "本機資料已保留，可稍後重試")
         root.addView(card("錯誤訊息", message, ColorToken.WarningSoft))
         root.addView(card("備援策略", "同步失敗不會清掉本機 SQLite 與待同步佇列。正式版可加入背景重試、登入權杖與失敗通知。", ColorToken.Card))
+        root.addView(card("AI 補傳建議", buildAiSyncSummary(), ColorToken.WarningSoft))
         root.addView(ui.primaryButton("回同步中心") { renderSyncCenter() })
         bottomNav()
     }
@@ -1986,6 +1991,7 @@ class MainActivity : Activity() {
             Metric("求助", "1 次", ColorToken.Warning)
         ))
         root.addView(reportShowcaseCard())
+        root.addView(aiWeeklyReportCard())
         weeklySignals.forEach { root.addView(signalCard(it)) }
         root.addView(card("給學生看的話", "你這週不是沒有進步，而是把問題縮小了。能說出 He is，就是修復英文斷層的一步。", ColorToken.SuccessSoft))
         root.addView(card("給老師/mentor 的摘要", "學生對完整測驗仍焦慮，但願意完成 3-5 分鐘任務。建議下週維持低壓短任務與志工接力。\n\n本週協作紀錄：${collaborationNotes.size} 筆，志工回覆：${mentorReplyCount} 則。", ColorToken.PrimarySoft))
@@ -2032,10 +2038,82 @@ class MainActivity : Activity() {
         return ui.margins(box, 0, 8, 0, 12)
     }
 
+    private fun aiWeeklyReportCard(): View {
+        val box = ui.container(ColorToken.SuccessSoft, ColorToken.Success)
+        box.addView(ui.statusPill("AI 週報判讀", ColorToken.Success))
+        box.addView(ui.label("本週不是看排名，而是看有沒有被接住", 19, ColorToken.Ink, true).apply {
+            setPadding(0, ui.dp(10), 0, ui.dp(4))
+        })
+        box.addView(ui.body(buildAiWeeklyReportSummary(), "#334155"))
+        box.addView(metricRow(
+            Metric("修復", "$repairedMistakeCount 筆", ColorToken.Success),
+            Metric("接力", "${collaborationNotes.size} 筆", ColorToken.Primary),
+            Metric("待同步", "$offlinePendingCount 筆", if (offlinePendingCount > 0) ColorToken.Warning else ColorToken.Success)
+        ))
+        box.addView(ui.secondaryButton("匯出含 AI 判讀的週報") { renderExportReport() })
+        return ui.margins(box, 0, 8, 0, 12)
+    }
+
+    private fun aiSyncSummaryCard(): View {
+        val ready = isNetworkAvailable() && stateStore.hasCloudBackend()
+        val box = ui.container(if (ready) ColorToken.SuccessSoft else ColorToken.WarningSoft, ColorToken.Border)
+        box.addView(ui.statusPill("AI 同步摘要", if (ready) ColorToken.Success else ColorToken.Warning))
+        box.addView(ui.label(if (ready) "可以補傳，資料可交給雲端接手" else "先保留，之後再補傳", 18, ColorToken.Ink, true).apply {
+            setPadding(0, ui.dp(10), 0, ui.dp(4))
+        })
+        box.addView(ui.body(buildAiSyncSummary(), "#334155"))
+        return ui.margins(box, 0, 8, 0, 12)
+    }
+
+    private fun buildAiWeeklyReportSummary(): String {
+        val progressTone = when {
+            confidence >= 70 -> "學生已能承受較高挑戰，下週可加入閱讀或克漏字任務。"
+            confidence >= 45 -> "學生目前適合維持短任務節奏，下週先把 A2 基準題型做穩。"
+            else -> "學生信心偏低，下週應先用補救任務與真人接力降低挫折。"
+        }
+        val relayTone = if (collaborationNotes.isNotEmpty() || mentorReplyCount > 0) {
+            "真人接力已有紀錄，建議老師追蹤回覆是否真的讓學生回到任務。"
+        } else {
+            "目前真人接力紀錄不足，建議至少安排一次志工低壓陪練。"
+        }
+        val syncTone = if (offlinePendingCount > 0) {
+            "仍有 $offlinePendingCount 筆待補傳資料，週報前應先同步，避免老師看到舊狀態。"
+        } else {
+            "目前沒有待補傳資料，週報可視為本機最新狀態。"
+        }
+        return """
+            學習判讀：$progressTone
+            接力判讀：$relayTone
+            同步判讀：$syncTone
+            下週建議：先保留心情檢測與短任務，再依錯題補救紀錄選 1 組題型，不用增加總題量。
+        """.trimIndent()
+    }
+
+    private fun buildAiSyncSummary(): String {
+        val endpoint = stateStore.cloudBackendUrl().ifBlank { "尚未設定" }
+        val network = if (isNetworkAvailable()) "網路可用" else "網路不可用"
+        val backend = if (stateStore.hasCloudBackend()) "後端已設定" else "尚未設定後端"
+        val newest = offlineSyncItems.firstOrNull()?.let { "${it.title}（${it.status}）" } ?: "沒有待處理佇列"
+        val action = when {
+            offlinePendingCount == 0 -> "目前可先不用補傳；若剛匯出週報，建議再同步一次報告紀錄。"
+            isNetworkAvailable() && stateStore.hasCloudBackend() -> "可以按智慧同步，把學習事件、AI 摘要與協作紀錄補傳。"
+            !isNetworkAvailable() -> "先保留本機 SQLite，等網路恢復後再補傳。"
+            else -> "先設定 Firebase Cloud Function 或校內 API URL，再進行補傳。"
+        }
+        return """
+            狀態：$network｜$backend｜端點：$endpoint
+            待補傳：$offlinePendingCount 筆｜佇列：${offlineSyncItems.size} 筆
+            最新項目：$newest
+            建議動作：$action
+        """.trimIndent()
+    }
+
     private fun buildDemoReportText(): String {
         val snapshot = stateStore.storageSnapshot()
         val latestCollaboration = collaborationNotes.firstOrNull()?.note ?: "尚未建立真人接力紀錄。"
         val latestSync = offlineSyncItems.firstOrNull()?.let { "${it.title} / ${it.status}" } ?: "尚未建立同步佇列。"
+        val aiWeeklyReport = buildAiWeeklyReportSummary()
+        val aiSyncSummary = buildAiSyncSummary()
         return """
             English+ 偏鄉學生雙軌學習平台展示報告
 
@@ -2062,17 +2140,21 @@ class MainActivity : Activity() {
             待補傳同步：${snapshot.pendingSyncCount} 筆
             已下載離線包：${snapshot.downloadedPackCount} 包
 
-            四、情緒斷點處理
+            四、AI 週報判讀
+            $aiWeeklyReport
+
+            五、情緒斷點處理
             目前主要斷點：${breakpoints.first().title}
             斷點證據：${breakpoints.first().evidence}
             AI 已做處理：${breakpoints.first().aiAction}
             真人接力建議：${breakpoints.first().mentorAction}
 
-            五、最新接力與同步
+            六、最新接力與同步
             最新協作：$latestCollaboration
             最新同步項目：$latestSync
+            AI 同步判讀：$aiSyncSummary
 
-            六、下一階段建議
+            七、下一階段建議
             1. 將 SQLite 資料層升級為 Room。
             2. 用 Firebase 或校內後端做真帳號與雲端同步。
             3. 將 OpenAI API Key 移到後端代理，不由手機端保存正式 Key。
