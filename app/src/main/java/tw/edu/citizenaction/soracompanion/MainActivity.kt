@@ -1161,47 +1161,46 @@ class MainActivity : Activity() {
 
     private fun renderStudentPracticeCatalog() {
         if (!practiceTimeConfirmed) {
-            renderPracticeTimeSetup()
+            confirmPracticeTimeAndPlanToday()
             return
         }
         screen = Screen.QuestionBank
         val bankItems = stateStore.questionBankItems()
         val recommended = recommendedPracticeItems(bankItems)
         val filtered = filteredPracticeItems(bankItems).ifEmpty { recommended }
-        val typeCounts = bankItems.groupingBy { normalizedQuestionType(it) }.eachCount()
-        shell("練習中心", "選難度、題型，也可以直接挑戰更難的題目")
-        root.addView(studentRouteStatusCard())
-        root.addView(card("已依心情檢測套用推薦", "目前難度：$selectedPracticeLevel\n題型：${selectedPracticeTypes.joinToString("、")}", ColorToken.PrimarySoft))
-        root.addView(metricRow(
-            Metric("題庫", "${bankItems.size} 題", ColorToken.Primary),
-            Metric("題型", "${typeCounts.size} 類", ColorToken.Success),
-            Metric("目前顯示", "${filtered.size} 題", ColorToken.Accent)
-        ))
-        root.addView(practiceRecommendationCard(recommended))
-        section("選擇難度")
-        practiceLevelOptions(bankItems).forEach { level ->
-            root.addView(practiceFilterChip(level, selectedPracticeLevel == level) {
-                selectedPracticeLevel = level
+        shell("練習中心", "選一個關卡開始")
+        root.addView(practiceHubHeroCard(recommended))
+        section("難度關卡")
+        root.addView(practiceLevelLaunchCard("推薦", "今日推薦", "依照心情檢測與答題狀態安排", recommended.size, ColorToken.Primary) {
+            selectedPracticeLevel = "推薦"
+            selectedPracticeTypes = setOf("全部題型")
+            selectedPracticeType = "全部題型"
+            renderStudentPracticeCatalog()
+        })
+        root.addView(practiceLevelLaunchCard("基礎 A1", "基礎修復", "先把最常卡住的句型穩住", bankItems.count { it.level == "A1" || it.difficultyBand == "foundation" }, ColorToken.Success) {
+            selectedPracticeLevel = "基礎 A1"
+            renderStudentPracticeCatalog()
+        })
+        root.addView(practiceLevelLaunchCard("標準 A2", "會考標準", "練習常見文法、克漏字與短閱讀", bankItems.count { it.level == "A2" || it.difficultyBand == "cap-standard" }, ColorToken.Accent) {
+            selectedPracticeLevel = "標準 A2"
+            renderStudentPracticeCatalog()
+        })
+        root.addView(practiceLevelLaunchCard("進階挑戰 B1", "進階挑戰", "給今天想挑戰難題的人", bankItems.count { it.level == "B1" || it.difficultyBand == "challenge" }, ColorToken.Warning) {
+            selectedPracticeLevel = "進階挑戰 B1"
+            renderStudentPracticeCatalog()
+        })
+        section("題型關卡")
+        practiceTypeOptions(bankItems).filter { it != "全部題型" }.take(8).forEach { type ->
+            val count = bankItems.count { normalizedQuestionType(it) == type }
+            root.addView(practiceTypeLaunchCard(type, count, type == selectedPracticeType || selectedPracticeTypes.contains(type)) {
+                selectedPracticeTypes = setOf(type)
+                selectedPracticeType = type
                 renderStudentPracticeCatalog()
             })
         }
-        section("選擇題型")
-        practiceTypeOptions(bankItems).forEach { type ->
-            val selected = (type == "全部題型" && selectedPracticeTypes.contains("全部題型")) || selectedPracticeTypes.contains(type)
-            root.addView(practiceFilterChip(type, selected) {
-                selectedPracticeTypes = when {
-                    type == "全部題型" -> setOf("全部題型")
-                    selectedPracticeTypes.contains(type) -> selectedPracticeTypes.minus(type).ifEmpty { setOf("全部題型") }
-                    else -> selectedPracticeTypes.minus("全部題型").plus(type)
-                }
-                selectedPracticeType = selectedPracticeTypes.firstOrNull() ?: "全部題型"
-                renderStudentPracticeCatalog()
-            })
-        }
-        section("題目清單")
-        filtered.take(20).forEach { root.addView(studentPracticeOptionCard(it)) }
-        root.addView(ui.primaryButton("回今天任務") { renderTaskQueue() })
-        root.addView(ui.secondaryButton("回我的地圖") { renderMap() })
+        section("目前精選")
+        filtered.take(10).forEach { root.addView(studentPracticeOptionCard(it)) }
+        root.addView(ui.secondaryButton("回今天任務") { renderTaskQueue() })
         bottomNav()
     }
 
@@ -3423,17 +3422,75 @@ class MainActivity : Activity() {
         return ui.margins(box, 0, 8, 0, 12)
     }
 
+    private fun practiceHubHeroCard(items: List<QuestionBankItem>): View {
+        val first = items.firstOrNull()
+        val box = ui.container(ColorToken.PrimarySoft, ColorToken.Primary)
+        box.addView(ui.statusPill("今日推薦", ColorToken.Primary))
+        box.addView(ui.label("從這裡開始最剛好", 22, ColorToken.Ink, true).apply {
+            setPadding(0, ui.dp(10), 0, ui.dp(4))
+        })
+        box.addView(ui.body("English+ 會依照你的心情檢測、信心值和偏好題型，推薦今天最適合的一組題目。", "#334155"))
+        box.addView(metricRow(
+            Metric("難度", selectedPracticeLevel, ColorToken.Primary),
+            Metric("題型", selectedPracticeTypes.joinToString("、"), ColorToken.Success),
+            Metric("題數", "${items.size}", ColorToken.Accent)
+        ))
+        first?.let { item ->
+            box.addView(ui.primaryButton("開始推薦題") { startPracticeItem(item) })
+        }
+        return ui.margins(box, 0, 8, 0, 14)
+    }
+
+    private fun practiceLevelLaunchCard(levelValue: String, title: String, detail: String, count: Int, color: String, action: () -> Unit): View {
+        val selected = selectedPracticeLevel == levelValue
+        val box = ui.container(if (selected) ColorToken.PrimarySoft else ColorToken.Card, if (selected) ColorToken.Primary else ColorToken.Border)
+        val top = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+        }
+        top.addView(ui.label(title, 18, ColorToken.Ink, true), LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f))
+        top.addView(ui.statusPill(if (selected) "目前" else "$count 題", if (selected) ColorToken.Primary else color))
+        box.addView(top)
+        box.addView(ui.body(detail, ColorToken.Muted).apply { setPadding(0, ui.dp(6), 0, 0) })
+        box.setOnClickListener { action() }
+        return ui.margins(box, 0, 6, 0, 8)
+    }
+
+    private fun practiceTypeLaunchCard(type: String, count: Int, selected: Boolean, action: () -> Unit): View {
+        val box = ui.container(if (selected) ColorToken.SuccessSoft else ColorToken.Surface, if (selected) ColorToken.Success else ColorToken.Border)
+        val top = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+        }
+        top.addView(ui.label(type, 17, ColorToken.Ink, true), LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f))
+        top.addView(ui.statusPill(if (selected) "已選" else "$count 題", if (selected) ColorToken.Success else ColorToken.Muted))
+        box.addView(top)
+        box.addView(ui.body(practiceTypeHint(type), ColorToken.Muted).apply { setPadding(0, ui.dp(6), 0, 0) })
+        box.setOnClickListener { action() }
+        return ui.margins(box, 0, 6, 0, 8)
+    }
+
+    private fun practiceTypeHint(type: String): String {
+        return when {
+            type.contains("克漏") -> "練上下文判斷與文法選擇。"
+            type.contains("閱讀") -> "練短文理解、主旨與細節。"
+            type.contains("填") -> "練單句文法與關鍵字。"
+            type.contains("翻") -> "練句子重組與中英轉換。"
+            else -> "練會考常見選擇題。"
+        }
+    }
     private fun studentPracticeOptionCard(item: QuestionBankItem): View {
         val box = ui.container(ColorToken.Card, ColorToken.Border)
-        val top = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
+        val top = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+        }
         top.addView(ui.label(item.skill, 17, ColorToken.Ink, true), LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f))
         top.addView(ui.statusPill(item.level, ColorToken.Accent))
         box.addView(top)
-        box.addView(ui.body("${item.unit}｜${normalizedQuestionType(item)}｜挑戰 ${item.challengeScore}｜約 ${item.estimatedSeconds} 秒", ColorToken.Muted).apply { setPadding(0, ui.dp(6), 0, 0) })
+        box.addView(ui.body("${normalizedQuestionType(item)}｜挑戰 ${item.challengeScore}｜約 ${item.estimatedSeconds} 秒", ColorToken.Muted).apply { setPadding(0, ui.dp(6), 0, 0) })
         box.addView(ui.body(item.question.prompt.take(90), "#334155").apply { setPadding(0, ui.dp(6), 0, 0) })
-        box.addView(ui.body("點選後會直接切到這一題，不再只重複同一個簡單題。", ColorToken.Success).apply {
-            setPadding(0, ui.dp(6), 0, 0)
-        })
+        box.addView(ui.secondaryButton("開始這題") { startPracticeItem(item) })
         box.setOnClickListener { startPracticeItem(item) }
         return ui.margins(box, 0, 8, 0, 8)
     }
