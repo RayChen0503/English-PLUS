@@ -73,6 +73,7 @@ class MainActivity : Activity() {
     private lateinit var ui: UiKit
     private lateinit var stateStore: PrototypeStateStore
     private var currentScrollView: ScrollView? = null
+    private var pageFrame: LinearLayout? = null
     private var pendingScrollY: Int? = null
 
     private var role = Role.Student
@@ -294,6 +295,7 @@ class MainActivity : Activity() {
         hero(if (isStudent) "選擇學生帳號" else "選擇老師或志工帳號", "登入後進入你的今日頁面。")
         accounts.forEach { root.addView(accountLoginCard(it)) }
         root.addView(ui.secondaryButton("回到身分選擇") { renderRoleGateway() })
+        bottomNav()
     }
 
     private fun renderHome() {
@@ -312,10 +314,10 @@ class MainActivity : Activity() {
     private fun studentHome() {
         root.addView(classContextCard())
         root.addView(studentFirstStepCard())
-        root.addView(flowStrip("心情檢測", "選練習時間", "開始短任務", "答題回饋"))
-        root.addView(lockedStudentPreviewCard())
+        root.addView(flowStrip("心情檢測", "AI 排任務", "開始短任務", "答題回饋"))
         root.addView(ui.secondaryButton("帳號與班級資料") { renderAccountCenter() })
         root.addView(ui.secondaryButton("回到身分選擇") { renderRoleGateway() })
+        bottomNav()
     }
 
     private fun mentorHome() {
@@ -334,6 +336,7 @@ class MainActivity : Activity() {
         weeklySignals.take(3).forEach { root.addView(signalCard(it)) }
         root.addView(mentorOperationsSummaryCard())
         root.addView(ui.secondaryButton("回到身分選擇") { renderRoleGateway() })
+        bottomNav()
     }
 
     private fun renderProfile() {
@@ -515,8 +518,6 @@ class MainActivity : Activity() {
         root.addView(currentTaskFocus())
         root.addView(todayProgressCard())
         root.addView(dailyAiTaskPlanCard())
-        root.addView(todayStepListCard())
-        root.addView(taskRouteCard())
         root.addView(practiceCenterEntryCard())
         root.addView(ui.secondaryButton("查看今日學習契約") { renderLearningContract() })
         section("做完第一步後")
@@ -2008,15 +2009,21 @@ class MainActivity : Activity() {
     }
 
     private fun shell(title: String, subtitle: String) {
+        val frame = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            background = ui.solid(ColorToken.Surface)
+        }
         val scroll = ScrollView(this)
         root = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
-            setPadding(ui.dp(16), ui.dp(24), ui.dp(16), ui.dp(24))
+            setPadding(ui.dp(16), ui.dp(24), ui.dp(16), ui.dp(20))
             background = ui.solid(ColorToken.Surface)
         }
+        pageFrame = frame
         currentScrollView = scroll
         scroll.addView(root)
-        setContentView(scroll)
+        frame.addView(scroll, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, 0, 1f))
+        setContentView(frame)
         pendingScrollY?.let { y ->
             scroll.post {
                 scroll.scrollTo(0, y)
@@ -2189,7 +2196,7 @@ class MainActivity : Activity() {
             nav.addView(navDestination("Y", labels[3], screen == Screen.SyncCenter || screen == Screen.AiLab) { renderSyncCenter() }, ui.weightParams())
             nav.addView(navDestination("P", labels[4], screen == Screen.Report) { renderWeeklyReport() }, ui.weightParams())
         }
-        root.addView(ui.margins(nav, 0, 0, 0, 8))
+        pageFrame?.addView(ui.margins(nav, 8, 0, 8, 8)) ?: root.addView(ui.margins(nav, 0, 0, 0, 8))
     }
 
     private fun navigationArea(): String {
