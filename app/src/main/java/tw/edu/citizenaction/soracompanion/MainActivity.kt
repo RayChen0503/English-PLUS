@@ -267,23 +267,23 @@ class MainActivity : Activity() {
 
     private fun renderRoleGateway() {
         screen = Screen.Home
-        shell("English+", "選擇身分")
-        hero("你是誰？", "先選身分，再登入帳號。")
+        shell("English+", "選擇入口")
+        hero("今天要用哪一端？", "學生先進入短任務；老師/志工先進入接力工作台。")
         root.addView(roleEntryCard(
             label = "學生",
             title = "我是學生",
-            detail = "",
+            detail = "先做 4 題內的狀態檢測，再進入今天的英文任務與學習地圖。",
             fill = ColorToken.PrimarySoft,
-            actionText = "選擇學生帳號"
+            actionText = "進入學生端"
         ) {
             renderRoleLogin(Role.Student)
         })
         root.addView(roleEntryCard(
             label = "老師 / 志工",
             title = "我是老師或志工",
-            detail = "",
+            detail = "先看需要真人接力的學生，再處理待辦、同步與週報。",
             fill = ColorToken.SuccessSoft,
-            actionText = "選擇老師帳號"
+            actionText = "進入老師端"
         ) {
             renderRoleLogin(Role.Mentor)
         })
@@ -296,7 +296,7 @@ class MainActivity : Activity() {
             if (isStudent) AuthContract.isStudentRole(it.roleLabel) else AuthContract.isStaffRole(it.roleLabel)
         }
         shell("English+", if (isStudent) "學生登入" else "老師/志工登入")
-        hero(if (isStudent) "選擇學生帳號" else "選擇老師或志工帳號", "登入後進入你的今日頁面。")
+        hero(if (isStudent) "選擇學生帳號" else "選擇老師或志工帳號", if (isStudent) "登入後先做心情檢測，再開始今天任務。" else "登入後直接進入今日接力工作台。")
         accounts.forEach { root.addView(accountLoginCard(it)) }
         root.addView(ui.secondaryButton("回到身分選擇") { renderRoleGateway() })
         bottomNav()
@@ -2443,19 +2443,35 @@ class MainActivity : Activity() {
             setPadding(ui.dp(8), ui.dp(8), ui.dp(8), ui.dp(8))
         }
         if (role == Role.Student) {
-            nav.addView(navDestination("H", labels[0], screen == Screen.Home || screen == Screen.Account) { renderHome() }, ui.weightParams())
-            nav.addView(navDestination("C", labels[1], screen == Screen.CheckIn) { renderCheckIn() }, ui.weightParams())
-            nav.addView(navDestination("T", labels[2], screen == Screen.Lesson || screen == Screen.AiCoach || screen == Screen.Contract || screen == Screen.Reflection || screen == Screen.QuestionBank) { renderStudentTaskEntry() }, ui.weightParams())
-            nav.addView(navDestination("S", labels[3], screen == Screen.Breakpoints || screen == Screen.Handoff || screen == Screen.Intervention || screen == Screen.HelpRequest) { renderStudentSupportEntry() }, ui.weightParams())
-            nav.addView(navDestination("M", labels[4], screen == Screen.Map || screen == Screen.Journey) { renderStudentMapEntry() }, ui.weightParams())
+            nav.addView(navDestination(navMark(labels[0]), labels[0], screen == Screen.Home || screen == Screen.Account) { renderHome() }, ui.weightParams())
+            nav.addView(navDestination(navMark(labels[1]), labels[1], screen == Screen.CheckIn) { renderCheckIn() }, ui.weightParams())
+            nav.addView(navDestination(navMark(labels[2]), labels[2], screen == Screen.Lesson || screen == Screen.AiCoach || screen == Screen.Contract || screen == Screen.Reflection || screen == Screen.QuestionBank) { renderStudentTaskEntry() }, ui.weightParams())
+            nav.addView(navDestination(navMark(labels[3]), labels[3], screen == Screen.Breakpoints || screen == Screen.Handoff || screen == Screen.Intervention || screen == Screen.HelpRequest) { renderStudentSupportEntry() }, ui.weightParams())
+            nav.addView(navDestination(navMark(labels[4]), labels[4], screen == Screen.Map || screen == Screen.Journey) { renderStudentMapEntry() }, ui.weightParams())
         } else {
-            nav.addView(navDestination("W", labels[0], screen == Screen.Home || screen == Screen.Account) { renderHome() }, ui.weightParams())
-            nav.addView(navDestination("R", labels[1], screen == Screen.Roster || screen == Screen.StudentDetail || screen == Screen.StudentManager || screen == Screen.QuestionBank) { renderRoster() }, ui.weightParams())
-            nav.addView(navDestination("Q", labels[2], screen == Screen.ActionQueue || screen == Screen.Handoff || screen == Screen.Breakpoints || screen == Screen.Mentor) { renderActionQueue() }, ui.weightParams())
-            nav.addView(navDestination("Y", labels[3], screen == Screen.SyncCenter || screen == Screen.AiLab) { renderSyncCenter() }, ui.weightParams())
-            nav.addView(navDestination("P", labels[4], screen == Screen.Report) { renderWeeklyReport() }, ui.weightParams())
+            nav.addView(navDestination(navMark(labels[0]), labels[0], screen == Screen.Home || screen == Screen.Account) { renderHome() }, ui.weightParams())
+            nav.addView(navDestination(navMark(labels[1]), labels[1], screen == Screen.Roster || screen == Screen.StudentDetail || screen == Screen.StudentManager || screen == Screen.QuestionBank) { renderRoster() }, ui.weightParams())
+            nav.addView(navDestination(navMark(labels[2]), labels[2], screen == Screen.ActionQueue || screen == Screen.Handoff || screen == Screen.Breakpoints || screen == Screen.Mentor) { renderActionQueue() }, ui.weightParams())
+            nav.addView(navDestination(navMark(labels[3]), labels[3], screen == Screen.SyncCenter || screen == Screen.AiLab) { renderSyncCenter() }, ui.weightParams())
+            nav.addView(navDestination(navMark(labels[4]), labels[4], screen == Screen.Report) { renderWeeklyReport() }, ui.weightParams())
         }
         pageFrame?.addView(ui.margins(nav, 8, 0, 8, 8)) ?: root.addView(ui.margins(nav, 0, 0, 0, 8))
+    }
+
+    private fun navMark(label: String): String {
+        return when (label) {
+            "首頁" -> "首"
+            "檢測" -> "檢"
+            "任務" -> "練"
+            "支持" -> "助"
+            "地圖" -> "圖"
+            "今日" -> "今"
+            "學生" -> "生"
+            "接力" -> "接"
+            "同步" -> "雲"
+            "報告" -> "報"
+            else -> label.take(1)
+        }
     }
 
     private fun navigationArea(): String {
@@ -3273,8 +3289,9 @@ class MainActivity : Activity() {
         top.addView(ui.label(account.displayName, 20, ColorToken.Ink, true), LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f))
         top.addView(ui.statusPill(account.roleLabel, if (isStudent) ColorToken.Primary else ColorToken.Success))
         box.addView(top)
-        box.addView(ui.body(account.classCode, "#334155").apply { setPadding(0, ui.dp(8), 0, 0) })
-        box.addView(ui.primaryButton("登入") {
+        box.addView(ui.body("班級/群組：${account.classCode}", "#334155").apply { setPadding(0, ui.dp(8), 0, 0) })
+        box.addView(ui.body(if (isStudent) "進入後先做狀態檢測，再開始今日任務。" else "進入後先看接力工作台與高風險學生。", ColorToken.Muted))
+        box.addView(ui.primaryButton(if (isStudent) "登入學生端" else "登入老師端") {
             selectAccount(account)
             resetStudentFlow()
             renderHome()
