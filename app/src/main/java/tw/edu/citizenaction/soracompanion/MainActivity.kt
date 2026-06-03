@@ -667,6 +667,7 @@ class MainActivity : Activity() {
                     confidence = confidence,
                     challengeWanted = selectedPracticeLevel.contains("B1") || selectedPracticeLevel.contains("挑戰"),
                     preferredTypes = selectedPracticeTypes.filter { it != "全部題型" },
+                    targetQuestionCount = targetDailyQuestionCount(),
                     questionBank = candidates.map { item ->
                         AiQuestionBankOption(
                             id = item.id,
@@ -743,14 +744,20 @@ class MainActivity : Activity() {
 
     private fun applyAiDailyTaskPlan(plan: AiDailyTaskPlan, candidates: List<QuestionBankItem>) {
         val byId = candidates.associateBy { it.id }
-        val selected = plan.recommendedItemIds.mapNotNull { byId[it] }
-            .ifEmpty { candidates.take(targetDailyQuestionCount()) }
+        val aiSelected = plan.recommendedItemIds.mapNotNull { byId[it] }.distinctBy { it.id }
+        val fillItems = candidates.filterNot { candidate -> aiSelected.any { it.id == candidate.id } }
+        val selected = (aiSelected + fillItems)
             .take(targetDailyQuestionCount())
         aiDailyPlanTitle = plan.title.ifBlank { "今日 AI 任務" }
-        aiDailyPlanMessage = plan.studentMessage.ifBlank { "依照你的狀態，先完成這一小組英文練習。" }
+        aiDailyPlanMessage = buildString {
+            append(plan.studentMessage.ifBlank { "依照你的狀態，先完成這一小組英文練習。" })
+            if (aiSelected.size < targetDailyQuestionCount()) {
+                append("\n\nAI 回傳 ${aiSelected.size} 題，English+ 已用同一批候選題補足今日題數。")
+            }
+        }
         aiDailyPlanItemIds = selected.map { it.id }
-        aiDailyPlanSource = plan.source
-        recordLearningEvent("ai_daily_plan", aiDailyPlanTitle, aiDailyPlanItemIds.joinToString(","))
+        aiDailyPlanSource = if (aiSelected.isNotEmpty()) plan.source else "${plan.source} + local fill"
+        recordLearningEvent("ai_daily_plan", aiDailyPlanTitle, "source=$aiDailyPlanSource / items=${aiDailyPlanItemIds.joinToString(",")}")
     }
 
     private fun applyLocalDailyTaskPlan(candidates: List<QuestionBankItem>, message: String) {
@@ -3724,8 +3731,9 @@ class MainActivity : Activity() {
     private fun dailyAiTaskPlanCard(): View {
         val itemsById = stateStore.questionBankItems().associateBy { it.id }
         val plannedItems = aiDailyPlanItemIds.mapNotNull { itemsById[it] }
-        val box = ui.container(ColorToken.PrimarySoft, ColorToken.Border)
-        box.addView(ui.statusPill(if (aiDailyPlanSource.contains("OpenRouter")) "真 AI 排序" else "本機排序", ColorToken.Primary))
+        val isTrueAi = aiDailyPlanSource.contains("OpenRouter")
+        val box = ui.container(if (isTrueAi) ColorToken.SuccessSoft else ColorToken.PrimarySoft, ColorToken.Border)
+        box.addView(ui.statusPill(if (isTrueAi) "真 AI 已生成" else "內建推薦", if (isTrueAi) ColorToken.Success else ColorToken.Primary))
         box.addView(ui.label(aiDailyPlanTitle.ifBlank { "今日任務推薦" }, 19, ColorToken.Ink, true).apply {
             setPadding(0, ui.dp(10), 0, ui.dp(4))
         })
@@ -3733,7 +3741,7 @@ class MainActivity : Activity() {
         box.addView(metricRow(
             Metric("時間", "${minutes} 分", ColorToken.Accent),
             Metric("題數", "${plannedItems.size} 題", ColorToken.Primary),
-            Metric("信心", "${confidence}%", ColorToken.Success)
+            Metric("來源", if (isTrueAi) "OpenRouter" else "內建", if (isTrueAi) ColorToken.Success else ColorToken.Warning)
         ))
         plannedItems.forEachIndexed { index, item ->
             box.addView(ui.secondaryButton("${index + 1}. ${item.level}｜${normalizedQuestionType(item)}｜${item.question.concept.take(18)}") {
@@ -3742,6 +3750,8 @@ class MainActivity : Activity() {
         }
         if (plannedItems.isEmpty()) {
             box.addView(ui.secondaryButton("產生今日任務") { confirmPracticeTimeAndPlanToday() })
+        } else {
+            box.addView(ui.secondaryButton(if (stateStore.hasOpenRouterApiKey()) "用真 AI 重新安排" else "重新安排今日任務") { confirmPracticeTimeAndPlanToday() })
         }
         return ui.margins(box, 0, 8, 0, 12)
     }

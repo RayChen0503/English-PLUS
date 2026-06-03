@@ -79,6 +79,7 @@ class OpenRouterClient(
         confidence: Int,
         challengeWanted: Boolean,
         preferredTypes: List<String>,
+        targetQuestionCount: Int,
         questionBank: List<AiQuestionBankOption>
     ): AiDailyTaskPlan {
         val body = buildDailyTaskPlanRequestBody(
@@ -90,6 +91,7 @@ class OpenRouterClient(
             confidence = confidence,
             challengeWanted = challengeWanted,
             preferredTypes = preferredTypes,
+            targetQuestionCount = targetQuestionCount,
             questionBank = questionBank
         )
         val response = postJson(ENDPOINT, body)
@@ -199,6 +201,7 @@ class OpenRouterClient(
             confidence: Int,
             challengeWanted: Boolean,
             preferredTypes: List<String>,
+            targetQuestionCount: Int,
             questionBank: List<AiQuestionBankOption>
         ): JSONObject {
             val options = JSONArray()
@@ -220,11 +223,13 @@ class OpenRouterClient(
                 .put("confidence", confidence)
                 .put("challengeWanted", challengeWanted)
                 .put("preferredTypes", JSONArray(preferredTypes))
+                .put("targetQuestionCount", targetQuestionCount)
                 .put("questionBank", options)
 
             val system = "You are English+ daily task planner for rural junior-high English learning. " +
                 "Reply in Traditional Chinese. Choose only IDs from questionBank. " +
                 "Respect time, mood, confidence, preferred question types, and challengeWanted. " +
+                "Choose exactly targetQuestionCount IDs when possible. Put easier repair items first when mood or confidence is low, and challenge items later when challengeWanted is true. " +
                 "Return only JSON with title, studentMessage, and recommendedItemIds."
             val user = "Create today's short practice plan from this context: $context"
 

@@ -82,6 +82,7 @@ class OpenRouterClientTest {
             confidence = 62,
             challengeWanted = true,
             preferredTypes = listOf("克漏字", "閱讀測驗"),
+            targetQuestionCount = 5,
             questionBank = listOf(
                 AiQuestionBankOption(
                     id = "q-a2-cloze-001",
@@ -110,6 +111,7 @@ class OpenRouterClientTest {
         assertTrue(user.contains("q-a2-cloze-001"))
         assertTrue(user.contains("q-b1-reading-002"))
         assertTrue(user.contains("8"))
+        assertTrue(user.contains("5"))
         assertTrue(user.contains("克漏字"))
         assertTrue(user.contains("閱讀測驗"))
         assertTrue(body.getInt("max_tokens") <= 700)
