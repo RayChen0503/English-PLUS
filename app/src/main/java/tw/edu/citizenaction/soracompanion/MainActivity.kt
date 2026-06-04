@@ -1265,10 +1265,8 @@ class MainActivity : Activity() {
         screen = Screen.Map
         shell("學習地圖", "看目前位置和下一關")
         root.addView(studentMapStatusCard())
-        root.addView(studentAiRouteInsightCard())
         root.addView(studentMapPathCard())
         root.addView(studentMapNextActionCard())
-        root.addView(studentMapSupportCard())
         bottomNav()
     }
 
@@ -2689,7 +2687,6 @@ class MainActivity : Activity() {
 
     private fun studentMapPathCard(): View {
         val challengeUnlocked = todayReflected || selectedPracticeLevel.contains("B1")
-        val supportActive = wrongAttempts > 0 || preparedHelpSummary.isNotBlank()
         val box = ui.container(ColorToken.Card, ColorToken.Border)
         box.addView(ui.statusPill("主線路徑", ColorToken.Success))
         box.addView(ui.label("照著亮起的關卡往下走", 19, ColorToken.Ink, true).apply {
@@ -2700,7 +2697,7 @@ class MainActivity : Activity() {
         box.addView(pathNode("3", "第一題練習", if (todayAnsweredFirstQuestion) "已開始累積答題紀錄" else "下一關：先完成一題", todayAnsweredFirstQuestion, !todayAnsweredFirstQuestion) { renderTaskQueue() })
         box.addView(pathNode("4", "反思整理", if (todayReflected) "已完成今日反思" else "完成一題後解鎖", todayReflected, todayAnsweredFirstQuestion && !todayReflected) { renderReflection() })
         box.addView(pathNode("5", "挑戰關卡", if (challengeUnlocked) "可挑戰 $selectedPracticeLevel 題組" else "完成反思後開啟", false, challengeUnlocked) { renderStudentPracticeCatalog() })
-        box.addView(pathNode("S", "需要幫忙", if (supportActive) "已整理提示，可以求助" else "答錯或主動求助時再開啟", false, supportActive) { renderStudentSupportEntry() })
+
         return ui.margins(box, 0, 0, 0, 14)
     }
 
@@ -4258,8 +4255,8 @@ class MainActivity : Activity() {
             return
         }
         val fallbackItems = if (sessionItems.isNotEmpty()) sessionItems else filteredPracticeItems(stateStore.questionBankItems()).ifEmpty { listOf(item) }
-        val distinct = (fallbackItems + item)
-            .distinctBy { it.id }
+        val distinct = (listOf(item) + fallbackItems)
+            .distinctBy { "${it.question.prompt}｜${it.question.answer}" }
             .filter { candidate ->
                 if (selectedPracticeLevel.contains("B1")) candidate.level == "B1" || candidate.difficultyBand == "challenge"
                 else true
@@ -4328,8 +4325,9 @@ class MainActivity : Activity() {
             wrongAttempts = wrongAttempts,
             limit = 12
         ).filter { candidate -> items.any { it.id == candidate.id } }
-        val combined = (plannedByAi + seed + items.take(12)).distinctBy { it.id }
-        return combined.take(12)
+        val combined = (plannedByAi + seed + items)
+            .distinctBy { "${it.question.prompt}｜${it.question.answer}" }
+        return combined.take(16)
     }
 
     private fun normalizedQuestionType(item: QuestionBankItem): String {
