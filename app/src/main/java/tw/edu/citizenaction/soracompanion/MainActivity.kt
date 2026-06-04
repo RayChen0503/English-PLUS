@@ -104,6 +104,8 @@ class MainActivity : Activity() {
     private var aiDailyPlanTitle = ""
     private var aiDailyPlanMessage = ""
     private var aiDailyPlanItemIds: List<String> = emptyList()
+    private var activePracticeItemIds: List<String> = emptyList()
+    private var activePracticeItemIndex = -1
     private val completedDailyTaskItemIds = mutableSetOf<String>()
     private var aiDailyPlanSource = ""
     private var aiReflectionFeedback = ""
@@ -840,6 +842,7 @@ class MainActivity : Activity() {
                 completedDailyTaskItemIds.add(dailyTaskItemId)
             }
             val nextDailyTaskIndex = nextIncompleteDailyTaskQuestionIndex()
+            val nextPracticeIndex = if (nextDailyTaskIndex == null) nextPracticeSessionQuestionIndex() else null
             completedTasks += 1
             confidence = (confidence + 4).coerceAtMost(100)
             learningEventCount += 1
@@ -853,7 +856,7 @@ class MainActivity : Activity() {
             wrongAttempts = 0
             lastSelectedAnswer = option
             lastAnswerMessage = "答對了：${q.explanation}"
-            currentQuestionIndex = nextDailyTaskIndex ?: ((currentQuestionIndex + 1) % questions.size)
+            currentQuestionIndex = nextDailyTaskIndex ?: nextPracticeIndex ?: ((currentQuestionIndex + 1) % questions.size)
             addOfflineSyncItem("答題完成：${q.concept}", "學習事件", q.explanation)
             persistState()
             recordLearningEvent("answer_correct", "完成微任務：${q.concept}", q.explanation)
@@ -1388,7 +1391,7 @@ class MainActivity : Activity() {
             })
         }
         section("目前精選")
-        filtered.take(10).forEach { root.addView(studentPracticeOptionCard(it)) }
+        filtered.take(10).forEach { root.addView(studentPracticeOptionCard(it, filtered)) }
         root.addView(ui.secondaryButton("回今天任務") { renderTaskQueue() })
         bottomNav()
     }
@@ -4067,7 +4070,7 @@ class MainActivity : Activity() {
             Metric("題數", "${items.size}", ColorToken.Accent)
         ))
         first?.let { item ->
-            box.addView(ui.primaryButton("開始推薦題") { startPracticeItem(item) })
+            box.addView(ui.primaryButton("開始推薦題") { startPracticeItem(item, items) })
         }
         return ui.margins(box, 0, 8, 0, 14)
     }
@@ -4110,7 +4113,7 @@ class MainActivity : Activity() {
             else -> "練會考常見選擇題。"
         }
     }
-    private fun studentPracticeOptionCard(item: QuestionBankItem): View {
+    private fun studentPracticeOptionCard(item: QuestionBankItem, sessionItems: List<QuestionBankItem> = emptyList()): View {
         val box = ui.container(ColorToken.Card, ColorToken.Border)
         val top = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
@@ -4122,8 +4125,8 @@ class MainActivity : Activity() {
         box.addView(ui.body("${normalizedQuestionType(item)}｜挑戰 ${item.challengeScore}｜約 ${item.estimatedSeconds} 秒", ColorToken.Muted).apply { setPadding(0, ui.dp(6), 0, 0) })
         box.addView(ui.body("推薦原因：${aiQuestionRecommendationReason(item)}", ColorToken.Success).apply { setPadding(0, ui.dp(6), 0, 0) })
         box.addView(ui.body(item.question.prompt.take(90), "#334155").apply { setPadding(0, ui.dp(6), 0, 0) })
-        box.addView(ui.secondaryButton("開始這題") { startPracticeItem(item) })
-        box.setOnClickListener { startPracticeItem(item) }
+        box.addView(ui.secondaryButton("開始這題") { startPracticeItem(item, sessionItems) })
+        box.setOnClickListener { startPracticeItem(item, sessionItems) }
         return ui.margins(box, 0, 8, 0, 8)
     }
 
@@ -4215,7 +4218,7 @@ class MainActivity : Activity() {
         box.addView(ui.body("根據目前心情、信心值與錯題紀錄，建議先從這一組開始；如果想挑戰，可以往下切換進階難度。", "#334155"))
         items.take(3).forEach { item ->
             box.addView(ui.secondaryButton("${item.level}｜${normalizedQuestionType(item)}｜挑戰 ${item.challengeScore}") {
-                startPracticeItem(item)
+                startPracticeItem(item, items)
             })
         }
         return ui.margins(box, 0, 8, 0, 12)
@@ -4253,13 +4256,47 @@ class MainActivity : Activity() {
         }
         recommendations.forEach { item ->
             box.addView(ui.secondaryButton("${item.level}｜${normalizedQuestionType(item)}｜挑戰 ${item.challengeScore}｜${item.skill.take(10)}") {
-                startPracticeItem(item)
+                startPracticeItem(item, recommendations)
             })
         }
         box.addView(ui.secondaryButton("回練習中心自己挑題") { renderStudentPracticeCatalog() })
         return ui.margins(box, 0, 8, 0, 12)
     }
 
+    private fun activatePracticeSession(item: QuestionBankItem, sessionItems: List<QuestionBankItem>) {
+        val isDailyTaskItem = aiDailyPlanItemIds.contains(item.id) && !isDailyTaskComplete()
+        if (isDailyTaskItem) {
+            activePracticeItemIds = emptyList()
+            activePracticeItemIndex = -1
+            return
+        }
+        val fallbackItems = if (sessionItems.isNotEmpty()) sessionItems else filteredPracticeItems(stateStore.questionBankItems()).ifEmpty { listOf(item) }
+        val distinct = (fallbackItems + item)
+            .distinctBy { it.id }
+            .filter { candidate ->
+                if (selectedPracticeLevel.contains("B1")) candidate.level == "B1" || candidate.difficultyBand == "challenge"
+                else true
+            }
+            .ifEmpty { listOf(item) }
+        activePracticeItemIds = distinct.map { it.id }
+        activePracticeItemIndex = activePracticeItemIds.indexOf(item.id).takeIf { it >= 0 } ?: 0
+    }
+
+    private fun nextPracticeSessionQuestionIndex(): Int? {
+        if (activePracticeItemIds.isEmpty()) return null
+        val itemsById = stateStore.questionBankItems().associateBy { it.id }
+        repeat(activePracticeItemIds.size) {
+            activePracticeItemIndex = (activePracticeItemIndex + 1).floorMod(activePracticeItemIds.size)
+            val nextItem = itemsById[activePracticeItemIds[activePracticeItemIndex]] ?: return@repeat
+            val nextQuestionIndex = questions.indexOfFirst { q ->
+                q.prompt == nextItem.question.prompt && q.answer == nextItem.question.answer
+            }
+            if (nextQuestionIndex >= 0 && nextQuestionIndex != currentQuestionIndex) return nextQuestionIndex
+        }
+        return null
+    }
+
+    private fun Int.floorMod(modulus: Int): Int = ((this % modulus) + modulus) % modulus
     private fun questionBankItemFor(question: Question): QuestionBankItem? {
         return stateStore.questionBankItems().firstOrNull {
             it.question.prompt == question.prompt && it.question.answer == question.answer
@@ -4325,14 +4362,15 @@ class MainActivity : Activity() {
         }
     }
 
-    private fun startPracticeItem(item: QuestionBankItem) {
+    private fun startPracticeItem(item: QuestionBankItem, sessionItems: List<QuestionBankItem> = emptyList()) {
         val index = questions.indexOfFirst {
             it.prompt == item.question.prompt && it.answer == item.question.answer
         }
         if (index >= 0) currentQuestionIndex = index
+        activatePracticeSession(item, sessionItems)
         wrongAttempts = 0
         lastSelectedAnswer = ""
-        lastAnswerMessage = "已切換到 ${item.level}｜${normalizedQuestionType(item)}。先做這一題，再依結果推薦下一步。"
+        lastAnswerMessage = "已切換到 ${item.level}｜${normalizedQuestionType(item)}。先做這一題，答對後會前往同關卡下一題。"
         renderLesson()
     }
 
