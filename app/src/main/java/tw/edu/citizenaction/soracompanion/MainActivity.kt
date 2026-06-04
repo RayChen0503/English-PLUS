@@ -105,6 +105,7 @@ class MainActivity : Activity() {
     private var aiDailyPlanTitle = ""
     private var aiDailyPlanMessage = ""
     private var aiDailyPlanItemIds: List<String> = emptyList()
+    private val completedDailyTaskItemIds = mutableSetOf<String>()
     private var aiDailyPlanSource = ""
     private var aiReflectionFeedback = ""
     private var aiMapRouteSuggestion = ""
@@ -657,6 +658,7 @@ class MainActivity : Activity() {
         todayAnsweredFirstQuestion = false
         todayReflected = false
         aiDailyPlanItemIds = emptyList()
+        completedDailyTaskItemIds.clear()
         aiDailyPlanTitle = ""
         aiDailyPlanMessage = ""
         aiDailyPlanSource = ""
@@ -788,6 +790,7 @@ class MainActivity : Activity() {
             }
         }
         aiDailyPlanItemIds = selected.map { it.id }
+        completedDailyTaskItemIds.retainAll(aiDailyPlanItemIds.toSet())
         aiDailyPlanSource = if (aiSelected.isNotEmpty()) plan.source else "${plan.source} + local fill"
         recordLearningEvent("ai_daily_plan", aiDailyPlanTitle, "source=$aiDailyPlanSource / items=${aiDailyPlanItemIds.joinToString(",")}")
     }
@@ -797,6 +800,7 @@ class MainActivity : Activity() {
         aiDailyPlanTitle = "今日推薦任務"
         aiDailyPlanMessage = message
         aiDailyPlanItemIds = selected.map { it.id }
+        completedDailyTaskItemIds.retainAll(aiDailyPlanItemIds.toSet())
         aiDailyPlanSource = "Local recommendation"
     }
     private fun renderLesson() {
@@ -829,6 +833,11 @@ class MainActivity : Activity() {
         val q = questions[currentQuestionIndex]
         if (option == q.answer) {
             val completedRecoveryTask = recoveryTaskQuestionIndex == currentQuestionIndex
+            val dailyTaskItemId = questionBankItemFor(q)?.id
+            if (dailyTaskItemId != null && aiDailyPlanItemIds.contains(dailyTaskItemId)) {
+                completedDailyTaskItemIds.add(dailyTaskItemId)
+            }
+            val nextDailyTaskIndex = nextIncompleteDailyTaskQuestionIndex()
             completedTasks += 1
             confidence = (confidence + 4).coerceAtMost(100)
             learningEventCount += 1
@@ -842,7 +851,7 @@ class MainActivity : Activity() {
             wrongAttempts = 0
             lastSelectedAnswer = option
             lastAnswerMessage = "答對了：${q.explanation}"
-            currentQuestionIndex = (currentQuestionIndex + 1) % questions.size
+            currentQuestionIndex = nextDailyTaskIndex ?: ((currentQuestionIndex + 1) % questions.size)
             addOfflineSyncItem("答題完成：${q.concept}", "學習事件", q.explanation)
             persistState()
             recordLearningEvent("answer_correct", "完成微任務：${q.concept}", q.explanation)
@@ -871,9 +880,16 @@ class MainActivity : Activity() {
         screen = Screen.Lesson
         shell("答對了", "先確認結果，再選下一步")
         root.addView(successSummaryCard(q))
+        if (isDailyTaskComplete()) {
+            root.addView(dailyTaskCompletionCard())
+        } else if (dailyTaskItemId(q) != null) {
+            root.addView(dailyTaskProgressCard())
+        }
         root.addView(adaptiveNextStepCard(q, true))
-        root.addView(ui.primaryButton("做 20 秒反思") { renderReflection() })
-        root.addView(ui.secondaryButton("繼續下一題") { renderLesson() })
+        root.addView(ui.primaryButton(if (isDailyTaskComplete()) "整理今天學到什麼" else "做 20 秒反思") { renderReflection() })
+        root.addView(ui.secondaryButton(if (isDailyTaskComplete()) "自主加練一題" else "繼續下一題") {
+            if (isDailyTaskComplete()) renderStudentPracticeCatalog() else renderLesson()
+        })
         root.addView(ui.secondaryButton("回學習地圖") { renderMap() })
         bottomNav()
     }
@@ -3885,23 +3901,132 @@ class MainActivity : Activity() {
         return ui.margins(box, 0, 8, 0, 10)
     }
 
+    private fun dailyTaskTotal(): Int {
+        return aiDailyPlanItemIds.size
+    }
+
+    private fun completedDailyTaskCount(): Int {
+        val planned = aiDailyPlanItemIds.toSet()
+        return completedDailyTaskItemIds.count { it in planned }
+    }
+
+    private fun remainingDailyTaskCount(): Int {
+        return (dailyTaskTotal() - completedDailyTaskCount()).coerceAtLeast(0)
+    }
+
+    private fun dailyTaskProgressPercent(): Int {
+        val total = dailyTaskTotal()
+        if (total <= 0) return 0
+        return ((completedDailyTaskCount() * 100f) / total).toInt().coerceIn(0, 100)
+    }
+
+    private fun isDailyTaskComplete(): Boolean {
+        return dailyTaskTotal() > 0 && completedDailyTaskCount() >= dailyTaskTotal()
+    }
+
+    private fun dailyTaskItemId(question: Question): String? {
+        return questionBankItemFor(question)?.id?.takeIf { aiDailyPlanItemIds.contains(it) }
+    }
+
+    private fun nextIncompleteDailyTaskQuestionIndex(): Int? {
+        val itemsById = stateStore.questionBankItems().associateBy { it.id }
+        val nextItem = aiDailyPlanItemIds
+            .filterNot { completedDailyTaskItemIds.contains(it) }
+            .mapNotNull { itemsById[it] }
+            .firstOrNull()
+        return nextItem?.let { item ->
+            questions.indexOfFirst {
+                it.prompt == item.question.prompt && it.answer == item.question.answer
+            }.takeIf { it >= 0 }
+        }
+    }
+
+    private fun dailyTaskProgressCard(): View {
+        val total = dailyTaskTotal()
+        val completed = completedDailyTaskCount()
+        val remaining = remainingDailyTaskCount()
+        val complete = isDailyTaskComplete()
+        val box = ui.container(if (complete) ColorToken.SuccessSoft else ColorToken.Card, if (complete) ColorToken.Success else ColorToken.Border)
+        val top = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+        }
+        top.addView(ui.label(if (complete) "今日題目任務完成" else "今日題目任務", 19, ColorToken.Ink, true), LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f))
+        top.addView(ui.statusPill("$completed/$total", if (complete) ColorToken.Success else ColorToken.Primary))
+        box.addView(top)
+        box.addView(ui.body(
+            when {
+                total <= 0 -> "完成心情檢測後，English+ 會安排今天要答對的題目。"
+                complete -> "太好了，今天 AI 安排的題目都答對了。接下來可以休息，也可以去練習中心自主加練。"
+                remaining == 1 -> "只差最後 1 題答對，就完成今天的每日任務。"
+                else -> "再答對 $remaining 題，就完成今天的每日任務。答錯不會扣分，但不會推進進度。"
+            },
+            "#334155"
+        ).apply { setPadding(0, ui.dp(8), 0, ui.dp(6)) })
+        box.addView(ProgressBar(this, null, android.R.attr.progressBarStyleHorizontal).apply {
+            max = 100
+            progress = dailyTaskProgressPercent()
+            setPadding(0, ui.dp(8), 0, ui.dp(4))
+        })
+        box.addView(metricRow(
+            Metric("已答對", "$completed 題", if (complete) ColorToken.Success else ColorToken.Primary),
+            Metric("剩下", "$remaining 題", if (remaining == 0) ColorToken.Success else ColorToken.Accent),
+            Metric("進度", "${dailyTaskProgressPercent()}%", if (complete) ColorToken.Success else ColorToken.Primary)
+        ))
+        if (complete) {
+            box.addView(ui.primaryButton("去練習中心自主加練") { renderStudentPracticeCatalog() })
+        }
+        return ui.margins(box, 0, 8, 0, 12)
+    }
+
+    private fun dailyTaskCompletionCard(): View {
+        val box = ui.container(ColorToken.SuccessSoft, ColorToken.Success)
+        box.addView(ui.statusPill("每日任務完成", ColorToken.Success))
+        box.addView(ui.label("今天的題目任務完成了", 24, ColorToken.Ink, true).apply {
+            setPadding(0, ui.dp(12), 0, ui.dp(4))
+        })
+        box.addView(ui.body("你已答對 English+ 今天安排的 ${dailyTaskTotal()} 題。這代表今天的必要任務已結束，接下來可以休息、整理反思，或自主加練。", "#334155"))
+        box.addView(ProgressBar(this, null, android.R.attr.progressBarStyleHorizontal).apply {
+            max = 100
+            progress = 100
+            setPadding(0, ui.dp(10), 0, ui.dp(4))
+        })
+        box.addView(metricRow(
+            Metric("完成", "${completedDailyTaskCount()}/${dailyTaskTotal()}", ColorToken.Success),
+            Metric("狀態", "達成", ColorToken.Success),
+            Metric("下一步", "反思/加練", ColorToken.Primary)
+        ))
+        return ui.margins(box, 0, 8, 0, 14)
+    }
+
     private fun lessonSessionHeader(question: Question): View {
         val box = ui.container(ColorToken.Card, ColorToken.Border)
         val top = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
         }
-        top.addView(ui.statusPill("${currentQuestionIndex + 1}/${questions.size}", ColorToken.Accent))
+        val dailyItemId = dailyTaskItemId(question)
+        val isActiveDailyTask = dailyItemId != null && !isDailyTaskComplete()
+        if (isActiveDailyTask) {
+            top.addView(ui.statusPill("今日 ${completedDailyTaskCount()}/${dailyTaskTotal()}", ColorToken.Primary))
+        } else {
+            top.addView(ui.statusPill("自主練習", ColorToken.Accent))
+        }
         top.addView(ui.label(normalizedLessonType(question), 16, ColorToken.Ink, true).apply {
             setPadding(ui.dp(10), 0, 0, 0)
         }, LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f))
         top.addView(ui.statusPill("${confidence}%", ColorToken.Success))
         box.addView(top)
         box.addView(ProgressBar(this, null, android.R.attr.progressBarStyleHorizontal).apply {
-            max = questions.size
-            progress = currentQuestionIndex + 1
+            max = 100
+            progress = if (isActiveDailyTask) dailyTaskProgressPercent() else 0
             setPadding(0, ui.dp(10), 0, ui.dp(4))
         })
+        box.addView(ui.body(
+            if (isActiveDailyTask) "答對這題才會推進每日任務進度；答錯會先進入修復提示。"
+            else "這是自主練習，不影響今天每日任務進度。",
+            ColorToken.Muted
+        ))
         return ui.margins(box, 0, 4, 0, 10)
     }
 
@@ -4103,10 +4228,31 @@ class MainActivity : Activity() {
             Metric("題數", "${plannedItems.size} 題", ColorToken.Primary),
             Metric("節奏", if (confidence < 45) "先修復" else "穩定練", if (confidence < 45) ColorToken.Warning else ColorToken.Success)
         ))
+        if (plannedItems.isNotEmpty()) {
+            box.addView(ProgressBar(this, null, android.R.attr.progressBarStyleHorizontal).apply {
+                max = 100
+                progress = dailyTaskProgressPercent()
+                setPadding(0, ui.dp(10), 0, ui.dp(4))
+            })
+            box.addView(ui.body(
+                if (isDailyTaskComplete()) "今日題目任務已完成，可以自主加練。"
+                else "今日進度 ${completedDailyTaskCount()}/${dailyTaskTotal()}：答對才會前進，答錯會先修復。",
+                ColorToken.Primary
+            ).apply { setPadding(0, ui.dp(4), 0, ui.dp(8)) })
+        }
         plannedItems.forEachIndexed { index, item ->
             val label = aiQuestionBankLabels(item).take(2).joinToString("、")
-            box.addView(ui.secondaryButton("${index + 1}. $label｜${normalizedQuestionType(item)}｜${item.question.concept.take(18)}") {
-                startPracticeItem(item)
+            val done = item.id in completedDailyTaskItemIds
+            val status = if (done) "已完成" else "待完成"
+            box.addView(ui.secondaryButton("${index + 1}. $status｜$label｜${normalizedQuestionType(item)}") {
+                if (done) {
+                    nextIncompleteDailyTaskQuestionIndex()?.let {
+                        currentQuestionIndex = it
+                        renderLesson()
+                    } ?: renderStudentPracticeCatalog()
+                } else {
+                    startPracticeItem(item)
+                }
             })
         }
         if (plannedItems.isEmpty()) {
