@@ -325,7 +325,6 @@ class MainActivity : Activity() {
     }
 
     private fun studentHome() {
-        root.addView(studentStatusHeader())
         root.addView(studentTodayQuestCard())
         root.addView(studentQuickPracticeCard())
         bottomNav()
@@ -517,7 +516,6 @@ class MainActivity : Activity() {
         }
         screen = Screen.Lesson
         shell("今天先做這個", "把英文練習縮到現在做得到的一小步")
-        root.addView(studentStatusHeader())
         root.addView(studentTodayQuestCard())
         root.addView(dailyAiTaskPlanCard())
         if (recoveryTaskTitle.isNotBlank()) {
@@ -2620,27 +2618,6 @@ class MainActivity : Activity() {
         return ui.margins(box, 0, 8, 0, 16)
     }
 
-    private fun studentStatusHeader(): View {
-        val box = ui.container(ColorToken.Card, ColorToken.Border)
-        val titleRow = LinearLayout(this).apply {
-            orientation = LinearLayout.HORIZONTAL
-            gravity = Gravity.CENTER_VERTICAL
-        }
-        val titleStack = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
-        titleStack.addView(ui.label("English+", 22, ColorToken.Ink, true))
-        titleStack.addView(ui.body("今天只要完成下一個小關卡", ColorToken.Muted))
-        titleRow.addView(titleStack, LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f))
-        titleRow.addView(ui.statusPill("${completedTasks} 天", ColorToken.Accent))
-        titleRow.addView(ui.statusPill("${confidence}%", ColorToken.Success))
-        box.addView(titleRow)
-        box.addView(ProgressBar(this, null, android.R.attr.progressBarStyleHorizontal).apply {
-            max = 100
-            progress = confidence.coerceIn(0, 100)
-            setPadding(0, ui.dp(12), 0, ui.dp(4))
-        })
-        return ui.margins(box, 0, 8, 0, 12)
-    }
-
     private fun studentTodayQuestCard(): View {
         val title = if (!checkInCompleted) "先做 4 題狀態檢測" else "開始今天的英文小任務"
         val detail = if (!checkInCompleted) {
@@ -3932,25 +3909,31 @@ class MainActivity : Activity() {
     }
 
     private fun dailyTaskCompletionCard(): View {
-        val box = ui.container(ColorToken.SuccessSoft, ColorToken.Success)
-        box.addView(ui.statusPill("每日任務完成", ColorToken.Success))
-        box.addView(ui.label("今天的題目任務完成了", 24, ColorToken.Ink, true).apply {
-            setPadding(0, ui.dp(12), 0, ui.dp(4))
+        val total = dailyTaskTotal().coerceAtLeast(1)
+        val completed = completedDailyTaskCount().coerceAtMost(total)
+        val box = ui.container(ColorToken.SuccessSoft, ColorToken.Success).apply {
+            setPadding(ui.dp(18), ui.dp(18), ui.dp(18), ui.dp(18))
+        }
+        box.addView(ui.statusPill("今日任務完成", ColorToken.Success))
+        box.addView(ui.label("今天的每日任務完成了！", 25, ColorToken.Ink, true).apply {
+            setPadding(0, ui.dp(12), 0, ui.dp(6))
         })
-        box.addView(ui.body("你已答對 English+ 今天安排的 ${dailyTaskTotal()} 題。這代表今天的必要任務已結束，接下來可以休息、整理反思，或自主加練。", "#334155"))
+        box.addView(ui.body("你已答對今天安排的 $completed/$total 題。必要任務已結束，可以休息一下；想繼續進步，也可以到練習中心自主加練。", "#334155"))
         box.addView(ProgressBar(this, null, android.R.attr.progressBarStyleHorizontal).apply {
             max = 100
             progress = 100
-            setPadding(0, ui.dp(10), 0, ui.dp(4))
+            setPadding(0, ui.dp(12), 0, ui.dp(4))
+        })
+        box.addView(ui.body("完成 100%｜今日任務已達成", ColorToken.Success).apply {
+            setPadding(0, ui.dp(4), 0, ui.dp(8))
         })
         box.addView(metricRow(
-            Metric("完成", "${completedDailyTaskCount()}/${dailyTaskTotal()}", ColorToken.Success),
-            Metric("狀態", "達成", ColorToken.Success),
-            Metric("下一步", "反思/加練", ColorToken.Primary)
+            Metric("已答對", "$completed/$total", ColorToken.Success),
+            Metric("狀態", "已完成", ColorToken.Success),
+            Metric("下一步", "休息/加練", ColorToken.Primary)
         ))
         return ui.margins(box, 0, 8, 0, 14)
     }
-
     private fun lessonSessionHeader(question: Question): View {
         val box = ui.container(ColorToken.Card, ColorToken.Border)
         val top = LinearLayout(this).apply {
@@ -4181,16 +4164,9 @@ class MainActivity : Activity() {
             Metric("節奏", if (confidence < 45) "先修復" else "穩定練", if (confidence < 45) ColorToken.Warning else ColorToken.Success)
         ))
         if (plannedItems.isNotEmpty()) {
-            box.addView(ProgressBar(this, null, android.R.attr.progressBarStyleHorizontal).apply {
-                max = 100
-                progress = dailyTaskProgressPercent()
-                setPadding(0, ui.dp(10), 0, ui.dp(4))
+            box.addView(ui.body("進入每日任務後才會顯示題目進度；答對會前進，答錯會先修復。", ColorToken.Primary).apply {
+                setPadding(0, ui.dp(4), 0, ui.dp(8))
             })
-            box.addView(ui.body(
-                if (isDailyTaskComplete()) "今日題目任務已完成，可以自主加練。"
-                else "今日進度 ${completedDailyTaskCount()}/${dailyTaskTotal()}：答對才會前進，答錯會先修復。",
-                ColorToken.Primary
-            ).apply { setPadding(0, ui.dp(4), 0, ui.dp(8)) })
         }
         plannedItems.forEachIndexed { index, item ->
             val label = aiQuestionBankLabels(item).take(2).joinToString("、")
