@@ -38,7 +38,6 @@ import tw.edu.citizenaction.soracompanion.model.CheckInOption
 import tw.edu.citizenaction.soracompanion.model.CheckInQuestion
 import tw.edu.citizenaction.soracompanion.model.CheckInResult
 import tw.edu.citizenaction.soracompanion.model.CollaborationNote
-import tw.edu.citizenaction.soracompanion.model.DailyTaskProgress
 import tw.edu.citizenaction.soracompanion.model.DesignPrinciple
 import tw.edu.citizenaction.soracompanion.model.InterventionStep
 import tw.edu.citizenaction.soracompanion.model.JourneyStep
@@ -265,7 +264,7 @@ class MainActivity : Activity() {
     }
 
     private fun renderStudentSupportEntry() {
-        if (!checkInCompleted) renderCheckIn() else renderBreakpoints()
+        if (!checkInCompleted) renderCheckIn() else renderStudentRecoveryCenter()
     }
 
     private fun renderStudentMapEntry() {
@@ -328,7 +327,6 @@ class MainActivity : Activity() {
     private fun studentHome() {
         root.addView(studentStatusHeader())
         root.addView(studentTodayQuestCard())
-        root.addView(studentLearningPathCard())
         root.addView(studentQuickPracticeCard())
         bottomNav()
     }
@@ -612,7 +610,6 @@ class MainActivity : Activity() {
         root.addView(checkInResultCard(result))
         root.addView(card("今天狀態分析", support.diagnosis, ColorToken.WarningSoft))
         root.addView(card("給你的話", support.studentFeedback, ColorToken.SuccessSoft))
-        root.addView(card("老師/志工摘要", support.handoffSummary, ColorToken.Card))
         addOfflineSyncItem("AI 情緒支持：${result.title}", "真 AI 情緒支持", support.handoffSummary)
         recordLearningEvent("ai_emotional_support", "真 AI 情緒支持", support.diagnosis)
         root.addView(ui.primaryButton("產生今日任務") { confirmPracticeTimeAndPlanToday() })
@@ -825,7 +822,7 @@ class MainActivity : Activity() {
             persistState()
             renderSuccess(questions.first())
         })
-        root.addView(ui.secondaryButton("交給志工接力") { renderHelpRequest() })
+        root.addView(ui.secondaryButton("我想請老師/志工幫忙") { renderHelpRequest() })
         bottomNav()
     }
 
@@ -869,7 +866,7 @@ class MainActivity : Activity() {
             if (wrongAttempts >= 3) {
                 breakpoints.add(0, Breakpoint("今日新斷點：${q.concept}", "高", "同一題連續答錯 3 次", "AI 已停止加題並改派修復任務。", "請志工用同一概念帶 2 題，不追加作業。"))
                 wrongAttempts = 0
-                renderBreakpoints()
+                renderLocalAiCoach("這題先不用硬撐。English+ 已把任務縮小成修復練習，你可以看提示後重試，或送出求助給老師/志工。")
             } else {
                 renderAiCoach()
             }
@@ -981,7 +978,6 @@ class MainActivity : Activity() {
         root.addView(card("平台回應", prompt.platformResponse, ColorToken.SuccessSoft))
         root.addView(card("AI 反思回饋", aiReflectionFeedback.ifBlank { "English+ 已依照你的反思更新下一步路徑。" }, ColorToken.WarningSoft))
         root.addView(card("學習地圖更新", "${aiMapRouteSuggestion.ifBlank { "維持目前學習路線。" }}\n${aiPracticeTypeSuggestion.ifBlank { "題型維持原設定。" }}", ColorToken.SuccessSoft))
-        root.addView(todayProgressCard())
         root.addView(card("目前信心值", "$confidence%｜下次會從同一個斷點繼續，而不是直接加難度。", ColorToken.Card))
         root.addView(card("已寫入學習紀錄", "學習事件：${learningEventCount} 筆\n修復紀錄：${repairedMistakeCount} 筆\n待同步：${offlinePendingCount} 筆", ColorToken.PrimarySoft))
         root.addView(ui.primaryButton("回學習地圖") { renderMap() })
@@ -1110,13 +1106,12 @@ class MainActivity : Activity() {
         root.addView(answerResultCard(false, q, lastSelectedAnswer))
         root.addView(card("看懂錯在哪", support.diagnosis, ColorToken.WarningSoft))
         root.addView(card("下一步提示", support.studentFeedback, ColorToken.SuccessSoft))
-        root.addView(card("老師/志工摘要", support.handoffSummary, ColorToken.Card))
         root.addView(adaptiveNextStepCard(q, false))
         if (recoveryTaskTitle.isNotBlank()) root.addView(recoveryTaskCard())
         addOfflineSyncItem("AI 錯題詳解：${q.concept}", "真 AI 錯題支持", support.handoffSummary)
         recordLearningEvent("ai_wrong_answer_support", "真 AI 錯題支持：${q.concept}", support.diagnosis)
         root.addView(ui.primaryButton("回題目再試一次") { renderLesson() })
-        root.addView(ui.secondaryButton("交給志工接力") { renderHelpRequest() })
+        root.addView(ui.secondaryButton("我想請老師/志工幫忙") { renderHelpRequest() })
         bottomNav()
     }
 
@@ -1128,11 +1123,11 @@ class MainActivity : Activity() {
         root.addView(answerResultCard(false, q, lastSelectedAnswer))
         root.addView(supportStepCard("01", "我看見你卡在這裡", q.prompt, ColorToken.WarningSoft, ColorToken.Warning))
         root.addView(supportStepCard("02", "先把概念拆小", "${q.explanation}\n現在只要先記住這一個規則，不需要一次背完 am / is / are。", ColorToken.VioletSoft, ColorToken.Primary))
-        root.addView(supportStepCard("03", "你可以選下一步", "回到同一題再試一次；如果仍然不舒服，English+ 會幫你把狀況整理給志工。", ColorToken.PrimarySoft, ColorToken.Success))
+        root.addView(supportStepCard("03", "你可以選下一步", "回到同一題再試一次；如果仍然不舒服，可以送出求助，老師/志工會看到整理好的摘要。", ColorToken.PrimarySoft, ColorToken.Success))
         root.addView(adaptiveNextStepCard(q, false))
         if (recoveryTaskTitle.isNotBlank()) root.addView(recoveryTaskCard())
         root.addView(ui.primaryButton("回題目再試一次") { renderLesson() })
-        root.addView(ui.secondaryButton("交給志工接力") { renderHelpRequest() })
+        root.addView(ui.secondaryButton("我想請老師/志工幫忙") { renderHelpRequest() })
         bottomNav()
     }
     private fun renderHelpRequest() {
@@ -1161,7 +1156,7 @@ class MainActivity : Activity() {
             "離線任務" -> renderOfflinePacks()
             else -> {
                 breakpoints.add(0, Breakpoint(option.reason, "高", preparedHelpSummary, option.platformAction, "志工先肯定狀態，再用同一概念做低壓陪練。"))
-                renderHandoff()
+                if (role == Role.Mentor) renderHandoff() else renderStudentHelpSubmitted()
             }
         }
     }
@@ -1190,6 +1185,10 @@ class MainActivity : Activity() {
     }
 
     private fun renderBreakpoints() {
+        if (role == Role.Student) {
+            renderStudentRecoveryCenter()
+            return
+        }
         screen = Screen.Breakpoints
         shell("支持中心", "把卡關變成 English+ 可以接住的訊號")
         root.addView(card("支持原則", "連續錯題、停留過久、重複退出都不是懲罰理由，而是調整任務與安排陪伴的訊號。", ColorToken.WarningSoft))
@@ -1199,7 +1198,54 @@ class MainActivity : Activity() {
         bottomNav()
     }
 
+    private fun renderStudentRecoveryCenter() {
+        screen = Screen.HelpRequest
+        val q = questions.getOrNull(currentQuestionIndex)
+        shell("錯題修復", "先把卡住的地方變小")
+        root.addView(card(
+            "你不用一次弄懂全部",
+            "這裡只處理目前這一題或同一個概念。答錯不會推進每日任務進度，但會保留提示，讓你可以重新整理後再試一次。",
+            ColorToken.PrimarySoft
+        ))
+        q?.let {
+            root.addView(answerResultCard(false, it, lastSelectedAnswer))
+            root.addView(card("現在先修這個概念", it.repairHint, ColorToken.SuccessSoft))
+        }
+        root.addView(metricRow(
+            Metric("目前", if (lastSelectedAnswer.isBlank()) "尚未作答" else "需要修復", ColorToken.Warning),
+            Metric("信心", "$confidence%", if (confidence < 45) ColorToken.Warning else ColorToken.Success),
+            Metric("任務", "${completedDailyTaskCount()}/${dailyTaskTotal()}", ColorToken.Primary)
+        ))
+        root.addView(ui.primaryButton("看提示後重試") { renderLesson() })
+        root.addView(ui.secondaryButton("改做較小的復原任務") { renderRecoveryMode() })
+        root.addView(ui.secondaryButton("送出求助給老師/志工") { renderHelpRequest() })
+        bottomNav()
+    }
+
+    private fun renderStudentHelpSubmitted() {
+        screen = Screen.HelpRequest
+        shell("已送出求助", "你可以先回到自己的小任務")
+        root.addView(card(
+            "求助已整理好",
+            "English+ 已把你卡住的題目、你選的答案和需要的陪伴方式整理給老師/志工。你現在不用看接力後台，可以先重試、做復原任務，或回今日任務。",
+            ColorToken.SuccessSoft
+        ))
+        root.addView(card("你送出的內容", preparedHelpSummary, ColorToken.Card))
+        root.addView(ui.primaryButton("回題目再試一次") { renderLesson() })
+        root.addView(ui.secondaryButton("改做復原任務") { renderRecoveryMode() })
+        root.addView(ui.secondaryButton("回今日任務") { renderTaskQueue() })
+        bottomNav()
+    }
+
     private fun renderHandoff() {
+        if (role == Role.Student) {
+            if (preparedHelpSummary.isBlank()) {
+                renderStudentRecoveryCenter()
+            } else {
+                renderStudentHelpSubmitted()
+            }
+            return
+        }
         screen = Screen.Handoff
         if (preparedHelpSummary.isBlank()) preparedHelpSummary = buildPreparedHelpSummary()
         shell("雲端志工接力", "把真人時間用在最值得的地方")
@@ -2599,18 +2645,26 @@ class MainActivity : Activity() {
         val title = if (!checkInCompleted) "先做 4 題狀態檢測" else "開始今天的英文小任務"
         val detail = if (!checkInCompleted) {
             "完成後 English+ 會依照心情、時間與想練的題型安排任務。"
+        } else if (practiceTimeConfirmed && dailyTaskTotal() > 0) {
+            if (isDailyTaskComplete()) {
+                "今日必要題目已完成。接下來可以整理反思，或到練習中心自主加練。"
+            } else {
+                "今日任務還剩 ${remainingDailyTaskCount()} 題要答對；答錯會先修復，不會推進進度。"
+            }
         } else {
-            "預計 ${minutes} 分鐘，先做一題剛好的題目；卡住時會有 AI 回饋或真人接力。"
+            "預計 ${minutes} 分鐘，先產生今天要完成的題目任務。"
         }
         val actionText = when {
             !checkInCompleted -> "開始檢測"
             !practiceTimeConfirmed -> "產生任務"
-            else -> "開始第一題"
+            isDailyTaskComplete() -> "整理今天學到什麼"
+            else -> "繼續每日任務"
         }
         val action = when {
             !checkInCompleted -> ({ renderCheckIn() })
             !practiceTimeConfirmed -> ({ confirmPracticeTimeAndPlanToday() })
-            else -> ({ renderLesson() })
+            isDailyTaskComplete() -> ({ renderReflection() })
+            else -> ({ startNextDailyTaskOrPractice() })
         }
         val box = ui.container(ColorToken.PrimarySoft, ColorToken.Primary)
         box.addView(ui.statusPill("今日主線", ColorToken.Primary))
@@ -2625,20 +2679,7 @@ class MainActivity : Activity() {
         return ui.margins(box, 0, 8, 0, 14)
     }
 
-    private fun studentLearningPathCard(): View {
-        val box = ui.container(ColorToken.Card, ColorToken.Border)
-        box.addView(ui.statusPill("學習路徑", ColorToken.Success))
-        box.addView(ui.label("沿著路徑往下完成", 19, ColorToken.Ink, true).apply { setPadding(0, ui.dp(10), 0, ui.dp(4)) })
-        box.addView(pathNode("1", "心情檢測", if (checkInCompleted) "已完成" else "目前關卡", checkInCompleted, !checkInCompleted) { renderCheckIn() })
-        box.addView(pathNode("2", "AI 安排今日任務", if (practiceTimeConfirmed) "已完成" else "下一步", practiceTimeConfirmed, checkInCompleted && !practiceTimeConfirmed) { confirmPracticeTimeAndPlanToday() })
-        box.addView(pathNode("3", "短題練習", if (todayAnsweredFirstQuestion) "已完成" else "待開始", todayAnsweredFirstQuestion, practiceTimeConfirmed && !todayAnsweredFirstQuestion) { renderTaskQueue() })
-        box.addView(pathNode("4", "反思與學習地圖", if (todayReflected) "已完成" else "完成後開啟", todayReflected, todayAnsweredFirstQuestion && !todayReflected) { renderReflection() })
-        return ui.margins(box, 0, 8, 0, 14)
-    }
-
     private fun studentMapStatusCard(): View {
-        val completedSteps = listOf(checkInCompleted, practiceTimeConfirmed, todayAnsweredFirstQuestion, todayReflected).count { it }
-        val totalSteps = 5
         val box = ui.container(ColorToken.PrimarySoft, ColorToken.Primary)
         val top = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
@@ -2646,23 +2687,18 @@ class MainActivity : Activity() {
         }
         val titleStack = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
         titleStack.addView(ui.statusPill("今日地圖", ColorToken.Primary))
-        titleStack.addView(ui.label("你在第 ${completedSteps.coerceAtLeast(1)} 關", 24, ColorToken.Ink, true).apply {
+        titleStack.addView(ui.label(if (isDailyTaskComplete()) "今日題目已完成" else "看下一步要往哪裡走", 24, ColorToken.Ink, true).apply {
             setPadding(0, ui.dp(10), 0, ui.dp(4))
         })
-        titleStack.addView(ui.body("先完成亮起來的下一關，再決定要不要挑戰更難題。", "#334155"))
+        titleStack.addView(ui.body("學習地圖只顯示路線和建議；每日任務完成度只在題目任務中計算。", "#334155"))
         top.addView(titleStack, LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f))
         top.addView(ui.statusPill("${confidence}%", if (confidence >= 60) ColorToken.Success else ColorToken.Warning))
         box.addView(top)
-        box.addView(ProgressBar(this, null, android.R.attr.progressBarStyleHorizontal).apply {
-            max = totalSteps
-            progress = completedSteps.coerceIn(1, totalSteps)
-            setPadding(0, ui.dp(12), 0, ui.dp(8))
-        })
         box.addView(flowStrip(
             mood.label,
             "${minutes} 分",
             selectedPracticeLevel,
-            "${targetDailyQuestionCount()} 題"
+            if (dailyTaskTotal() > 0) "${completedDailyTaskCount()}/${dailyTaskTotal()} 題" else "${targetDailyQuestionCount()} 題"
         ))
         return ui.margins(box, 0, 8, 0, 14)
     }
@@ -2942,23 +2978,6 @@ class MainActivity : Activity() {
         box.addView(ui.primaryButton("開始這個任務") { renderTaskQueue() })
         box.addView(ui.secondaryButton("我想先調整今天狀態") { renderCheckIn() })
         return ui.margins(box, 0, 8, 0, 16)
-    }
-
-    private fun progressRhythmCard(): View {
-        val totalSteps = 6
-        val todayProgress = (completedTasks % totalSteps).coerceAtLeast(1)
-        val box = ui.container(ColorToken.Card, ColorToken.Border)
-        box.addView(ui.statusPill("今日節奏", ColorToken.Primary))
-        box.addView(ui.label("小步驟 ${todayProgress} / $totalSteps", 18, ColorToken.Ink, true).apply {
-            setPadding(0, ui.dp(12), 0, ui.dp(4))
-        })
-        box.addView(ProgressBar(this, null, android.R.attr.progressBarStyleHorizontal).apply {
-            max = totalSteps
-            progress = todayProgress
-            setPadding(0, ui.dp(8), 0, ui.dp(8))
-        })
-        box.addView(ui.body("你已完成 $completedTasks 個微任務。下一步先把今天最小的一題做完。", "#334155"))
-        return ui.margins(box, 0, 0, 0, 12)
     }
 
     private fun trackEntry(
@@ -3275,80 +3294,6 @@ class MainActivity : Activity() {
         }
     }
 
-
-    private fun todayProgress(): DailyTaskProgress {
-        return PrototypeRepository.dailyTaskProgress(
-            checkInCompleted = checkInCompleted,
-            practiceTimeConfirmed = practiceTimeConfirmed,
-            answeredFirstQuestion = todayAnsweredFirstQuestion,
-            reflected = todayReflected,
-            selectedMinutes = minutes
-        )
-    }
-
-    private fun todayProgressCard(): View {
-        val progress = todayProgress()
-        val box = ui.container(ColorToken.PrimarySoft, ColorToken.Border)
-        val top = LinearLayout(this).apply {
-            orientation = LinearLayout.HORIZONTAL
-            gravity = Gravity.CENTER_VERTICAL
-        }
-        top.addView(ui.statusPill("今日進度", ColorToken.Primary))
-        top.addView(ui.label("${progress.progressPercent}%", 18, ColorToken.Primary, true).apply {
-            gravity = Gravity.RIGHT
-        }, LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f))
-        box.addView(top)
-        box.addView(ui.label(progress.currentStep, 22, ColorToken.Ink, true).apply {
-            setPadding(0, ui.dp(12), 0, ui.dp(4))
-        })
-        box.addView(ui.body(progress.nextAction, "#334155"))
-        box.addView(ProgressBar(this, null, android.R.attr.progressBarStyleHorizontal).apply {
-            max = 100
-            this.progress = progress.progressPercent
-            setPadding(0, ui.dp(10), 0, ui.dp(8))
-            layoutParams = ui.fullWidthParams()
-        })
-        box.addView(ui.body("還剩 ${progress.remainingSteps} 步｜約 ${progress.remainingMinutes} 分鐘｜今天總流程 ${progress.totalSteps} 步", ColorToken.Primary).apply {
-            setPadding(0, ui.dp(4), 0, 0)
-        })
-        return ui.margins(box, 0, 8, 0, 12)
-    }
-
-    private fun todayStepListCard(): View {
-        val progress = todayProgress()
-        val box = ui.container(ColorToken.Card, ColorToken.Border)
-        box.addView(ui.label("今天會照這個順序走", 18, ColorToken.Ink, true))
-        progress.steps.forEachIndexed { index, step ->
-            val done = index < progress.completedSteps
-            val current = index == progress.completedSteps && progress.remainingSteps > 0
-            box.addView(todayStepRow(index + 1, step, done, current))
-        }
-        return ui.margins(box, 0, 6, 0, 12)
-    }
-
-    private fun todayStepRow(index: Int, title: String, done: Boolean, current: Boolean): View {
-        val row = LinearLayout(this).apply {
-            orientation = LinearLayout.HORIZONTAL
-            gravity = Gravity.CENTER_VERTICAL
-            setPadding(0, ui.dp(8), 0, ui.dp(4))
-        }
-        val color = when {
-            done -> ColorToken.Success
-            current -> ColorToken.Accent
-            else -> ColorToken.Muted
-        }
-        val state = when {
-            done -> "完成"
-            current -> "現在"
-            else -> "待做"
-        }
-        row.addView(ui.statusPill("$index", color))
-        row.addView(ui.label(title, 16, ColorToken.Ink, true).apply {
-            setPadding(ui.dp(10), 0, 0, 0)
-        }, LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f))
-        row.addView(ui.label(state, 14, color, true))
-        return row
-    }
     private fun questionBankReviewDashboardCard(): View {
         val summary = PrototypeRepository.teacherQuestionBankReviewSummary()
         val typeLine = summary.typeCounts.entries.joinToString("、") { "${it.key}:${it.value}" }.take(110)
@@ -3939,6 +3884,13 @@ class MainActivity : Activity() {
                 it.prompt == item.question.prompt && it.answer == item.question.answer
             }.takeIf { it >= 0 }
         }
+    }
+
+    private fun startNextDailyTaskOrPractice() {
+        nextIncompleteDailyTaskQuestionIndex()?.let {
+            currentQuestionIndex = it
+        }
+        renderLesson()
     }
 
     private fun dailyTaskProgressCard(): View {
