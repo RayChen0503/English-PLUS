@@ -366,12 +366,11 @@ class MainActivity : Activity() {
     }
 
     private fun teacherHome() {
-        root.addView(mentorCommandCenterCard())
-        root.addView(teacherAiBriefingCard())
-        root.addView(mentorPriorityStudentCard())
-        root.addView(mentorRouteCard())
-        root.addView(mentorWorkspaceEntrancesCard())
-        root.addView(mentorSignalStripCard())
+        root.addView(teacherTodayOverviewCard())
+        root.addView(teacherFirstPriorityCard())
+        root.addView(teacherClassPulseCard())
+        root.addView(teacherWorkQueueCard())
+        root.addView(teacherReportShortcutCard())
         root.addView(ui.secondaryButton("回到身分選擇") { renderRoleGateway() })
         bottomNav()
     }
@@ -2462,6 +2461,111 @@ class MainActivity : Activity() {
         ))
         box.addView(ui.primaryButton("查看第一優先學生") { renderStudentDetail(roster.first()) })
         return ui.margins(box, 0, 8, 0, 14)
+    }
+
+    private fun teacherTodayOverviewCard(): View {
+        val roster = currentRoster()
+        val highRisk = roster.count { it.risk == "高" }
+        val middleRisk = roster.count { it.risk == "中" }
+        val pending = (teacherActions.size - actionDoneCount).coerceAtLeast(0)
+        val box = ui.container(ColorToken.PrimarySoft, ColorToken.Primary)
+        box.addView(ui.statusPill("老師今日工作台", ColorToken.Primary))
+        box.addView(ui.label("今天先接住 $highRisk 位學生", 24, ColorToken.Ink, true).apply {
+            setPadding(0, ui.dp(10), 0, ui.dp(4))
+        })
+        box.addView(ui.body("先處理高風險，再看待辦；穩定學生不用打斷他的練習節奏。", "#334155"))
+        box.addView(metricRow(
+            Metric("高風險", "$highRisk 位", if (highRisk > 0) ColorToken.Danger else ColorToken.Success),
+            Metric("追蹤", "$middleRisk 位", ColorToken.Warning),
+            Metric("待辦", "$pending 件", if (pending > 0) ColorToken.Warning else ColorToken.Success)
+        ))
+        box.addView(flowStrip("看第一優先", "分派接力", "確認紀錄", "整理週報"))
+        return ui.margins(box, 0, 8, 0, 14)
+    }
+
+    private fun teacherFirstPriorityCard(): View {
+        val target = currentRoster().firstOrNull { it.risk == "高" } ?: currentRoster().first()
+        latestTeacherAiSummary = buildTeacherAiSummary(target)
+        latestVolunteerDraft = buildVolunteerReplyDraft(target)
+        val box = ui.container(ColorToken.WarningSoft, ColorToken.Warning)
+        box.addView(ui.statusPill("第一優先學生", if (target.risk == "高") ColorToken.Danger else ColorToken.Warning))
+        box.addView(ui.label("${target.name}｜${target.issue}", 21, ColorToken.Ink, true).apply {
+            setPadding(0, ui.dp(10), 0, ui.dp(4))
+        })
+        box.addView(ui.body("狀態：${target.status}", "#334155"))
+        box.addView(ui.body("老師下一步：先看摘要，再決定是否交給志工接力。", ColorToken.Danger).apply {
+            setPadding(0, ui.dp(6), 0, 0)
+        })
+        box.addView(ui.primaryButton("查看學生摘要") { renderStudentDetail(target) })
+        box.addView(ui.secondaryButton("交給志工接力") {
+            addAiHandoffCollaborationNote(target)
+            renderHandoffBoard()
+        })
+        return ui.margins(box, 0, 0, 0, 14)
+    }
+
+    private fun teacherClassPulseCard(): View {
+        val roster = currentRoster()
+        val stable = roster.count { it.risk == "低" }
+        val needsRelay = roster.count { it.risk == "高" }
+        val box = ui.container(ColorToken.Card, ColorToken.Border)
+        box.addView(ui.statusPill("班級狀態", ColorToken.Accent))
+        box.addView(ui.label("先看訊號，不先看分數", 19, ColorToken.Ink, true).apply {
+            setPadding(0, ui.dp(10), 0, ui.dp(4))
+        })
+        box.addView(metricRow(
+            Metric("可自學", "$stable 位", ColorToken.Success),
+            Metric("需接力", "$needsRelay 位", if (needsRelay > 0) ColorToken.Danger else ColorToken.Success),
+            Metric("同步", "$offlinePendingCount 件", if (offlinePendingCount > 0) ColorToken.Warning else ColorToken.Success)
+        ))
+        weeklySignals.take(2).forEach { signal ->
+            box.addView(timelineCard(signal.label, "${signal.value}｜${signal.note}", signal.color))
+        }
+        box.addView(ui.secondaryButton("查看全部學生") { renderRoster() })
+        return ui.margins(box, 0, 0, 0, 14)
+    }
+
+    private fun teacherWorkQueueCard(): View {
+        val pending = (teacherActions.size - actionDoneCount).coerceAtLeast(0)
+        val nextAction = teacherActions.getOrNull(actionDoneCount)
+        val box = ui.container(ColorToken.SuccessSoft, ColorToken.Success)
+        box.addView(ui.statusPill("下一步", ColorToken.Success))
+        box.addView(ui.label(if (nextAction == null) "今天待辦已清空" else nextAction.title, 20, ColorToken.Ink, true).apply {
+            setPadding(0, ui.dp(10), 0, ui.dp(4))
+        })
+        box.addView(ui.body(
+            if (nextAction == null) {
+                "可以整理週報，或回學生列表查看是否有新的接力訊號。"
+            } else {
+                "${nextAction.owner}｜${nextAction.due}\n${nextAction.nextStep}"
+            },
+            "#334155"
+        ))
+        box.addView(metricRow(
+            Metric("待辦", "$pending 件", if (pending > 0) ColorToken.Warning else ColorToken.Success),
+            Metric("已處理", "$actionDoneCount 件", ColorToken.Success),
+            Metric("協作", "${collaborationNotes.size} 筆", ColorToken.Primary)
+        ))
+        box.addView(ui.primaryButton(if (nextAction == null) "查看週報" else "處理待辦") {
+            if (nextAction == null) renderWeeklyReport() else renderActionQueue()
+        })
+        return ui.margins(box, 0, 0, 0, 14)
+    }
+
+    private fun teacherReportShortcutCard(): View {
+        val box = ui.container(ColorToken.Surface, ColorToken.Border)
+        box.addView(ui.statusPill("週報準備", ColorToken.Primary))
+        box.addView(ui.label("把今天的接力變成可追蹤紀錄", 18, ColorToken.Ink, true).apply {
+            setPadding(0, ui.dp(10), 0, ui.dp(4))
+        })
+        box.addView(ui.body("週報會整理班級訊號、學生斷點、志工回覆與待同步資料，方便下一位老師接續。", "#334155"))
+        box.addView(actionGrid(
+            ActionItem("學生證據", "看風險") { renderRoster() },
+            ActionItem("接力板", "分派志工") { renderHandoffBoard() },
+            ActionItem("同步", "補傳紀錄") { renderSyncCenter() },
+            ActionItem("週報", "整理輸出") { renderWeeklyReport() }
+        ))
+        return ui.margins(box, 0, 0, 0, 14)
     }
 
     private fun teacherAiBriefingCard(): View {
