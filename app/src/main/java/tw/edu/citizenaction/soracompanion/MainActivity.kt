@@ -1664,6 +1664,7 @@ class MainActivity : Activity() {
         screen = Screen.StudentDetail
         shell("${row.name} 的學生摘要", "判斷是否需要老師或志工介入")
         root.addView(studentDecisionHeaderCard(row))
+        root.addView(relayStatusCard(row))
         root.addView(studentEvidenceTimelineCard(row))
         root.addView(teacherAiStudentSummaryCard(row))
         root.addView(studentTeacherNextStepCard(row))
@@ -1730,6 +1731,7 @@ class MainActivity : Activity() {
         latestVolunteerDraft = buildVolunteerReplyDraft(target)
         shell("接力摘要", "先看懂學生，再開始陪伴")
         root.addView(volunteerStepHeaderCard("第 1 步", "看懂今天要陪誰", "不用看完整後台，只要抓住學生卡在哪裡。"))
+        root.addView(relayStatusCard(target))
         root.addView(card("學生狀況", "${target.name}｜${target.issue}\n${target.status}", ColorToken.WarningSoft))
         root.addView(card("老師整理給你的重點", latestTeacherAiSummary.lineSequence().take(4).joinToString("\n"), ColorToken.PrimarySoft))
         root.addView(card("可以直接說的第一句", latestVolunteerDraft, ColorToken.SuccessSoft))
@@ -1744,27 +1746,17 @@ class MainActivity : Activity() {
         val target = volunteerTargetStudent()
         shell("回填接力紀錄", "完成後老師就能接續追蹤")
         root.addView(volunteerStepHeaderCard("第 3 步", "留下今天陪伴結果", "不用寫長報告，只要讓下一位老師知道學生現在到哪裡。"))
+        root.addView(relayStatusCard(target))
         root.addView(card("建議回填內容", "已陪 ${target.name} 看同一個概念 1-2 題；先肯定願意求助，沒有追加新作業。", ColorToken.PrimarySoft))
         root.addView(metricRow(
             Metric("志工回覆", "$mentorReplyCount", ColorToken.Success),
             Metric("協作紀錄", "${collaborationNotes.size}", ColorToken.Primary),
             Metric("待同步", "$offlinePendingCount", if (offlinePendingCount > 0) ColorToken.Warning else ColorToken.Success)
         ))
-        root.addView(ui.primaryButton("完成接力並寫入紀錄") {
-            mentorReplyCount += 1
-            actionDoneCount = (actionDoneCount + 1).coerceAtMost(teacherActions.size)
-            addCollaborationNote(
-                actor = currentAccount().displayName,
-                roleLabel = currentAccount().roleLabel,
-                target = target.name,
-                note = "已完成一次低壓接力：先肯定學生願意求助，再陪練同一概念 1-2 題，未追加新作業。",
-                status = "志工已回填"
-            )
-            addOfflineSyncItem("志工回填：${target.name}", "志工接力", "已完成低壓接力並回填紀錄。")
-            persistState()
-            renderVolunteerRecord()
+        root.addView(ui.primaryButton(if (isRelayCompleted(target)) "已完成，更新紀錄" else "完成接力並寫入紀錄") {
+            completeVolunteerRelay(target)
         })
-        if (mentorReplyCount > 0 || collaborationNotes.isNotEmpty()) {
+        if (isRelayCompleted(target)) {
             root.addView(card("已完成", "這次接力已留下紀錄。你可以同步資料，或回首頁等待下一位學生。", ColorToken.SuccessSoft))
         }
         root.addView(ui.secondaryButton("同步紀錄") { renderSyncCenter() })
@@ -2159,13 +2151,15 @@ class MainActivity : Activity() {
         root.addView(card("引導問題", "1. He 是一個人還是很多人？\n2. 一個人通常搭配 is 還是 are？\n3. 你可以自己造一句 He is 嗎？", ColorToken.PrimarySoft))
         root.addView(card("結束紀錄", "能完成 2 題再加 They are；如果仍卡住，記錄為高優先斷點，不追加作業。", ColorToken.WarningSoft))
         root.addView(ui.primaryButton(if (isVolunteerAccount()) "已陪完，去回填紀錄" else "使用腳本並留下志工紀錄") {
-            mentorReplyCount += 1
+            if (!isVolunteerAccount()) {
+                mentorReplyCount += 1
+            }
             addCollaborationNote(
                 actor = currentAccount().displayName,
                 roleLabel = currentAccount().roleLabel,
                 target = target.name,
                 note = "已使用陪伴腳本完成一次低壓接力；學生能先回答 He is，暫不加新題型。",
-                status = "腳本已用"
+                status = if (isVolunteerAccount()) "陪伴中" else "腳本已用"
             )
             if (isVolunteerAccount()) renderVolunteerRecord() else renderMentorScript()
         })
@@ -2559,6 +2553,10 @@ class MainActivity : Activity() {
         box.addView(ui.body("老師下一步：先看摘要，再決定是否交給志工接力。", ColorToken.Danger).apply {
             setPadding(0, ui.dp(6), 0, 0)
         })
+        val (stage, stageColor, _) = relayStage(target)
+        box.addView(ui.body("目前接力狀態：$stage", stageColor).apply {
+            setPadding(0, ui.dp(6), 0, 0)
+        })
         box.addView(ui.primaryButton("查看學生摘要") { renderStudentDetail(target) })
         box.addView(ui.secondaryButton("交給志工接力") {
             addAiHandoffCollaborationNote(target)
@@ -2633,6 +2631,63 @@ class MainActivity : Activity() {
 
     private fun volunteerTargetStudent(): StudentRow {
         return currentRoster().firstOrNull { it.risk == "高" } ?: currentRoster().first()
+    }
+
+    private fun relayNotesFor(row: StudentRow): List<CollaborationNote> {
+        return collaborationNotes.filter {
+            it.target == row.name || it.note.contains(row.name)
+        }
+    }
+
+    private fun isRelayCompleted(row: StudentRow): Boolean {
+        return relayNotesFor(row).any {
+            it.status.contains("已回填") || it.status.contains("已完成") || it.status.contains("已回覆")
+        }
+    }
+
+    private fun relayStage(row: StudentRow): Triple<String, String, String> {
+        val notes = relayNotesFor(row)
+        return when {
+            isRelayCompleted(row) -> Triple("已完成", ColorToken.Success, "志工已回填紀錄，老師可以接續追蹤或整理週報。")
+            notes.any { it.status.contains("陪伴中") || it.status.contains("腳本已用") } ->
+                Triple("陪伴中", ColorToken.Primary, "志工已開始使用腳本，下一步是回填接力結果。")
+            notes.any { it.status.contains("已指派") || it.status.contains("AI 接力摘要") } ->
+                Triple("已指派", ColorToken.Warning, "老師已整理摘要，等待志工看摘要並開始陪伴。")
+            else -> Triple("未指派", ColorToken.Danger, "尚未建立接力紀錄，老師需要先指派或生成摘要。")
+        }
+    }
+
+    private fun relayStatusCard(row: StudentRow): View {
+        val (label, color, detail) = relayStage(row)
+        val box = ui.container(if (label == "已完成") ColorToken.SuccessSoft else if (label == "未指派") ColorToken.WarningSoft else ColorToken.PrimarySoft, color)
+        box.addView(ui.statusPill("接力狀態：$label", color))
+        box.addView(ui.label(row.name, 20, ColorToken.Ink, true).apply {
+            setPadding(0, ui.dp(10), 0, ui.dp(4))
+        })
+        box.addView(ui.body(detail, "#334155"))
+        box.addView(metricRow(
+            Metric("志工回覆", "$mentorReplyCount", ColorToken.Success),
+            Metric("協作紀錄", "${relayNotesFor(row).size}", ColorToken.Primary),
+            Metric("待同步", "$offlinePendingCount", if (offlinePendingCount > 0) ColorToken.Warning else ColorToken.Success)
+        ))
+        return ui.margins(box, 0, 0, 0, 14)
+    }
+
+    private fun completeVolunteerRelay(row: StudentRow) {
+        if (!isRelayCompleted(row)) {
+            mentorReplyCount += 1
+            actionDoneCount = (actionDoneCount + 1).coerceAtMost(teacherActions.size)
+        }
+        addCollaborationNote(
+            actor = currentAccount().displayName,
+            roleLabel = currentAccount().roleLabel,
+            target = row.name,
+            note = "已完成一次低壓接力：先肯定學生願意求助，再陪練同一概念 1-2 題，未追加新作業。",
+            status = "志工已回填"
+        )
+        addOfflineSyncItem("志工回填：${row.name}", "志工接力", "已完成低壓接力並回填紀錄。")
+        persistState()
+        renderVolunteerRecord()
     }
 
     private fun volunteerStepHeaderCard(step: String, title: String, detail: String): View {
@@ -2867,8 +2922,8 @@ class MainActivity : Activity() {
             actor = currentAccount().displayName,
             roleLabel = currentAccount().roleLabel,
             target = row.name,
-            note = "${latestTeacherAiSummary.ifBlank { buildTeacherAiSummary(row) }}\n\n回覆草稿：${latestVolunteerDraft.ifBlank { buildVolunteerReplyDraft(row) }}",
-            status = "AI 接力摘要"
+            note = "已指派給志工接力。\n\n${latestTeacherAiSummary.ifBlank { buildTeacherAiSummary(row) }}\n\n回覆草稿：${latestVolunteerDraft.ifBlank { buildVolunteerReplyDraft(row) }}",
+            status = "已指派"
         )
         addOfflineSyncItem("AI 接力摘要：${row.name}", "老師/志工協作", latestTeacherAiSummary.ifBlank { buildTeacherAiSummary(row) })
     }
