@@ -258,23 +258,43 @@ class MainActivity : Activity() {
     }
 
     private fun renderStudentTaskEntry() {
-        when {
-            !checkInCompleted -> renderCheckIn()
-            !practiceTimeConfirmed -> confirmPracticeTimeAndPlanToday()
-            else -> renderTaskQueue()
-        }
+        if (checkInCompleted && practiceTimeConfirmed) renderTaskQueue() else renderStudentPracticeCatalog()
     }
 
     private fun renderStudentSupportEntry() {
-        if (!checkInCompleted) renderCheckIn() else renderStudentRecoveryCenter()
+        if (checkInCompleted) renderStudentRecoveryCenter() else renderStudentSupportBeforeCheckIn()
     }
 
     private fun renderStudentMapEntry() {
-        when {
-            !checkInCompleted -> renderCheckIn()
-            !practiceTimeConfirmed -> confirmPracticeTimeAndPlanToday()
-            else -> renderMap()
-        }
+        if (checkInCompleted && practiceTimeConfirmed) renderMap() else renderStudentMapLocked()
+    }
+
+    private fun renderStudentSupportBeforeCheckIn() {
+        screen = Screen.HelpRequest
+        shell("支持", "可以先求助，也可以先做檢測")
+        root.addView(card(
+            "需要幫忙可以先說",
+            "你還沒有完成今天的心情檢測，所以 English+ 還不能產生今日任務；但你仍然可以先進練習中心自由練習，或先做檢測讓系統安排任務。",
+            ColorToken.PrimarySoft
+        ))
+        helpRequestOptions.take(3).forEach { root.addView(helpOptionCard(it)) }
+        root.addView(ui.primaryButton("先做心情檢測") { renderCheckIn() })
+        root.addView(ui.secondaryButton("自由練習") { renderStudentPracticeCatalog() })
+        root.addView(ui.secondaryButton("回首頁") { renderHome() })
+        bottomNav()
+    }
+
+    private fun renderStudentMapLocked() {
+        screen = Screen.Map
+        shell("學習地圖", "完成檢測後建立今日路線")
+        root.addView(card(
+            "今日地圖還沒建立",
+            "學習地圖會根據心情檢測、可用時間與今日任務生成。你可以先自由練習；想看完整路線時，再完成心情檢測。",
+            ColorToken.PrimarySoft
+        ))
+        root.addView(ui.primaryButton("開始心情檢測") { renderCheckIn() })
+        root.addView(ui.secondaryButton("先去練習中心") { renderStudentPracticeCatalog() })
+        bottomNav()
     }
 
     private fun renderRoleGateway() {
@@ -1384,10 +1404,6 @@ class MainActivity : Activity() {
     }
 
     private fun renderStudentPracticeCatalog() {
-        if (!practiceTimeConfirmed) {
-            confirmPracticeTimeAndPlanToday()
-            return
-        }
         screen = Screen.QuestionBank
         val bankItems = stateStore.questionBankItems()
         val recommended = recommendedPracticeItems(bankItems)
