@@ -759,14 +759,40 @@ class MainActivity : Activity() {
                 .thenByDescending { if (selectedPracticeLevel.contains("B1")) it.challengeScore else 6 - it.challengeScore }
                 .thenBy { it.estimatedSeconds }
         )
-        return (adaptive + ranked).distinctBy { it.id }.take(80)
+        return varyDailyCandidates(adaptive + ranked).take(180)
+    }
+
+    private fun dailyPlanVariationSeed(): Int {
+        val minuteBucket = (System.currentTimeMillis() / 60000L).toInt()
+        return minuteBucket xor
+            (learningEventCount * 31) xor
+            (completedTasks * 17) xor
+            (confidence * 13) xor
+            (minutes * 7) xor
+            selectedPracticeLevel.hashCode() xor
+            selectedPracticeTypes.joinToString("|").hashCode()
+    }
+
+    private fun varyDailyCandidates(items: List<QuestionBankItem>): List<QuestionBankItem> {
+        val seed = dailyPlanVariationSeed()
+        return items
+            .distinctBy { "${it.question.prompt}｜${it.question.answer}" }
+            .sortedWith(
+                compareBy<QuestionBankItem> {
+                    Math.floorMod((it.id + it.question.prompt + seed.toString()).hashCode(), 10_000)
+                }.thenByDescending { selectedPracticeTypes.contains(normalizedQuestionType(it)) }
+                    .thenByDescending { if (selectedPracticeLevel.contains("B1")) it.challengeScore else 6 - it.challengeScore }
+                    .thenBy { it.estimatedSeconds }
+            )
     }
 
     private fun applyAiDailyTaskPlan(plan: AiDailyTaskPlan, candidates: List<QuestionBankItem>) {
         val byId = candidates.associateBy { it.id }
         val aiSelected = plan.recommendedItemIds.mapNotNull { byId[it] }.distinctBy { it.id }
-        val fillItems = candidates.filterNot { candidate -> aiSelected.any { it.id == candidate.id } }
-        val selected = (aiSelected + fillItems)
+        val fillItems = varyDailyCandidates(candidates.filterNot { candidate -> aiSelected.any { it.id == candidate.id } })
+        val aiAnchors = aiSelected.take(1)
+        val selected = (aiAnchors + fillItems)
+            .distinctBy { "${it.question.prompt}｜${it.question.answer}" }
             .take(targetDailyQuestionCount())
         aiDailyPlanTitle = plan.title.ifBlank { "今日 AI 任務" }
         aiDailyPlanMessage = buildString {
@@ -782,7 +808,7 @@ class MainActivity : Activity() {
     }
 
     private fun applyLocalDailyTaskPlan(candidates: List<QuestionBankItem>, message: String) {
-        val selected = candidates.take(targetDailyQuestionCount())
+        val selected = varyDailyCandidates(candidates).take(targetDailyQuestionCount())
         aiDailyPlanTitle = "今日推薦任務"
         aiDailyPlanMessage = message
         aiDailyPlanItemIds = selected.map { it.id }
