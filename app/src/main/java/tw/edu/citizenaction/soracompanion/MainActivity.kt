@@ -1643,29 +1643,26 @@ class MainActivity : Activity() {
 
     private fun renderRoster() {
         screen = Screen.Roster
-        shell("學生證據", "先看誰需要接力")
+        shell("班級學生雷達", "先掃風險，再點進學生")
         root.addView(teacherRosterHeaderCard())
-        currentRoster().forEach { row -> root.addView(studentRowCard(row)) }
-        root.addView(ui.primaryButton("查看班級學習證據") { renderTeacherLearningEvidence() })
-        root.addView(ui.primaryButton("查看 ${student.name} 的斷點") { renderBreakpoints() })
-        root.addView(ui.secondaryButton("查看接力優先序") { renderHandoffBoard() })
+        section("需要先看的學生")
+        currentRoster().filter { it.risk == "高" }.forEach { row -> root.addView(studentRowCard(row)) }
+        section("持續追蹤")
+        currentRoster().filter { it.risk == "中" }.forEach { row -> root.addView(studentRowCard(row)) }
+        section("可保留自學節奏")
+        currentRoster().filter { it.risk == "低" }.forEach { row -> root.addView(studentRowCard(row)) }
+        root.addView(ui.primaryButton("查看接力優先序") { renderHandoffBoard() })
+        root.addView(ui.secondaryButton("查看班級學習證據") { renderTeacherLearningEvidence() })
         bottomNav()
     }
 
     private fun renderStudentDetail(row: StudentRow) {
         screen = Screen.StudentDetail
-        shell("${row.name} 的接力資料", "用一頁讓老師知道現在要不要介入")
-        root.addView(metricRow(
-            Metric("風險", row.risk, if (row.risk == "高") ColorToken.Danger else ColorToken.Warning),
-            Metric("狀態", if (row.risk == "低") "可自學" else "需追蹤", ColorToken.Primary),
-            Metric("接力", if (row.risk == "高") "今日" else "本週", ColorToken.Success)
-        ))
-        root.addView(card("目前斷點", row.issue, if (row.risk == "高") ColorToken.WarningSoft else ColorToken.PrimarySoft))
-        root.addView(card("最新狀態", row.status, ColorToken.Card))
-        root.addView(card("學習證據", "最近任務：${studyTasks.first().title}\n答題事件：${learningEventCount} 筆\n錯題修復：${repairedMistakeCount} 筆\n目前信心：$confidence%", ColorToken.PrimarySoft))
+        shell("${row.name} 的學生摘要", "判斷是否需要老師或志工介入")
+        root.addView(studentDecisionHeaderCard(row))
+        root.addView(studentEvidenceTimelineCard(row))
         root.addView(teacherAiStudentSummaryCard(row))
-        root.addView(card("老師下一步", if (row.risk == "高") "先用陪伴腳本降低挫折，再只帶同一概念兩題。" else "保留低壓任務，觀察是否願意回來完成。", ColorToken.SuccessSoft))
-        root.addView(ui.primaryButton("查看接力腳本") { renderMentorScript() })
+        root.addView(studentTeacherNextStepCard(row))
         root.addView(ui.secondaryButton("回學生列表") { renderRoster() })
         bottomNav()
     }
@@ -2568,6 +2565,86 @@ class MainActivity : Activity() {
         return ui.margins(box, 0, 0, 0, 14)
     }
 
+    private fun studentDecisionHeaderCard(row: StudentRow): View {
+        val riskColor = teacherRiskColor(row.risk)
+        val decision = when (row.risk) {
+            "高" -> "今天需要真人接力"
+            "中" -> "本週追蹤，不急著加題"
+            else -> "保留自學節奏"
+        }
+        val box = ui.container(if (row.risk == "高") ColorToken.WarningSoft else ColorToken.PrimarySoft, riskColor)
+        box.addView(ui.statusPill("老師判斷", riskColor))
+        box.addView(ui.label(decision, 23, ColorToken.Ink, true).apply {
+            setPadding(0, ui.dp(10), 0, ui.dp(4))
+        })
+        box.addView(ui.body("${row.name}｜${row.issue}", "#334155"))
+        box.addView(metricRow(
+            Metric("風險", row.risk, riskColor),
+            Metric("狀態", if (row.risk == "低") "可自學" else "需追蹤", ColorToken.Primary),
+            Metric("接力", if (row.risk == "高") "今日" else "本週", ColorToken.Success)
+        ))
+        return ui.margins(box, 0, 8, 0, 14)
+    }
+
+    private fun studentEvidenceTimelineCard(row: StudentRow): View {
+        val box = ui.container(ColorToken.Card, ColorToken.Border)
+        box.addView(ui.statusPill("學習證據", ColorToken.Primary))
+        box.addView(ui.label("只看會影響下一步的證據", 19, ColorToken.Ink, true).apply {
+            setPadding(0, ui.dp(10), 0, ui.dp(4))
+        })
+        box.addView(evidenceLine("最新狀態", row.status, teacherRiskColor(row.risk)))
+        box.addView(evidenceLine("目前斷點", row.issue, if (row.risk == "高") ColorToken.Warning else ColorToken.Primary))
+        box.addView(evidenceLine("最近任務", studyTasks.first().title, ColorToken.Success))
+        box.addView(metricRow(
+            Metric("答題事件", "$learningEventCount", ColorToken.Primary),
+            Metric("錯題修復", "$repairedMistakeCount", ColorToken.Success),
+            Metric("信心", "$confidence%", if (confidence < 45) ColorToken.Warning else ColorToken.Success)
+        ))
+        return ui.margins(box, 0, 0, 0, 14)
+    }
+
+    private fun evidenceLine(label: String, value: String, color: String): View {
+        val row = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            setPadding(0, ui.dp(8), 0, ui.dp(8))
+        }
+        row.addView(ui.statusPill(label, color))
+        row.addView(ui.body(value, "#334155").apply {
+            setPadding(ui.dp(10), 0, 0, 0)
+        }, LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f))
+        return row
+    }
+
+    private fun studentTeacherNextStepCard(row: StudentRow): View {
+        val box = ui.container(ColorToken.SuccessSoft, ColorToken.Success)
+        box.addView(ui.statusPill("老師下一步", ColorToken.Success))
+        box.addView(ui.label(
+            if (row.risk == "高") "派一位志工低壓接力" else "保留學生目前節奏",
+            19,
+            ColorToken.Ink,
+            true
+        ).apply { setPadding(0, ui.dp(10), 0, ui.dp(4)) })
+        box.addView(ui.body(
+            if (row.risk == "高") {
+                "先用陪伴腳本降低挫折，再只帶同一概念 1-2 題；不要追加新作業。"
+            } else {
+                "先觀察是否願意回來完成任務；若狀態下降，再轉入接力。"
+            },
+            "#334155"
+        ))
+        box.addView(actionGrid(
+            ActionItem("陪伴腳本", "交給志工") { renderMentorScript() },
+            ActionItem("接力紀錄", "寫入摘要") {
+                addAiHandoffCollaborationNote(row)
+                renderHandoffBoard()
+            },
+            ActionItem("待辦", "查看派工") { renderActionQueue() },
+            ActionItem("回列表", "看其他學生") { renderRoster() }
+        ))
+        return ui.margins(box, 0, 0, 0, 14)
+    }
+
     private fun teacherAiBriefingCard(): View {
         val roster = currentRoster()
         val firstHighRisk = roster.firstOrNull { it.risk == "高" } ?: roster.first()
@@ -2765,18 +2842,19 @@ class MainActivity : Activity() {
     private fun teacherRosterHeaderCard(): View {
         val roster = currentRoster()
         val highRisk = roster.count { it.risk == "高" }
+        val middleRisk = roster.count { it.risk == "中" }
         val lowRisk = roster.count { it.risk == "低" }
         val box = ui.container(ColorToken.PrimarySoft, ColorToken.Primary)
         box.addView(ui.statusPill("班級雷達", ColorToken.Primary))
-        box.addView(ui.label("先看紅色風險卡", 21, ColorToken.Ink, true).apply {
+        box.addView(ui.label("先看需要人的學生", 21, ColorToken.Ink, true).apply {
             setPadding(0, ui.dp(10), 0, ui.dp(4))
         })
         box.addView(metricRow(
             Metric("管理中", "${roster.size} 位", ColorToken.Primary),
             Metric("高風險", "$highRisk 位", if (highRisk > 0) ColorToken.Danger else ColorToken.Success),
-            Metric("可自學", "$lowRisk 位", ColorToken.Success)
+            Metric("追蹤", "$middleRisk 位", ColorToken.Warning)
         ))
-        box.addView(ui.body("點學生卡片即可進入接力資料。", "#334155"))
+        box.addView(ui.body("列表已依風險分段。先處理高風險，再看追蹤學生；低風險先不打斷。", "#334155"))
         return ui.margins(box, 0, 8, 0, 14)
     }
 
@@ -4778,20 +4856,32 @@ class MainActivity : Activity() {
     }
     private fun studentRowCard(row: StudentRow): View {
         val fill = if (row.risk == "高") ColorToken.WarningSoft else ColorToken.Card
-        val riskColor = when (row.risk) {
-            "高" -> ColorToken.Danger
-            "中" -> ColorToken.Warning
-            else -> ColorToken.Success
+        val riskColor = teacherRiskColor(row.risk)
+        val actionLabel = when (row.risk) {
+            "高" -> "今天處理"
+            "中" -> "本週追蹤"
+            else -> "保留自學"
         }
         val box = ui.container(fill, ColorToken.Border)
         val top = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
-        top.addView(ui.label(row.name, 17, ColorToken.Ink, true), LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f))
+        top.addView(ui.label("${row.name}｜$actionLabel", 18, ColorToken.Ink, true), LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f))
         top.addView(ui.statusPill("風險 ${row.risk}", riskColor))
         box.addView(top)
         box.addView(ui.body("斷點：${row.issue}", "#334155").apply { setPadding(0, ui.dp(7), 0, 0) })
         box.addView(ui.body("狀態：${row.status}", ColorToken.Muted))
+        box.addView(ui.body(if (row.risk == "高") "點開後可直接交給志工接力。" else "點開後查看證據與追蹤建議。", riskColor).apply {
+            setPadding(0, ui.dp(6), 0, 0)
+        })
         box.setOnClickListener { renderStudentDetail(row) }
         return ui.margins(box, 0, 8, 0, 8)
+    }
+
+    private fun teacherRiskColor(risk: String): String {
+        return when (risk) {
+            "高" -> ColorToken.Danger
+            "中" -> ColorToken.Warning
+            else -> ColorToken.Success
+        }
     }
 
     private fun mistakeCard(record: MistakeRecord): View {
