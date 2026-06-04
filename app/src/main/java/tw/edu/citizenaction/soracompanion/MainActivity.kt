@@ -1322,6 +1322,10 @@ class MainActivity : Activity() {
             }
             return
         }
+        if (isVolunteerAccount()) {
+            renderVolunteerHandoffSummary()
+            return
+        }
         screen = Screen.Handoff
         if (preparedHelpSummary.isBlank()) preparedHelpSummary = buildPreparedHelpSummary()
         shell("雲端志工接力", "把真人時間用在最值得的地方")
@@ -1668,6 +1672,10 @@ class MainActivity : Activity() {
     }
 
     private fun renderHandoffBoard() {
+        if (isVolunteerAccount()) {
+            renderVolunteerHandoffSummary()
+            return
+        }
         screen = Screen.Mentor
         shell("接力優先序", "先處理最需要真人的一位")
         root.addView(mentorHandoffHeaderCard())
@@ -1683,6 +1691,10 @@ class MainActivity : Activity() {
     }
 
     private fun renderActionQueue() {
+        if (isVolunteerAccount()) {
+            renderVolunteerRecord()
+            return
+        }
         screen = Screen.ActionQueue
         shell("待辦處理佇列", "把志工、老師、小組各自要做的事排清楚")
         root.addView(metricRow(
@@ -1707,6 +1719,56 @@ class MainActivity : Activity() {
             renderActionQueue()
         })
         root.addView(ui.primaryButton("查看接力優先序") { renderHandoffBoard() })
+        bottomNav()
+    }
+
+    private fun renderVolunteerHandoffSummary() {
+        screen = Screen.Handoff
+        val target = volunteerTargetStudent()
+        if (preparedHelpSummary.isBlank()) preparedHelpSummary = buildPreparedHelpSummary()
+        latestTeacherAiSummary = buildTeacherAiSummary(target)
+        latestVolunteerDraft = buildVolunteerReplyDraft(target)
+        shell("接力摘要", "先看懂學生，再開始陪伴")
+        root.addView(volunteerStepHeaderCard("第 1 步", "看懂今天要陪誰", "不用看完整後台，只要抓住學生卡在哪裡。"))
+        root.addView(card("學生狀況", "${target.name}｜${target.issue}\n${target.status}", ColorToken.WarningSoft))
+        root.addView(card("老師整理給你的重點", latestTeacherAiSummary.lineSequence().take(4).joinToString("\n"), ColorToken.PrimarySoft))
+        root.addView(card("可以直接說的第一句", latestVolunteerDraft, ColorToken.SuccessSoft))
+        root.addView(flowStrip("看摘要", "照腳本陪練", "回填一句", "完成接力"))
+        root.addView(ui.primaryButton("開始陪伴腳本") { renderMentorScript() })
+        root.addView(ui.secondaryButton("先回志工首頁") { renderHome() })
+        bottomNav()
+    }
+
+    private fun renderVolunteerRecord() {
+        screen = Screen.ActionQueue
+        val target = volunteerTargetStudent()
+        shell("回填接力紀錄", "完成後老師就能接續追蹤")
+        root.addView(volunteerStepHeaderCard("第 3 步", "留下今天陪伴結果", "不用寫長報告，只要讓下一位老師知道學生現在到哪裡。"))
+        root.addView(card("建議回填內容", "已陪 ${target.name} 看同一個概念 1-2 題；先肯定願意求助，沒有追加新作業。", ColorToken.PrimarySoft))
+        root.addView(metricRow(
+            Metric("志工回覆", "$mentorReplyCount", ColorToken.Success),
+            Metric("協作紀錄", "${collaborationNotes.size}", ColorToken.Primary),
+            Metric("待同步", "$offlinePendingCount", if (offlinePendingCount > 0) ColorToken.Warning else ColorToken.Success)
+        ))
+        root.addView(ui.primaryButton("完成接力並寫入紀錄") {
+            mentorReplyCount += 1
+            actionDoneCount = (actionDoneCount + 1).coerceAtMost(teacherActions.size)
+            addCollaborationNote(
+                actor = currentAccount().displayName,
+                roleLabel = currentAccount().roleLabel,
+                target = target.name,
+                note = "已完成一次低壓接力：先肯定學生願意求助，再陪練同一概念 1-2 題，未追加新作業。",
+                status = "志工已回填"
+            )
+            addOfflineSyncItem("志工回填：${target.name}", "志工接力", "已完成低壓接力並回填紀錄。")
+            persistState()
+            renderVolunteerRecord()
+        })
+        if (mentorReplyCount > 0 || collaborationNotes.isNotEmpty()) {
+            root.addView(card("已完成", "這次接力已留下紀錄。你可以同步資料，或回首頁等待下一位學生。", ColorToken.SuccessSoft))
+        }
+        root.addView(ui.secondaryButton("同步紀錄") { renderSyncCenter() })
+        root.addView(ui.secondaryButton("回志工首頁") { renderHome() })
         bottomNav()
     }
 
@@ -2088,22 +2150,26 @@ class MainActivity : Activity() {
 
     private fun renderMentorScript() {
         screen = Screen.Mentor
-        shell("志工陪伴腳本", "降低志工準備成本，也避免學生被再次打擊")
+        val target = volunteerTargetStudent()
+        shell(if (isVolunteerAccount()) "陪伴腳本" else "志工陪伴腳本", if (isVolunteerAccount()) "照三步走，不追加壓力" else "降低志工準備成本，也避免學生被再次打擊")
+        if (isVolunteerAccount()) {
+            root.addView(volunteerStepHeaderCard("第 2 步", "陪 ${target.name} 修一個小概念", "今天不用教完整單元，只要陪學生回到題目。"))
+        }
         root.addView(card("開場 30 秒", "先肯定：你願意回來做修復任務已經很好。今天我們只看一個規則，不看整章。", ColorToken.SuccessSoft))
         root.addView(card("引導問題", "1. He 是一個人還是很多人？\n2. 一個人通常搭配 is 還是 are？\n3. 你可以自己造一句 He is 嗎？", ColorToken.PrimarySoft))
         root.addView(card("結束紀錄", "能完成 2 題再加 They are；如果仍卡住，記錄為高優先斷點，不追加作業。", ColorToken.WarningSoft))
-        root.addView(ui.secondaryButton("使用腳本並留下志工紀錄") {
+        root.addView(ui.primaryButton(if (isVolunteerAccount()) "已陪完，去回填紀錄" else "使用腳本並留下志工紀錄") {
             mentorReplyCount += 1
             addCollaborationNote(
-                actor = "Emily",
-                roleLabel = "雲端志工",
-                target = student.name,
+                actor = currentAccount().displayName,
+                roleLabel = currentAccount().roleLabel,
+                target = target.name,
                 note = "已使用陪伴腳本完成一次低壓接力；學生能先回答 He is，暫不加新題型。",
                 status = "腳本已用"
             )
-            renderMentorScript()
+            if (isVolunteerAccount()) renderVolunteerRecord() else renderMentorScript()
         })
-        root.addView(ui.primaryButton("回老師工作台") {
+        root.addView(ui.secondaryButton(if (isVolunteerAccount()) "回志工首頁" else "回老師工作台") {
             role = Role.Mentor
             renderHome()
         })
@@ -2565,6 +2631,20 @@ class MainActivity : Activity() {
         return ui.margins(box, 0, 0, 0, 14)
     }
 
+    private fun volunteerTargetStudent(): StudentRow {
+        return currentRoster().firstOrNull { it.risk == "高" } ?: currentRoster().first()
+    }
+
+    private fun volunteerStepHeaderCard(step: String, title: String, detail: String): View {
+        val box = ui.container(ColorToken.PrimarySoft, ColorToken.Primary)
+        box.addView(ui.statusPill(step, ColorToken.Primary))
+        box.addView(ui.label(title, 22, ColorToken.Ink, true).apply {
+            setPadding(0, ui.dp(10), 0, ui.dp(4))
+        })
+        box.addView(ui.body(detail, "#334155"))
+        return ui.margins(box, 0, 8, 0, 14)
+    }
+
     private fun studentDecisionHeaderCard(row: StudentRow): View {
         val riskColor = teacherRiskColor(row.risk)
         val decision = when (row.risk) {
@@ -2671,7 +2751,7 @@ class MainActivity : Activity() {
     }
 
     private fun volunteerFocusCard(): View {
-        val target = currentRoster().firstOrNull { it.risk == "高" } ?: currentRoster().first()
+        val target = volunteerTargetStudent()
         latestTeacherAiSummary = buildTeacherAiSummary(target)
         latestVolunteerDraft = buildVolunteerReplyDraft(target)
         val box = ui.container(ColorToken.WarningSoft, ColorToken.Warning)
@@ -2685,13 +2765,13 @@ class MainActivity : Activity() {
             Metric("風險", target.risk, if (target.risk == "高") ColorToken.Danger else ColorToken.Warning),
             Metric("回填", "${mentorReplyCount} 則", ColorToken.Success)
         ))
-        box.addView(ui.primaryButton("開始陪伴這位學生") { renderMentorScript() })
+        box.addView(ui.primaryButton("先看接力摘要") { renderVolunteerHandoffSummary() })
         box.addView(ui.secondaryButton("先看學生摘要") { renderStudentDetail(target) })
         return ui.margins(box, 0, 8, 0, 14)
     }
 
     private fun volunteerScriptPreviewCard(): View {
-        val target = currentRoster().firstOrNull { it.risk == "高" } ?: currentRoster().first()
+        val target = volunteerTargetStudent()
         val box = ui.container(ColorToken.PrimarySoft, ColorToken.Border)
         box.addView(ui.statusPill("陪伴腳本", ColorToken.Primary))
         box.addView(ui.label("照這三步走就好", 20, ColorToken.Ink, true).apply {
@@ -2712,9 +2792,9 @@ class MainActivity : Activity() {
             setPadding(0, ui.dp(10), 0, ui.dp(6))
         })
         box.addView(actionGrid(
-            ActionItem("接力摘要", "看學生狀況") { renderHandoffBoard() },
+            ActionItem("接力摘要", "看學生狀況") { renderVolunteerHandoffSummary() },
             ActionItem("陪伴腳本", "照步驟回覆") { renderMentorScript() },
-            ActionItem("回填紀錄", "完成接力") { renderActionQueue() },
+            ActionItem("回填紀錄", "完成接力") { renderVolunteerRecord() },
             ActionItem("同步紀錄", "補傳回覆") { renderSyncCenter() }
         ))
         return ui.margins(box, 0, 0, 0, 14)
@@ -2727,7 +2807,7 @@ class MainActivity : Activity() {
             setPadding(0, ui.dp(10), 0, ui.dp(4))
         })
         box.addView(ui.body("完成一次接力後，只要留下學生狀態與下一步。班級統計、題庫與週報交給老師端處理。", "#334155"))
-        box.addView(ui.secondaryButton("查看我的接力紀錄") { renderHandoff() })
+        box.addView(ui.secondaryButton("查看我的接力紀錄") { renderVolunteerRecord() })
         return ui.margins(box, 0, 0, 0, 14)
     }
 
@@ -3167,10 +3247,10 @@ class MainActivity : Activity() {
         } else if (isVolunteerAccount()) {
             val volunteerLabels = listOf("今日", "摘要", "陪伴", "同步", "紀錄")
             nav.addView(navDestination(navMark(volunteerLabels[0]), volunteerLabels[0], screen == Screen.Home || screen == Screen.Account) { renderHome() }, ui.weightParams())
-            nav.addView(navDestination(navMark(volunteerLabels[1]), volunteerLabels[1], screen == Screen.StudentDetail || screen == Screen.Handoff) { renderHandoffBoard() }, ui.weightParams())
-            nav.addView(navDestination(navMark(volunteerLabels[2]), volunteerLabels[2], screen == Screen.Mentor || screen == Screen.ActionQueue) { renderMentorScript() }, ui.weightParams())
+            nav.addView(navDestination(navMark(volunteerLabels[1]), volunteerLabels[1], screen == Screen.StudentDetail || screen == Screen.Handoff) { renderVolunteerHandoffSummary() }, ui.weightParams())
+            nav.addView(navDestination(navMark(volunteerLabels[2]), volunteerLabels[2], screen == Screen.Mentor) { renderMentorScript() }, ui.weightParams())
             nav.addView(navDestination(navMark(volunteerLabels[3]), volunteerLabels[3], screen == Screen.SyncCenter || screen == Screen.AiLab) { renderSyncCenter() }, ui.weightParams())
-            nav.addView(navDestination(navMark(volunteerLabels[4]), volunteerLabels[4], screen == Screen.Report) { renderWeeklyReport() }, ui.weightParams())
+            nav.addView(navDestination(navMark(volunteerLabels[4]), volunteerLabels[4], screen == Screen.ActionQueue || screen == Screen.Report) { renderVolunteerRecord() }, ui.weightParams())
         } else {
             nav.addView(navDestination(navMark(labels[0]), labels[0], screen == Screen.Home || screen == Screen.Account) { renderHome() }, ui.weightParams())
             nav.addView(navDestination(navMark(labels[1]), labels[1], screen == Screen.Roster || screen == Screen.StudentDetail || screen == Screen.StudentManager || screen == Screen.QuestionBank) { renderRoster() }, ui.weightParams())
@@ -3215,7 +3295,7 @@ class MainActivity : Activity() {
             when (screen) {
                 Screen.Home, Screen.Account -> labels[0]
                 Screen.StudentDetail, Screen.Handoff -> labels[1]
-                Screen.Mentor, Screen.ActionQueue -> labels[2]
+                Screen.Mentor -> labels[2]
                 Screen.SyncCenter, Screen.AiLab -> labels[3]
                 else -> labels[4]
             }
