@@ -77,11 +77,11 @@ object PrototypeRepository {
             title = "今天有足夠的時間練習英文嗎",
             prompt = "1 代表很少，5 代表很充足。",
             options = listOf(
-                CheckInOption("time-1", "1 很少", "安排 3 分鐘低壓任務。", 1, "repair"),
-                CheckInOption("time-2", "2", "先做一題就好。", 2, "repair"),
-                CheckInOption("time-3", "3", "適合 5 分鐘短練習。", 3, "standard"),
-                CheckInOption("time-4", "4", "可以做 8 分鐘任務。", 4, "standard"),
-                CheckInOption("time-5", "5 很充足", "可以安排挑戰題。", 5, "challenge")
+                CheckInOption("time-1", "1 很少", "今天時間很少，系統會把任務縮短。", 1, "repair"),
+                CheckInOption("time-2", "2", "時間偏少，先安排最小任務。", 2, "repair"),
+                CheckInOption("time-3", "3", "時間普通，可以完成短練習。", 3, "standard"),
+                CheckInOption("time-4", "4", "時間足夠，可以做完整小任務。", 4, "standard"),
+                CheckInOption("time-5", "5 很充足", "時間很充足，可以加入挑戰題。", 5, "challenge")
             )
         ),
         CheckInQuestion(
