@@ -858,22 +858,28 @@ class MainActivity : Activity() {
 
     private fun renderSuccess(q: Question) {
         screen = Screen.Lesson
-        shell("答對了", "先確認結果，再選下一步")
+        shell("答對了", if (isDailyTaskComplete()) "今日任務完成" else "繼續下一個小關卡")
         root.addView(successSummaryCard(q))
-        if (isDailyTaskComplete()) {
-            root.addView(dailyTaskCompletionCard())
-        } else if (dailyTaskItemId(q) != null) {
-            root.addView(dailyTaskProgressCard())
+        when {
+            isDailyTaskComplete() -> {
+                root.addView(dailyTaskCompletionCard())
+                root.addView(ui.primaryButton("整理今天學到什麼") { renderReflection() })
+                root.addView(ui.secondaryButton("自主加練一題") { renderStudentPracticeCatalog() })
+                root.addView(ui.secondaryButton("回學習地圖") { renderMap() })
+            }
+            dailyTaskItemId(q) != null -> {
+                root.addView(dailyTaskProgressCard())
+                root.addView(ui.primaryButton("繼續下一題") { renderLesson() })
+                root.addView(ui.secondaryButton("先看今日任務") { renderTaskQueue() })
+            }
+            else -> {
+                root.addView(adaptiveNextStepCard(q, true))
+                root.addView(ui.primaryButton("繼續練一題") { renderLesson() })
+                root.addView(ui.secondaryButton("回練習中心") { renderStudentPracticeCatalog() })
+            }
         }
-        root.addView(adaptiveNextStepCard(q, true))
-        root.addView(ui.primaryButton(if (isDailyTaskComplete()) "整理今天學到什麼" else "做 20 秒反思") { renderReflection() })
-        root.addView(ui.secondaryButton(if (isDailyTaskComplete()) "自主加練一題" else "繼續下一題") {
-            if (isDailyTaskComplete()) renderStudentPracticeCatalog() else renderLesson()
-        })
-        root.addView(ui.secondaryButton("回學習地圖") { renderMap() })
         bottomNav()
     }
-
     private fun renderReflection() {
         screen = Screen.Reflection
         shell("課後 20 秒反思", "把完成感留下來，而不是只留下分數")
@@ -956,17 +962,32 @@ class MainActivity : Activity() {
 
     private fun renderReflectionSaved(prompt: ReflectionPrompt) {
         screen = Screen.Reflection
-        shell("反思已保存", "把今天的小進步放回週報")
-        root.addView(card("學生選擇", prompt.studentChoice, ColorToken.PrimarySoft))
-        root.addView(card("平台回應", prompt.platformResponse, ColorToken.SuccessSoft))
-        root.addView(card("AI 反思回饋", aiReflectionFeedback.ifBlank { "English+ 已依照你的反思更新下一步路徑。" }, ColorToken.WarningSoft))
-        root.addView(card("學習地圖更新", "${aiMapRouteSuggestion.ifBlank { "維持目前學習路線。" }}\n${aiPracticeTypeSuggestion.ifBlank { "題型維持原設定。" }}", ColorToken.SuccessSoft))
-        root.addView(card("下一次怎麼接續", "下次會從今天的題型與錯題紀錄接續，不會直接跳到更難。", ColorToken.Card))
-        root.addView(card("已寫入學習紀錄", "學習事件：${learningEventCount} 筆\n修復紀錄：${repairedMistakeCount} 筆\n待同步：${offlinePendingCount} 筆", ColorToken.PrimarySoft))
-        root.addView(ui.primaryButton("回學習地圖") { renderMap() })
+        shell("今天收尾完成", "把完成感留下來")
+        val doneTitle = if (isDailyTaskComplete()) "今天的每日任務已收尾" else "今天的學習紀錄已保存"
+        val doneDetail = if (isDailyTaskComplete()) {
+            "你已完成今日題目，並留下 20 秒反思。今天的必要任務到這裡就可以結束。"
+        } else {
+            "你已留下反思紀錄。接下來可以回今日任務，把剩下的題目完成。"
+        }
+        root.addView(card(doneTitle, doneDetail, ColorToken.SuccessSoft))
+        root.addView(card("你剛剛留下的反思", prompt.studentChoice, ColorToken.PrimarySoft))
+        root.addView(card("English+ 給你的下一步", prompt.platformResponse, ColorToken.Card))
+        val routeText = listOf(
+            aiMapRouteSuggestion.ifBlank { "維持目前學習路線。" },
+            aiPracticeTypeSuggestion.ifBlank { "題型維持原設定。" }
+        ).joinToString("\n")
+        root.addView(card("下次會怎麼接續", routeText, ColorToken.SuccessSoft))
+        root.addView(metricRow(
+            Metric("學習事件", "$learningEventCount", ColorToken.Primary),
+            Metric("修復紀錄", "$repairedMistakeCount", ColorToken.Success),
+            Metric("待同步", "$offlinePendingCount", if (offlinePendingCount > 0) ColorToken.Warning else ColorToken.Success)
+        ))
+        root.addView(ui.primaryButton(if (isDailyTaskComplete()) "回學習地圖看成果" else "回今日任務") {
+            if (isDailyTaskComplete()) renderMap() else renderTaskQueue()
+        })
+        root.addView(ui.secondaryButton("到練習中心加練") { renderStudentPracticeCatalog() })
         bottomNav()
     }
-
     private fun hasTrueAiRoute(): Boolean {
         val decision = stateStore.aiSecurityDecision(productionMode = false)
         return decision.canCallRemoteAi && (stateStore.hasAiProxyEndpoint() || stateStore.hasOpenRouterApiKey() || stateStore.hasOpenAiApiKey())
