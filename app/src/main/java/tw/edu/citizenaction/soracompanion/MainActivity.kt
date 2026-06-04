@@ -1087,34 +1087,45 @@ class MainActivity : Activity() {
         screen = Screen.AiCoach
         shell("錯題提示", "看一個提示，再回去重試")
         root.addView(answerResultCard(false, q, lastSelectedAnswer))
-        root.addView(card("先看這個提示", support.studentFeedback.ifBlank { support.diagnosis }, ColorToken.SuccessSoft))
-        root.addView(ui.primaryButton("看提示後重試") { renderLesson() })
-        root.addView(ui.secondaryButton("我還是需要人幫忙") { renderHelpRequest() })
+        root.addView(card("先修一個小地方", support.studentFeedback.ifBlank { support.diagnosis }, ColorToken.SuccessSoft))
+        root.addView(card("下一步", "回到同一題再試一次。答對才會推進今日任務進度；答錯不會扣分，只會再給你提示。", ColorToken.Card))
+        root.addView(ui.primaryButton("回同一題重試") { renderLesson() })
+        if (wrongAttempts >= 2) {
+            root.addView(ui.secondaryButton("我想請人幫忙") { renderHelpRequest() })
+        } else {
+            root.addView(ui.secondaryButton("先回今日任務") { renderTaskQueue() })
+        }
         addOfflineSyncItem("AI 錯題詳解：${q.concept}", "真 AI 錯題支持", support.handoffSummary)
         recordLearningEvent("ai_wrong_answer_support", "真 AI 錯題支持：${q.concept}", support.diagnosis)
         bottomNav()
     }
+
     private fun renderLocalAiCoach(notice: String? = null) {
         screen = Screen.AiCoach
         val q = questions[currentQuestionIndex]
         shell("錯題提示", "看一個提示，再回去重試")
         notice?.let { root.addView(card("先不用急", it, ColorToken.PrimarySoft)) }
         root.addView(answerResultCard(false, q, lastSelectedAnswer))
-        root.addView(card("先看這個提示", "${q.explanation}\n\n下一步：回到同一題再試一次。", ColorToken.SuccessSoft))
-        root.addView(ui.primaryButton("看提示後重試") { renderLesson() })
-        root.addView(ui.secondaryButton("我還是需要人幫忙") { renderHelpRequest() })
-        bottomNav()
-    }
-    private fun renderHelpRequest() {
-        screen = Screen.HelpRequest
-        shell("主動求助", "讓學生用自己的話說出卡住的原因")
-        root.addView(helpIntroCard())
-        root.addView(flowStrip("說出卡點", "平台分流", "下一步"))
-        helpRequestOptions.forEach { root.addView(helpOptionCard(it)) }
-        root.addView(ui.secondaryButton("我還是想先自己試一題") { renderLesson() })
+        root.addView(card("先修一個小地方", "${q.repairHint}\n\n解析：${q.explanation}", ColorToken.SuccessSoft))
+        root.addView(card("下一步", "回到同一題再試一次。答對才會推進今日任務進度；答錯不會扣分，只會再給你提示。", ColorToken.Card))
+        root.addView(ui.primaryButton("回同一題重試") { renderLesson() })
+        if (wrongAttempts >= 2) {
+            root.addView(ui.secondaryButton("我想請人幫忙") { renderHelpRequest() })
+        } else {
+            root.addView(ui.secondaryButton("先回今日任務") { renderTaskQueue() })
+        }
         bottomNav()
     }
 
+    private fun renderHelpRequest() {
+        screen = Screen.HelpRequest
+        shell("需要幫忙", "選一個最像現在狀態的選項")
+        root.addView(helpIntroCard())
+        helpRequestOptions.forEach { root.addView(helpOptionCard(it)) }
+        root.addView(ui.primaryButton("先回同一題重試") { renderLesson() })
+        root.addView(ui.secondaryButton("回今日任務") { renderTaskQueue() })
+        bottomNav()
+    }
     private fun handleHelpRequest(option: HelpRequestOption) {
         lastAnswerMessage = option.studentText
         preparedHelpSummary = buildPreparedHelpSummary(option)
@@ -1176,27 +1187,23 @@ class MainActivity : Activity() {
     private fun renderStudentRecoveryCenter() {
         screen = Screen.HelpRequest
         val q = questions.getOrNull(currentQuestionIndex)
-        shell("錯題修復", "先把卡住的地方變小")
+        shell("卡住了嗎", "先看提示，再決定要不要求助")
         root.addView(card(
-            "你不用一次弄懂全部",
-            "這裡只處理目前這一題或同一個概念。答錯不會推進每日任務進度，但會保留提示，讓你可以重新整理後再試一次。",
+            "先不要換很多路線",
+            "這裡只處理目前這一題。你可以看提示重試；如果已經試了好幾次，才把狀況整理給老師或志工。",
             ColorToken.PrimarySoft
         ))
         q?.let {
             root.addView(answerResultCard(false, it, lastSelectedAnswer))
             root.addView(card("現在先修這個概念", it.repairHint, ColorToken.SuccessSoft))
         }
-        root.addView(metricRow(
-            Metric("目前", if (lastSelectedAnswer.isBlank()) "尚未作答" else "看提示", ColorToken.Warning),
-            Metric("下一步", "重試", ColorToken.Success),
-            Metric("任務", "${completedDailyTaskCount()}/${dailyTaskTotal()}", ColorToken.Primary)
-        ))
         root.addView(ui.primaryButton("看提示後重試") { renderLesson() })
-        root.addView(ui.secondaryButton("改做較小的復原任務") { renderRecoveryMode() })
-        root.addView(ui.secondaryButton("送出求助給老師/志工") { renderHelpRequest() })
+        if (wrongAttempts >= 2 || preparedHelpSummary.isNotBlank()) {
+            root.addView(ui.secondaryButton("我想請人幫忙") { renderHelpRequest() })
+        }
+        root.addView(ui.secondaryButton("回今日任務") { renderTaskQueue() })
         bottomNav()
     }
-
     private fun renderStudentHelpSubmitted() {
         screen = Screen.HelpRequest
         shell("已送出求助", "你可以先回到自己的小任務")
@@ -3130,14 +3137,13 @@ class MainActivity : Activity() {
 
     private fun helpIntroCard(): View {
         val box = ui.sectionBand(ColorToken.SuccessSoft)
-        box.addView(ui.statusPill("可以開口", ColorToken.Success))
-        box.addView(ui.label("求助不是失敗，是選下一種支持", 20, ColorToken.Ink, true).apply {
+        box.addView(ui.statusPill("可選擇", ColorToken.Success))
+        box.addView(ui.label("你想要哪一種幫忙？", 22, ColorToken.Ink, true).apply {
             setPadding(0, ui.dp(12), 0, ui.dp(4))
         })
-        box.addView(ui.body("English+ 會先分流：能由 AI 立即拆小的就先陪你試，需要真人時才把脈絡整理好交出去。", "#334155"))
+        box.addView(ui.body("選最接近現在的狀態。English+ 會先保留題目和你的答案；只有你送出時，老師或志工才會看到求助摘要。", "#334155"))
         return ui.margins(box, 0, 8, 0, 16)
     }
-
     private fun preparedHandoffCard(): View {
         val box = ui.sectionBand(ColorToken.SuccessSoft)
         box.addView(ui.statusPill("已整理", ColorToken.Success))
@@ -4460,21 +4466,28 @@ class MainActivity : Activity() {
             "離線任務" -> ColorToken.AccentSoft
             else -> ColorToken.PrimarySoft
         }
+        val title = when (option.route) {
+            "AI 先處理" -> "先給我一個提示"
+            "復原模式" -> "換成更小的任務"
+            "離線任務" -> "先做不用網路的練習"
+            else -> "請老師或志工陪我"
+        }
+        val detail = when (option.route) {
+            "AI 先處理" -> "適合只是差一點、想先自己修正。"
+            "復原模式" -> "適合今天比較累，先完成一個很小的步驟。"
+            "離線任務" -> "適合網路不穩，先保留進度。"
+            else -> "適合已經試過提示，還是想要真人陪你看。"
+        }
         val box = ui.container(routeFill, ColorToken.Border)
         val top = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
-        top.addView(ui.label(option.reason, 17, ColorToken.Ink, true), LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f))
+        top.addView(ui.label(title, 18, ColorToken.Ink, true), LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f))
         top.addView(ui.statusPill(option.route, routeColor))
         box.addView(top)
-        box.addView(ui.body(option.studentText, ColorToken.Muted).apply { setPadding(0, ui.dp(8), 0, 0) })
-        box.addView(ui.divider())
-        box.addView(ui.body("接下來：${option.platformAction}", "#334155"))
-        box.addView(ui.body("點一下，English+ 會先把這條支持路徑打開。", routeColor).apply {
-            setPadding(0, ui.dp(6), 0, 0)
-        })
+        box.addView(ui.body(detail, "#334155").apply { setPadding(0, ui.dp(8), 0, 0) })
+        box.addView(ui.body(option.studentText, ColorToken.Muted).apply { setPadding(0, ui.dp(6), 0, 0) })
         box.setOnClickListener { handleHelpRequest(option) }
         return ui.margins(box, 0, 8, 0, 8)
     }
-
     private fun studentRowCard(row: StudentRow): View {
         val fill = if (row.risk == "高") ColorToken.WarningSoft else ColorToken.Card
         val riskColor = when (row.risk) {
