@@ -2172,22 +2172,17 @@ class MainActivity : Activity() {
 
     private fun renderWeeklyReport() {
         screen = Screen.Report
-        shell("本週學習週報", "用進步證據取代排名壓力")
+        shell("老師週報", "用可行動證據整理班級狀態")
         refreshOfflineSyncState()
-        root.addView(metricRow(
-            Metric("微任務", "${completedTasks} 個", ColorToken.Primary),
-            Metric("斷點修復", "2 個", ColorToken.Success),
-            Metric("求助", "1 次", ColorToken.Warning)
-        ))
-        root.addView(reportShowcaseCard())
-        root.addView(aiWeeklyReportCard())
-        weeklySignals.forEach { root.addView(signalCard(it)) }
-        root.addView(card("給學生看的話", "你這週不是沒有進步，而是把問題縮小了。能說出 He is，就是修復英文斷層的一步。", ColorToken.SuccessSoft))
-        root.addView(card("給老師/mentor 的摘要", "學生對完整測驗仍焦慮，但願意完成 3-5 分鐘任務。建議下週維持低壓短任務與志工接力。\n\n本週協作紀錄：${collaborationNotes.size} 筆，志工回覆：${mentorReplyCount} 則。", ColorToken.PrimarySoft))
-        section("接力證據")
+        root.addView(teacherWeeklySummaryCard())
+        root.addView(teacherWeeklyAttentionCard())
+        root.addView(teacherWeeklyBreakpointCard())
+        root.addView(teacherWeeklyRelayCard())
+        root.addView(teacherWeeklySyncCard())
+        section("最新接力紀錄")
         recentCollaborationNotes(4).forEach { root.addView(collaborationNoteCard(it)) }
-        root.addView(ui.primaryButton("匯出展示報告") { renderExportReport() })
-        root.addView(ui.secondaryButton("查看 OPPM 檢核指標") { renderMentorChecks() })
+        root.addView(ui.primaryButton("匯出老師週報") { renderExportReport() })
+        root.addView(ui.secondaryButton("分享文字週報") { shareTeacherReport(buildDemoReportText()) })
         bottomNav()
     }
 
@@ -2196,11 +2191,11 @@ class MainActivity : Activity() {
         refreshOfflineSyncState()
         val reportText = buildDemoReportText()
         val file = writeDemoReport(reportText)
-        shell("展示報告已產生", "把產品原型成果整理成可交給老師/評審的文字摘要")
+        shell("老師週報已產生", "可分享給老師或列印成會議紀錄")
         root.addView(card("匯出檔案", file.absolutePath, ColorToken.SuccessSoft))
         root.addView(card("報告內容預覽", reportText, ColorToken.Card))
-        root.addView(ui.secondaryButton("回本週學習週報") { renderWeeklyReport() })
-        root.addView(ui.primaryButton("查看 OPPM 品質檢核") { renderMentorChecks() })
+        root.addView(ui.primaryButton("分享文字週報") { shareTeacherReport(reportText) })
+        root.addView(ui.secondaryButton("回老師週報") { renderWeeklyReport() })
         bottomNav()
     }
 
@@ -2225,6 +2220,89 @@ class MainActivity : Activity() {
             "目前已完成學習紀錄保存、展示帳號登入、智慧任務建議、老師/志工協作、離線同步與展示報告。展示重點不是題庫量，而是情緒斷點如何被接住，再交給真人低壓接力。"
         ))
         return ui.margins(box, 0, 8, 0, 12)
+    }
+
+    private fun teacherWeeklySummaryCard(): View {
+        val highRisk = currentRoster().count { it.risk == "高" }
+        val middleRisk = currentRoster().count { it.risk == "中" }
+        val box = ui.container(ColorToken.PrimarySoft, ColorToken.Primary)
+        box.addView(ui.statusPill("本週總覽", ColorToken.Primary))
+        box.addView(ui.label("先看需要接住的學生", 22, ColorToken.Ink, true).apply {
+            setPadding(0, ui.dp(10), 0, ui.dp(4))
+        })
+        box.addView(ui.body("這份週報不排序學生，只整理老師下週要追蹤的訊號。", "#334155"))
+        box.addView(metricRow(
+            Metric("高風險", "$highRisk 位", if (highRisk > 0) ColorToken.Danger else ColorToken.Success),
+            Metric("追蹤", "$middleRisk 位", ColorToken.Warning),
+            Metric("已接力", "$mentorReplyCount 次", ColorToken.Success)
+        ))
+        return ui.margins(box, 0, 8, 0, 14)
+    }
+
+    private fun teacherWeeklyAttentionCard(): View {
+        val target = currentRoster().firstOrNull { it.risk == "高" } ?: currentRoster().first()
+        val (stage, stageColor, detail) = relayStage(target)
+        val box = ui.container(if (target.risk == "高") ColorToken.WarningSoft else ColorToken.Card, ColorToken.Border)
+        box.addView(ui.statusPill("優先學生", teacherRiskColor(target.risk)))
+        box.addView(ui.label("${target.name}｜${target.issue}", 20, ColorToken.Ink, true).apply {
+            setPadding(0, ui.dp(10), 0, ui.dp(4))
+        })
+        box.addView(ui.body("目前狀態：${target.status}", "#334155"))
+        box.addView(ui.body("接力狀態：$stage。$detail", stageColor).apply {
+            setPadding(0, ui.dp(6), 0, 0)
+        })
+        box.addView(ui.primaryButton("查看學生摘要") { renderStudentDetail(target) })
+        return ui.margins(box, 0, 0, 0, 14)
+    }
+
+    private fun teacherWeeklyBreakpointCard(): View {
+        val box = ui.container(ColorToken.Card, ColorToken.Border)
+        box.addView(ui.statusPill("錯題與斷點", ColorToken.Warning))
+        box.addView(ui.label("下週先修這些，不加總題量", 19, ColorToken.Ink, true).apply {
+            setPadding(0, ui.dp(10), 0, ui.dp(4))
+        })
+        box.addView(evidenceLine("主要斷點", breakpoints.first().title, ColorToken.Warning))
+        box.addView(evidenceLine("錯題修復", "$repairedMistakeCount 筆", ColorToken.Success))
+        box.addView(evidenceLine("信心狀態", "$confidence%", if (confidence < 45) ColorToken.Warning else ColorToken.Success))
+        box.addView(ui.body("建議：下週先維持短任務，從同一概念 1 組題開始，不要一次混合太多題型。", "#334155").apply {
+            setPadding(0, ui.dp(8), 0, 0)
+        })
+        return ui.margins(box, 0, 0, 0, 14)
+    }
+
+    private fun teacherWeeklyRelayCard(): View {
+        val box = ui.container(ColorToken.SuccessSoft, ColorToken.Success)
+        box.addView(ui.statusPill("志工接力", ColorToken.Success))
+        box.addView(ui.label(if (mentorReplyCount > 0) "本週已有接力紀錄" else "本週還需要安排一次接力", 19, ColorToken.Ink, true).apply {
+            setPadding(0, ui.dp(10), 0, ui.dp(4))
+        })
+        box.addView(metricRow(
+            Metric("志工回覆", "$mentorReplyCount", ColorToken.Success),
+            Metric("協作紀錄", "${collaborationNotes.size}", ColorToken.Primary),
+            Metric("待辦完成", "$actionDoneCount", ColorToken.Warning)
+        ))
+        box.addView(ui.body(
+            if (mentorReplyCount > 0) {
+                "接力已有回填。老師下週要確認學生是否真的回到任務，而不是只看是否有人回覆。"
+            } else {
+                "目前真人接力紀錄不足，建議先把第一優先學生交給志工低壓陪練。"
+            },
+            "#334155"
+        ).apply { setPadding(0, ui.dp(8), 0, 0) })
+        box.addView(ui.secondaryButton("查看接力板") { renderHandoffBoard() })
+        return ui.margins(box, 0, 0, 0, 14)
+    }
+
+    private fun teacherWeeklySyncCard(): View {
+        val ready = offlinePendingCount == 0
+        val box = ui.container(if (ready) ColorToken.SuccessSoft else ColorToken.WarningSoft, if (ready) ColorToken.Success else ColorToken.Warning)
+        box.addView(ui.statusPill("週報資料狀態", if (ready) ColorToken.Success else ColorToken.Warning))
+        box.addView(ui.label(if (ready) "資料已可整理週報" else "週報前先同步資料", 19, ColorToken.Ink, true).apply {
+            setPadding(0, ui.dp(10), 0, ui.dp(4))
+        })
+        box.addView(ui.body(buildAiSyncSummary(), "#334155"))
+        box.addView(ui.secondaryButton("前往同步中心") { renderSyncCenter() })
+        return ui.margins(box, 0, 0, 0, 14)
     }
 
     private fun aiWeeklyReportCard(): View {
@@ -2302,69 +2380,78 @@ class MainActivity : Activity() {
         val latestSync = offlineSyncItems.firstOrNull()?.let { "${it.title} / ${it.status}" } ?: "尚未建立同步佇列。"
         val aiWeeklyReport = buildAiWeeklyReportSummary()
         val aiSyncSummary = buildAiSyncSummary()
+        val priorityStudent = currentRoster().firstOrNull { it.risk == "高" } ?: currentRoster().first()
+        val highRiskCount = currentRoster().count { it.risk == "高" }
+        val middleRiskCount = currentRoster().count { it.risk == "中" }
+        val lowRiskCount = currentRoster().count { it.risk == "低" }
+        val (relayStageLabel, _, relayStageDetail) = relayStage(priorityStudent)
         return """
-            English+ 偏鄉學生雙軌學習平台展示報告
+            English+ 老師週報
 
-            一、產品定位
-            English+ 是面向偏鄉國中生的低壓英文學習原型。平台核心不是大量刷題，而是先辨識學生的情緒斷點，把英文任務縮小，再由 AI 與真人志工雙軌接力。
-
-            二、目前可展示功能
-            1. 學習紀錄保存：學生的任務、反思、錯題修復與接力紀錄都會留下證據。
-            2. 登入與班級：本機展示帳號可切換學生、志工、老師，保留班級/群組代碼。
-            3. 智慧支持：系統會依心情、答題狀況與題型偏好產生低壓提示與每日任務。
-            4. 老師/志工協作：志工回覆、陪伴腳本、老師待辦處理會寫入協作紀錄。
-            5. 離線與同步：任務包下載、答題、反思、AI 摘要與協作會進入待同步佇列。
-            6. 報告展示：本頁可輸出給老師/評審看的文字摘要。
-
-            三、本週展示資料
-            學生：${student.name} / ${student.location} / ${student.goal}
-            心情狀態：${mood.label}
-            今日任務時間：${minutes} 分鐘
+            一、班級總覽
+            班級/群組：${currentAccount().classCode}
+            管理學生：${currentRoster().size} 位
+            高風險：$highRiskCount 位
+            持續追蹤：$middleRiskCount 位
+            可自學：$lowRiskCount 位
             微任務完成：${completedTasks} 個
-            信心值：${confidence}%
             錯題修復：${repairedMistakeCount} 筆
             學習事件：${snapshot.eventCount} 筆
-            協作紀錄：${snapshot.collaborationCount} 筆
-            待補傳同步：${snapshot.pendingSyncCount} 筆
+
+            二、第一優先學生
+            學生：${priorityStudent.name}
+            斷點：${priorityStudent.issue}
+            狀態：${priorityStudent.status}
+            接力狀態：$relayStageLabel
+            接力說明：$relayStageDetail
+
+            三、學生狀態與任務資料
+            目前示範學生：${student.name} / ${student.location} / ${student.goal}
+            心情狀態：${mood.label}
+            今日任務時間：${minutes} 分鐘
+            信心值：${confidence}%
             已下載離線包：${snapshot.downloadedPackCount} 包
 
             四、AI 週報判讀
             $aiWeeklyReport
 
-            五、情緒斷點處理
+            五、錯題與情緒斷點
             目前主要斷點：${breakpoints.first().title}
             斷點證據：${breakpoints.first().evidence}
             AI 已做處理：${breakpoints.first().aiAction}
             真人接力建議：${breakpoints.first().mentorAction}
 
             六、最新接力與同步
+            協作紀錄：${snapshot.collaborationCount} 筆
+            志工回覆：$mentorReplyCount 次
+            待補傳同步：${snapshot.pendingSyncCount} 筆
             最新協作：$latestCollaboration
             最新同步項目：$latestSync
             AI 同步判讀：$aiSyncSummary
 
-            七、下一階段建議
-            1. 讓學生與老師使用正式帳號登入。
-            2. 讓跨裝置同步更穩定，方便老師與志工即時接力。
-            3. 擴充正式題庫與老師後台管理流程。
-            4. 用真實學生訪談驗證：低壓任務、志工摘要、情緒斷點是否真的降低放棄感。
+            七、下週老師建議
+            1. 先確認第一優先學生是否真的回到任務。
+            2. 不增加總題量，先從同一概念 1 組題修復。
+            3. 若接力尚未完成，先安排志工低壓陪練。
+            4. 週報前先同步待補傳資料，避免老師看到舊狀態。
         """.trimIndent()
     }
 
     private fun writeDemoReport(reportText: String): File {
         val targetDir = getExternalFilesDir(null) ?: filesDir
-        val file = File(targetDir, "english_plus_demo_report.txt")
+        val file = File(targetDir, "english_plus_teacher_weekly_report.txt")
         file.writeText(reportText, Charsets.UTF_8)
         writeDemoReportHtml(reportText)
-        recordLearningEvent("report_export", "已匯出展示報告", file.absolutePath)
-        addOfflineSyncItem("展示報告匯出", "報告資料", "已產生 english_plus_demo_report.txt，待正式版上傳到雲端或分享給老師。")
+        recordLearningEvent("report_export", "已匯出老師週報", file.absolutePath)
+        addOfflineSyncItem("老師週報匯出", "報告資料", "已產生 english_plus_teacher_weekly_report.txt，待正式版上傳到雲端或分享給老師。")
         return file
     }
 
     private fun writeDemoReportHtml(reportText: String): File {
         val targetDir = getExternalFilesDir(null) ?: filesDir
-        val file = File(targetDir, "english_plus_teacher_report.html")
+        val file = File(targetDir, "english_plus_teacher_weekly_report.html")
         file.writeText(buildDemoReportHtml(reportText), Charsets.UTF_8)
-        recordLearningEvent("report_export_html", "已匯出 HTML 老師報告", file.absolutePath)
+        recordLearningEvent("report_export_html", "已匯出 HTML 老師週報", file.absolutePath)
         return file
     }
 
