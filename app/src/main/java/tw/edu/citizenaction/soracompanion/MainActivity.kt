@@ -75,6 +75,7 @@ class MainActivity : Activity() {
     private var currentScrollView: ScrollView? = null
     private var pageFrame: LinearLayout? = null
     private var pendingScrollY: Int? = null
+    private var bottomNavAttached = false
 
     private var role = Role.Student
     private var screen = Screen.Home
@@ -320,7 +321,6 @@ class MainActivity : Activity() {
             studentHome()
         } else {
             mentorHome()
-            bottomNav()
         }
     }
 
@@ -2222,6 +2222,7 @@ class MainActivity : Activity() {
     }
 
     private fun shell(title: String, subtitle: String) {
+        bottomNavAttached = false
         val frame = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             background = ui.solid(ColorToken.Surface)
@@ -2805,6 +2806,8 @@ class MainActivity : Activity() {
     }
 
     private fun bottomNav() {
+        if (bottomNavAttached) return
+        bottomNavAttached = true
         root.addView(ui.space(16))
         val labels = currentRoleFlow().navLabels
         val nav = ui.container(ColorToken.Card, ColorToken.Border).apply {
