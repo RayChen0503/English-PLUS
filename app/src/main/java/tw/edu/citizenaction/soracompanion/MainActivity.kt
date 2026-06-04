@@ -226,7 +226,7 @@ class MainActivity : Activity() {
 
     private fun syncReadinessText(): String {
         val networkText = if (isNetworkAvailable()) "網路可用" else "目前離線"
-        val backendText = if (stateStore.hasCloudBackend()) "後端端點已設定" else "尚未設定後端端點"
+        val backendText = if (stateStore.hasCloudBackend()) "雲端同步已開啟" else "雲端同步尚未開啟"
         val pendingText = "待補傳 $offlinePendingCount 筆"
         return "$networkText\n$backendText\n$pendingText"
     }
@@ -375,15 +375,14 @@ class MainActivity : Activity() {
         screen = Screen.Account
         val endpoint = stateStore.remoteAuthEndpoint()
         if (!stateStore.hasRemoteAuthEndpoint()) {
-            shell("尚未設定正式登入端點", "先貼上 Firebase Auth 包裝 API 或校內登入 API")
-            root.addView(card("目前狀態", "沒有登入端點時，系統仍使用本機展示帳號。", ColorToken.WarningSoft))
+            shell("正式登入尚未開啟", "目前先使用展示帳號")
+            root.addView(card("目前狀態", "正式登入尚未開啟時，系統會先使用展示帳號讓你檢視流程。", ColorToken.WarningSoft))
             root.addView(remoteAuthLoginCard())
             root.addView(ui.secondaryButton("回帳號中心") { renderAccountCenter() })
             bottomNav()
             return
         }
-        shell("正在登入", "呼叫正式登入端點驗證帳號")
-        root.addView(card("登入端點", endpoint, ColorToken.PrimarySoft))
+        shell("正在登入", "正在確認帳號")
         root.addView(card("登入帳號", "$username\n班級/群組：${classCode.ifBlank { "未填" }}", ColorToken.Card))
         bottomNav()
 
@@ -586,11 +585,11 @@ class MainActivity : Activity() {
 
     private fun renderCheckInAiSupport(result: CheckInResult) {
         if (!hasTrueAiRoute()) {
-            renderCheckInAiSupportFallback(result, "目前尚未啟用外部 AI，English+ 先用內建規則陪你完成今天的第一步。")
+            renderCheckInAiSupportFallback(result, "English+ 已依照你的狀態先排出今天能完成的一小步。")
             return
         }
         screen = Screen.CheckIn
-        shell("AI 情緒支持", "正在呼叫 ${aiRouteLabel()}")
+        shell("今日建議", "正在整理你的學習節奏")
         root.addView(card("請稍候", "English+ 正在根據你的心情、時間、挑戰意願與題型偏好產生今天的支持語。", ColorToken.PrimarySoft))
         bottomNav()
         Thread {
@@ -600,7 +599,7 @@ class MainActivity : Activity() {
             } catch (error: Exception) {
                 runOnUiThread {
                     recordLearningEvent("ai_fallback", "情緒支持真 AI 呼叫失敗", error.message ?: "未知錯誤")
-                    renderCheckInAiSupportFallback(result, "真 AI 呼叫失敗，已改用本機備援：${error.message ?: "未知錯誤"}")
+                    renderCheckInAiSupportFallback(result, "今天先用穩定的短任務開始，之後仍可以重新產生建議。")
                 }
             }
         }.start()
@@ -608,9 +607,8 @@ class MainActivity : Activity() {
 
     private fun renderCheckInAiSupportResult(result: CheckInResult, support: AiSupportResult) {
         screen = Screen.CheckIn
-        shell("AI 情緒支持", "真 AI 已回覆")
+        shell("今日建議", "先照這個節奏開始")
         root.addView(checkInResultCard(result))
-        root.addView(aiSourceStatusCard("真 AI 已啟用", support.source, ColorToken.Success))
         root.addView(card("今天狀態分析", support.diagnosis, ColorToken.WarningSoft))
         root.addView(card("給你的話", support.studentFeedback, ColorToken.SuccessSoft))
         root.addView(card("老師/志工摘要", support.handoffSummary, ColorToken.Card))
@@ -627,13 +625,12 @@ class MainActivity : Activity() {
 
     private fun renderCheckInAiSupportFallback(result: CheckInResult, notice: String) {
         screen = Screen.CheckIn
-        shell("AI 情緒支持", "先用 English+ 內建輔助")
-        root.addView(card("目前使用內建輔助", notice, ColorToken.WarningSoft))
+        shell("今日建議", "先照這個節奏開始")
+        root.addView(card("今天先這樣開始", notice, ColorToken.PrimarySoft))
         root.addView(checkInResultCard(result))
         root.addView(card("給你的話", result.supportMessage, ColorToken.SuccessSoft))
         root.addView(card("今天先這樣做", result.nextStep, ColorToken.PrimarySoft))
         root.addView(ui.primaryButton("產生今日任務") { confirmPracticeTimeAndPlanToday() })
-        root.addView(ui.secondaryButton("設定 OpenRouter 真 AI") { renderAiLab() })
         bottomNav()
     }
 
@@ -681,7 +678,7 @@ class MainActivity : Activity() {
             return
         }
         if (!stateStore.hasOpenRouterApiKey()) {
-            applyLocalDailyTaskPlan(candidates, "目前尚未啟用 OpenRouter 真 AI，先用 English+ 內建規則依照你的心情、時間與題型偏好排序。")
+            applyLocalDailyTaskPlan(candidates, "English+ 已依照你的心情、時間與題型偏好，先排出今天可以開始的一組任務。")
             renderTaskQueue()
             return
         }
@@ -1074,7 +1071,7 @@ class MainActivity : Activity() {
     private fun renderLiveAiCoach() {
         screen = Screen.AiCoach
         val q = questions[currentQuestionIndex]
-        shell("錯題詳解", "正在呼叫 ${aiRouteLabel()}")
+        shell("錯題詳解", "正在整理提示")
         root.addView(answerResultCard(false, q, lastSelectedAnswer))
         root.addView(card("AI 生成中", "English+ 正在根據這一題、你的選項、正確答案與目前心情產生個人化提示。", ColorToken.PrimarySoft))
         bottomNav()
@@ -1085,7 +1082,7 @@ class MainActivity : Activity() {
             } catch (error: Exception) {
                 runOnUiThread {
                     recordLearningEvent("ai_fallback", "錯題真 AI 呼叫失敗", error.message ?: "未知錯誤")
-                    renderLocalAiCoach("真 AI 呼叫失敗，已改用本機備援：${error.message ?: "未知錯誤"}")
+                    renderLocalAiCoach()
                 }
             }
         }.start()
@@ -1093,9 +1090,8 @@ class MainActivity : Activity() {
 
     private fun renderAiCoachResult(q: Question, support: AiSupportResult) {
         screen = Screen.AiCoach
-        shell("錯題詳解", "真 AI 已回覆")
+        shell("錯題詳解", "先看懂，再重試")
         root.addView(answerResultCard(false, q, lastSelectedAnswer))
-        root.addView(aiSourceStatusCard("真 AI 詳解", support.source, ColorToken.Success))
         root.addView(card("看懂錯在哪", support.diagnosis, ColorToken.WarningSoft))
         root.addView(card("下一步提示", support.studentFeedback, ColorToken.SuccessSoft))
         root.addView(card("老師/志工摘要", support.handoffSummary, ColorToken.Card))
@@ -1111,8 +1107,8 @@ class MainActivity : Activity() {
     private fun renderLocalAiCoach(notice: String? = null) {
         screen = Screen.AiCoach
         val q = questions[currentQuestionIndex]
-        shell("錯題詳解", "使用 English+ 內建輔助")
-        notice?.let { root.addView(aiSourceStatusCard("目前使用內建輔助", it, ColorToken.Warning)) }
+        shell("錯題詳解", "先看懂，再重試")
+        notice?.let { root.addView(card("今天先用這個提示", it, ColorToken.PrimarySoft)) }
         root.addView(answerResultCard(false, q, lastSelectedAnswer))
         root.addView(supportStepCard("01", "我看見你卡在這裡", q.prompt, ColorToken.WarningSoft, ColorToken.Warning))
         root.addView(supportStepCard("02", "先把概念拆小", "${q.explanation}\n現在只要先記住這一個規則，不需要一次背完 am / is / are。", ColorToken.VioletSoft, ColorToken.Primary))
@@ -1379,7 +1375,6 @@ class MainActivity : Activity() {
         refreshOfflineSyncState()
         root.addView(storageStatusCard())
         root.addView(cloudBackendStatusCard())
-        root.addView(cloudBackendSettingsCard())
         root.addView(smartSyncStatusCard())
         root.addView(aiSyncSummaryCard())
         root.addView(metricRow(
@@ -1387,7 +1382,7 @@ class MainActivity : Activity() {
             Metric("已下載", "${downloadedPackTitles.size} 包", ColorToken.Success),
             Metric("佇列", "${offlineSyncItems.size} 筆", ColorToken.Primary)
         ))
-        root.addView(card("同步策略", "學生離線時仍可完成短任務；網路恢復後，微任務、反思、志工接力摘要會補傳。正式版可接 Room/Firebase，目前先用本機狀態模擬。", ColorToken.PrimarySoft))
+        root.addView(card("同步策略", "學生離線時仍可完成短任務；網路恢復後，微任務、反思與志工接力摘要會補傳。", ColorToken.PrimarySoft))
         offlineSyncItems.ifEmpty {
             syncRecords.map { OfflineSyncItem(it.title, "展示同步", it.detail, it.status) }
         }.forEach { root.addView(offlineSyncItemCard(it)) }
@@ -1396,7 +1391,7 @@ class MainActivity : Activity() {
             stateStore.markOfflineSyncItemsSynced()
             refreshOfflineSyncState()
             persistState()
-            recordLearningEvent("sync", "本機紀錄已標記同步", "展示版將待同步數歸零，資料仍保留在 SQLite。")
+            recordLearningEvent("sync", "本機紀錄已標記同步", "展示版將待同步數歸零，資料仍保留在這台裝置。")
             renderSyncCenter()
         })
         root.addView(ui.primaryButton("智慧同步：檢查網路並補傳") { renderSmartSyncProgress() })
@@ -1412,23 +1407,22 @@ class MainActivity : Activity() {
         if (!networkReady || !stateStore.hasCloudBackend()) {
             val reason = when {
                 !networkReady -> "目前沒有可用網路，已保留待補傳佇列。"
-                else -> "尚未設定雲端後端 URL，已保留待補傳佇列。"
+                else -> "雲端同步尚未開啟，已保留待補傳佇列。"
             }
             addOfflineSyncItem("智慧同步等待補傳", "真同步", reason, "待上傳")
             recordLearningEvent("smart_sync_waiting", "智慧同步等待補傳", reason)
-            shell("智慧同步等待補傳", "資料仍保留在本機 SQLite")
+            shell("智慧同步等待補傳", "資料仍保留在這台裝置")
             root.addView(card("同步暫停", "$reason\n\n${syncReadinessText()}", ColorToken.WarningSoft))
-            root.addView(cloudBackendSettingsCard())
             offlineSyncItems.take(6).forEach { root.addView(offlineSyncItemCard(it)) }
             root.addView(ui.primaryButton("回同步中心") { renderSyncCenter() })
             bottomNav()
             return
         }
 
-        shell("智慧同步進行中", "網路與後端端點皆可用，正在補傳本機佇列")
-        root.addView(card("真同步檢查通過", "網路可用\n端點：$endpoint\n待補傳：$offlinePendingCount 筆", ColorToken.PrimarySoft))
+        shell("智慧同步進行中", "正在補傳本機佇列")
+        root.addView(card("同步檢查通過", "網路可用\n待補傳：$offlinePendingCount 筆", ColorToken.PrimarySoft))
         root.addView(aiSyncSummaryCard())
-        root.addView(card("補傳內容", "學習紀錄、協作紀錄、題庫摘要、離線佇列與目前學生狀態會一起包成 JSON 送出。", ColorToken.Card))
+        root.addView(card("補傳內容", "學習紀錄、協作紀錄、題庫摘要、離線佇列與目前學生狀態會一起送出。", ColorToken.Card))
         bottomNav()
 
         Thread {
@@ -1466,17 +1460,15 @@ class MainActivity : Activity() {
         screen = Screen.SyncCenter
         val endpoint = stateStore.cloudBackendUrl()
         if (!stateStore.hasCloudBackend()) {
-            shell("尚未設定雲端後端", "先貼上 Firebase Cloud Function 或校內 API 的 HTTPS URL")
-            root.addView(card("目前狀態", "尚未設定雲端端點，因此資料仍只會保存在本機 SQLite。", ColorToken.WarningSoft))
-            root.addView(cloudBackendSettingsCard())
+            shell("尚未開啟雲端同步", "資料仍會保留在這台裝置")
+            root.addView(card("目前狀態", "雲端同步尚未開啟，因此資料會先安全保存在這台裝置。", ColorToken.WarningSoft))
             root.addView(ui.secondaryButton("回同步中心") { renderSyncCenter() })
             bottomNav()
             return
         }
 
-        shell("正在同步雲端", "將本機 SQLite 摘要打包成 JSON POST 到後端")
-        root.addView(card("同步端點", endpoint, ColorToken.PrimarySoft))
-        root.addView(card("同步內容", "App 狀態、學習事件、協作紀錄、離線同步佇列會一起送出。", ColorToken.Card))
+        shell("正在同步雲端", "正在補傳學習與接力紀錄")
+        root.addView(card("同步內容", "學習事件、協作紀錄與離線同步佇列會一起送出。", ColorToken.Card))
         bottomNav()
 
         Thread {
@@ -1511,7 +1503,7 @@ class MainActivity : Activity() {
         screen = Screen.SyncCenter
         shell("雲端同步失敗", "本機資料已保留，可稍後重試")
         root.addView(card("錯誤訊息", message, ColorToken.WarningSoft))
-        root.addView(card("備援策略", "同步失敗不會清掉本機 SQLite 與待同步佇列。正式版可加入背景重試、登入權杖與失敗通知。", ColorToken.Card))
+        root.addView(card("備援策略", "同步失敗不會清掉本機紀錄與待同步佇列；之後可以再重試。", ColorToken.Card))
         root.addView(card("AI 補傳建議", buildAiSyncSummary(), ColorToken.WarningSoft))
         root.addView(ui.primaryButton("回同步中心") { renderSyncCenter() })
         bottomNav()
@@ -1592,20 +1584,18 @@ class MainActivity : Activity() {
     private fun renderRemoteCollaborationSync(pushFirst: Boolean) {
         screen = Screen.ActionQueue
         if (!stateStore.hasCloudBackend()) {
-            shell("尚未設定協作後端", "多人協作需要先在同步中心設定雲端端點")
-            root.addView(card("目前狀態", "沒有後端 URL 時，協作紀錄只會保存在本機 SQLite。", ColorToken.WarningSoft))
-            root.addView(ui.primaryButton("前往同步中心設定") { renderSyncCenter() })
+            shell("雲端協作尚未開啟", "協作紀錄會先保留在這台裝置")
+            root.addView(card("目前狀態", "雲端協作尚未開啟時，老師與志工仍可先用本機紀錄接力。", ColorToken.WarningSoft))
             root.addView(ui.secondaryButton("回接力優先序") { renderHandoffBoard() })
             bottomNav()
             return
         }
 
-        shell("同步多人協作", if (pushFirst) "先推送本機協作，再拉取遠端更新" else "正在拉取遠端協作紀錄")
-        root.addView(card("協作後端", stateStore.cloudBackendUrl(), ColorToken.PrimarySoft))
+        shell("同步多人協作", if (pushFirst) "先送出本機協作，再更新最新紀錄" else "正在更新最新協作紀錄")
         root.addView(card("同步班級", currentAccount().classCode, ColorToken.Card))
         root.addView(card(
-            "第四輪同步規則",
-            "協作紀錄會以 eventId 去重；同一筆接力在不同裝置更新時，保留 createdAt 較新的版本。學生端不能建立正式接力紀錄，老師/志工端可以寫入。",
+            "同步規則",
+            "同一筆接力紀錄若在不同裝置更新，系統會保留最新版本。學生端不會建立老師接力紀錄，老師與志工端可以回填。",
             ColorToken.VioletSoft
         ))
         bottomNav()
@@ -1639,7 +1629,7 @@ class MainActivity : Activity() {
         recordLearningEvent("collaboration_sync_failed", "多人協作同步失敗", message)
         shell("多人協作同步失敗", "本機協作資料已保留")
         root.addView(card("錯誤訊息", message, ColorToken.WarningSoft))
-        root.addView(card("備援策略", "協作同步失敗時，老師與志工仍可先用本機紀錄展示流程；等網路或後端恢復後再同步。", ColorToken.Card))
+        root.addView(card("備援策略", "協作同步失敗時，老師與志工仍可先用本機紀錄接力；等網路恢復後再同步。", ColorToken.Card))
         root.addView(ui.primaryButton("回接力優先序") { renderHandoffBoard() })
         bottomNav()
     }
@@ -1674,6 +1664,14 @@ class MainActivity : Activity() {
     }
 
     private fun renderAiLab() {
+        if (role == Role.Student) {
+            renderStudentTaskEntry()
+        } else {
+            renderRoster()
+        }
+    }
+
+    private fun renderDeveloperAiLab() {
         screen = Screen.AiLab
         shell("AI 設定", "啟用 OpenRouter 真 AI")
         root.addView(openAiStatusCard())
@@ -2035,7 +2033,7 @@ class MainActivity : Activity() {
             setPadding(0, ui.dp(12), 0, ui.dp(4))
         })
         box.addView(ui.body(
-            "目前已完成真實資料儲存、本機登入班級、真 AI 串接、老師/志工協作、離線同步與展示報告。展示重點不是題庫量，而是情緒斷點如何被 AI 接住，再交給真人低壓接力。"
+            "目前已完成學習紀錄保存、展示帳號登入、智慧任務建議、老師/志工協作、離線同步與展示報告。展示重點不是題庫量，而是情緒斷點如何被接住，再交給真人低壓接力。"
         ))
         return ui.margins(box, 0, 8, 0, 12)
     }
@@ -2092,18 +2090,17 @@ class MainActivity : Activity() {
     }
 
     private fun buildAiSyncSummary(): String {
-        val endpoint = stateStore.cloudBackendUrl().ifBlank { "尚未設定" }
         val network = if (isNetworkAvailable()) "網路可用" else "網路不可用"
-        val backend = if (stateStore.hasCloudBackend()) "後端已設定" else "尚未設定後端"
+        val backend = if (stateStore.hasCloudBackend()) "雲端同步已開啟" else "雲端同步尚未開啟"
         val newest = offlineSyncItems.firstOrNull()?.let { "${it.title}（${it.status}）" } ?: "沒有待處理佇列"
         val action = when {
             offlinePendingCount == 0 -> "目前可先不用補傳；若剛匯出週報，建議再同步一次報告紀錄。"
             isNetworkAvailable() && stateStore.hasCloudBackend() -> "可以按智慧同步，把學習事件、AI 摘要與協作紀錄補傳。"
-            !isNetworkAvailable() -> "先保留本機 SQLite，等網路恢復後再補傳。"
-            else -> "先設定 Firebase Cloud Function 或校內 API URL，再進行補傳。"
+            !isNetworkAvailable() -> "先保留在這台裝置，等網路恢復後再補傳。"
+            else -> "先確認雲端同步已開啟，再進行補傳。"
         }
         return """
-            狀態：$network｜$backend｜端點：$endpoint
+            狀態：$network｜$backend
             待補傳：$offlinePendingCount 筆｜佇列：${offlineSyncItems.size} 筆
             最新項目：$newest
             建議動作：$action
@@ -2123,9 +2120,9 @@ class MainActivity : Activity() {
             English+ 是面向偏鄉國中生的低壓英文學習原型。平台核心不是大量刷題，而是先辨識學生的情緒斷點，把英文任務縮小，再由 AI 與真人志工雙軌接力。
 
             二、目前可展示功能
-            1. 真實資料儲存：SQLite 已保存 App 狀態、學習事件、帳號、協作紀錄與同步佇列。
+            1. 學習紀錄保存：學生的任務、反思、錯題修復與接力紀錄都會留下證據。
             2. 登入與班級：本機展示帳號可切換學生、志工、老師，保留班級/群組代碼。
-            3. 真 AI 串接：AI 提示實驗室可設定 OpenAI API Key；沒有 Key 或失敗時回到本機模擬。
+            3. 智慧支持：系統會依心情、答題狀況與題型偏好產生低壓提示與每日任務。
             4. 老師/志工協作：志工回覆、陪伴腳本、老師待辦處理會寫入協作紀錄。
             5. 離線與同步：任務包下載、答題、反思、AI 摘要與協作會進入待同步佇列。
             6. 報告展示：本頁可輸出給老師/評審看的文字摘要。
@@ -2157,9 +2154,9 @@ class MainActivity : Activity() {
             AI 同步判讀：$aiSyncSummary
 
             七、下一階段建議
-            1. 將 SQLite 資料層升級為 Room。
-            2. 用 Firebase 或校內後端做真帳號與雲端同步。
-            3. 將 OpenAI API Key 移到後端代理，不由手機端保存正式 Key。
+            1. 讓學生與老師使用正式帳號登入。
+            2. 讓跨裝置同步更穩定，方便老師與志工即時接力。
+            3. 擴充正式題庫與老師後台管理流程。
             4. 用真實學生訪談驗證：低壓任務、志工摘要、情緒斷點是否真的降低放棄感。
         """.trimIndent()
     }
@@ -2557,7 +2554,6 @@ class MainActivity : Activity() {
             Metric("新增任務", "$customTaskCount", ColorToken.Accent)
         ))
         box.addView(ui.body("這些紀錄會進入週報與同步佇列，方便老師下次回來時直接接續處理。", "#334155"))
-        box.addView(ui.secondaryButton("AI 提示實驗室") { renderAiLab() })
         return ui.margins(box, 0, 8, 0, 16)
     }
 
@@ -3154,7 +3150,7 @@ class MainActivity : Activity() {
         val snapshot = stateStore.storageSnapshot()
         val stateText = if (snapshot.stateSaved) "已保存" else "尚未建立"
         val box = ui.container(ColorToken.SuccessSoft, ColorToken.Border)
-        box.addView(ui.statusPill("本機資料庫", ColorToken.Success))
+        box.addView(ui.statusPill("學習紀錄", ColorToken.Success))
         box.addView(ui.label("學習紀錄已寫入手機", 18, ColorToken.Ink, true).apply {
             setPadding(0, ui.dp(12), 0, ui.dp(4))
         })
@@ -3164,7 +3160,7 @@ class MainActivity : Activity() {
             Metric("待補傳", "${snapshot.pendingSyncCount} 筆", if (snapshot.pendingSyncCount > 0) ColorToken.Warning else ColorToken.Success)
         ))
         box.addView(ui.body("最新紀錄：${snapshot.latestEventTitle}\n協作紀錄：${snapshot.collaborationCount} 筆｜離線包：${snapshot.downloadedPackCount} 包", "#334155"))
-        box.addView(ui.body("目前先存在 SQLite；同步中心會把待補傳資料整理成佇列，之後可接 Firebase 或校內後端。", ColorToken.Muted).apply {
+        box.addView(ui.body("目前紀錄會先保存在這台裝置；有網路時再補傳，老師與志工就能接續查看。", ColorToken.Muted).apply {
             setPadding(0, ui.dp(6), 0, 0)
         })
         return ui.margins(box, 0, 8, 0, 12)
@@ -3176,7 +3172,7 @@ class MainActivity : Activity() {
         val unitCount = bankItems.map { it.unit }.distinct().size
         val typeCount = bankItems.map { it.questionType }.distinct().size
         val box = ui.container(ColorToken.SuccessSoft, ColorToken.Border)
-        box.addView(ui.statusPill("題庫已本機化", ColorToken.Success))
+        box.addView(ui.statusPill("題庫已準備", ColorToken.Success))
         box.addView(ui.label("English+ 正式題庫骨架", 18, ColorToken.Ink, true).apply {
             setPadding(0, ui.dp(12), 0, ui.dp(4))
         })
@@ -3185,7 +3181,7 @@ class MainActivity : Activity() {
             Metric("題型", "$typeCount 類", ColorToken.Accent),
             Metric("技能", "$skillCount 類", ColorToken.Success)
         ))
-        box.addView(ui.body("練習題已從展示清單升級為 SQLite 題庫，保留 level、unit、skill、source 與推薦 metadata。後續可接 1000 題分級題庫或老師後台匯入。單元：$unitCount 組。", "#334155"))
+        box.addView(ui.body("練習題已依程度、單元、技能與推薦理由整理。後續可擴充更多分級題庫，或由老師後台匯入。單元：$unitCount 組。", "#334155"))
         box.addView(ui.secondaryButton("打開題庫中心") { renderQuestionBank() })
         return ui.margins(box, 0, 8, 0, 12)
     }
@@ -3378,15 +3374,15 @@ class MainActivity : Activity() {
     private fun cloudBackendStatusCard(): View {
         val hasBackend = stateStore.hasCloudBackend()
         val box = ui.container(if (hasBackend) ColorToken.SuccessSoft else ColorToken.WarningSoft, ColorToken.Border)
-        box.addView(ui.statusPill(if (hasBackend) "雲端後端已設定" else "尚未接雲端", if (hasBackend) ColorToken.Success else ColorToken.Warning))
-        box.addView(ui.label(if (hasBackend) "可同步到後端 API" else "目前仍是本機 SQLite 模式", 18, ColorToken.Ink, true).apply {
+        box.addView(ui.statusPill(if (hasBackend) "雲端同步已開啟" else "先保存在本機", if (hasBackend) ColorToken.Success else ColorToken.Warning))
+        box.addView(ui.label(if (hasBackend) "可補傳到雲端" else "目前先保存在這台裝置", 18, ColorToken.Ink, true).apply {
             setPadding(0, ui.dp(12), 0, ui.dp(4))
         })
         box.addView(ui.body(
             if (hasBackend) {
-                "目前端點：${stateStore.cloudBackendUrl()}\n按下同步後會以 JSON POST 傳送本機摘要。"
+                "按下同步後，學習紀錄與接力紀錄會補傳到雲端。"
             } else {
-                "貼上 Firebase Cloud Function、校內 API 或測試 webhook URL 後，就能把本機資料送到雲端。"
+                "沒有網路或尚未開啟雲端同步時，資料仍會保存在這台裝置。"
             },
             "#334155"
         ))
@@ -3403,7 +3399,7 @@ class MainActivity : Activity() {
             setPadding(0, ui.dp(12), 0, ui.dp(4))
         })
         box.addView(ui.body(syncReadinessText(), "#334155"))
-        box.addView(ui.body("按下智慧同步時，English+ 會先檢查網路與後端 URL；失敗就保留待補傳，成功才把本機佇列標記為已同步。", ColorToken.Muted).apply {
+        box.addView(ui.body("按下智慧同步時，English+ 會先檢查網路與雲端同步狀態；失敗就保留待補傳，成功才把本機佇列標記為已同步。", ColorToken.Muted).apply {
             setPadding(0, ui.dp(6), 0, 0)
         })
         return ui.margins(box, 0, 8, 0, 12)
@@ -3467,14 +3463,14 @@ class MainActivity : Activity() {
         val accounts = accountList()
         val studentCount = accounts.count { AuthContract.isStudentRole(it.roleLabel) }
         val staffCount = accounts.count { AuthContract.isStaffRole(it.roleLabel) }
-        val endpointState = if (stateStore.hasRemoteAuthEndpoint()) "已設定" else "待設定"
+        val endpointState = if (stateStore.hasRemoteAuthEndpoint()) "已開啟" else "尚未開啟"
         val box = ui.container(ColorToken.Card, ColorToken.Border)
         box.addView(ui.statusPill("第二輪帳號正式化", ColorToken.Primary))
         box.addView(ui.label("角色與登入狀態", 18, ColorToken.Ink, true).apply {
             setPadding(0, ui.dp(12), 0, ui.dp(4))
         })
         box.addView(ui.body(
-            "學生帳號：$studentCount\n老師/志工帳號：$staffCount\n正式登入端點：$endpointState\n支援路線：Firebase Auth、Google Sign-In、校內 SSO 後端代理",
+            "學生帳號：$studentCount\n老師/志工帳號：$staffCount\n正式登入：$endpointState\n目前可先使用下方展示帳號檢視完整流程。",
             "#334155"
         ))
         return ui.margins(box, 0, 8, 0, 12)
@@ -3482,72 +3478,9 @@ class MainActivity : Activity() {
 
     private fun remoteAuthLoginCard(): View {
         val box = ui.container(ColorToken.Card, ColorToken.Border)
-        box.addView(ui.label("正式登入設定", 18, ColorToken.Ink, true))
-        box.addView(ui.body("支援 Firebase Auth 包裝 API、Google 登入後端或校內帳號 API。後端需接受 JSON：username、password、classCode，回傳 displayName、roleLabel、classCode、token。"))
-
-        val endpointInput = EditText(this).apply {
-            hint = "https://example.com/api/auth/login"
-            setText(stateStore.remoteAuthEndpoint())
-            inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_URI
-            setSingleLine(true)
-            textSize = 15f
-            setTextColor(Color.parseColor(ColorToken.Ink))
-            setHintTextColor(Color.parseColor(ColorToken.Muted))
-            background = ui.rounded(ColorToken.Surface, ColorToken.Border)
-            setPadding(ui.dp(14), ui.dp(12), ui.dp(14), ui.dp(12))
-            layoutParams = ui.fullWidthParams()
-        }
-        val usernameInput = EditText(this).apply {
-            hint = "帳號 / email / 學號"
-            inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_EMAIL_ADDRESS
-            setSingleLine(true)
-            textSize = 15f
-            setTextColor(Color.parseColor(ColorToken.Ink))
-            setHintTextColor(Color.parseColor(ColorToken.Muted))
-            background = ui.rounded(ColorToken.Surface, ColorToken.Border)
-            setPadding(ui.dp(14), ui.dp(12), ui.dp(14), ui.dp(12))
-            layoutParams = ui.fullWidthParams()
-        }
-        val passwordInput = EditText(this).apply {
-            hint = "密碼"
-            inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_PASSWORD
-            setSingleLine(true)
-            textSize = 15f
-            setTextColor(Color.parseColor(ColorToken.Ink))
-            setHintTextColor(Color.parseColor(ColorToken.Muted))
-            background = ui.rounded(ColorToken.Surface, ColorToken.Border)
-            setPadding(ui.dp(14), ui.dp(12), ui.dp(14), ui.dp(12))
-            layoutParams = ui.fullWidthParams()
-        }
-        val classInput = EditText(this).apply {
-            hint = "班級/群組代碼，例如 YILAN-CHENGZHI-8A"
-            setText(currentAccount().classCode)
-            inputType = InputType.TYPE_CLASS_TEXT
-            setSingleLine(true)
-            textSize = 15f
-            setTextColor(Color.parseColor(ColorToken.Ink))
-            setHintTextColor(Color.parseColor(ColorToken.Muted))
-            background = ui.rounded(ColorToken.Surface, ColorToken.Border)
-            setPadding(ui.dp(14), ui.dp(12), ui.dp(14), ui.dp(12))
-            layoutParams = ui.fullWidthParams()
-        }
-        box.addView(endpointInput)
-        box.addView(usernameInput)
-        box.addView(passwordInput)
-        box.addView(classInput)
-        box.addView(ui.primaryButton("儲存端點並登入") {
-            stateStore.saveRemoteAuthEndpoint(endpointInput.text.toString())
-            renderRemoteLoginProgress(
-                username = usernameInput.text.toString().trim(),
-                password = passwordInput.text.toString(),
-                classCode = classInput.text.toString().trim()
-            )
-        })
-        box.addView(ui.secondaryButton("只儲存登入端點") {
-            stateStore.saveRemoteAuthEndpoint(endpointInput.text.toString())
-            recordLearningEvent("remote_auth_config", "已更新正式登入端點", stateStore.remoteAuthEndpoint().ifBlank { "已清空" })
-            renderAccountCenter()
-        })
+        box.addView(ui.label("正式登入", 18, ColorToken.Ink, true))
+        box.addView(ui.body("目前先使用展示帳號檢視學生端、老師端與志工接力流程。正式帳號開啟後，這裡會改成學校或班級帳號登入。", "#334155"))
+        box.addView(ui.secondaryButton("使用展示帳號") { renderAccountCenter() })
         return ui.margins(box, 0, 8, 0, 12)
     }
 
@@ -3835,21 +3768,21 @@ class MainActivity : Activity() {
         val hasBackend = stateStore.hasCloudBackend()
         val box = ui.container(if (hasBackend) ColorToken.SuccessSoft else ColorToken.WarningSoft, ColorToken.Border)
         box.addView(ui.statusPill(if (hasBackend) "多人協作可同步" else "本機協作模式", if (hasBackend) ColorToken.Success else ColorToken.Warning))
-        box.addView(ui.label(if (hasBackend) "老師/志工紀錄可推送與拉取" else "尚未設定協作後端", 18, ColorToken.Ink, true).apply {
+        box.addView(ui.label(if (hasBackend) "老師/志工紀錄可同步" else "協作紀錄先保存在本機", 18, ColorToken.Ink, true).apply {
             setPadding(0, ui.dp(12), 0, ui.dp(4))
         })
         box.addView(ui.body(
             if (hasBackend) {
-                "目前使用同步中心的雲端端點：${stateStore.cloudBackendUrl()}\n可推送本機協作並拉取遠端協作 feed。"
+                "可以送出本機協作紀錄，也可以更新其他老師或志工留下的最新紀錄。"
             } else {
-                "先到同步中心貼上後端 URL，才能讓老師與志工跨裝置看到彼此的協作紀錄。"
+                "雲端協作尚未開啟時，老師與志工仍可先用本機紀錄接力。"
             },
             "#334155"
         ))
-        box.addView(ui.primaryButton(if (hasBackend) "推送並拉取協作紀錄" else "前往同步中心設定") {
+        box.addView(ui.primaryButton(if (hasBackend) "同步協作紀錄" else "查看同步狀態") {
             if (hasBackend) renderRemoteCollaborationSync(pushFirst = true) else renderSyncCenter()
         })
-        box.addView(ui.secondaryButton("只拉取遠端協作") {
+        box.addView(ui.secondaryButton("更新最新紀錄") {
             renderRemoteCollaborationSync(pushFirst = false)
         })
         return ui.margins(box, 0, 8, 0, 12)
@@ -4156,9 +4089,8 @@ class MainActivity : Activity() {
     private fun dailyAiTaskPlanCard(): View {
         val itemsById = stateStore.questionBankItems().associateBy { it.id }
         val plannedItems = aiDailyPlanItemIds.mapNotNull { itemsById[it] }
-        val isTrueAi = aiDailyPlanSource.contains("OpenRouter")
-        val box = ui.container(if (isTrueAi) ColorToken.SuccessSoft else ColorToken.PrimarySoft, ColorToken.Border)
-        box.addView(ui.statusPill(if (isTrueAi) "真 AI 已生成" else "內建推薦", if (isTrueAi) ColorToken.Success else ColorToken.Primary))
+        val box = ui.container(ColorToken.PrimarySoft, ColorToken.Border)
+        box.addView(ui.statusPill("今日任務", ColorToken.Primary))
         box.addView(ui.label(aiDailyPlanTitle.ifBlank { "今日任務推薦" }, 19, ColorToken.Ink, true).apply {
             setPadding(0, ui.dp(10), 0, ui.dp(4))
         })
@@ -4166,7 +4098,7 @@ class MainActivity : Activity() {
         box.addView(metricRow(
             Metric("時間", "${minutes} 分", ColorToken.Accent),
             Metric("題數", "${plannedItems.size} 題", ColorToken.Primary),
-            Metric("來源", if (isTrueAi) "OpenRouter" else "內建", if (isTrueAi) ColorToken.Success else ColorToken.Warning)
+            Metric("節奏", if (confidence < 45) "先修復" else "穩定練", if (confidence < 45) ColorToken.Warning else ColorToken.Success)
         ))
         plannedItems.forEachIndexed { index, item ->
             val label = aiQuestionBankLabels(item).take(2).joinToString("、")
@@ -4177,7 +4109,7 @@ class MainActivity : Activity() {
         if (plannedItems.isEmpty()) {
             box.addView(ui.secondaryButton("產生今日任務") { confirmPracticeTimeAndPlanToday() })
         } else {
-            box.addView(ui.secondaryButton(if (stateStore.hasOpenRouterApiKey()) "用真 AI 重新安排" else "重新安排今日任務") { confirmPracticeTimeAndPlanToday() })
+            box.addView(ui.secondaryButton("重新安排今日任務") { confirmPracticeTimeAndPlanToday() })
         }
         return ui.margins(box, 0, 8, 0, 12)
     }
