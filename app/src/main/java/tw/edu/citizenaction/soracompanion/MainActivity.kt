@@ -518,11 +518,10 @@ class MainActivity : Activity() {
         }
         screen = Screen.Lesson
         shell("今天先做這個", "把英文練習縮到現在做得到的一小步")
-        root.addView(studentTodayQuestCard())
-        root.addView(dailyAiTaskPlanCard())
-        if (recoveryTaskTitle.isNotBlank()) {
-            root.addView(recoveryTaskCard())
+        if (dailyTaskTotal() > 0) {
+            root.addView(dailyTaskProgressCard())
         }
+        root.addView(dailyAiTaskPlanCard())
         root.addView(studentAiPracticePreferenceCard())
         root.addView(studentQuickPracticeCard())
         if (customTaskCount > 0) {
@@ -536,29 +535,31 @@ class MainActivity : Activity() {
 
     private fun renderCheckIn() {
         screen = Screen.CheckIn
-        shell("心情檢測", "4 題內完成")
         val checkInQuestions = PrototypeRepository.emotionalCheckInQuestions
         val answeredCount = checkInQuestions.count { isCheckInQuestionAnswered(it.id) }
         val complete = checkInQuestions.all { isCheckInQuestionAnswered(it.id) }
         val result = if (complete) PrototypeRepository.evaluateEmotionalCheckIn(checkInAnswers) else null
-        root.addView(checkInIntroCard())
+        shell("心情檢測", "${(answeredCount + 1).coerceAtMost(checkInQuestions.size)} / ${checkInQuestions.size}")
         root.addView(checkInProgressCard(checkInQuestions.size, answeredCount, result))
-        checkInQuestions.forEachIndexed { index, question ->
-            root.addView(checkInQuestionCard(index + 1, question))
-        }
-        result?.let { root.addView(checkInResultCard(it)) }
         if (complete && result != null) {
-            root.addView(ui.primaryButton("完成檢測，產生今日任務") {
+            root.addView(dailyTaskReadyCard(result))
+            root.addView(ui.primaryButton("開始今日任務") {
                 applyCheckInResult(result)
                 renderCheckInAiSupport(result)
             })
+            root.addView(ui.secondaryButton("重新檢測") {
+                checkInAnswers.clear()
+                checkInCompleted = false
+                practiceTimeConfirmed = false
+                renderCheckIn()
+            })
         } else {
-            root.addView(card("還差 ${checkInQuestions.size - answeredCount} 題", "完成後會依照時間、挑戰意願與題型偏好安排任務。", ColorToken.Card))
+            val currentIndex = checkInQuestions.indexOfFirst { !isCheckInQuestionAnswered(it.id) }.coerceAtLeast(0)
+            root.addView(checkInQuestionCard(currentIndex + 1, checkInQuestions[currentIndex]))
         }
         root.addView(ui.secondaryButton("先回學生首頁") { renderHome() })
         bottomNav()
     }
-
     private fun applyCheckInResult(result: CheckInResult) {
         mood = result.mood
         minutes = result.recommendedMinutes
@@ -605,33 +606,13 @@ class MainActivity : Activity() {
     }
 
     private fun renderCheckInAiSupportResult(result: CheckInResult, support: AiSupportResult) {
-        screen = Screen.CheckIn
-        shell("今日建議", "先照這個節奏開始")
-        root.addView(checkInResultCard(result))
-        root.addView(card("今天狀態分析", support.diagnosis, ColorToken.WarningSoft))
-        root.addView(card("給你的話", support.studentFeedback, ColorToken.SuccessSoft))
         addOfflineSyncItem("AI 情緒支持：${result.title}", "真 AI 情緒支持", support.handoffSummary)
         recordLearningEvent("ai_emotional_support", "真 AI 情緒支持", support.diagnosis)
-        root.addView(ui.primaryButton("產生今日任務") { confirmPracticeTimeAndPlanToday() })
-        root.addView(ui.secondaryButton("重新做心情檢測") {
-            checkInCompleted = false
-            practiceTimeConfirmed = false
-            renderCheckIn()
-        })
-        bottomNav()
+        confirmPracticeTimeAndPlanToday(support.studentFeedback.ifBlank { result.nextStep })
     }
-
     private fun renderCheckInAiSupportFallback(result: CheckInResult, notice: String) {
-        screen = Screen.CheckIn
-        shell("今日建議", "先照這個節奏開始")
-        root.addView(card("今天先這樣開始", notice, ColorToken.PrimarySoft))
-        root.addView(checkInResultCard(result))
-        root.addView(card("給你的話", result.supportMessage, ColorToken.SuccessSoft))
-        root.addView(card("今天先這樣做", result.nextStep, ColorToken.PrimarySoft))
-        root.addView(ui.primaryButton("產生今日任務") { confirmPracticeTimeAndPlanToday() })
-        bottomNav()
+        confirmPracticeTimeAndPlanToday(notice)
     }
-
     private fun studentAiPracticePreferenceCard(): View {
         val hasSuggestion = aiPracticeTypeSuggestion.isNotBlank()
         val box = ui.container(if (hasSuggestion) ColorToken.PrimarySoft else ColorToken.Surface, ColorToken.Border)
@@ -650,14 +631,14 @@ class MainActivity : Activity() {
         if (hasSuggestion) box.addView(ui.secondaryButton("看這類題型") { renderStudentPracticeCatalog() })
         return ui.margins(box, 0, 0, 0, 12)
     }
-    private fun confirmPracticeTimeAndPlanToday() {
+    private fun confirmPracticeTimeAndPlanToday(seedMessage: String = "") {
         practiceTimeConfirmed = true
         todayAnsweredFirstQuestion = false
         todayReflected = false
         aiDailyPlanItemIds = emptyList()
         completedDailyTaskItemIds.clear()
         aiDailyPlanTitle = ""
-        aiDailyPlanMessage = ""
+        aiDailyPlanMessage = seedMessage
         aiDailyPlanSource = ""
         persistState()
         renderAiDailyPlanThenTaskQueue()
@@ -677,7 +658,7 @@ class MainActivity : Activity() {
             return
         }
         if (!stateStore.hasOpenRouterApiKey()) {
-            applyLocalDailyTaskPlan(candidates, "English+ 已依照你的心情、時間與題型偏好，先排出今天可以開始的一組任務。")
+            applyLocalDailyTaskPlan(candidates, aiDailyPlanMessage.ifBlank { "English+ 已依照你的心情、時間與題型偏好，先排出今天可以開始的一組任務。" })
             renderTaskQueue()
             return
         }
@@ -867,7 +848,7 @@ class MainActivity : Activity() {
             learningEventCount += 1
             lastSelectedAnswer = option
             lastAnswerMessage = "你選了 $option。${q.explanation}"
-            prepareRecoveryTask(q, option)
+            if (wrongAttempts >= 2) prepareRecoveryTask(q, option)
             addOfflineSyncItem("答題卡住：${q.concept}", "學習事件", "學生選擇 $option，需要保留修復提示。")
             persistState()
             recordLearningEvent("answer_wrong", "答題卡住：${q.concept}", "學生選擇 $option；平台保留修復提示與支持出口。")
@@ -2622,7 +2603,7 @@ class MainActivity : Activity() {
             if (isDailyTaskComplete()) {
                 "今日必要題目已完成。接下來可以整理反思，或到練習中心自主加練。"
             } else {
-                "今日任務還剩 ${remainingDailyTaskCount()} 題要答對；答錯會先修復，不會推進進度。"
+                "今日任務還剩 ${remainingDailyTaskCount()} 題要答對；答錯會先看提示，不會推進進度。"
             }
         } else {
             "預計 ${minutes} 分鐘，先產生今天要完成的題目任務。"
@@ -3055,25 +3036,25 @@ class MainActivity : Activity() {
         return ui.margins(box, 0, 8, 0, 4)
     }
 
-    private fun checkInResultCard(result: CheckInResult): View {
+    private fun dailyTaskReadyCard(result: CheckInResult): View {
+        val typeText = result.preferredQuestionTypes.ifEmpty { listOf("系統推薦") }.joinToString("、")
         val routeLabel = when (result.route) {
-            "repair" -> "先暖身"
-            "challenge" -> "可以挑戰"
-            else -> "穩定練習"
+            "challenge" -> "挑戰路線"
+            "repair" -> "暖身路線"
+            else -> "穩定路線"
         }
-        val typeText = result.preferredQuestionTypes.ifEmpty { listOf("系統推薦題型") }.joinToString("、")
-        val box = ui.container(if (result.route == "challenge") ColorToken.SuccessSoft else ColorToken.PrimarySoft, ColorToken.Border)
-        box.addView(ui.statusPill("今日建議", result.mood.color))
-        box.addView(ui.label(routeLabel, 20, ColorToken.Ink, true).apply {
-            setPadding(0, ui.dp(10), 0, ui.dp(4))
+        val box = ui.container(ColorToken.PrimarySoft, ColorToken.Primary)
+        box.addView(ui.statusPill("今日任務已排好", ColorToken.Success))
+        box.addView(ui.label("今天先完成這一組", 23, ColorToken.Ink, true).apply {
+            setPadding(0, ui.dp(12), 0, ui.dp(4))
         })
         box.addView(ui.body(result.nextStep, "#334155"))
         box.addView(metricRow(
             Metric("時間", "${result.recommendedMinutes} 分", ColorToken.Accent),
             Metric("題量", "${targetQuestionCountForMinutes(result.recommendedMinutes)} 題", ColorToken.Primary),
-            Metric("題型", typeText.take(6), ColorToken.Success)
+            Metric("路線", routeLabel, result.mood.color)
         ))
-        box.addView(ui.body("接下來只會先帶你進入今日任務；進度條會在作題時才出現。", ColorToken.Muted).apply {
+        box.addView(ui.body("題型：$typeText\n接下來會直接進入今日任務，進度條只會在作題時出現。", ColorToken.Muted).apply {
             setPadding(0, ui.dp(8), 0, 0)
         })
         return ui.margins(box, 0, 8, 0, 12)
