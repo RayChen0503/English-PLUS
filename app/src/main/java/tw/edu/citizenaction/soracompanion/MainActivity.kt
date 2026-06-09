@@ -55,7 +55,9 @@ import tw.edu.citizenaction.soracompanion.model.StudyTask
 import tw.edu.citizenaction.soracompanion.model.StudentRow
 import tw.edu.citizenaction.soracompanion.model.SyncRecord
 import tw.edu.citizenaction.soracompanion.model.SupportMessage
+import tw.edu.citizenaction.soracompanion.model.SupportTarget
 import tw.edu.citizenaction.soracompanion.model.TeacherAction
+import tw.edu.citizenaction.soracompanion.model.UserFlowContract
 import tw.edu.citizenaction.soracompanion.model.WeeklySignal
 import tw.edu.citizenaction.soracompanion.state.PrototypeStateStore
 import tw.edu.citizenaction.soracompanion.ui.UiKit
@@ -63,6 +65,7 @@ import tw.edu.citizenaction.soracompanion.ui.UiKit.ColorToken
 
 class MainActivity : Activity() {
     private lateinit var root: LinearLayout
+    private lateinit var navRoot: LinearLayout
     private lateinit var ui: UiKit
     private lateinit var stateStore: PrototypeStateStore
 
@@ -85,6 +88,12 @@ class MainActivity : Activity() {
     private var inDailyMission = false
     private var dailyQuestionGoal = 0
     private var dailyQuestionDone = 0
+    private var dailyMissionCursor = 0
+    private var dailyMissionQuestions: List<Question> = emptyList()
+    private var moodScale = 3
+    private var timeScale = 3
+    private var challengeWanted = false
+    private val preferredQuestionTypes = UserFlowContract.defaultPreferredQuestionTypes.toMutableSet()
     private var lastAnswerMessage = "還沒有作答，先從一題短任務開始。"
     private var lastSelectedAnswer = ""
 
@@ -128,6 +137,8 @@ class MainActivity : Activity() {
         val saved = stateStore.load()
         mood = saved.mood
         minutes = saved.minutes
+        moodScale = UserFlowContract.moodScaleForMood(mood)
+        timeScale = UserFlowContract.timeScaleForMinutes(minutes)
         confidence = saved.confidence
         completedTasks = saved.completedTasks
         currentQuestionIndex = saved.currentQuestionIndex.coerceIn(0, questions.lastIndex)
@@ -284,7 +295,7 @@ class MainActivity : Activity() {
             ActionItem("學生列表", "看誰需要接力") { renderRoster() },
             ActionItem("斷點摘要", "看 AI 已處理什麼") { renderBreakpoints() },
             ActionItem("接力優先序", "安排誰先處理") { renderHandoffBoard() },
-            ActionItem("陪伴檢核", "確認今天怎麼接住學生") { renderMentorChecks() }
+            ActionItem("週報摘要", "看本週支持證據") { renderWeeklyReport() }
         ))
         root.addView(ui.secondaryButton("學生資料管理") { renderStudentManager() })
         section("本週訊號")
@@ -365,7 +376,7 @@ class MainActivity : Activity() {
         recordLearningEvent("remote_login_failed", "雲端登入失敗", message)
         shell("雲端登入失敗", "本機展示帳號仍可使用")
         root.addView(card("錯誤訊息", message, ColorToken.WarningSoft))
-        root.addView(card("備援策略", "正式版可以在這裡加入 Firebase Auth、Google 登入或校內 SSO。現在先保留本機帳號，避免展示流程中斷。", ColorToken.Card))
+        root.addView(card("下一步", "你仍可以先使用班級帳號進入；若要使用學校帳號，請稍後重新登入。", ColorToken.Card))
         root.addView(ui.primaryButton("回帳號中心") { renderAccountCenter() })
         bottomNav()
     }
@@ -470,39 +481,65 @@ class MainActivity : Activity() {
                 root.addView(taskCard(StudyTask("志工接力任務 ${index + 1}", 3, "低", "由老師端依斷點新增，完成後會回寫週報。", "老師指派")))
             }
         }
-        root.addView(ui.secondaryButton("新增一個低壓自訂任務") {
-            customTaskCount += 1
-            addOfflineSyncItem("老師新增低壓任務", "任務設定", "新增 1 個志工接力低壓任務，待同步到老師端。")
-            persistState()
-            renderTaskQueue()
-        })
         root.addView(ui.primaryButton("開始今日題目任務") { startDailyMission() })
+        root.addView(ui.secondaryButton("自由練習，不計入今日任務") {
+            inDailyMission = false
+            dailyMissionQuestions = emptyList()
+            renderLesson()
+        })
         bottomNav()
     }
 
     private fun renderCheckIn() {
         screen = Screen.CheckIn
-        shell("心情與時間檢測", "從狀態開始，而不是一進來就考試")
+        shell("今天狀態檢測", "四個問題決定今天先做哪一組題目")
         root.addView(checkInIntroCard())
-        section("今天的狀態")
-        Mood.values().forEach { item ->
-            root.addView(moodChoiceCard(item.label, item.description, item.color, item == mood) {
-                mood = item
-                minutes = item.defaultMinutes
-                confidence = (confidence + item.confidenceDelta).coerceIn(0, 100)
-                persistState()
-                renderCheckIn()
-            })
-        }
+
+        section("1. 今天的心情量表")
+        root.addView(scaleSelector(
+            selected = moodScale,
+            lowLabel = "低",
+            highLabel = "好",
+            color = ColorToken.Accent
+        ) { value ->
+            moodScale = value
+            mood = UserFlowContract.moodFromScale(value)
+            confidence = (35 + value * 12 + mood.confidenceDelta).coerceIn(0, 100)
+            persistState()
+            renderCheckIn()
+        })
         root.addView(selectedMoodResponse())
-        section("今天能用多久？")
-        listOf(3, 5, 8, 12).forEach { value ->
-            root.addView(durationChoice(value, value == minutes) {
-                minutes = value
-                persistState()
+
+        section("2. 今天有足夠的時間練習英文嗎")
+        root.addView(scaleSelector(
+            selected = timeScale,
+            lowLabel = "很少",
+            highLabel = "很充足",
+            color = ColorToken.Primary
+        ) { value ->
+            timeScale = value
+            minutes = UserFlowContract.minutesFromTimeScale(value)
+            persistState()
+            renderCheckIn()
+        })
+
+        section("3. 今天會想要挑戰更難的題目嗎")
+        root.addView(twoChoiceSelector(
+            left = "想",
+            right = "不想",
+            leftSelected = challengeWanted,
+            onLeft = {
+                challengeWanted = true
                 renderCheckIn()
-            })
-        }
+            },
+            onRight = {
+                challengeWanted = false
+                renderCheckIn()
+            }
+        ))
+
+        section("4. 想要多練習哪幾種題型")
+        root.addView(questionTypeSelector())
         root.addView(planPreviewCard())
         root.addView(ui.primaryButton("產生今日任務") { startDailyMission() })
         root.addView(ui.secondaryButton("先回首頁看看兩條路") { renderHome() })
@@ -512,8 +549,8 @@ class MainActivity : Activity() {
     private fun renderLesson() {
         screen = Screen.Lesson
         currentQuestionIndex = currentQuestionIndex.coerceIn(0, questions.lastIndex)
-        val q = questions[currentQuestionIndex]
-        shell("今日短任務", "一題一概念，避免二度挫折")
+        val q = activeQuestion()
+        shell(if (inDailyMission) "今日題目任務" else "自由練習", "一題一概念，避免二度挫折")
         root.addView(lessonFocusCard())
         root.addView(questionCard(q))
         root.addView(lessonSupportCard())
@@ -539,11 +576,13 @@ class MainActivity : Activity() {
     }
 
     private fun answer(option: String) {
-        val q = questions[currentQuestionIndex]
+        val q = activeQuestion()
         if (option == q.answer) {
             completedTasks += 1
             if (inDailyMission) {
                 dailyQuestionDone = (dailyQuestionDone + 1).coerceAtMost(dailyQuestionGoal)
+            } else {
+                currentQuestionIndex = (currentQuestionIndex + 1) % questions.size
             }
             confidence = (confidence + 4).coerceAtMost(100)
             learningEventCount += 1
@@ -551,13 +590,17 @@ class MainActivity : Activity() {
             wrongAttempts = 0
             lastSelectedAnswer = option
             lastAnswerMessage = "答對了：${q.explanation}"
-            currentQuestionIndex = (currentQuestionIndex + 1) % questions.size
             addOfflineSyncItem("答題完成：${q.concept}", "學習事件", q.explanation)
             persistState()
             recordLearningEvent("answer_correct", "完成微任務：${q.concept}", q.explanation)
             if (inDailyMission && dailyQuestionDone >= dailyQuestionGoal) {
+                currentQuestionIndex = nextPracticeIndexAfter(q)
                 renderDailyMissionComplete(q)
             } else {
+                if (inDailyMission) {
+                    dailyMissionCursor = (dailyMissionCursor + 1).coerceAtMost(dailyMissionQuestions.lastIndex)
+                    currentQuestionIndex = nextPracticeIndexAfter(q)
+                }
                 renderSuccess(q)
             }
         } else {
@@ -584,27 +627,60 @@ class MainActivity : Activity() {
     private fun startDailyMission() {
         dailyQuestionGoal = recommendedQuestionGoal()
         dailyQuestionDone = 0
+        dailyMissionCursor = 0
+        dailyMissionQuestions = selectDailyMissionQuestions(dailyQuestionGoal)
         inDailyMission = true
-        lastAnswerMessage = "今日任務已開始。答對才會推進進度；答錯會先看提示，不會扣進度。"
+        lastAnswerMessage = "今日任務已開始。答對才會推進進度；答錯會停在同一題看提示。"
         renderLesson()
     }
 
     private fun recommendedQuestionGoal(): Int {
-        return when {
-            minutes <= 3 -> 1
-            minutes <= 5 -> 2
-            minutes <= 8 -> 3
-            else -> 4
+        return UserFlowContract.questionGoal(minutes)
+    }
+
+    private fun activeQuestion(): Question {
+        if (inDailyMission && dailyMissionQuestions.isNotEmpty()) {
+            return dailyMissionQuestions[dailyMissionCursor.coerceIn(0, dailyMissionQuestions.lastIndex)]
         }
+        currentQuestionIndex = currentQuestionIndex.coerceIn(0, questions.lastIndex)
+        return questions[currentQuestionIndex]
+    }
+
+    private fun selectDailyMissionQuestions(goal: Int): List<Question> {
+        val bankItems = stateStore.questionBankItems()
+        val selectedTypes = preferredQuestionTypes.ifEmpty { UserFlowContract.defaultPreferredQuestionTypes }
+        val typedItems = bankItems.filter { it.question.type in selectedTypes }
+        val candidates = (if (typedItems.isNotEmpty()) typedItems else bankItems)
+            .distinctBy { it.question.prompt }
+            .sortedWith(compareBy(
+                { UserFlowContract.levelWeight(it.level, challengeWanted) },
+                { it.question.type },
+                { it.id }
+            ))
+        if (candidates.isEmpty()) return questions.take(goal)
+        val start = (currentQuestionIndex + completedTasks + learningEventCount + confidence).mod(candidates.size)
+        val rotated = candidates.drop(start) + candidates.take(start)
+        return rotated.take(goal.coerceAtLeast(1)).map { it.question }
+    }
+
+    private fun nextPracticeIndexAfter(question: Question): Int {
+        val index = questions.indexOfFirst { it.prompt == question.prompt }
+        return if (index >= 0) (index + 1) % questions.size else (currentQuestionIndex + 1) % questions.size
     }
 
     private fun renderSuccess(q: Question) {
         screen = Screen.Lesson
         shell("答對了", "先確認結果，再決定下一步")
         root.addView(successSummaryCard(q))
-        root.addView(card("下一步", "系統會把這次成功記錄為「句型修復」進度，不需要一次補完整章。", ColorToken.PrimarySoft))
+        val nextText = if (inDailyMission) {
+            val remaining = (dailyQuestionGoal - dailyQuestionDone).coerceAtLeast(0)
+            "今日任務還剩 $remaining 題。先照這個節奏完成，不另外加壓。"
+        } else {
+            "這題已完成。你可以繼續自由練習，也可以先停下來。"
+        }
+        root.addView(card("下一步", nextText, ColorToken.PrimarySoft))
         root.addView(ui.primaryButton("做一個 20 秒反思") { renderReflection() })
-        root.addView(ui.primaryButton("繼續下一題") { renderLesson() })
+        root.addView(ui.primaryButton(if (inDailyMission) "繼續今日任務" else "繼續下一題") { renderLesson() })
         root.addView(ui.secondaryButton("回學習地圖") { renderMap() })
         bottomNav()
     }
@@ -653,11 +729,11 @@ class MainActivity : Activity() {
 
     private fun renderAiCoach() {
         screen = Screen.AiCoach
-        val q = questions[currentQuestionIndex]
+        val q = activeQuestion()
         shell("還沒答對", "先看清楚答案差在哪裡，再重新嘗試")
         root.addView(answerResultCard(false, q, lastSelectedAnswer))
         root.addView(supportStepCard("01", "我看見你卡在這裡", q.prompt, ColorToken.WarningSoft, ColorToken.Warning))
-        root.addView(supportStepCard("02", "先把概念拆小", "${q.explanation}\n現在只要先記住這一個規則，不需要一次背完 am / is / are。", ColorToken.VioletSoft, ColorToken.Primary))
+        root.addView(supportStepCard("02", "先把概念拆小", "${q.explanation}\n現在只要先記住這一個規則，不需要一次把整個單元補完。", ColorToken.VioletSoft, ColorToken.Primary))
         root.addView(supportStepCard("03", "你可以選下一步", "回到同一題再試一次；如果仍然不舒服，English+ 會幫你把狀況整理給志工。", ColorToken.PrimarySoft, ColorToken.Success))
         root.addView(ui.primaryButton("回題目再試一次") { renderLesson() })
         root.addView(ui.secondaryButton("交給志工接力") { renderHelpRequest() })
@@ -677,20 +753,39 @@ class MainActivity : Activity() {
     private fun handleHelpRequest(option: HelpRequestOption) {
         lastAnswerMessage = option.studentText
         recordLearningEvent("help_request", option.reason, option.platformAction)
-        when (option.route) {
-            "AI 先處理" -> renderAiCoach()
-            "復原模式" -> {
+        when (UserFlowContract.supportTarget(option.route)) {
+            SupportTarget.AiCoach -> renderAiCoach()
+            SupportTarget.ReadingBreakdown -> renderReadingBreakdown()
+            SupportTarget.Recovery -> {
                 mood = Mood.Low
                 minutes = 3
                 persistState()
                 renderRecoveryMode()
             }
-            "離線任務" -> renderOfflinePacks()
-            else -> {
+            SupportTarget.HumanHandoff -> {
                 breakpoints.add(0, Breakpoint(option.reason, "高", option.studentText, option.platformAction, "志工先肯定狀態，再用同一概念做低壓陪練。"))
                 renderHandoff()
             }
         }
+    }
+
+    private fun renderReadingBreakdown() {
+        screen = Screen.HelpRequest
+        shell("閱讀拆解", "先把長題目切成可以處理的三步")
+        root.addView(card("第一步", "先看題目問什麼，不急著讀完整段。", ColorToken.PrimarySoft))
+        root.addView(card("第二步", "找人名、時間、轉折詞，先圈出答案可能出現的位置。", ColorToken.SuccessSoft))
+        root.addView(card("第三步", "只回到題目需要的那一句，避免被整篇文章嚇到。", ColorToken.Card))
+        root.addView(ui.primaryButton("用閱讀理解練一題") {
+            inDailyMission = false
+            val readingIndex = questions.indexOfFirst { it.type == "閱讀理解" }.takeIf { it >= 0 } ?: currentQuestionIndex
+            currentQuestionIndex = readingIndex
+            renderLesson()
+        })
+        root.addView(ui.secondaryButton("我想請人陪我看") {
+            breakpoints.add(0, Breakpoint("閱讀題卡住", "中", "學生主動選擇閱讀拆解後仍想要陪伴。", "平台已提供三步拆解。", "志工陪學生先看題目，再一起找關鍵句。"))
+            renderHandoff()
+        })
+        bottomNav()
     }
 
     private fun renderBreakpoints() {
@@ -771,6 +866,8 @@ class MainActivity : Activity() {
         root.addView(card("練習可用題庫", "目前學生練習會從完整 ${bankItems.size} 題中依序進行；這裡只預覽前 60 題，避免老師端頁面過長。", ColorToken.Card))
         bankItems.take(60).forEach { root.addView(questionBankItemCard(it)) }
         root.addView(ui.primaryButton("用目前題庫開始練習") {
+            inDailyMission = false
+            dailyMissionQuestions = emptyList()
             currentQuestionIndex = currentQuestionIndex.coerceIn(0, questions.lastIndex)
             renderLesson()
         })
@@ -796,7 +893,7 @@ class MainActivity : Activity() {
         root.addView(ui.primaryButton("補傳 1 筆待同步紀錄") {
             addOfflineSyncItem(
                 title = "手動補傳檢查",
-                category = "同步測試",
+                category = "同步檢查",
                 detail = "模擬網路恢復後補傳最新學習紀錄。",
                 status = "已同步"
             )
@@ -820,7 +917,7 @@ class MainActivity : Activity() {
             Metric("已下載", "${downloadedPackTitles.size} 包", ColorToken.Success),
             Metric("佇列", "${offlineSyncItems.size} 筆", ColorToken.Primary)
         ))
-        root.addView(card("同步策略", "學生離線時仍可完成短任務；網路恢復後，微任務、反思、志工接力摘要會補傳。正式版可接 Room/Firebase，目前先用本機狀態模擬。", ColorToken.PrimarySoft))
+        root.addView(card("同步策略", "學生離線時仍可完成短任務；網路恢復後，微任務、反思、志工接力摘要會補傳。", ColorToken.PrimarySoft))
         offlineSyncItems.ifEmpty {
             syncRecords.map { OfflineSyncItem(it.title, "展示同步", it.detail, it.status) }
         }.forEach { root.addView(offlineSyncItemCard(it)) }
@@ -829,7 +926,7 @@ class MainActivity : Activity() {
             stateStore.markOfflineSyncItemsSynced()
             refreshOfflineSyncState()
             persistState()
-            recordLearningEvent("sync", "本機紀錄已標記同步", "展示版將待同步數歸零，資料仍保留在 SQLite。")
+            recordLearningEvent("sync", "本機紀錄已標記同步", "待同步數已歸零，資料仍保留在裝置中。")
             renderSyncCenter()
         })
         root.addView(ui.primaryButton("智慧同步：檢查網路並補傳") { renderSmartSyncProgress() })
@@ -941,7 +1038,7 @@ class MainActivity : Activity() {
         screen = Screen.SyncCenter
         shell("雲端同步失敗", "本機資料已保留，可稍後重試")
         root.addView(card("錯誤訊息", message, ColorToken.WarningSoft))
-        root.addView(card("備援策略", "同步失敗不會清掉本機 SQLite 與待同步佇列。正式版可加入背景重試、登入權杖與失敗通知。", ColorToken.Card))
+        root.addView(card("下一步", "同步失敗不會清掉本機資料與待同步佇列。網路恢復後可以再重試。", ColorToken.Card))
         root.addView(ui.primaryButton("回同步中心") { renderSyncCenter() })
         bottomNav()
     }
@@ -1026,8 +1123,8 @@ class MainActivity : Activity() {
         root.addView(card("協作後端", stateStore.cloudBackendUrl(), ColorToken.PrimarySoft))
         root.addView(card("同步班級", currentAccount().classCode, ColorToken.Card))
         root.addView(card(
-            "第四輪同步規則",
-            "協作紀錄會以 eventId 去重；同一筆接力在不同裝置更新時，保留 createdAt 較新的版本。學生端不能建立正式接力紀錄，老師/志工端可以寫入。",
+            "同步規則",
+            "協作紀錄會自動避免重複；同一筆接力在不同裝置更新時，保留較新的版本。學生端不能建立正式接力紀錄，老師/志工端可以寫入。",
             ColorToken.VioletSoft
         ))
         bottomNav()
@@ -1208,7 +1305,7 @@ class MainActivity : Activity() {
             renderGeneratedAiFeedback("尚未設定 OpenAI API Key，已改用本機模擬。")
             return
         }
-        val q = questions[currentQuestionIndex]
+        val q = activeQuestion()
         screen = Screen.AiLab
         shell("AI 生成中", "正在呼叫 OpenAI Responses API")
         root.addView(card("請稍候", "English+ 正在把目前題目、情緒狀態與錯題次數送出，產生短回饋與接力摘要。", ColorToken.PrimarySoft))
@@ -1257,7 +1354,7 @@ class MainActivity : Activity() {
 
     private fun renderGeneratedAiFeedback(notice: String? = null) {
         screen = Screen.AiLab
-        val q = questions[currentQuestionIndex]
+        val q = activeQuestion()
         shell("AI 生成結果模擬", "依目前題型與錯題狀態產生個人化回饋")
         notice?.let { root.addView(card("真 AI 狀態", it, ColorToken.WarningSoft)) }
         root.addView(card("輸入資料", "${q.prompt}\n題型：${q.type}\n目前錯誤次數：$wrongAttempts", ColorToken.PrimarySoft))
@@ -1336,8 +1433,8 @@ class MainActivity : Activity() {
         root.addView(card("給老師/mentor 的摘要", "學生對完整測驗仍焦慮，但願意完成 3-5 分鐘任務。建議下週維持低壓短任務與志工接力。\n\n本週協作紀錄：${collaborationNotes.size} 筆，志工回覆：${mentorReplyCount} 則。", ColorToken.PrimarySoft))
         section("接力證據")
         recentCollaborationNotes(4).forEach { root.addView(collaborationNoteCard(it)) }
-        root.addView(ui.primaryButton("匯出展示報告") { renderExportReport() })
-        root.addView(ui.secondaryButton("查看 OPPM 檢核指標") { renderMentorChecks() })
+        root.addView(ui.primaryButton("分享本週週報") { shareTeacherReport(buildDemoReportText()) })
+        root.addView(ui.secondaryButton("查看接力優先序") { renderHandoffBoard() })
         bottomNav()
     }
 
@@ -1346,33 +1443,33 @@ class MainActivity : Activity() {
         refreshOfflineSyncState()
         val reportText = buildDemoReportText()
         val file = writeDemoReport(reportText)
-        shell("展示報告已產生", "把產品原型成果整理成可交給老師/評審的文字摘要")
+        shell("週報已產生", "把學生進度與接力紀錄整理成可分享摘要")
         root.addView(card("匯出檔案", file.absolutePath, ColorToken.SuccessSoft))
         root.addView(card("報告內容預覽", reportText, ColorToken.Card))
         root.addView(ui.secondaryButton("回本週學習週報") { renderWeeklyReport() })
-        root.addView(ui.primaryButton("查看 OPPM 品質檢核") { renderMentorChecks() })
+        root.addView(ui.primaryButton("分享週報") { shareTeacherReport(reportText) })
         bottomNav()
     }
 
     private fun renderMentorChecks() {
         screen = Screen.Report
-        shell("OPPM 品質檢核", "把原型對齊課程與 mentor 評估")
-        root.addView(card("檢核目的", "這頁不是給學生看的，而是給小組、mentor、老師確認產品方向是否符合提案目標。", ColorToken.PrimarySoft))
+        shell("服務品質檢核", "確認陪伴流程是否真的幫得上學生")
+        root.addView(card("檢核目的", "這頁協助老師與志工確認：學生是否被接住、任務是否低壓、接力是否有下一步。", ColorToken.PrimarySoft))
         root.addView(reportShowcaseCard())
         mentorChecks.forEach { root.addView(mentorCheckCard(it)) }
-        root.addView(card("下一步", "目前 1-6 輪功能已形成完整可操作原型。下一階段最需要驗證的是：志工是否願意使用摘要接力、老師是否覺得斷點紀錄有用、學生是否願意在低壓任務中回來。", ColorToken.WarningSoft))
-        root.addView(ui.primaryButton("匯出展示報告") { renderExportReport() })
+        root.addView(card("下一步", "先看高風險學生是否有明確接力，再確認低風險學生是否保有自主練習節奏。", ColorToken.WarningSoft))
+        root.addView(ui.primaryButton("回本週週報") { renderWeeklyReport() })
         bottomNav()
     }
 
     private fun reportShowcaseCard(): View {
         val box = ui.container(ColorToken.PrimarySoft, ColorToken.Border)
-        box.addView(ui.statusPill("v0.6 成果", ColorToken.Primary))
-        box.addView(ui.label("English+ 可操作產品原型", 20, ColorToken.Ink, true).apply {
+        box.addView(ui.statusPill("本週摘要", ColorToken.Primary))
+        box.addView(ui.label("English+ 學習支持狀態", 20, ColorToken.Ink, true).apply {
             setPadding(0, ui.dp(12), 0, ui.dp(4))
         })
         box.addView(ui.body(
-            "目前已完成真實資料儲存、本機登入班級、真 AI 串接、老師/志工協作、離線同步與展示報告。展示重點不是題庫量，而是情緒斷點如何被 AI 接住，再交給真人低壓接力。"
+            "本週重點不是排名，而是學生在哪些題型卡住、哪些斷點已被修復、哪些狀況需要老師或志工接力。"
         ))
         return ui.margins(box, 0, 8, 0, 12)
     }
@@ -1486,14 +1583,25 @@ class MainActivity : Activity() {
     }
 
     private fun shell(title: String, subtitle: String) {
+        val page = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            background = ui.solid(ColorToken.Surface)
+        }
         val scroll = ScrollView(this)
         root = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             setPadding(ui.dp(16), ui.dp(24), ui.dp(16), ui.dp(24))
             background = ui.solid(ColorToken.Surface)
         }
+        navRoot = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(ui.dp(8), ui.dp(6), ui.dp(8), ui.dp(8))
+            background = ui.solid(ColorToken.Surface)
+        }
         scroll.addView(root)
-        setContentView(scroll)
+        page.addView(scroll, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, 0, 1f))
+        page.addView(navRoot, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT))
+        setContentView(page)
         root.addView(ui.eyebrow("${navigationArea()} / English+"))
         root.addView(ui.label(title, 28, ColorToken.Ink, true).apply { setPadding(0, ui.dp(8), 0, ui.dp(4)) })
         root.addView(ui.body(subtitle, ColorToken.Muted))
@@ -1541,23 +1649,35 @@ class MainActivity : Activity() {
     }
 
     private fun bottomNav() {
-        root.addView(ui.space(16))
+        navRoot.removeAllViews()
         val nav = ui.container(ColorToken.Card, ColorToken.Border).apply {
             orientation = LinearLayout.HORIZONTAL
             setPadding(ui.dp(8), ui.dp(8), ui.dp(8), ui.dp(8))
         }
-        nav.addView(navDestination("H", "首頁", screen == Screen.Home || screen == Screen.Account) { renderHome() }, ui.weightParams())
-        nav.addView(navDestination("T", "任務", screen == Screen.Lesson || screen == Screen.AiCoach || screen == Screen.Contract || screen == Screen.Reflection) { renderTaskQueue() }, ui.weightParams())
-        nav.addView(navDestination("S", "支持", screen == Screen.Breakpoints || screen == Screen.Handoff || screen == Screen.Intervention || screen == Screen.HelpRequest) { renderBreakpoints() }, ui.weightParams())
-        nav.addView(navDestination("M", "地圖", screen == Screen.Map || screen == Screen.Report || screen == Screen.Journey || screen == Screen.StudentDetail || screen == Screen.ActionQueue || screen == Screen.StudentManager || screen == Screen.AiLab || screen == Screen.SyncCenter || screen == Screen.QuestionBank) { renderMap() }, ui.weightParams())
-        nav.addView(navDestination("P", "檔案", screen == Screen.Profile) { renderProfile() }, ui.weightParams())
-        root.addView(ui.margins(nav, 0, 0, 0, 8))
+        if (role == Role.Student) {
+            nav.addView(navDestination("首", "首頁", screen == Screen.Home || screen == Screen.Account) { renderHome() }, ui.weightParams())
+            nav.addView(navDestination("練", "練習", screen == Screen.Lesson || screen == Screen.AiCoach || screen == Screen.Contract || screen == Screen.Reflection || screen == Screen.QuestionBank) { renderTaskQueue() }, ui.weightParams())
+            nav.addView(navDestination("助", "支持", screen == Screen.HelpRequest || screen == Screen.Handoff) { renderHelpRequest() }, ui.weightParams())
+            nav.addView(navDestination("圖", "地圖", screen == Screen.Map) { renderMap() }, ui.weightParams())
+            nav.addView(navDestination("檔", "檔案", screen == Screen.Profile) { renderProfile() }, ui.weightParams())
+        } else {
+            nav.addView(navDestination("今", "今日", screen == Screen.Home || screen == Screen.Account) { renderHome() }, ui.weightParams())
+            nav.addView(navDestination("生", "學生", screen == Screen.Roster || screen == Screen.StudentDetail || screen == Screen.StudentManager) { renderRoster() }, ui.weightParams())
+            nav.addView(navDestination("接", "接力", screen == Screen.Breakpoints || screen == Screen.Handoff || screen == Screen.ActionQueue || screen == Screen.Mentor) { renderHandoffBoard() }, ui.weightParams())
+            nav.addView(navDestination("雲", "同步", screen == Screen.SyncCenter) { renderSyncCenter() }, ui.weightParams())
+            nav.addView(navDestination("報", "報告", screen == Screen.Report) { renderWeeklyReport() }, ui.weightParams())
+        }
+        navRoot.addView(ui.margins(nav, 0, 0, 0, 0))
     }
 
     private fun navigationArea(): String = when (screen) {
-        Screen.Home, Screen.Account -> "首頁"
-        Screen.Lesson, Screen.AiCoach, Screen.Contract, Screen.Reflection -> "任務"
-        Screen.Breakpoints, Screen.Handoff, Screen.Intervention, Screen.HelpRequest -> "支持"
+        Screen.Home, Screen.Account -> if (role == Role.Student) "首頁" else "今日"
+        Screen.Lesson, Screen.AiCoach, Screen.Contract, Screen.Reflection, Screen.QuestionBank -> "練習"
+        Screen.HelpRequest, Screen.Intervention -> "支持"
+        Screen.Roster, Screen.StudentDetail, Screen.StudentManager -> "學生"
+        Screen.Breakpoints, Screen.Handoff, Screen.ActionQueue, Screen.Mentor -> "接力"
+        Screen.SyncCenter -> "同步"
+        Screen.Report -> "報告"
         Screen.Profile -> "檔案"
         else -> "地圖"
     }
@@ -1690,13 +1810,80 @@ class MainActivity : Activity() {
         return ui.margins(box, 0, 8, 0, 12)
     }
 
+    private fun scaleSelector(
+        selected: Int,
+        lowLabel: String,
+        highLabel: String,
+        color: String,
+        onSelect: (Int) -> Unit
+    ): View {
+        val box = ui.container(ColorToken.Card, ColorToken.Border)
+        val row = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
+        (1..5).forEach { value ->
+            row.addView(ui.chipButton(value.toString(), value == selected) { onSelect(value) }, ui.weightParams())
+        }
+        box.addView(row)
+        val note = "$lowLabel 1  ·  $highLabel 5"
+        box.addView(ui.body(note, color).apply { setPadding(0, ui.dp(8), 0, 0) })
+        return ui.margins(box, 0, 8, 0, 12)
+    }
+
+    private fun twoChoiceSelector(
+        left: String,
+        right: String,
+        leftSelected: Boolean,
+        onLeft: () -> Unit,
+        onRight: () -> Unit
+    ): View {
+        val box = ui.container(ColorToken.Card, ColorToken.Border)
+        val row = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
+        row.addView(ui.chipButton(left, leftSelected) { onLeft() }, ui.weightParams())
+        row.addView(ui.chipButton(right, !leftSelected) { onRight() }, ui.weightParams())
+        box.addView(row)
+        box.addView(ui.body(
+            if (leftSelected) {
+                "今天會優先放入較有挑戰的題型與程度。"
+            } else {
+                "今天會先選低壓題，不急著加難。"
+            },
+            ColorToken.Muted
+        ).apply { setPadding(0, ui.dp(8), 0, 0) })
+        return ui.margins(box, 0, 8, 0, 12)
+    }
+
+    private fun questionTypeSelector(): View {
+        val box = ui.container(ColorToken.Card, ColorToken.Border)
+        UserFlowContract.questionTypes.chunked(2).forEach { rowItems ->
+            val row = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
+            rowItems.forEach { type ->
+                row.addView(ui.chipButton(type, preferredQuestionTypes.contains(type)) {
+                    if (preferredQuestionTypes.contains(type)) {
+                        if (preferredQuestionTypes.size > 1) preferredQuestionTypes.remove(type)
+                    } else {
+                        preferredQuestionTypes.add(type)
+                    }
+                    renderCheckIn()
+                }, ui.weightParams())
+            }
+            if (rowItems.size == 1) row.addView(ui.space(1), ui.weightParams())
+            box.addView(row)
+        }
+        box.addView(ui.body("已選：${preferredQuestionTypes.joinToString("、")}", ColorToken.Primary).apply {
+            setPadding(0, ui.dp(8), 0, 0)
+        })
+        return ui.margins(box, 0, 8, 0, 12)
+    }
+
     private fun planPreviewCard(): View {
         val box = ui.container(ColorToken.PrimarySoft, ColorToken.Border)
         box.addView(ui.statusPill("今日小計畫", ColorToken.Primary))
         box.addView(ui.label(mood.planName, 20, ColorToken.Ink, true).apply {
             setPadding(0, ui.dp(12), 0, ui.dp(4))
         })
-        box.addView(ui.body("任務時間：${minutes} 分鐘\n回饋方式：先提示、再修復，不用排行榜刺激。", "#334155"))
+        box.addView(ui.body("任務長度：${minutes} 分鐘\n題目數：${recommendedQuestionGoal()} 題\n題型：${preferredQuestionTypes.joinToString("、")}", "#334155"))
+        box.addView(ui.body(if (challengeWanted) "今天會放入較有挑戰的題目。" else "今天先以穩定完成為主。", ColorToken.Primary).apply {
+            setPadding(0, ui.dp(8), 0, 0)
+        })
         box.addView(ui.body("完成後可以再回來記下感受，讓下一次更貼近你。", ColorToken.Success).apply {
             setPadding(0, ui.dp(8), 0, 0)
         })
@@ -2001,21 +2188,25 @@ class MainActivity : Activity() {
     private fun taskRouteCard(): View {
         val box = ui.container(ColorToken.Card, ColorToken.Border)
         box.addView(ui.statusPill("今日安排", ColorToken.Primary))
-        box.addView(ui.label("先修復，再往前", 18, ColorToken.Ink, true).apply {
+        box.addView(ui.label("照今天狀態安排題目", 18, ColorToken.Ink, true).apply {
             setPadding(0, ui.dp(12), 0, ui.dp(4))
         })
-        box.addView(ui.body("目前可用 ${minutes} 分鐘，平台依「${mood.planName}」安排 ${recommendedQuestionGoal()} 題。答對才推進進度，答錯會先看提示。", "#334155"))
+        box.addView(ui.body("目前可用 ${minutes} 分鐘，安排 ${recommendedQuestionGoal()} 題：${preferredQuestionTypes.joinToString("、")}。答對才推進進度，答錯會停在同一題看提示。", "#334155"))
         box.addView(flowStrip("開始題組", "答對累積", "完成今日任務"))
         return ui.margins(box, 0, 8, 0, 12)
     }
 
     private fun lessonFocusCard(): View {
         val box = ui.container(ColorToken.PrimarySoft, ColorToken.Border)
-        box.addView(ui.statusPill("任務目標", ColorToken.Primary))
-        box.addView(ui.label("先完成一題，再決定下一步", 19, ColorToken.Ink, true).apply {
+        box.addView(ui.statusPill(if (inDailyMission) "今日任務" else "自由練習", ColorToken.Primary))
+        box.addView(ui.label(if (inDailyMission) "完成今日題組" else "自己選節奏練習", 19, ColorToken.Ink, true).apply {
             setPadding(0, ui.dp(12), 0, ui.dp(4))
         })
-        box.addView(ui.body("這裡只修一個概念。你先看懂題目、選一次，English+ 會立刻給可修復的回饋。", "#334155"))
+        box.addView(ui.body(if (inDailyMission) {
+            "上方進度只計算今天題目任務；答錯不會增加，也不會跳題。"
+        } else {
+            "自由練習不顯示每日進度條，適合完成任務後再挑戰。"
+        }, "#334155"))
         box.addView(ui.body("答錯會改變支持路徑，不會把你推進更難的題目。", ColorToken.Success).apply {
             setPadding(0, ui.dp(8), 0, 0)
         })
@@ -2036,6 +2227,12 @@ class MainActivity : Activity() {
             Metric("信心", "$confidence%", ColorToken.Accent)
         ))
         box.addView(ui.body(lastAnswerMessage, "#334155"))
+        if (inDailyMission) {
+            val remaining = (dailyQuestionGoal - dailyQuestionDone).coerceAtLeast(0)
+            box.addView(ui.body("今日任務剩 $remaining 題。完成後會出現達標提示。", ColorToken.Primary).apply {
+                setPadding(0, ui.dp(8), 0, 0)
+            })
+        }
         return ui.margins(box, 0, 8, 0, 12)
     }
 
@@ -2326,7 +2523,7 @@ class MainActivity : Activity() {
     private fun questionCard(question: Question): View {
         val box = ui.sectionBand(ColorToken.Card)
         val top = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
-        top.addView(ui.statusPill("題目 ${currentQuestionIndex + 1}", ColorToken.Accent))
+        top.addView(ui.statusPill(if (inDailyMission) "今日 ${dailyQuestionDone + 1}/$dailyQuestionGoal" else "題目 ${currentQuestionIndex + 1}", ColorToken.Accent))
         top.addView(ui.label(question.type, 14, ColorToken.Muted, true).apply {
             setPadding(ui.dp(10), ui.dp(3), 0, 0)
         }, LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f))
