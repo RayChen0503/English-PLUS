@@ -33,6 +33,7 @@ import tw.edu.citizenaction.soracompanion.model.AppState
 import tw.edu.citizenaction.soracompanion.model.Breakpoint
 import tw.edu.citizenaction.soracompanion.model.CollaborationNote
 import tw.edu.citizenaction.soracompanion.model.CollaborationFlowContract
+import tw.edu.citizenaction.soracompanion.model.DailyMissionContract
 import tw.edu.citizenaction.soracompanion.model.DesignPrinciple
 import tw.edu.citizenaction.soracompanion.model.InterventionStep
 import tw.edu.citizenaction.soracompanion.model.JourneyStep
@@ -656,7 +657,11 @@ class MainActivity : Activity() {
         if (option == q.answer) {
             completedTasks += 1
             if (inDailyMission) {
-                dailyQuestionDone = (dailyQuestionDone + 1).coerceAtMost(dailyQuestionGoal)
+                dailyQuestionDone = DailyMissionContract.progressAfterAnswer(
+                    done = dailyQuestionDone,
+                    goal = dailyQuestionGoal,
+                    isCorrect = true
+                ).done
             } else {
                 currentQuestionIndex = (currentQuestionIndex + 1) % questions.size
             }
@@ -674,7 +679,10 @@ class MainActivity : Activity() {
                 renderDailyMissionComplete(q)
             } else {
                 if (inDailyMission) {
-                    dailyMissionCursor = (dailyMissionCursor + 1).coerceAtMost(dailyMissionQuestions.lastIndex)
+                    dailyMissionCursor = DailyMissionContract.nextCursor(
+                        currentCursor = dailyMissionCursor,
+                        questionCount = dailyMissionQuestions.size
+                    )
                     currentQuestionIndex = nextPracticeIndexAfter(q)
                 }
                 renderSuccess(q)
@@ -701,17 +709,18 @@ class MainActivity : Activity() {
     }
 
     private fun startDailyMission() {
-        dailyQuestionGoal = recommendedQuestionGoal()
+        val requestedGoal = recommendedQuestionGoal()
         dailyQuestionDone = 0
         dailyMissionCursor = 0
-        dailyMissionQuestions = selectDailyMissionQuestions(dailyQuestionGoal)
+        dailyMissionQuestions = selectDailyMissionQuestions(requestedGoal)
+        dailyQuestionGoal = dailyMissionQuestions.size.coerceAtLeast(1)
         inDailyMission = true
         lastAnswerMessage = "今日任務已開始。答對才會推進進度；答錯會停在同一題看提示。"
         renderLesson()
     }
 
     private fun recommendedQuestionGoal(): Int {
-        return UserFlowContract.questionGoal(minutes)
+        return DailyMissionContract.goalForMinutes(minutes)
     }
 
     private fun activeQuestion(): Question {
@@ -723,20 +732,14 @@ class MainActivity : Activity() {
     }
 
     private fun selectDailyMissionQuestions(goal: Int): List<Question> {
-        val bankItems = stateStore.questionBankItems()
-        val selectedTypes = preferredQuestionTypes.ifEmpty { UserFlowContract.defaultPreferredQuestionTypes }
-        val typedItems = bankItems.filter { it.question.type in selectedTypes }
-        val candidates = (if (typedItems.isNotEmpty()) typedItems else bankItems)
-            .distinctBy { it.question.prompt }
-            .sortedWith(compareBy(
-                { UserFlowContract.levelWeight(it.level, challengeWanted) },
-                { it.question.type },
-                { it.id }
-            ))
-        if (candidates.isEmpty()) return questions.take(goal)
-        val start = (currentQuestionIndex + completedTasks + learningEventCount + confidence).mod(candidates.size)
-        val rotated = candidates.drop(start) + candidates.take(start)
-        return rotated.take(goal.coerceAtLeast(1)).map { it.question }
+        return DailyMissionContract.selectQuestions(
+            bankItems = stateStore.questionBankItems(),
+            fallbackQuestions = questions,
+            requestedGoal = goal,
+            preferredTypes = preferredQuestionTypes,
+            challengeWanted = challengeWanted,
+            seed = currentQuestionIndex + completedTasks + learningEventCount + confidence
+        )
     }
 
     private fun nextPracticeIndexAfter(question: Question): Int {
@@ -749,7 +752,10 @@ class MainActivity : Activity() {
         shell("答對了", "先確認結果，再決定下一步")
         root.addView(successSummaryCard(q))
         val nextText = if (inDailyMission) {
-            val remaining = (dailyQuestionGoal - dailyQuestionDone).coerceAtLeast(0)
+            val remaining = DailyMissionContract.remaining(
+                goal = dailyQuestionGoal,
+                done = dailyQuestionDone
+            )
             "今日任務還剩 $remaining 題。先照這個節奏完成，不另外加壓。"
         } else {
             "這題已完成。你可以繼續自由練習，也可以先停下來。"
@@ -2384,8 +2390,11 @@ class MainActivity : Activity() {
             Metric("信心", "$confidence%", ColorToken.Accent)
         ))
         box.addView(ui.body(lastAnswerMessage, "#334155"))
-        if (inDailyMission) {
-            val remaining = (dailyQuestionGoal - dailyQuestionDone).coerceAtLeast(0)
+        if (DailyMissionContract.shouldShowProgress(inDailyMission, dailyQuestionGoal)) {
+            val remaining = DailyMissionContract.remaining(
+                goal = dailyQuestionGoal,
+                done = dailyQuestionDone
+            )
             box.addView(ui.body("今日任務剩 $remaining 題。完成後會出現達標提示。", ColorToken.Primary).apply {
                 setPadding(0, ui.dp(8), 0, 0)
             })
@@ -2792,7 +2801,7 @@ class MainActivity : Activity() {
         }, LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f))
         top.addView(ui.statusPill("一個概念", ColorToken.Success))
         box.addView(top)
-        if (inDailyMission) {
+        if (DailyMissionContract.shouldShowProgress(inDailyMission, dailyQuestionGoal)) {
             box.addView(ui.body("今日任務進度：$dailyQuestionDone / $dailyQuestionGoal", ColorToken.Primary).apply {
                 setPadding(0, ui.dp(12), 0, 0)
             })
