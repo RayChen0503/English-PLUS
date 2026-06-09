@@ -68,6 +68,31 @@ class DailyMissionContractTest {
         assertEquals(100, DailyMissionContract.progressPercent(goal = 3, done = 5))
     }
 
+    @Test
+    fun missionSummaryUsesOneClearStudentFacingNextStep() {
+        val summary = DailyMissionContract.summary(
+            minutes = 5,
+            goal = 2,
+            preferredTypes = setOf("填空題", "閱讀理解"),
+            challengeWanted = true
+        )
+
+        assertEquals("完成 2 題今日任務", summary.title)
+        assertEquals("5 分鐘內先完成填空題、閱讀理解，不急著把整張卷子寫完。", summary.description)
+        assertEquals("挑戰路線", summary.routeLabel)
+        assertEquals("答對才會前進，答錯會停在原題看提示。", summary.progressRule)
+    }
+
+    @Test
+    fun completionCopyCreatesARealFinishMoment() {
+        val copy = DailyMissionContract.completionCopy(goal = 3, done = 3)
+
+        assertEquals("今日任務完成", copy.title)
+        assertTrue(copy.body.contains("3/3"))
+        assertTrue(copy.body.contains("可以停在這裡"))
+        assertTrue(copy.nextAction.contains("自主練習"))
+    }
+
     private fun bankItem(
         id: String,
         level: String,

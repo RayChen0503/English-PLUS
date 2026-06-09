@@ -18,6 +18,7 @@ import java.io.File
 import org.json.JSONArray
 import org.json.JSONObject
 import tw.edu.citizenaction.soracompanion.ai.AiSupportResult
+import tw.edu.citizenaction.soracompanion.ai.AiLearningPlanContract
 import tw.edu.citizenaction.soracompanion.ai.AiProxyClient
 import tw.edu.citizenaction.soracompanion.ai.OpenAiClient
 import tw.edu.citizenaction.soracompanion.auth.AuthClient
@@ -770,10 +771,14 @@ class MainActivity : Activity() {
     private fun renderDailyMissionComplete(q: Question) {
         screen = Screen.Lesson
         inDailyMission = false
-        shell("今日任務完成", "你已經完成今天最重要的英文小步驟")
+        val completion = DailyMissionContract.completionCopy(
+            goal = dailyQuestionGoal,
+            done = dailyQuestionDone
+        )
+        shell(completion.title, "你已經完成今天最重要的英文小步驟")
         root.addView(successSummaryCard(q))
-        root.addView(card("完成今日題目任務", "今日目標：$dailyQuestionGoal 題\n已完成：$dailyQuestionDone 題\n答錯的題目沒有算進進度，代表這個完成是真的完成。", ColorToken.SuccessSoft))
-        root.addView(card("可以停在這裡", "如果今天時間或心情有限，到這裡就已經達標。想多練時，可以進入自主練習，不會再顯示每日任務進度條。", ColorToken.PrimarySoft))
+        root.addView(card("完成今日題目任務", completion.body, ColorToken.SuccessSoft))
+        root.addView(card("可以停在這裡", completion.nextAction, ColorToken.PrimarySoft))
         root.addView(ui.primaryButton("繼續自主練習") { renderLesson() })
         root.addView(ui.secondaryButton("回首頁") { renderHome() })
         bottomNav()
@@ -984,15 +989,21 @@ class MainActivity : Activity() {
         }
         screen = Screen.QuestionBank
         val bankItems = stateStore.questionBankItems()
+        val blueprint = QuestionBankContract.practiceBlueprint(
+            items = bankItems,
+            preferredTypes = preferredQuestionTypes,
+            challengeWanted = challengeWanted
+        )
         val skillCounts = bankItems.groupingBy { it.skill }.eachCount()
         val levelCounts = bankItems.groupingBy { it.level }.eachCount()
         shell("正式題庫中心", "依程度、單元、技能管理 English+ 題目")
         root.addView(questionBankSummaryCard())
         root.addView(metricRow(
-            Metric("題目", "${bankItems.size} 題", ColorToken.Primary),
-            Metric("技能", "${skillCounts.size} 類", ColorToken.Success),
-            Metric("程度", levelCounts.keys.joinToString("/").ifBlank { "A1" }, ColorToken.Accent)
+            Metric("題目", "${blueprint.totalQuestions} 題", ColorToken.Primary),
+            Metric("題型", "${blueprint.availableTypes.size} 類", ColorToken.Success),
+            Metric("程度", blueprint.availableLevels.joinToString("/").ifBlank { "A1" }, ColorToken.Accent)
         ))
+        root.addView(card("練習藍圖", blueprint.recommendation, ColorToken.SuccessSoft))
         root.addView(card("題庫狀態", "學生練習會使用已審核題目，依程度、單元與題型逐步切換，不會只停在同一批暖身題。", ColorToken.PrimarySoft))
         section("技能分類")
         skillCounts.forEach { (skill, count) ->
@@ -1384,16 +1395,41 @@ class MainActivity : Activity() {
 
     private fun renderAiLab() {
         screen = Screen.AiLab
-        shell("AI 回饋設定", "管理 AI 回饋與安全連線")
+        shell("AI 支持與任務建議", "先把學生今天能做的下一步整理清楚")
+        root.addView(aiMissionPlanCard())
         root.addView(openAiStatusCard())
-        root.addView(card("AI 安全連線", "建議讓遠端 AI 走 HTTPS 後端代理；手機端只送學習脈絡，不保存正式金鑰。", ColorToken.WarningSoft))
         root.addView(aiProxyEndpointCard())
         root.addView(openAiKeyEntryCard())
-        root.addView(card("使用方式", "設定 AI 後可產生診斷、學生語氣回饋與志工接力摘要。沒有可用連線時，會改用備援回饋。", ColorToken.WarningSoft))
+        root.addView(card("AI 會用在哪裡", "每日任務建議、錯題詳解、學生語氣回饋與接力摘要。沒有可用連線時，English+ 會使用本機備援規則。", ColorToken.PrimarySoft))
         aiScenarios.forEach { root.addView(aiScenarioCard(it)) }
-        root.addView(ui.primaryButton("呼叫真 AI 生成回饋") { renderLiveAiFeedback() })
+        root.addView(ui.primaryButton("生成本題支持回饋") { renderLiveAiFeedback() })
         root.addView(ui.secondaryButton("改用備援回饋生成") { renderGeneratedAiFeedback() })
         bottomNav()
+    }
+
+    private fun aiMissionPlanCard(): View {
+        val plan = AiLearningPlanContract.localDailyMissionPlan(
+            moodLabel = mood.label,
+            minutes = minutes,
+            challengeWanted = challengeWanted,
+            preferredTypes = preferredQuestionTypes,
+            availableTypes = UserFlowContract.questionTypes
+        )
+        val box = ui.sectionBand(ColorToken.SuccessSoft)
+        box.addView(ui.statusPill(plan.routeLabel, ColorToken.Success))
+        box.addView(ui.label("今日任務建議", 20, ColorToken.Ink, true).apply {
+            setPadding(0, ui.dp(12), 0, ui.dp(4))
+        })
+        box.addView(ui.body(plan.studentMessage, "#334155"))
+        box.addView(metricRow(
+            Metric("題數", "${plan.questionGoal} 題", ColorToken.Primary),
+            Metric("題型", plan.recommendedTypes.joinToString("、"), ColorToken.Success),
+            Metric("時間", "${minutes} 分", ColorToken.Accent)
+        ))
+        box.addView(ui.body(plan.handoffHint, ColorToken.Muted).apply {
+            setPadding(0, ui.dp(8), 0, 0)
+        })
+        return ui.margins(box, 0, 8, 0, 12)
     }
 
     private fun openAiStatusCard(): View {
@@ -1402,15 +1438,15 @@ class MainActivity : Activity() {
             if (hasKey) ColorToken.SuccessSoft else ColorToken.WarningSoft,
             ColorToken.Border
         )
-        box.addView(ui.statusPill(if (hasKey) "真 AI 已啟用" else "備援回饋模式", if (hasKey) ColorToken.Success else ColorToken.Warning))
-        box.addView(ui.label(if (hasKey) "OpenAI API Key 已儲存在本機" else "尚未設定 OpenAI API Key", 18, ColorToken.Ink, true).apply {
+        box.addView(ui.statusPill(if (hasKey) "可呼叫外部 AI" else "使用本機備援", if (hasKey) ColorToken.Success else ColorToken.Warning))
+        box.addView(ui.label(if (hasKey) "AI 回饋可連線生成" else "目前使用本機備援回饋", 18, ColorToken.Ink, true).apply {
             layoutParams = ui.fullWidthParams()
         })
         box.addView(ui.body(
             if (hasKey) {
-                "按下「呼叫真 AI」時會送出目前題目、情緒狀態與錯題次數；如果網路或 API 失敗，會自動改用備援回饋。"
+                "生成時會送出目前題目、情緒狀態與錯題次數；如果網路或外部服務失敗，會自動改用備援回饋。"
             } else {
-                "目前不會連線到外部 AI。你可以先用備援回饋，或在下方貼上 API Key 後啟用真 AI 回饋。"
+                "學生仍會看到可用的任務建議與錯題提示；正式連線可由安全後端或內測憑證啟用。"
             }
         ))
         return ui.margins(box, 0, 8, 0, 12)
@@ -1418,8 +1454,8 @@ class MainActivity : Activity() {
 
     private fun aiProxyEndpointCard(): View {
         val box = ui.container(ColorToken.Card, ColorToken.Border)
-        box.addView(ui.label("AI Proxy 端點", 18, ColorToken.Ink, true))
-        box.addView(ui.body("正式版建議用後端代理保存 OpenAI Key。手機只送學習脈絡到 HTTPS API，不直接持有正式 Key。"))
+        box.addView(ui.label("安全後端連線", 18, ColorToken.Ink, true))
+        box.addView(ui.body("正式版建議用學校或團隊的安全後端連線。手機只送學習脈絡，不保存正式服務憑證。"))
         val input = EditText(this).apply {
             hint = "https://example.com/api/english-plus/ai"
             setText(stateStore.aiProxyEndpoint())
@@ -1433,12 +1469,12 @@ class MainActivity : Activity() {
             layoutParams = ui.fullWidthParams()
         }
         box.addView(input)
-        box.addView(ui.primaryButton("儲存 AI Proxy 端點") {
+        box.addView(ui.primaryButton("儲存安全後端連線") {
             stateStore.saveAiProxyEndpoint(input.text.toString())
             recordLearningEvent("ai_proxy_config", "已更新 AI Proxy 端點", stateStore.aiProxyEndpoint().ifBlank { "已清空" })
             renderAiLab()
         })
-        box.addView(ui.secondaryButton("清除 AI Proxy 端點") {
+        box.addView(ui.secondaryButton("清除安全後端連線") {
             stateStore.saveAiProxyEndpoint("")
             recordLearningEvent("ai_proxy_config", "已清除 AI Proxy 端點", "AI 回饋會回到本機 Key 或備援模式。")
             renderAiLab()
@@ -1448,11 +1484,11 @@ class MainActivity : Activity() {
 
     private fun openAiKeyEntryCard(): View {
         val box = ui.container(ColorToken.Card, ColorToken.Border)
-        box.addView(ui.label("OpenAI Key 設定", 18, ColorToken.Ink, true))
-        box.addView(ui.body("Key 只會存在這台裝置的私人設定中，不會寫進 GitHub。課堂展示時可以留空，系統會使用備援回饋。"))
+        box.addView(ui.label("外部 AI 連線憑證", 18, ColorToken.Ink, true))
+        box.addView(ui.body("這是內測用的本機連線方式。課堂展示時可以留空，系統會使用備援回饋。"))
 
         val input = EditText(this).apply {
-            hint = if (stateStore.hasOpenAiApiKey()) "已設定，可貼上新 Key 覆蓋" else "貼上 sk- 開頭的 API Key"
+            hint = if (stateStore.hasOpenAiApiKey()) "已設定，可貼上新的憑證覆蓋" else "貼上內測連線憑證"
             inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_PASSWORD
             setSingleLine(true)
             textSize = 15f
@@ -1464,19 +1500,19 @@ class MainActivity : Activity() {
         }
         box.addView(input)
 
-        box.addView(ui.primaryButton("儲存並啟用真 AI") {
+        box.addView(ui.primaryButton("儲存並啟用外部 AI") {
             val key = input.text.toString().trim()
             if (key.startsWith("sk-")) {
                 stateStore.saveOpenAiApiKey(key)
-                recordLearningEvent("ai_config", "已更新 OpenAI API Key", "真 AI 模式已可在 AI 回饋設定中呼叫。")
+                recordLearningEvent("ai_config", "已更新外部 AI 連線憑證", "外部 AI 模式已可在支持頁呼叫。")
             } else {
-                recordLearningEvent("ai_config", "OpenAI API Key 未更新", "輸入內容不是 sk- 開頭，維持原本設定。")
+                recordLearningEvent("ai_config", "外部 AI 連線憑證未更新", "輸入內容不是支援格式，維持原本設定。")
             }
             renderAiLab()
         })
-        box.addView(ui.secondaryButton("清除 Key，改用備援回饋") {
+        box.addView(ui.secondaryButton("清除憑證，改用備援回饋") {
             stateStore.saveOpenAiApiKey("")
-            recordLearningEvent("ai_config", "已清除 OpenAI API Key", "AI 回饋已回到備援模式。")
+            recordLearningEvent("ai_config", "已清除外部 AI 連線憑證", "AI 回饋已回到備援模式。")
             renderAiLab()
         })
         return ui.margins(box, 0, 0, 0, 12)
@@ -1486,18 +1522,18 @@ class MainActivity : Activity() {
         val decision = stateStore.aiSecurityDecision(productionMode = true)
         if (!decision.canCallRemoteAi) {
             recordLearningEvent("ai_security_fallback", "Remote AI blocked by security contract", decision.warning)
-            renderGeneratedAiFeedback("AI 安全檢查：${decision.warning}\n已改用備援回饋，不會從手機端送出正式 OpenAI Key。")
+            renderGeneratedAiFeedback("安全檢查：目前改用備援回饋，不會從手機端送出正式服務憑證。")
             return
         }
         val apiKey = stateStore.openAiApiKey()
         if (!stateStore.hasAiProxyEndpoint() && !stateStore.hasOpenAiApiKey()) {
-            recordLearningEvent("ai_fallback", "未設定 OpenAI API Key", "使用備援 AI 回饋。")
-            renderGeneratedAiFeedback("尚未設定 OpenAI API Key，已改用備援回饋。")
+            recordLearningEvent("ai_fallback", "未設定外部 AI 連線憑證", "使用備援 AI 回饋。")
+            renderGeneratedAiFeedback("目前使用備援回饋。")
             return
         }
         val q = activeQuestion()
         screen = Screen.AiLab
-        shell("AI 生成中", "正在呼叫 OpenAI Responses API")
+        shell("AI 生成中", "正在生成支持回饋")
         root.addView(card("請稍候", "English+ 正在把目前題目、情緒狀態與錯題次數送出，產生短回饋與接力摘要。", ColorToken.PrimarySoft))
         bottomNav()
         Thread {
@@ -1523,8 +1559,8 @@ class MainActivity : Activity() {
                 runOnUiThread { renderLiveAiResult(result) }
             } catch (error: Exception) {
                 runOnUiThread {
-                    recordLearningEvent("ai_fallback", "OpenAI 呼叫失敗", error.message ?: "未知錯誤")
-                    renderGeneratedAiFeedback("OpenAI 呼叫失敗，已改用備援回饋：${error.message ?: "未知錯誤"}")
+                    recordLearningEvent("ai_fallback", "外部 AI 呼叫失敗", error.message ?: "未知錯誤")
+                    renderGeneratedAiFeedback("外部 AI 暫時無法回應，已改用備援回饋。")
                 }
             }
         }.start()
@@ -1536,9 +1572,9 @@ class MainActivity : Activity() {
         root.addView(card("診斷", result.diagnosis, ColorToken.WarningSoft))
         root.addView(card("給學生的話", result.studentFeedback, ColorToken.SuccessSoft))
         root.addView(card("給志工的摘要", result.handoffSummary, ColorToken.Card))
-        recordLearningEvent("ai_live", "OpenAI 生成回饋", result.diagnosis)
+        recordLearningEvent("ai_live", "外部 AI 生成回饋", result.diagnosis)
         root.addView(ui.primaryButton("回今日任務") { renderLesson() })
-        root.addView(ui.secondaryButton("回 AI 回饋設定") { renderAiLab() })
+        root.addView(ui.secondaryButton("回 AI 支持") { renderAiLab() })
         bottomNav()
     }
 
@@ -1546,7 +1582,7 @@ class MainActivity : Activity() {
         screen = Screen.AiLab
         val q = activeQuestion()
         shell("AI 生成結果模擬", "依目前題型與錯題狀態產生個人化回饋")
-        notice?.let { root.addView(card("真 AI 狀態", it, ColorToken.WarningSoft)) }
+        notice?.let { root.addView(card("AI 狀態", it, ColorToken.WarningSoft)) }
         root.addView(card("輸入資料", "${q.prompt}\n題型：${q.type}\n目前錯誤次數：$wrongAttempts", ColorToken.PrimarySoft))
         root.addView(card("診斷", aiDiagnosis(q), ColorToken.WarningSoft))
         root.addView(card("給學生的話", aiStudentFeedback(q), ColorToken.SuccessSoft))
@@ -2385,20 +2421,24 @@ class MainActivity : Activity() {
     }
 
     private fun currentTaskFocus(): View {
-        val task = studyTasks.first()
-        val goal = recommendedQuestionGoal()
+        val summary = DailyMissionContract.summary(
+            minutes = minutes,
+            goal = recommendedQuestionGoal(),
+            preferredTypes = preferredQuestionTypes,
+            challengeWanted = challengeWanted
+        )
         val box = ui.sectionBand(ColorToken.PrimarySoft)
-        box.addView(ui.statusPill("現在先做", ColorToken.Accent))
-        box.addView(ui.label("完成 $goal 題今日任務", 23, ColorToken.Ink, true).apply {
+        box.addView(ui.statusPill(summary.routeLabel, ColorToken.Accent))
+        box.addView(ui.label(summary.title, 23, ColorToken.Ink, true).apply {
             setPadding(0, ui.dp(12), 0, ui.dp(4))
         })
         box.addView(metricRow(
             Metric("時間", "${minutes} 分", ColorToken.Primary),
             Metric("概念", "1 個", ColorToken.Success),
-            Metric("完成", "$goal 題", ColorToken.Accent)
+            Metric("完成", "${recommendedQuestionGoal()} 題", ColorToken.Accent)
         ))
-        box.addView(ui.body("你不用先看完整任務表。English+ 先把最適合現在的第一步放在這裡。", "#334155"))
-        box.addView(ui.body("排序原因：${task.reason}", ColorToken.Primary).apply {
+        box.addView(ui.body(summary.description, "#334155"))
+        box.addView(ui.body(summary.progressRule, ColorToken.Primary).apply {
             setPadding(0, ui.dp(8), 0, 0)
         })
         box.addView(ui.primaryButton("開始今日題目任務") { startDailyMission() })
@@ -2406,12 +2446,22 @@ class MainActivity : Activity() {
     }
 
     private fun taskRouteCard(): View {
+        val aiPlan = AiLearningPlanContract.localDailyMissionPlan(
+            moodLabel = mood.label,
+            minutes = minutes,
+            challengeWanted = challengeWanted,
+            preferredTypes = preferredQuestionTypes,
+            availableTypes = UserFlowContract.questionTypes
+        )
         val box = ui.container(ColorToken.Card, ColorToken.Border)
-        box.addView(ui.statusPill("今日安排", ColorToken.Primary))
+        box.addView(ui.statusPill(aiPlan.routeLabel, ColorToken.Primary))
         box.addView(ui.label("照今天狀態安排題目", 18, ColorToken.Ink, true).apply {
             setPadding(0, ui.dp(12), 0, ui.dp(4))
         })
-        box.addView(ui.body("目前可用 ${minutes} 分鐘，安排 ${recommendedQuestionGoal()} 題：${preferredQuestionTypes.joinToString("、")}。答對才推進進度，答錯會停在同一題看提示。", "#334155"))
+        box.addView(ui.body(aiPlan.studentMessage, "#334155"))
+        box.addView(ui.body(aiPlan.handoffHint, ColorToken.Muted).apply {
+            setPadding(0, ui.dp(8), 0, 0)
+        })
         box.addView(flowStrip("開始題組", "答對累積", "完成今日任務"))
         return ui.margins(box, 0, 8, 0, 12)
     }

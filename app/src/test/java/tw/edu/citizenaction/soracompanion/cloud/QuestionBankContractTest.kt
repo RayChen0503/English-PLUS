@@ -59,4 +59,64 @@ class QuestionBankContractTest {
         assertEquals(mapOf("a1" to 1), metadata["levelCounts"])
         assertEquals(mapOf("grammar" to 1), metadata["skillCounts"])
     }
+
+    @Test
+    fun practiceBlueprintRequiresDifficultyAndTypeCoverage() {
+        val items = listOf(
+            item("a1-choice", "A1", "選擇題", "Choose one."),
+            item("a2-blank", "A2", "填空題", "Fill one."),
+            item("b1-cloze", "B1", "克漏字", "Read one."),
+            item("b1-read", "B1", "閱讀理解", "Read two."),
+            item("b2-translate", "B2", "翻譯/句子重組", "Translate one.")
+        )
+
+        val blueprint = QuestionBankContract.practiceBlueprint(
+            items = items,
+            preferredTypes = setOf("選擇題", "填空題"),
+            challengeWanted = true
+        )
+
+        assertEquals(5, blueprint.totalQuestions)
+        assertEquals(listOf("A1", "A2", "B1", "B2"), blueprint.availableLevels)
+        assertEquals(listOf("選擇題", "填空題", "克漏字", "閱讀理解", "翻譯/句子重組"), blueprint.availableTypes)
+        assertEquals("挑戰模式會優先加入 B1/B2 題，但仍保留 A1/A2 當暖身。", blueprint.recommendation)
+    }
+
+    @Test
+    fun sessionCandidatesAvoidRecentlySeenPrompts() {
+        val items = listOf(
+            item("q1", "A1", "選擇題", "same prompt"),
+            item("q2", "A1", "選擇題", "same prompt"),
+            item("q3", "A2", "填空題", "new prompt"),
+            item("q4", "B1", "閱讀理解", "hard prompt")
+        )
+
+        val candidates = QuestionBankContract.sessionCandidates(
+            items = items,
+            preferredTypes = setOf("選擇題", "填空題", "閱讀理解"),
+            recentlySeenPrompts = setOf("same prompt"),
+            challengeWanted = false
+        )
+
+        assertEquals(listOf("new prompt", "hard prompt"), candidates.map { it.question.prompt })
+    }
+
+    private fun item(id: String, level: String, type: String, prompt: String): QuestionBankItem {
+        return QuestionBankItem(
+            id = id,
+            level = level,
+            unit = "unit",
+            skill = type,
+            source = "unit-test",
+            question = Question(
+                prompt = prompt,
+                options = listOf("A", "B"),
+                answer = "A",
+                explanation = "A is correct.",
+                concept = type,
+                type = type
+            ),
+            reviewState = "approved"
+        )
+    }
 }

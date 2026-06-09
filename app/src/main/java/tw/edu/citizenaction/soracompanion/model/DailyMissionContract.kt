@@ -5,6 +5,19 @@ data class DailyMissionProgress(
     val isComplete: Boolean
 )
 
+data class DailyMissionSummary(
+    val title: String,
+    val description: String,
+    val routeLabel: String,
+    val progressRule: String
+)
+
+data class DailyMissionCompletionCopy(
+    val title: String,
+    val body: String,
+    val nextAction: String
+)
+
 object DailyMissionContract {
     fun goalForMinutes(minutes: Int): Int = UserFlowContract.questionGoal(minutes)
 
@@ -31,6 +44,35 @@ object DailyMissionContract {
         return DailyMissionProgress(
             done = nextDone,
             isComplete = goal > 0 && nextDone >= goal
+        )
+    }
+
+    fun summary(
+        minutes: Int,
+        goal: Int,
+        preferredTypes: Set<String>,
+        challengeWanted: Boolean
+    ): DailyMissionSummary {
+        val safeGoal = goal.coerceAtLeast(1)
+        val types = preferredTypes.ifEmpty { UserFlowContract.defaultPreferredQuestionTypes }
+            .joinToString("、")
+        val safeMinutes = minutes.coerceAtLeast(1)
+        val routeLabel = if (challengeWanted) "挑戰路線" else "低壓修復"
+        return DailyMissionSummary(
+            title = "完成 $safeGoal 題今日任務",
+            description = "$safeMinutes 分鐘內先完成$types，不急著把整張卷子寫完。",
+            routeLabel = routeLabel,
+            progressRule = "答對才會前進，答錯會停在原題看提示。"
+        )
+    }
+
+    fun completionCopy(goal: Int, done: Int): DailyMissionCompletionCopy {
+        val safeGoal = goal.coerceAtLeast(1)
+        val safeDone = done.coerceIn(0, safeGoal)
+        return DailyMissionCompletionCopy(
+            title = "今日任務完成",
+            body = "你已完成 $safeDone/$safeGoal。今天最重要的小步驟已經達標，可以停在這裡。",
+            nextAction = "想多練時，再進入自主練習。"
         )
     }
 
