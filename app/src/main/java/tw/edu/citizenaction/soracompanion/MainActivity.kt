@@ -54,6 +54,7 @@ import tw.edu.citizenaction.soracompanion.model.Role
 import tw.edu.citizenaction.soracompanion.model.Screen
 import tw.edu.citizenaction.soracompanion.model.StudyTask
 import tw.edu.citizenaction.soracompanion.model.StudentRow
+import tw.edu.citizenaction.soracompanion.model.StudentHelpThread
 import tw.edu.citizenaction.soracompanion.model.SyncRecord
 import tw.edu.citizenaction.soracompanion.model.SupportMessage
 import tw.edu.citizenaction.soracompanion.model.SupportTarget
@@ -212,14 +213,11 @@ class MainActivity : Activity() {
         )
     }
 
-    private fun studentVisibleCollaborationNotes(limit: Int): List<CollaborationNote> {
-        return collaborationNotes
-            .filter { CollaborationFlowContract.visibleToStudent(it, student.name) }
-            .take(limit)
-    }
+    private fun studentHelpThreads(limit: Int = 8) =
+        CollaborationFlowContract.studentThreads(collaborationNotes, student.name, limit)
 
     private fun pendingStudentHelpRequests(limit: Int = 8): List<CollaborationNote> {
-        return CollaborationFlowContract.unansweredRequests(collaborationNotes, student.name).take(limit)
+        return CollaborationFlowContract.unansweredRequests(collaborationNotes).take(limit)
     }
 
     private fun addOfflineSyncItem(title: String, category: String, detail: String, status: String = "待上傳") {
@@ -786,10 +784,10 @@ class MainActivity : Activity() {
         screen = Screen.HelpRequest
         shell("主動求助", "讓學生用自己的話說出卡住的原因")
         root.addView(helpIntroCard())
-        val visibleReplies = studentVisibleCollaborationNotes(3)
-        if (visibleReplies.isNotEmpty()) {
-            section("最近的回覆")
-            visibleReplies.forEach { root.addView(studentConversationCard(it)) }
+        val threads = studentHelpThreads(2)
+        if (threads.isNotEmpty()) {
+            section("最近的求助狀態")
+            threads.forEach { root.addView(studentHelpThreadCard(it)) }
         }
         root.addView(flowStrip("說出卡點", "平台分流", "下一步"))
         helpRequestOptions.forEach { root.addView(helpOptionCard(it)) }
@@ -801,19 +799,19 @@ class MainActivity : Activity() {
     private fun renderStudentSupportCenter() {
         screen = Screen.HelpRequest
         shell("支持與回覆", "可以求助，也可以看老師/志工回覆")
-        val visibleNotes = studentVisibleCollaborationNotes(12)
-        val pending = visibleNotes.count { CollaborationFlowContract.isStudentHelpRequest(it) }
-        val replies = visibleNotes.count { CollaborationFlowContract.isStaffReply(it) }
+        val threads = studentHelpThreads(12)
+        val pending = CollaborationFlowContract.waitingRequestCount(collaborationNotes, student.name)
+        val replies = threads.count { it.latestReply != null }
         root.addView(metricRow(
             Metric("待回覆", "$pending", if (pending > 0) ColorToken.Warning else ColorToken.Success),
             Metric("已回覆", "$replies", ColorToken.Success),
             Metric("信心", "$confidence%", ColorToken.Accent)
         ))
-        if (visibleNotes.isEmpty()) {
+        if (threads.isEmpty()) {
             root.addView(card("還沒有求助紀錄", "卡住時可以先選一個原因，English+ 會把題目、心情與卡點整理給老師或志工。", ColorToken.PrimarySoft))
         } else {
-            section("我的支持紀錄")
-            visibleNotes.forEach { root.addView(studentConversationCard(it)) }
+            section("我的求助進度")
+            threads.forEach { root.addView(studentHelpThreadCard(it)) }
         }
         root.addView(ui.primaryButton("我要新增求助") { renderHelpRequest() })
         root.addView(ui.secondaryButton("回到練習") { renderLesson() })
@@ -844,7 +842,7 @@ class MainActivity : Activity() {
         screen = Screen.HelpRequest
         shell("求助已送出", "老師/志工端會看到你的卡點")
         root.addView(card("已送出", "求助原因：$reason\n我們已保留目前題目、心情與任務狀態。", ColorToken.SuccessSoft))
-        studentVisibleCollaborationNotes(4).forEach { root.addView(studentConversationCard(it)) }
+        studentHelpThreads(4).forEach { root.addView(studentHelpThreadCard(it)) }
         root.addView(ui.primaryButton("等回覆時先做一題低壓練習") {
             inDailyMission = false
             renderLesson()
@@ -1161,9 +1159,10 @@ class MainActivity : Activity() {
         screen = Screen.Mentor
         shell("接力優先序", "把有限的真人時間安排到最需要的地方")
         val pendingRequests = pendingStudentHelpRequests()
+        val replyCount = collaborationNotes.count { CollaborationFlowContract.isStaffReply(it) }
         root.addView(metricRow(
             Metric("待回覆", "${pendingRequests.size}", if (pendingRequests.isNotEmpty()) ColorToken.Warning else ColorToken.Success),
-            Metric("已回覆", "$mentorReplyCount", ColorToken.Success),
+            Metric("已回覆", "$replyCount", ColorToken.Success),
             Metric("協作", "${collaborationNotes.size}", ColorToken.Primary)
         ))
         root.addView(card("排序規則", "學生主動求助 > 高風險情緒斷點 > 連續錯題 > 重複退出 > 一般複習。", ColorToken.PrimarySoft))
@@ -1187,9 +1186,10 @@ class MainActivity : Activity() {
         screen = Screen.ActionQueue
         shell("待辦處理佇列", "把志工、老師、小組各自要做的事排清楚")
         val pendingRequests = pendingStudentHelpRequests()
+        val summary = CollaborationFlowContract.staffQueueSummary(collaborationNotes, teacherActions.size, actionDoneCount)
         root.addView(metricRow(
-            Metric("待辦", "${teacherActions.size + pendingRequests.size} 件", ColorToken.Warning),
-            Metric("已處理", "${actionDoneCount} 件", ColorToken.Success),
+            Metric("待辦", "${summary.totalPending} 件", if (summary.totalPending > 0) ColorToken.Warning else ColorToken.Success),
+            Metric("已處理", "${summary.completed} 件", ColorToken.Success),
             Metric("協作", "${collaborationNotes.size} 筆", ColorToken.Primary)
         ))
         root.addView(card("今日重點", "先回覆學生主動求助，再處理一般待辦。每一次回覆都會回到學生端的支持頁。", ColorToken.PrimarySoft))
@@ -1202,17 +1202,21 @@ class MainActivity : Activity() {
         }
         section("一般待辦")
         teacherActions.forEach { root.addView(teacherActionCard(it)) }
-        root.addView(ui.primaryButton("標記一件待辦已處理") {
-            actionDoneCount = (actionDoneCount + 1).coerceAtMost(teacherActions.size)
-            addCollaborationNote(
-                actor = currentAccount().displayName,
-                roleLabel = currentAccount().roleLabel,
-                target = "待辦處理佇列",
-                note = "已處理 1 件待辦，下一步交由負責人依摘要接力。",
-                status = "已處理"
-            )
-            renderActionQueue()
-        })
+        if (summary.normalPending > 0) {
+            root.addView(ui.primaryButton("標記一件一般待辦已處理") {
+                actionDoneCount = (actionDoneCount + 1).coerceAtMost(teacherActions.size)
+                addCollaborationNote(
+                    actor = currentAccount().displayName,
+                    roleLabel = currentAccount().roleLabel,
+                    target = "待辦處理佇列",
+                    note = "已處理 1 件一般待辦，下一步交由負責人依摘要接力。",
+                    status = "已處理"
+                )
+                renderActionQueue()
+            })
+        } else {
+            root.addView(card("一般待辦已清空", "學生求助與一般行政待辦分開計算，不會因為回覆學生就誤標一般待辦完成。", ColorToken.SuccessSoft))
+        }
         root.addView(ui.primaryButton("查看接力優先序") { renderHandoffBoard() })
         bottomNav()
     }
@@ -2456,14 +2460,28 @@ class MainActivity : Activity() {
         return ui.margins(box, 0, 7, 0, 7)
     }
 
+    private fun collaborationField(note: String, label: String): String {
+        return note.lineSequence()
+            .firstOrNull { it.startsWith(label) }
+            ?.removePrefix(label)
+            ?.trim()
+            .orEmpty()
+    }
+
     private fun studentHelpRequestCard(request: CollaborationNote): View {
         val box = ui.container(ColorToken.WarningSoft, ColorToken.Border)
+        val reason = collaborationField(request.note, "求助原因：").ifBlank { "學生主動求助" }
+        val studentText = collaborationField(request.note, "學生說：").ifBlank { request.note }
+        val question = collaborationField(request.note, "目前題目：")
         val top = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
         top.addView(ui.label(request.target, 17, ColorToken.Ink, true), LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f))
         top.addView(ui.statusPill("待回覆", ColorToken.Warning))
         box.addView(top)
-        box.addView(ui.body("${request.actor}｜${request.role}", ColorToken.Muted).apply { setPadding(0, ui.dp(7), 0, 0) })
-        box.addView(ui.body(request.note, "#334155"))
+        box.addView(ui.body("$reason｜${request.actor}｜${request.role}", ColorToken.Muted).apply { setPadding(0, ui.dp(7), 0, 0) })
+        box.addView(ui.body("學生說：$studentText", "#334155"))
+        if (question.isNotBlank()) {
+            box.addView(ui.body("目前題目：$question", ColorToken.Muted))
+        }
         box.addView(ui.primaryButton("回覆這位學生") { renderStaffReplyComposer(request) })
         return ui.margins(box, 0, 8, 0, 8)
     }
@@ -2492,7 +2510,6 @@ class MainActivity : Activity() {
             val reply = input.text.toString().trim()
                 .ifBlank { CollaborationFlowContract.defaultStaffReply(request.target, q.concept) }
             mentorReplyCount += 1
-            actionDoneCount = (actionDoneCount + 1).coerceAtMost(teacherActions.size + pendingStudentHelpRequests().size)
             addCollaborationNote(
                 actor = currentAccount().displayName,
                 roleLabel = currentAccount().roleLabel,
@@ -2500,26 +2517,46 @@ class MainActivity : Activity() {
                 note = reply,
                 status = CollaborationFlowContract.STATUS_STAFF_REPLY
             )
-            renderActionQueue()
+            renderStaffReplySent(request, reply)
         })
         box.addView(ui.secondaryButton("先不回覆，回接力佇列") { renderActionQueue() })
         root.addView(ui.margins(box, 0, 8, 0, 12))
         bottomNav()
     }
 
-    private fun studentConversationCard(note: CollaborationNote): View {
-        val isReply = CollaborationFlowContract.isStaffReply(note)
-        val fill = if (isReply) ColorToken.SuccessSoft else ColorToken.WarningSoft
-        val color = if (isReply) ColorToken.Success else ColorToken.Warning
-        val title = if (isReply) "老師/志工回覆" else "我的求助"
+    private fun renderStaffReplySent(request: CollaborationNote, reply: String) {
+        screen = Screen.ActionQueue
+        shell("已回覆學生", "這段回饋會回到學生端的支持頁")
+        val summary = CollaborationFlowContract.staffQueueSummary(collaborationNotes, teacherActions.size, actionDoneCount)
+        root.addView(card("已送給 ${request.target}", reply, ColorToken.SuccessSoft))
+        root.addView(metricRow(
+            Metric("求助待回覆", "${summary.helpPending}", if (summary.helpPending > 0) ColorToken.Warning else ColorToken.Success),
+            Metric("一般待辦", "${summary.normalPending}", if (summary.normalPending > 0) ColorToken.Warning else ColorToken.Success),
+            Metric("已處理", "${summary.completed}", ColorToken.Success)
+        ))
+        root.addView(ui.primaryButton("繼續處理下一位") { renderActionQueue() })
+        root.addView(ui.secondaryButton("查看接力優先序") { renderHandoffBoard() })
+        bottomNav()
+    }
+
+    private fun studentHelpThreadCard(thread: StudentHelpThread): View {
+        val request = thread.request
+        val reply = thread.latestReply
+        val answered = reply != null
+        val reason = collaborationField(request.note, "求助原因：").ifBlank { "我需要協助" }
+        val studentText = collaborationField(request.note, "學生說：").ifBlank { request.note }
+        val fill = if (answered) ColorToken.SuccessSoft else ColorToken.WarningSoft
+        val color = if (answered) ColorToken.Success else ColorToken.Warning
         val box = ui.container(fill, ColorToken.Border)
         val top = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
-        top.addView(ui.label(title, 17, ColorToken.Ink, true), LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f))
-        top.addView(ui.statusPill(if (isReply) "已收到" else "等待中", color))
+        top.addView(ui.label(reason, 17, ColorToken.Ink, true), LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f))
+        top.addView(ui.statusPill(CollaborationFlowContract.requestStatusLabel(request, collaborationNotes), color))
         box.addView(top)
-        box.addView(ui.body("${note.actor}｜${note.role}", ColorToken.Muted).apply { setPadding(0, ui.dp(7), 0, 0) })
-        box.addView(ui.body(note.note, "#334155"))
-        if (isReply) {
+        box.addView(ui.body("我說：$studentText", "#334155").apply { setPadding(0, ui.dp(7), 0, 0) })
+        if (reply == null) {
+            box.addView(ui.body("老師/志工還沒回覆。你可以先做一題低壓練習，不需要重複送同一個求助。", ColorToken.Muted))
+        } else {
+            box.addView(ui.body("老師/志工回覆：${reply.note}", "#334155").apply { setPadding(0, ui.dp(8), 0, 0) })
             box.addView(ui.primaryButton("照這個回饋練一題") {
                 inDailyMission = false
                 renderLesson()
