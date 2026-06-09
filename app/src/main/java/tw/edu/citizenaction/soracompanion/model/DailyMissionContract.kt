@@ -1,5 +1,7 @@
 package tw.edu.citizenaction.soracompanion.model
 
+import tw.edu.citizenaction.soracompanion.cloud.QuestionBankContract
+
 data class DailyMissionProgress(
     val done: Int,
     val isComplete: Boolean
@@ -87,22 +89,17 @@ object DailyMissionContract {
         requestedGoal: Int,
         preferredTypes: Set<String>,
         challengeWanted: Boolean,
-        seed: Int
+        seed: Int,
+        recentlySeenPrompts: Set<String> = emptySet()
     ): List<Question> {
         val safeGoal = requestedGoal.coerceAtLeast(1)
         val selectedTypes = preferredTypes.ifEmpty { UserFlowContract.defaultPreferredQuestionTypes }
-        val typedItems = bankItems.filter { it.question.type in selectedTypes }
-        val sourceItems = if (typedItems.isNotEmpty()) typedItems else bankItems
-        val bankQuestions = sourceItems
-            .distinctBy { it.question.prompt }
-            .sortedWith(
-                compareBy(
-                    { UserFlowContract.levelWeight(it.level, challengeWanted) },
-                    { it.question.type },
-                    { it.id }
-                )
-            )
-            .map { it.question }
+        val bankQuestions = QuestionBankContract.sessionCandidates(
+            items = bankItems,
+            preferredTypes = selectedTypes,
+            recentlySeenPrompts = recentlySeenPrompts,
+            challengeWanted = challengeWanted
+        ).map { it.question }
 
         val fallback = fallbackQuestions.distinctBy { it.prompt }
         val candidates = (bankQuestions + fallback)

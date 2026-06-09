@@ -24,6 +24,20 @@ class AiLearningPlanContractTest {
     }
 
     @Test
+    fun localPlanKeepsAUsableQuestionTypeWhenAvailableTypesAreEmpty() {
+        val plan = AiLearningPlanContract.localDailyMissionPlan(
+            moodLabel = "ready",
+            minutes = 5,
+            challengeWanted = true,
+            preferredTypes = setOf("translation"),
+            availableTypes = emptyList()
+        )
+
+        assertEquals(listOf("choice"), plan.recommendedTypes)
+        assertFalse(plan.studentMessage.contains("API"))
+    }
+
+    @Test
     fun remotePayloadUsesProductLanguageAndNoMobileSecret() {
         val payload = AiLearningPlanContract.buildMissionPayload(
             classCode = "YILAN-8A",

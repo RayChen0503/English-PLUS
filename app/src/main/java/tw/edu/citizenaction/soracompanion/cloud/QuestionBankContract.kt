@@ -102,8 +102,9 @@ object QuestionBankContract {
         }
         val typed = items.filter { it.question.type in preferred }
         val source = if (typed.isNotEmpty()) typed else items
-        return source
-            .filter { it.question.prompt !in recentlySeenPrompts }
+        val fresh = source.filter { it.question.prompt !in recentlySeenPrompts }
+        val candidates = if (fresh.isNotEmpty()) fresh else source
+        return candidates
             .distinctBy { it.question.prompt }
             .sortedWith(
                 compareBy(

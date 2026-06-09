@@ -101,6 +101,23 @@ class QuestionBankContractTest {
         assertEquals(listOf("new prompt", "hard prompt"), candidates.map { it.question.prompt })
     }
 
+    @Test
+    fun sessionCandidatesRecoverWhenRecentPromptsWouldEmptyTheSession() {
+        val items = listOf(
+            item("q1", "A1", "choice", "seen choice"),
+            item("q2", "A2", "blank", "seen blank")
+        )
+
+        val candidates = QuestionBankContract.sessionCandidates(
+            items = items,
+            preferredTypes = setOf("choice", "blank"),
+            recentlySeenPrompts = setOf("seen choice", "seen blank"),
+            challengeWanted = false
+        )
+
+        assertEquals(listOf("seen choice", "seen blank"), candidates.map { it.question.prompt })
+    }
+
     private fun item(id: String, level: String, type: String, prompt: String): QuestionBankItem {
         return QuestionBankItem(
             id = id,

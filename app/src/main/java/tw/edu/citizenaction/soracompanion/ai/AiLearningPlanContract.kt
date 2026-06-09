@@ -23,9 +23,10 @@ object AiLearningPlanContract {
             safeMinutes <= 8 -> 3
             else -> 4
         }
+        val safeAvailableTypes = availableTypes.ifEmpty { listOf("choice") }
         val selectedTypes = preferredTypes
-            .filter { it in availableTypes }
-            .ifEmpty { availableTypes.take(2) }
+            .filter { it in safeAvailableTypes }
+            .ifEmpty { safeAvailableTypes.take(2) }
         val isLowPressure = moodLabel.contains("低") || moodLabel.contains("不好") || !challengeWanted
         val routeLabel = if (isLowPressure) "低壓修復" else "挑戰路線"
         val typeText = selectedTypes.joinToString("、").ifBlank { "選擇題" }

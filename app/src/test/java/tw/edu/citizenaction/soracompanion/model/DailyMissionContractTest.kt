@@ -30,6 +30,26 @@ class DailyMissionContractTest {
     }
 
     @Test
+    fun missionSelectionUsesQuestionBankRecoveryWhenRecentHistoryCoversPreferredBank() {
+        val items = listOf(
+            bankItem("q1", "A1", "choice", "seen choice"),
+            bankItem("q2", "A2", "blank", "seen blank")
+        )
+
+        val selected = DailyMissionContract.selectQuestions(
+            bankItems = items,
+            fallbackQuestions = emptyList(),
+            requestedGoal = 2,
+            preferredTypes = setOf("choice", "blank"),
+            challengeWanted = false,
+            seed = 0,
+            recentlySeenPrompts = setOf("seen choice", "seen blank")
+        )
+
+        assertEquals(listOf("seen choice", "seen blank"), selected.map { it.prompt })
+    }
+
+    @Test
     fun missionProgressOnlyMovesAfterCorrectAnswers() {
         val first = DailyMissionContract.progressAfterAnswer(
             done = 0,
