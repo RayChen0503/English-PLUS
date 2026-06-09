@@ -25,6 +25,7 @@ import tw.edu.citizenaction.soracompanion.auth.AuthClient
 import tw.edu.citizenaction.soracompanion.auth.AuthContract
 import tw.edu.citizenaction.soracompanion.auth.AuthSession
 import tw.edu.citizenaction.soracompanion.cloud.CloudBackendClient
+import tw.edu.citizenaction.soracompanion.cloud.CloudDataContract
 import tw.edu.citizenaction.soracompanion.cloud.CloudSyncResult
 import tw.edu.citizenaction.soracompanion.cloud.QuestionBankContract
 import tw.edu.citizenaction.soracompanion.data.PrototypeRepository
@@ -245,7 +246,14 @@ class MainActivity : Activity() {
         val networkText = if (isNetworkAvailable()) "網路可用" else "目前離線"
         val backendText = if (stateStore.hasCloudBackend()) "後端端點已設定" else "尚未設定後端端點"
         val pendingText = "待補傳 $offlinePendingCount 筆"
-        return "$networkText\n$backendText\n$pendingText"
+        val queue = CloudDataContract.buildQueueState(
+            items = offlineSyncItems.map { CloudDataContract.queueItemFromOfflineSync(it) },
+            networkAvailable = isNetworkAvailable(),
+            lastSuccessAt = offlineSyncItems
+                .filter { it.status.contains("已同步") }
+                .maxOfOrNull { it.updatedAt } ?: 0L
+        )
+        return "$networkText\n$backendText\n$pendingText\n下一步：${queue.message}"
     }
 
     private fun accountList(): List<LocalAccount> = stateStore.localAccounts(defaultAccounts)
@@ -848,10 +856,10 @@ class MainActivity : Activity() {
         shell("支持與回覆", "可以求助，也可以看老師/志工回覆")
         val threads = studentHelpThreads(12)
         val pending = CollaborationFlowContract.waitingRequestCount(collaborationNotes, student.name)
-        val replies = threads.count { it.latestReply != null }
+        val unreadReplies = CollaborationFlowContract.unreadRepliesForStudent(collaborationNotes, student.name).size
         root.addView(metricRow(
             Metric("待回覆", "$pending", if (pending > 0) ColorToken.Warning else ColorToken.Success),
-            Metric("已回覆", "$replies", ColorToken.Success),
+            Metric("新回覆", "$unreadReplies", if (unreadReplies > 0) ColorToken.Warning else ColorToken.Success),
             Metric("信心", "$confidence%", ColorToken.Accent)
         ))
         if (threads.isEmpty()) {
@@ -1064,6 +1072,18 @@ class MainActivity : Activity() {
             Metric("已下載", "${downloadedPackTitles.size} 包", ColorToken.Success),
             Metric("佇列", "${offlineSyncItems.size} 筆", ColorToken.Primary)
         ))
+        val queueState = CloudDataContract.buildQueueState(
+            items = offlineSyncItems.map { CloudDataContract.queueItemFromOfflineSync(it) },
+            networkAvailable = isNetworkAvailable(),
+            lastSuccessAt = offlineSyncItems
+                .filter { it.status.contains("已同步") }
+                .maxOfOrNull { it.updatedAt } ?: 0L
+        )
+        root.addView(card(
+            "同步佇列下一步",
+            "狀態：${queueState.nextAction}\n待處理：${queueState.pendingCount}｜重試：${queueState.retryCount}｜需確認：${queueState.blockedCount}\n${queueState.message}",
+            if (queueState.blockedCount > 0) ColorToken.WarningSoft else ColorToken.PrimarySoft
+        ))
         root.addView(card("同步策略", "學生離線時仍可完成短任務；網路恢復後，微任務、反思、志工接力摘要會補傳。", ColorToken.PrimarySoft))
         offlineSyncItems.ifEmpty {
             syncRecords.map { OfflineSyncItem(it.title, "展示同步", it.detail, it.status) }
@@ -1262,12 +1282,23 @@ class MainActivity : Activity() {
         )
         val pendingRequests = pendingStudentHelpRequests()
         val summary = CollaborationFlowContract.staffQueueSummary(collaborationNotes, teacherActions.size, actionDoneCount)
+        val roleQueue = CollaborationFlowContract.staffRoleQueue(collaborationNotes, currentAccount().roleLabel)
         root.addView(metricRow(
             Metric("待辦", "${summary.totalPending} 件", if (summary.totalPending > 0) ColorToken.Warning else ColorToken.Success),
             Metric("已處理", "${summary.completed} 件", ColorToken.Success),
             Metric("協作", "${collaborationNotes.size} 筆", ColorToken.Primary)
         ))
-        root.addView(card("今日重點", "先回覆學生主動求助，再處理一般待辦。每一次回覆都會回到學生端的支持頁。", ColorToken.PrimarySoft))
+        root.addView(card(
+            if (UserFlowContract.isTeacherRole(role)) "老師今日重點" else "志工今日重點",
+            if (roleQueue.meaning == "teacher_follow_up") {
+                "先回覆學生主動求助，再處理班級待辦。每一次回覆都會回到學生端的支持頁。"
+            } else {
+                "只處理需要真人陪伴的求助與接力，不進入老師的班級管理待辦。"
+            },
+            ColorToken.PrimarySoft
+        ))
+        val queueLabel = if (roleQueue.meaning == "teacher_follow_up") "老師追蹤" else "志工陪伴"
+        root.addView(ui.body("佇列：$queueLabel｜待回覆：${roleQueue.helpPending}｜本角色已回覆：${roleQueue.repliedCount}", ColorToken.Muted))
         root.addView(remoteCollaborationStatusCard())
         section("學生求助待回覆")
         if (pendingRequests.isEmpty()) {
@@ -2319,12 +2350,17 @@ class MainActivity : Activity() {
 
     private fun remoteAuthStatusCard(): View {
         val hasEndpoint = stateStore.hasRemoteAuthEndpoint()
+        val status = AuthContract.authBoundaryStatus(
+            provider = if (hasEndpoint) AuthContract.PROVIDER_SCHOOL else AuthContract.PROVIDER_DEMO,
+            endpoint = stateStore.remoteAuthEndpoint(),
+            hasRemoteCredential = hasEndpoint
+        )
         val box = ui.container(if (hasEndpoint) ColorToken.SuccessSoft else ColorToken.WarningSoft, ColorToken.Border)
-        box.addView(ui.statusPill(if (hasEndpoint) "正式登入端點已設定" else "本機展示登入", if (hasEndpoint) ColorToken.Success else ColorToken.Warning))
-        box.addView(ui.label(if (hasEndpoint) "可呼叫校內/Firebase 登入 API" else "尚未接正式登入服務", 18, ColorToken.Ink, true).apply {
+        box.addView(ui.statusPill(if (hasEndpoint) "正式登入可用" else "展示帳號可用", if (hasEndpoint) ColorToken.Success else ColorToken.Warning))
+        box.addView(ui.label(if (hasEndpoint) "登入狀態" else "展示登入", 18, ColorToken.Ink, true).apply {
             setPadding(0, ui.dp(12), 0, ui.dp(4))
         })
-        box.addView(ui.body("${stateStore.authSessionSummary()}\n\n端點：${stateStore.remoteAuthEndpoint().ifBlank { "尚未設定" }}", "#334155"))
+        box.addView(ui.body("${status.message}\n${stateStore.authSessionSummary()}", "#334155"))
         return ui.margins(box, 0, 8, 0, 12)
     }
 
@@ -2339,7 +2375,7 @@ class MainActivity : Activity() {
             setPadding(0, ui.dp(12), 0, ui.dp(4))
         })
         box.addView(ui.body(
-            "學生帳號：$studentCount\n老師/志工帳號：$staffCount\n正式登入端點：$endpointState\n支援路線：Firebase Auth、Google Sign-In、校內 SSO 後端代理",
+            "學生帳號：$studentCount\n老師/志工帳號：$staffCount\n正式登入：$endpointState\n角色來源：正式帳號權限或展示帳號設定",
             "#334155"
         ))
         box.addView(ui.body(
@@ -2352,7 +2388,7 @@ class MainActivity : Activity() {
     private fun remoteAuthLoginCard(): View {
         val box = ui.container(ColorToken.Card, ColorToken.Border)
         box.addView(ui.label("正式登入設定", 18, ColorToken.Ink, true))
-        box.addView(ui.body("支援 Firebase Auth 包裝 API、Google 登入後端或校內帳號 API。後端需接受 JSON：username、password、classCode，回傳 displayName、roleLabel、classCode、token。"))
+        box.addView(ui.body("若學校已有正式登入服務，可以貼上登入網址並測試帳號；沒有正式服務時，展示帳號仍可完整操作課堂流程。"))
 
         val endpointInput = EditText(this).apply {
             hint = "https://example.com/api/auth/login"
@@ -2637,6 +2673,10 @@ class MainActivity : Activity() {
             .orEmpty()
     }
 
+    private fun visibleReplyText(reply: CollaborationNote): String {
+        return reply.note.removePrefix("[read] ").trim()
+    }
+
     private fun studentHelpRequestCard(request: CollaborationNote): View {
         val box = ui.container(ColorToken.WarningSoft, ColorToken.Border)
         val reason = collaborationField(request.note, "求助原因：").ifBlank { "學生主動求助" }
@@ -2676,17 +2716,22 @@ class MainActivity : Activity() {
         box.addView(ui.body("這段文字會出現在學生端的「支持與回覆」。", ColorToken.Muted))
         box.addView(input)
         box.addView(ui.primaryButton("送出回覆給學生") {
-            val reply = input.text.toString().trim()
-                .ifBlank { CollaborationFlowContract.defaultStaffReply(request.target, q.concept) }
+            val replyNote = CollaborationFlowContract.buildCustomStaffReply(
+                request = request,
+                staffName = currentAccount().displayName,
+                staffRole = currentAccount().roleLabel,
+                message = input.text.toString(),
+                createdAt = System.currentTimeMillis()
+            )
             mentorReplyCount += 1
             addCollaborationNote(
-                actor = currentAccount().displayName,
-                roleLabel = currentAccount().roleLabel,
-                target = request.target,
-                note = reply,
-                status = CollaborationFlowContract.STATUS_STAFF_REPLY
+                actor = replyNote.actor,
+                roleLabel = replyNote.role,
+                target = replyNote.target,
+                note = replyNote.note,
+                status = replyNote.status
             )
-            renderStaffReplySent(request, reply)
+            renderStaffReplySent(request, replyNote.note)
         })
         box.addView(ui.secondaryButton("先不回覆，回接力佇列") { renderActionQueue() })
         root.addView(ui.margins(box, 0, 8, 0, 12))
@@ -2725,7 +2770,22 @@ class MainActivity : Activity() {
         if (reply == null) {
             box.addView(ui.body("老師/志工還沒回覆。你可以先做一題低壓練習，不需要重複送同一個求助。", ColorToken.Muted))
         } else {
-            box.addView(ui.body("老師/志工回覆：${reply.note}", "#334155").apply { setPadding(0, ui.dp(8), 0, 0) })
+            box.addView(ui.body("老師/志工回覆：${visibleReplyText(reply)}", "#334155").apply { setPadding(0, ui.dp(8), 0, 0) })
+            if (reply.note.startsWith("[read] ")) {
+                box.addView(ui.body("已讀。這則回覆會保留在支持紀錄中。", ColorToken.Success))
+            } else {
+                box.addView(ui.secondaryButton("我看到了，標記已讀") {
+                    val readReply = CollaborationFlowContract.markReplyRead(reply)
+                    addCollaborationNote(
+                        actor = readReply.actor,
+                        roleLabel = readReply.role,
+                        target = readReply.target,
+                        note = readReply.note,
+                        status = readReply.status
+                    )
+                    renderStudentSupportCenter()
+                })
+            }
             box.addView(ui.primaryButton("照這個回饋練一題") {
                 inDailyMission = false
                 renderLesson()

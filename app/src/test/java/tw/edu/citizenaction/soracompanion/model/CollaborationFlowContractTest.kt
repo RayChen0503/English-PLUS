@@ -4,6 +4,7 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
+import tw.edu.citizenaction.soracompanion.auth.AuthContract
 
 class CollaborationFlowContractTest {
     @Test
@@ -129,5 +130,58 @@ class CollaborationFlowContractTest {
         assertEquals(3, summary.normalPending)
         assertEquals(3, summary.totalPending)
         assertEquals(2, summary.completed)
+    }
+    @Test
+    fun customTeacherReplyClosesRequestAndCanBeMarkedReadByStudent() {
+        val request = CollaborationNote(
+            actor = "Ray Chen",
+            role = AuthContract.ROLE_STUDENT,
+            target = "Ray Chen",
+            note = "I need help with reading.",
+            status = CollaborationFlowContract.STATUS_STUDENT_REQUEST,
+            createdAt = 10
+        )
+        val reply = CollaborationFlowContract.buildCustomStaffReply(
+            request = request,
+            staffName = "Teacher Lin",
+            staffRole = AuthContract.ROLE_TEACHER,
+            message = "Start from the first sentence and underline the time word.",
+            createdAt = 20
+        )
+
+        assertEquals("Ray Chen", reply.target)
+        assertEquals("Start from the first sentence and underline the time word.", reply.note)
+        assertTrue(CollaborationFlowContract.isStaffReply(reply))
+        assertEquals(emptyList<CollaborationNote>(), CollaborationFlowContract.unansweredRequests(listOf(request, reply), "Ray Chen"))
+        assertEquals(listOf(reply), CollaborationFlowContract.unreadRepliesForStudent(listOf(request, reply), "Ray Chen"))
+
+        val readReply = CollaborationFlowContract.markReplyRead(reply)
+        val notes = listOf(request, readReply)
+
+        assertTrue(CollaborationFlowContract.isStaffReply(readReply))
+        assertEquals(emptyList<CollaborationNote>(), CollaborationFlowContract.unreadRepliesForStudent(notes, "Ray Chen"))
+        assertEquals(readReply, CollaborationFlowContract.studentThreads(notes, "Ray Chen").single().latestReply)
+    }
+
+    @Test
+    fun teacherAndVolunteerQueuesKeepDifferentMeanings() {
+        val request = CollaborationNote(
+            actor = "Ray Chen",
+            role = AuthContract.ROLE_STUDENT,
+            target = "Ray Chen",
+            note = "I want someone to check my answer.",
+            status = CollaborationFlowContract.STATUS_STUDENT_REQUEST,
+            createdAt = 10
+        )
+
+        val teacherQueue = CollaborationFlowContract.staffRoleQueue(listOf(request), AuthContract.ROLE_TEACHER)
+        val volunteerQueue = CollaborationFlowContract.staffRoleQueue(listOf(request), AuthContract.ROLE_VOLUNTEER)
+
+        assertEquals("teacher_follow_up", teacherQueue.meaning)
+        assertEquals("volunteer_handoff", volunteerQueue.meaning)
+        assertEquals(1, teacherQueue.helpPending)
+        assertEquals(1, volunteerQueue.helpPending)
+        assertEquals(AuthContract.ROLE_TEACHER, teacherQueue.roleLabel)
+        assertEquals(AuthContract.ROLE_VOLUNTEER, volunteerQueue.roleLabel)
     }
 }

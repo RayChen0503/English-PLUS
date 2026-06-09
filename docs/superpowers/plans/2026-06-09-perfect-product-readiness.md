@@ -121,10 +121,10 @@ Only run the reset command when the user explicitly asks to roll back.
 - Modify: account center and login screens
 - Test: auth contract tests
 
-- [ ] Demo accounts remain available for classroom testing.
-- [ ] Firebase/Google/school auth boundary is explicit and ready for real credentials.
-- [ ] Roles are assigned by account claims or local demo profile, not loose UI text.
-- [ ] The UI does not expose implementation details.
+- [x] Demo accounts remain available for classroom testing.
+- [x] Firebase/Google/school auth boundary is explicit and ready for real credentials.
+- [x] Roles are assigned by account claims or local demo profile, not loose UI text.
+- [x] The UI does not expose implementation details.
 
 ## Round 7: Cloud Data And Sync
 
@@ -132,10 +132,10 @@ Only run the reset command when the user explicitly asks to roll back.
 - Modify: `cloud/`, `storage/`, `data/`
 - Test: cloud/sync contract tests
 
-- [ ] Local SQLite remains the offline source of truth.
-- [ ] Sync queue has retry, conflict, and last-success state.
-- [ ] Student help requests, replies, learning events, and mission completions can map to cloud payloads.
-- [ ] Network unavailable states are readable and actionable.
+- [x] Local SQLite remains the offline source of truth.
+- [x] Sync queue has retry, conflict, and last-success state.
+- [x] Student help requests, replies, learning events, and mission completions can map to cloud payloads.
+- [x] Network unavailable states are readable and actionable.
 
 ## Round 8: Student-Teacher Closed Loop
 
@@ -143,11 +143,11 @@ Only run the reset command when the user explicitly asks to roll back.
 - Modify: collaboration contracts and UI
 - Test: collaboration flow tests
 
-- [ ] Student help requests appear in teacher queue.
-- [ ] Teachers can write custom replies.
-- [ ] Students see teacher replies in the correct support thread.
-- [ ] Status moves from pending to replied/read without duplicate cards.
-- [ ] Teacher and volunteer queues do not overwrite each other's meaning.
+- [x] Student help requests appear in teacher queue.
+- [x] Teachers can write custom replies.
+- [x] Students see teacher replies in the correct support thread.
+- [x] Status moves from pending to replied/read without duplicate cards.
+- [x] Teacher and volunteer queues do not overwrite each other's meaning.
 
 ## Round 9: Volunteer Handoff System
 

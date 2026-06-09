@@ -1,5 +1,7 @@
 package tw.edu.citizenaction.soracompanion.model
 
+import tw.edu.citizenaction.soracompanion.auth.AuthContract
+
 data class StudentHelpThread(
     val request: CollaborationNote,
     val latestReply: CollaborationNote?
@@ -12,7 +14,15 @@ data class StaffQueueSummary(
     val completed: Int
 )
 
+data class StaffRoleQueue(
+    val roleLabel: String,
+    val meaning: String,
+    val helpPending: Int,
+    val repliedCount: Int
+)
+
 object CollaborationFlowContract {
+    const val STATUS_STAFF_REPLY_READ = "?單撌脩"
     const val STATUS_STUDENT_REQUEST = "待老師/志工回覆"
     const val STATUS_STAFF_REPLY = "已回覆給學生"
     const val STATUS_STAFF_NOTE = "接力紀錄"
@@ -42,6 +52,42 @@ object CollaborationFlowContract {
 
     fun visibleToStudent(note: CollaborationNote, studentName: String): Boolean {
         return note.target == studentName && (isStudentHelpRequest(note) || isStaffReply(note))
+    }
+
+    fun buildCustomStaffReply(
+        request: CollaborationNote,
+        staffName: String,
+        staffRole: String,
+        message: String,
+        createdAt: Long
+    ): CollaborationNote {
+        return CollaborationNote(
+            actor = staffName.trim().ifBlank { "English+ staff" },
+            role = AuthContract.normalizeRole(staffRole),
+            target = request.target,
+            note = message.trim().ifBlank { defaultStaffReply(request.target, "English+") },
+            status = STATUS_STAFF_REPLY,
+            createdAt = createdAt
+        )
+    }
+
+    fun markReplyRead(reply: CollaborationNote): CollaborationNote {
+        return if (isStaffReply(reply) && !reply.note.startsWith("[read] ")) {
+            reply.copy(status = STATUS_STAFF_REPLY, note = "[read] ${reply.note}")
+        } else {
+            reply
+        }
+    }
+
+    fun unreadRepliesForStudent(notes: List<CollaborationNote>, studentName: String): List<CollaborationNote> {
+        return notes
+            .filter { note ->
+                note.target == studentName &&
+                    isStaffReply(note) &&
+                    note.status != STATUS_STAFF_REPLY_READ &&
+                    !note.note.startsWith("[read] ")
+            }
+            .sortedByDescending { it.createdAt }
     }
 
     fun latestReplyFor(request: CollaborationNote, notes: List<CollaborationNote>): CollaborationNote? {
@@ -83,6 +129,21 @@ object CollaborationFlowContract {
             normalPending = normalPending,
             totalPending = helpPending + normalPending,
             completed = safeDone + staffReplies
+        )
+    }
+
+    fun staffRoleQueue(notes: List<CollaborationNote>, staffRole: String): StaffRoleQueue {
+        val role = AuthContract.normalizeRole(staffRole)
+        val meaning = when (role) {
+            AuthContract.ROLE_TEACHER -> "teacher_follow_up"
+            AuthContract.ROLE_VOLUNTEER -> "volunteer_handoff"
+            else -> "student_visible_support"
+        }
+        return StaffRoleQueue(
+            roleLabel = role,
+            meaning = meaning,
+            helpPending = unansweredRequests(notes).size,
+            repliedCount = notes.count { isStaffReply(it) && AuthContract.normalizeRole(it.role) == role }
         )
     }
 

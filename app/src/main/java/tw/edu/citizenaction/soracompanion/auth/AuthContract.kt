@@ -2,6 +2,28 @@ package tw.edu.citizenaction.soracompanion.auth
 
 import org.json.JSONObject
 
+data class AuthClaims(
+    val provider: String,
+    val subject: String,
+    val displayName: String,
+    val classCode: String,
+    val roles: Set<String>
+)
+
+data class AuthIdentitySession(
+    val provider: String,
+    val userId: String,
+    val displayName: String,
+    val classCode: String,
+    val roleLabel: String,
+    val isDemo: Boolean
+)
+
+data class AuthBoundaryStatus(
+    val state: String,
+    val message: String
+)
+
 object AuthContract {
     const val ROLE_STUDENT = "學生"
     const val ROLE_TEACHER = "老師"
@@ -25,6 +47,58 @@ object AuthContract {
     fun isStudentRole(roleLabel: String): Boolean = normalizeRole(roleLabel) == ROLE_STUDENT
 
     fun isStaffRole(roleLabel: String): Boolean = !isStudentRole(roleLabel)
+
+    fun sessionFromClaims(
+        claims: AuthClaims,
+        fallbackDemoRole: String
+    ): AuthIdentitySession {
+        val role = roleFromClaims(claims.roles, fallbackDemoRole)
+        return AuthIdentitySession(
+            provider = claims.provider.trim().lowercase().ifBlank { PROVIDER_SCHOOL },
+            userId = normalizeUserId(claims.displayName.ifBlank { claims.subject }),
+            displayName = claims.displayName.trim().ifBlank { claims.subject.trim() },
+            classCode = claims.classCode.trim().uppercase().ifBlank { "DEMO-CLASS" },
+            roleLabel = role,
+            isDemo = false
+        )
+    }
+
+    fun demoSession(
+        displayName: String,
+        classCode: String,
+        roleLabel: String
+    ): AuthIdentitySession {
+        return AuthIdentitySession(
+            provider = PROVIDER_DEMO,
+            userId = normalizeUserId(displayName),
+            displayName = displayName.trim().ifBlank { "Demo User" },
+            classCode = classCode.trim().uppercase().ifBlank { "DEMO-CLASS" },
+            roleLabel = normalizeRole(roleLabel),
+            isDemo = true
+        )
+    }
+
+    fun authBoundaryStatus(
+        provider: String,
+        endpoint: String,
+        hasRemoteCredential: Boolean
+    ): AuthBoundaryStatus {
+        val normalizedProvider = provider.trim().lowercase()
+        return when {
+            normalizedProvider == PROVIDER_DEMO -> AuthBoundaryStatus(
+                state = "demo",
+                message = "可使用展示帳號進行課堂測試。"
+            )
+            hasRemoteCredential && isValidEndpoint(endpoint) -> AuthBoundaryStatus(
+                state = "ready",
+                message = "正式登入已準備好，可用${providerDisplayName(normalizedProvider)}連線。"
+            )
+            else -> AuthBoundaryStatus(
+                state = "setup-required",
+                message = "目前可先使用展示帳號；正式登入需要學校或雲端登入設定。"
+            )
+        }
+    }
 
     fun isValidEndpoint(endpoint: String): Boolean {
         val url = endpoint.trim()
@@ -82,5 +156,25 @@ object AuthContract {
             PROVIDER_DEMO -> "Demo Mode"
             else -> provider.ifBlank { "Remote Auth" }
         }
+    }
+
+    private fun roleFromClaims(roles: Set<String>, fallbackRole: String): String {
+        val normalized = roles.map { it.trim().lowercase() }.toSet()
+        return when {
+            normalized.any { it.contains("teacher") || it.contains("?葦") } -> ROLE_TEACHER
+            normalized.any { it.contains("volunteer") || it.contains("mentor") || it.contains("敹極") } -> ROLE_VOLUNTEER
+            normalized.any { it.contains("student") || it.contains("摮貊?") } -> ROLE_STUDENT
+            else -> normalizeRole(fallbackRole)
+        }
+    }
+
+    private fun normalizeUserId(value: String): String {
+        val trimmed = value.trim()
+        if (trimmed == "小安") return "xiao-an"
+        return trimmed
+            .lowercase()
+            .replace(Regex("[^a-z0-9]+"), "-")
+            .trim('-')
+            .ifBlank { "demo-user" }
     }
 }
