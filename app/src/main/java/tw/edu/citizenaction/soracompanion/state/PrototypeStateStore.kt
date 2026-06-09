@@ -6,7 +6,6 @@ import org.json.JSONObject
 import tw.edu.citizenaction.soracompanion.auth.AuthContract
 import tw.edu.citizenaction.soracompanion.auth.AuthSession
 import tw.edu.citizenaction.soracompanion.ai.AiSecurityContract
-import tw.edu.citizenaction.soracompanion.ai.OpenRouterClient
 import tw.edu.citizenaction.soracompanion.cloud.CloudDataContract
 import tw.edu.citizenaction.soracompanion.cloud.CollaborationSyncContract
 import tw.edu.citizenaction.soracompanion.cloud.QuestionBankContract
@@ -178,12 +177,12 @@ class PrototypeStateStore(context: Context) {
         database.seedQuestionBank(items)
     }
 
-    fun questionBankItems(limit: Int = 1000): List<QuestionBankItem> {
+    fun questionBankItems(limit: Int = 1_500): List<QuestionBankItem> {
         return database.loadQuestionBank(limit)
     }
 
     fun questionBankQuestions(): List<Question> {
-        return database.loadQuestionBank(1000).map { it.question }
+        return database.loadQuestionBank(1_500).map { it.question }
     }
 
     fun markOfflineSyncItemsSynced() {
@@ -277,14 +276,6 @@ class PrototypeStateStore(context: Context) {
                     .put("source", item.source)
                     .put("reviewState", item.reviewState)
                     .put("importBatchId", item.importBatchId)
-                    .put("difficultyBand", item.difficultyBand)
-                    .put("questionType", item.questionType)
-                    .put("tags", JSONArray(item.tags))
-                    .put("recommendationTags", JSONArray(item.recommendationTags))
-                    .put("emotionalFit", item.emotionalFit)
-                    .put("estimatedSeconds", item.estimatedSeconds)
-                    .put("challengeScore", item.challengeScore)
-                    .put("sourceYear", item.sourceYear)
                     .put("prompt", item.question.prompt)
                     .put("options", JSONArray(item.question.options))
                     .put("answer", item.question.answer)
@@ -324,40 +315,8 @@ class PrototypeStateStore(context: Context) {
 
     fun hasOpenAiApiKey(): Boolean = openAiApiKey().startsWith("sk-")
 
-    fun saveOpenRouterApiKey(apiKey: String) {
-        prefs.edit().putString("openrouter_api_key", apiKey.trim()).apply()
-    }
-
-    fun openRouterApiKey(): String {
-        return prefs.getString("openrouter_api_key", "")?.trim().orEmpty()
-    }
-
-    fun hasOpenRouterApiKey(): Boolean = OpenRouterClient.isLikelyOpenRouterKey(openRouterApiKey())
-
-    fun openRouterKeyPreview(): String {
-        val key = openRouterApiKey()
-        return if (hasOpenRouterApiKey() && key.length >= 12) {
-            "${key.take(7)}...${key.takeLast(4)}"
-        } else {
-            "尚未設定"
-        }
-    }
-
-    fun saveOpenRouterModel(model: String) {
-        prefs.edit().putString("openrouter_model", model.trim().ifBlank { OpenRouterClient.DEFAULT_MODEL }).apply()
-    }
-
-    fun openRouterModel(): String {
-        return prefs.getString("openrouter_model", OpenRouterClient.DEFAULT_MODEL)?.trim().orEmpty().ifBlank { OpenRouterClient.DEFAULT_MODEL }
-    }
-
     fun aiSecurityDecision(productionMode: Boolean = true) =
-        AiSecurityContract.evaluate(
-            proxyEndpoint = aiProxyEndpoint(),
-            localApiKey = openAiApiKey(),
-            productionMode = productionMode,
-            openRouterApiKey = openRouterApiKey()
-        )
+        AiSecurityContract.evaluate(aiProxyEndpoint(), openAiApiKey(), productionMode)
 
     fun saveAiProxyEndpoint(url: String) {
         prefs.edit().putString("ai_proxy_endpoint", url.trim()).apply()

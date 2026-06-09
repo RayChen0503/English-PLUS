@@ -56,82 +56,9 @@ data class QuestionBankItem(
     val question: Question,
     val updatedAt: Long = System.currentTimeMillis(),
     val reviewState: String = "draft",
-    val importBatchId: String = "seed",
-    val difficultyBand: String = level,
-    val questionType: String = question.type,
-    val tags: List<String> = emptyList(),
-    val recommendationTags: List<String> = emptyList(),
-    val emotionalFit: String = "balanced",
-    val estimatedSeconds: Int = 60,
-    val challengeScore: Int = 1,
-    val sourceYear: String = "prototype"
+    val importBatchId: String = "seed"
 )
 
-data class QuestionBankReviewSummary(
-    val totalItems: Int,
-    val approvedItems: Int,
-    val draftItems: Int,
-    val challengeItems: Int,
-    val repairItems: Int,
-    val typeCounts: Map<String, Int>,
-    val difficultyCounts: Map<String, Int>
-)
-
-data class TeacherProgressSnapshot(
-    val riskLabel: String,
-    val nextAction: String,
-    val evidenceLine: String,
-    val syncLine: String
-)
-
-data class CheckInOption(
-    val id: String,
-    val label: String,
-    val helper: String,
-    val score: Int,
-    val routeHint: String
-)
-
-data class CheckInQuestion(
-    val id: String,
-    val dimension: String,
-    val title: String,
-    val prompt: String,
-    val options: List<CheckInOption>
-)
-
-data class CheckInResult(
-    val route: String,
-    val mood: Mood,
-    val confidence: Int,
-    val recommendedMinutes: Int,
-    val title: String,
-    val nextStep: String,
-    val supportMessage: String,
-    val challengeWanted: Boolean = false,
-    val preferredQuestionTypes: List<String> = emptyList()
-)
-
-
-data class DailyTaskProgress(
-    val totalSteps: Int,
-    val completedSteps: Int,
-    val remainingSteps: Int,
-    val remainingMinutes: Int,
-    val progressPercent: Int,
-    val currentStep: String,
-    val nextAction: String,
-    val steps: List<String>
-)
-
-data class RoleFlowSpec(
-    val roleLabel: String,
-    val homeTitle: String,
-    val homeSubtitle: String,
-    val navLabels: List<String>,
-    val primaryScreens: List<String>,
-    val hiddenFromOtherRole: String
-)
 data class Breakpoint(
     val title: String,
     val severity: String,

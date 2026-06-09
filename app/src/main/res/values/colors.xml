@@ -1,6 +1,3 @@
 <resources>
     <color name="surface">#FAFBFC</color>
-    <color name="ink">#15233A</color>
-    <color name="primary">#246BFD</color>
-    <color name="primary_dark">#1746A2</color>
 </resources>

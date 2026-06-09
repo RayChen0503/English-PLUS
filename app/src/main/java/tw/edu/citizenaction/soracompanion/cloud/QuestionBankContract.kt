@@ -9,7 +9,7 @@ enum class QuestionReviewState {
 }
 
 object QuestionBankContract {
-    const val QUESTION_BANK_SCHEMA_VERSION = 6
+    const val QUESTION_BANK_SCHEMA_VERSION = 5
 
     fun importId(scope: CloudAccessScope, item: QuestionBankItem): String {
         return "${scope.classId}:${normalizeQuestionId(item.id)}"
@@ -43,10 +43,7 @@ object QuestionBankContract {
             "permissionRule" to "teacher-only publish; student read-only",
             "conflictRule" to "importId keeps latest updatedAt",
             "levelCounts" to items.groupingBy { it.level.trim().lowercase() }.eachCount(),
-            "skillCounts" to items.groupingBy { it.skill.trim().lowercase() }.eachCount(),
-            "questionTypeCounts" to items.groupingBy { it.questionType.trim().lowercase() }.eachCount(),
-            "difficultyBandCounts" to items.groupingBy { it.difficultyBand.trim().lowercase() }.eachCount(),
-            "recommendationFields" to listOf("recommendationTags", "emotionalFit", "estimatedSeconds", "challengeScore")
+            "skillCounts" to items.groupingBy { it.skill.trim().lowercase() }.eachCount()
         )
     }
 

@@ -98,9 +98,6 @@ class EnglishPlusDatabase(context: Context) : SQLiteOpenHelper(context, DB_NAME,
             addQuestionBankColumn(db, "review_state TEXT NOT NULL DEFAULT 'draft'")
             addQuestionBankColumn(db, "import_batch_id TEXT NOT NULL DEFAULT 'seed'")
         }
-        if (oldVersion < 8) {
-            addQuestionBankMetadataColumns(db)
-        }
     }
 
     private fun createLocalAccountsTable(db: SQLiteDatabase) {
@@ -166,29 +163,10 @@ class EnglishPlusDatabase(context: Context) : SQLiteOpenHelper(context, DB_NAME,
                 repair_hint TEXT NOT NULL,
                 review_state TEXT NOT NULL DEFAULT 'draft',
                 import_batch_id TEXT NOT NULL DEFAULT 'seed',
-                difficulty_band TEXT NOT NULL DEFAULT 'cap-standard',
-                question_type TEXT NOT NULL DEFAULT 'choice',
-                tags TEXT NOT NULL DEFAULT '',
-                recommendation_tags TEXT NOT NULL DEFAULT '',
-                emotional_fit TEXT NOT NULL DEFAULT 'balanced',
-                estimated_seconds INTEGER NOT NULL DEFAULT 60,
-                challenge_score INTEGER NOT NULL DEFAULT 1,
-                source_year TEXT NOT NULL DEFAULT 'prototype',
                 updated_at INTEGER NOT NULL
             )
             """.trimIndent()
         )
-    }
-
-    private fun addQuestionBankMetadataColumns(db: SQLiteDatabase) {
-        addQuestionBankColumn(db, "difficulty_band TEXT NOT NULL DEFAULT 'cap-standard'")
-        addQuestionBankColumn(db, "question_type TEXT NOT NULL DEFAULT 'choice'")
-        addQuestionBankColumn(db, "tags TEXT NOT NULL DEFAULT ''")
-        addQuestionBankColumn(db, "recommendation_tags TEXT NOT NULL DEFAULT ''")
-        addQuestionBankColumn(db, "emotional_fit TEXT NOT NULL DEFAULT 'balanced'")
-        addQuestionBankColumn(db, "estimated_seconds INTEGER NOT NULL DEFAULT 60")
-        addQuestionBankColumn(db, "challenge_score INTEGER NOT NULL DEFAULT 1")
-        addQuestionBankColumn(db, "source_year TEXT NOT NULL DEFAULT 'prototype'")
     }
 
     private fun addQuestionBankColumn(db: SQLiteDatabase, columnSql: String) {
@@ -262,7 +240,6 @@ class EnglishPlusDatabase(context: Context) : SQLiteOpenHelper(context, DB_NAME,
     }
 
     fun seedAccounts(defaultAccounts: List<LocalAccount>) {
-        if (accountCount() > 0) return
         val db = writableDatabase
         defaultAccounts.forEach { account ->
             val values = ContentValues().apply {
@@ -272,7 +249,7 @@ class EnglishPlusDatabase(context: Context) : SQLiteOpenHelper(context, DB_NAME,
                 put("login_state", account.loginState)
                 put("last_used_at", 0L)
             }
-            db.insertWithOnConflict("local_accounts", null, values, SQLiteDatabase.CONFLICT_IGNORE)
+            db.insertWithOnConflict("local_accounts", null, values, SQLiteDatabase.CONFLICT_REPLACE)
         }
     }
 
@@ -419,28 +396,15 @@ class EnglishPlusDatabase(context: Context) : SQLiteOpenHelper(context, DB_NAME,
             put("repair_hint", item.question.repairHint)
             put("review_state", item.reviewState)
             put("import_batch_id", item.importBatchId)
-            put("difficulty_band", item.difficultyBand)
-            put("question_type", item.questionType)
-            put("tags", item.tags.joinToString("||"))
-            put("recommendation_tags", item.recommendationTags.joinToString("||"))
-            put("emotional_fit", item.emotionalFit)
-            put("estimated_seconds", item.estimatedSeconds)
-            put("challenge_score", item.challengeScore)
-            put("source_year", item.sourceYear)
             put("updated_at", item.updatedAt)
         }
         writableDatabase.insertWithOnConflict("question_bank", null, values, SQLiteDatabase.CONFLICT_REPLACE)
     }
 
-    fun loadQuestionBank(limit: Int = 1000): List<QuestionBankItem> {
+    fun loadQuestionBank(limit: Int = 1_500): List<QuestionBankItem> {
         return readableDatabase.query(
             "question_bank",
-            arrayOf(
-                "id", "level", "unit", "skill", "source", "prompt", "options", "answer", "explanation",
-                "concept", "type", "repair_hint", "review_state", "import_batch_id", "difficulty_band",
-                "question_type", "tags", "recommendation_tags", "emotional_fit", "estimated_seconds",
-                "challenge_score", "source_year", "updated_at"
-            ),
+            arrayOf("id", "level", "unit", "skill", "source", "prompt", "options", "answer", "explanation", "concept", "type", "repair_hint", "review_state", "import_batch_id", "updated_at"),
             null,
             null,
             null,
@@ -468,24 +432,12 @@ class EnglishPlusDatabase(context: Context) : SQLiteOpenHelper(context, DB_NAME,
                         ),
                         updatedAt = cursor.getLong(cursor.getColumnIndexOrThrow("updated_at")),
                         reviewState = cursor.getString(cursor.getColumnIndexOrThrow("review_state")),
-                        importBatchId = cursor.getString(cursor.getColumnIndexOrThrow("import_batch_id")),
-                        difficultyBand = cursor.getString(cursor.getColumnIndexOrThrow("difficulty_band")),
-                        questionType = cursor.getString(cursor.getColumnIndexOrThrow("question_type")),
-                        tags = splitList(cursor.getString(cursor.getColumnIndexOrThrow("tags"))),
-                        recommendationTags = splitList(cursor.getString(cursor.getColumnIndexOrThrow("recommendation_tags"))),
-                        emotionalFit = cursor.getString(cursor.getColumnIndexOrThrow("emotional_fit")),
-                        estimatedSeconds = cursor.getInt(cursor.getColumnIndexOrThrow("estimated_seconds")),
-                        challengeScore = cursor.getInt(cursor.getColumnIndexOrThrow("challenge_score")),
-                        sourceYear = cursor.getString(cursor.getColumnIndexOrThrow("source_year"))
+                        importBatchId = cursor.getString(cursor.getColumnIndexOrThrow("import_batch_id"))
                     )
                 )
             }
             items
         }
-    }
-
-    private fun splitList(value: String): List<String> {
-        return value.split("||").map { it.trim() }.filter { it.isNotBlank() }
     }
 
     fun loadLearningEvents(limit: Int = 20): List<LearningEvent> {
@@ -575,6 +527,6 @@ class EnglishPlusDatabase(context: Context) : SQLiteOpenHelper(context, DB_NAME,
 
     companion object {
         private const val DB_NAME = "english_plus_local.db"
-        private const val DB_VERSION = 8
+        private const val DB_VERSION = 7
     }
 }

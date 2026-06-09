@@ -21,8 +21,7 @@ class QuestionBankContractTest {
             answer = "is",
             explanation = "He uses is.",
             concept = "be verb"
-        ),
-        questionType = "choice"
+        )
     )
 
     @Test
@@ -51,7 +50,7 @@ class QuestionBankContractTest {
         val scope = CloudDataContract.buildScope("CLASS-8A", "Teacher Lin", AuthContract.ROLE_TEACHER)
         val metadata = QuestionBankContract.buildQuestionBankMetadata(scope, listOf(sampleItem))
 
-        assertEquals(6, metadata["questionBankSchemaVersion"])
+        assertEquals(5, metadata["questionBankSchemaVersion"])
         assertEquals("classes/CLASS-8A/questionBank", metadata["collectionPath"])
         assertEquals("teacher-lin", metadata["publisherId"])
         assertEquals(AuthContract.ROLE_TEACHER, metadata["publisherRole"])
@@ -59,11 +58,5 @@ class QuestionBankContractTest {
         assertEquals("importId keeps latest updatedAt", metadata["conflictRule"])
         assertEquals(mapOf("a1" to 1), metadata["levelCounts"])
         assertEquals(mapOf("grammar" to 1), metadata["skillCounts"])
-        assertEquals(mapOf("a1" to 1), metadata["difficultyBandCounts"])
-        assertEquals(mapOf("choice" to 1), metadata["questionTypeCounts"])
-        assertEquals(
-            listOf("recommendationTags", "emotionalFit", "estimatedSeconds", "challengeScore"),
-            metadata["recommendationFields"]
-        )
     }
 }
