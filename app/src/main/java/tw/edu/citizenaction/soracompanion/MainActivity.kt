@@ -975,6 +975,13 @@ class MainActivity : Activity() {
     }
 
     private fun renderQuestionBank() {
+        if (UserFlowContract.normalizedRole(role) == Role.Volunteer) {
+            renderRoleBoundary(
+                title = "題庫由老師管理",
+                message = "志工端只需要知道學生今天卡在哪一題，以及可以怎麼陪練；題庫分級與派題由老師端處理。"
+            )
+            return
+        }
         screen = Screen.QuestionBank
         val bankItems = stateStore.questionBankItems()
         val skillCounts = bankItems.groupingBy { it.skill }.eachCount()
@@ -1174,7 +1181,7 @@ class MainActivity : Activity() {
 
     private fun renderRoster() {
         screen = Screen.Roster
-        shell("學生列表", "讓老師先看見誰需要接力")
+        shell("學生列表", UserFlowContract.rosterSubtitle(role))
         currentRoster().forEach { row -> root.addView(studentRowCard(row)) }
         root.addView(ui.primaryButton("查看 ${student.name} 的斷點") { renderBreakpoints() })
         root.addView(ui.secondaryButton("查看接力優先序") { renderHandoffBoard() })
@@ -1183,7 +1190,7 @@ class MainActivity : Activity() {
 
     private fun renderStudentDetail(row: StudentRow) {
         screen = Screen.StudentDetail
-        shell("${row.name} 的接力資料", "用一頁讓老師知道現在要不要介入")
+        shell("${row.name} 的接力資料", UserFlowContract.rosterSubtitle(role))
         root.addView(metricRow(
             Metric("風險", row.risk, if (row.risk == "高") ColorToken.Danger else ColorToken.Warning),
             Metric("狀態", if (row.risk == "低") "可自學" else "需追蹤", ColorToken.Primary),
@@ -1191,8 +1198,17 @@ class MainActivity : Activity() {
         ))
         root.addView(card("目前斷點", row.issue, if (row.risk == "高") ColorToken.WarningSoft else ColorToken.PrimarySoft))
         root.addView(card("最新狀態", row.status, ColorToken.Card))
-        root.addView(card("老師下一步", if (row.risk == "高") "先用陪伴腳本降低挫折，再只帶同一概念兩題。" else "保留低壓任務，觀察是否願意回來完成。", ColorToken.SuccessSoft))
-        root.addView(ui.primaryButton("查看接力腳本") { renderMentorScript() })
+        val nextStep = if (UserFlowContract.normalizedRole(role) == Role.Volunteer) {
+            if (row.risk == "高") "先用陪伴腳本降低挫折，再只帶同一概念兩題。" else "保留低壓陪伴節奏，不追加作業。"
+        } else {
+            if (row.risk == "高") "先確認是否需要老師回覆，再決定是否指派志工陪練。" else "保留低壓任務，觀察是否願意回來完成。"
+        }
+        root.addView(card(UserFlowContract.studentDetailActionTitle(role), nextStep, ColorToken.SuccessSoft))
+        if (UserFlowContract.normalizedRole(role) == Role.Volunteer) {
+            root.addView(ui.primaryButton("查看陪伴腳本") { renderMentorScript() })
+        } else {
+            root.addView(ui.primaryButton("查看待回覆求助") { renderActionQueue() })
+        }
         root.addView(ui.secondaryButton("回學生列表") { renderRoster() })
         bottomNav()
     }
@@ -1218,15 +1234,21 @@ class MainActivity : Activity() {
         handoffPriorities.forEach { root.addView(priorityCard(it)) }
         section("最新協作紀錄")
         recentCollaborationNotes(4).forEach { root.addView(collaborationNoteCard(it)) }
-        root.addView(ui.secondaryButton("分享最新老師報告") { shareTeacherReport(buildDemoReportText()) })
         root.addView(ui.secondaryButton("查看待辦處理佇列") { renderActionQueue() })
-        root.addView(ui.primaryButton("查看陪伴腳本") { renderMentorScript() })
+        if (UserFlowContract.isTeacherRole(role)) {
+            root.addView(ui.primaryButton("分享最新老師報告") { shareTeacherReport(buildDemoReportText()) })
+        } else {
+            root.addView(ui.primaryButton("查看陪伴腳本") { renderMentorScript() })
+        }
         bottomNav()
     }
 
     private fun renderActionQueue() {
         screen = Screen.ActionQueue
-        shell("待辦處理佇列", "把志工、老師、小組各自要做的事排清楚")
+        shell(
+            if (UserFlowContract.isTeacherRole(role)) "老師待辦佇列" else "志工接力佇列",
+            if (UserFlowContract.isTeacherRole(role)) "先處理學生求助，再安排班級工作" else "只處理需要真人陪伴的下一步"
+        )
         val pendingRequests = pendingStudentHelpRequests()
         val summary = CollaborationFlowContract.staffQueueSummary(collaborationNotes, teacherActions.size, actionDoneCount)
         root.addView(metricRow(
@@ -1242,22 +1264,28 @@ class MainActivity : Activity() {
         } else {
             pendingRequests.forEach { root.addView(studentHelpRequestCard(it)) }
         }
-        section("一般待辦")
-        teacherActions.forEach { root.addView(teacherActionCard(it)) }
-        if (summary.normalPending > 0) {
-            root.addView(ui.primaryButton("標記一件一般待辦已處理") {
-                actionDoneCount = (actionDoneCount + 1).coerceAtMost(teacherActions.size)
-                addCollaborationNote(
-                    actor = currentAccount().displayName,
-                    roleLabel = currentAccount().roleLabel,
-                    target = "待辦處理佇列",
-                    note = "已處理 1 件一般待辦，下一步交由負責人依摘要接力。",
-                    status = "已處理"
-                )
-                renderActionQueue()
-            })
+        if (UserFlowContract.isTeacherRole(role)) {
+            section("班級待辦")
+            teacherActions.forEach { root.addView(teacherActionCard(it)) }
+            if (summary.normalPending > 0) {
+                root.addView(ui.primaryButton("標記一件班級待辦已處理") {
+                    actionDoneCount = (actionDoneCount + 1).coerceAtMost(teacherActions.size)
+                    addCollaborationNote(
+                        actor = currentAccount().displayName,
+                        roleLabel = currentAccount().roleLabel,
+                        target = "待辦處理佇列",
+                        note = "已處理 1 件班級待辦，下一步交由負責人依摘要接力。",
+                        status = "已處理"
+                    )
+                    renderActionQueue()
+                })
+            } else {
+                root.addView(card("班級待辦已清空", "學生求助與班級待辦分開計算，不會因為回覆學生就誤標一般待辦完成。", ColorToken.SuccessSoft))
+            }
         } else {
-            root.addView(card("一般待辦已清空", "學生求助與一般行政待辦分開計算，不會因為回覆學生就誤標一般待辦完成。", ColorToken.SuccessSoft))
+            section("志工下一步")
+            root.addView(card("只做陪伴與回覆", "志工端不顯示老師的班級管理待辦。先看學生求助，再用陪伴腳本留下接力紀錄。", ColorToken.PrimarySoft))
+            root.addView(ui.primaryButton("查看陪伴腳本") { renderMentorScript() })
         }
         root.addView(ui.primaryButton("查看接力優先序") { renderHandoffBoard() })
         bottomNav()
@@ -1319,6 +1347,13 @@ class MainActivity : Activity() {
     }
 
     private fun renderStudentManager() {
+        if (!UserFlowContract.canUseTeacherTool(role, Screen.StudentManager)) {
+            renderRoleBoundary(
+                title = "學生資料由老師管理",
+                message = "志工端只顯示陪伴必要背景，不提供新增或管理學生資料的入口。"
+            )
+            return
+        }
         screen = Screen.StudentManager
         shell("學生資料管理", "整理班級學生、分組與追蹤狀態")
         root.addView(classContextCard())
@@ -1550,6 +1585,13 @@ class MainActivity : Activity() {
     }
 
     private fun renderMentorScript() {
+        if (!UserFlowContract.canUseVolunteerTool(role, Screen.MentorScript)) {
+            renderRoleBoundary(
+                title = "這是志工陪伴工具",
+                message = "老師端負責判斷、回覆與派工；陪伴腳本只放在志工端，避免老師工作台混入陪練流程。"
+            )
+            return
+        }
         screen = Screen.MentorScript
         shell("志工陪伴腳本", "降低志工準備成本，也避免學生被再次打擊")
         root.addView(card("開場 30 秒", "先肯定：你願意回來做修復任務已經很好。今天我們只看一個規則，不看整章。", ColorToken.SuccessSoft))
@@ -1574,6 +1616,13 @@ class MainActivity : Activity() {
     }
 
     private fun renderWeeklyReport() {
+        if (!UserFlowContract.canUseTeacherTool(role, Screen.Report)) {
+            renderRoleBoundary(
+                title = "報告由老師端查看",
+                message = "志工端只需要看到接力任務與必要學生背景；班級報告、週報與匯出功能保留在老師端。"
+            )
+            return
+        }
         screen = Screen.Report
         shell("本週學習週報", "用進步證據取代排名壓力")
         refreshOfflineSyncState()
@@ -1752,6 +1801,14 @@ class MainActivity : Activity() {
         root.addView(ui.label(title, 28, ColorToken.Ink, true).apply { setPadding(0, ui.dp(8), 0, ui.dp(4)) })
         root.addView(ui.body(subtitle, ColorToken.Muted))
         root.addView(ui.space(16))
+    }
+
+    private fun renderRoleBoundary(title: String, message: String) {
+        screen = Screen.Home
+        shell(title, "已為你保留正確工作台")
+        root.addView(card("你現在使用的是${UserFlowContract.roleTitle(role)}", message, ColorToken.WarningSoft))
+        root.addView(ui.primaryButton("回到我的工作台") { renderHome() })
+        bottomNav()
     }
 
     private fun hero(title: String, text: String) {

@@ -33,6 +33,35 @@ object UserFlowContract {
 
     fun isTeacherRole(role: Role): Boolean = normalizedRole(role) == Role.Teacher
 
+    fun canUseTeacherTool(role: Role, screen: Screen): Boolean {
+        if (!isTeacherRole(role)) return false
+        return screen == Screen.Report ||
+            screen == Screen.QuestionBank ||
+            screen == Screen.StudentManager
+    }
+
+    fun canUseVolunteerTool(role: Role, screen: Screen): Boolean {
+        if (normalizedRole(role) != Role.Volunteer) return false
+        return screen == Screen.MentorScript ||
+            screen == Screen.SyncCenter
+    }
+
+    fun rosterSubtitle(role: Role): String {
+        return when (normalizedRole(role)) {
+            Role.Teacher -> "讓老師先看見誰需要追蹤"
+            Role.Volunteer -> "只看必要背景，先知道今天怎麼陪"
+            else -> "查看自己的學習與支持狀態"
+        }
+    }
+
+    fun studentDetailActionTitle(role: Role): String {
+        return when (normalizedRole(role)) {
+            Role.Teacher -> "老師下一步"
+            Role.Volunteer -> "志工下一步"
+            else -> "下一步"
+        }
+    }
+
     fun roleTitle(role: Role): String {
         return when (normalizedRole(role)) {
             Role.Student -> "學生端"

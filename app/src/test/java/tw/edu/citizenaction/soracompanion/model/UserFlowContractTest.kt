@@ -75,4 +75,26 @@ class UserFlowContractTest {
         assertTrue(UserFlowContract.questionTypes.contains("閱讀理解"))
         assertTrue(UserFlowContract.questionTypes.contains("翻譯/句子重組"))
     }
+
+    @Test
+    fun teacherAndVolunteerToolsDoNotCrossRoleBoundaries() {
+        assertTrue(UserFlowContract.canUseTeacherTool(Role.Teacher, Screen.Report))
+        assertTrue(UserFlowContract.canUseTeacherTool(Role.Teacher, Screen.QuestionBank))
+        assertFalse(UserFlowContract.canUseTeacherTool(Role.Volunteer, Screen.Report))
+        assertFalse(UserFlowContract.canUseTeacherTool(Role.Volunteer, Screen.QuestionBank))
+        assertFalse(UserFlowContract.canUseTeacherTool(Role.Student, Screen.Report))
+
+        assertTrue(UserFlowContract.canUseVolunteerTool(Role.Volunteer, Screen.MentorScript))
+        assertTrue(UserFlowContract.canUseVolunteerTool(Role.Mentor, Screen.MentorScript))
+        assertFalse(UserFlowContract.canUseVolunteerTool(Role.Teacher, Screen.MentorScript))
+        assertFalse(UserFlowContract.canUseVolunteerTool(Role.Student, Screen.MentorScript))
+    }
+
+    @Test
+    fun staffCopyChangesByTeacherOrVolunteerRole() {
+        assertEquals("讓老師先看見誰需要追蹤", UserFlowContract.rosterSubtitle(Role.Teacher))
+        assertEquals("只看必要背景，先知道今天怎麼陪", UserFlowContract.rosterSubtitle(Role.Volunteer))
+        assertEquals("老師下一步", UserFlowContract.studentDetailActionTitle(Role.Teacher))
+        assertEquals("志工下一步", UserFlowContract.studentDetailActionTitle(Role.Volunteer))
+    }
 }
