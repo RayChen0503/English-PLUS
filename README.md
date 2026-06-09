@@ -37,6 +37,8 @@ Do not reset to these tags unless a rollback is explicitly requested. The curren
 - Product principles, OPPM checks, and in-app design system.
 - Design-system contracts for bottom navigation, button hierarchy, card layout, copy fit, and success/loading/empty/error states.
 - Privacy and data-governance contracts for sensitive emotional-support data, data export/deletion requests, no public ranking, API-key guardrails, and Firebase security-rule requirements.
+- Full QA matrix for student happy path, free practice, student support, teacher path, and volunteer path.
+- Internal-test readiness checklist for APK/AAB artifacts, Play Console setup, screenshots, and external credential gaps.
 - JVM unit tests for repository data and core model invariants.
 
 ## Prototype Limits
@@ -61,13 +63,25 @@ Command-line verification:
 ```powershell
 $env:JAVA_HOME='C:\Program Files\Android\Android Studio\jbr'
 $env:PATH="$env:JAVA_HOME\bin;$env:PATH"
-.\gradlew.bat :app:testDebugUnitTest :app:assembleDebug --console=plain
+.\gradlew.bat test --rerun-tasks --console=plain
+.\gradlew.bat assembleDebug --console=plain
+.\gradlew.bat lintDebug --console=plain
 ```
 
-Debug APK output:
+Build artifact commands:
+
+```powershell
+.\gradlew.bat :app:assembleDebug --console=plain
+.\gradlew.bat :app:assembleRelease --console=plain
+.\gradlew.bat :app:bundleRelease --console=plain
+```
+
+Artifact outputs:
 
 ```text
-app/build/outputs/apk/debug/app-debug.apk
+Debug APK: app/build/outputs/apk/debug/app-debug.apk
+Unsigned release APK: app/build/outputs/apk/release/app-release-unsigned.apk
+Release AAB: app/build/outputs/bundle/release/app-release.aab
 ```
 
 ## Release Preparation Notes
@@ -81,6 +95,8 @@ The project now has a release build type and a placeholder `proguard-rules.pro`,
 - Privacy policy URL.
 - Data Safety answers.
 - Closed/internal testing.
+
+The current internal-test and screenshot plan is documented in `docs/round-14-15-full-qa-internal-test-readiness.md`.
 
 ## Project Structure
 

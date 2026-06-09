@@ -209,17 +209,17 @@ Only run the reset command when the user explicitly asks to roll back.
 **Files:**
 - Modify tests and QA docs
 
-- [ ] Run student happy path, free-practice path, support path, teacher path, and volunteer path.
-- [ ] Capture issues and fix all high-impact ones found.
-- [ ] Run full Gradle verification.
-- [ ] Confirm GitHub status is clean after push.
+- [x] Run student happy path, free-practice path, support path, teacher path, and volunteer path.
+- [x] Capture issues and fix all high-impact ones found.
+- [x] Run full Gradle verification.
+- [x] Confirm GitHub status is clean after push.
 
 ## Round 15: Store/Internal-Test Readiness
 
 **Files:**
 - Modify: README, release docs, Gradle release metadata if needed
 
-- [ ] Prepare AAB/APK instructions.
-- [ ] Prepare Play Console internal-test checklist.
-- [ ] Prepare app description, privacy copy, and screenshot plan.
-- [ ] Confirm what still needs external credentials or accounts.
+- [x] Prepare AAB/APK instructions.
+- [x] Prepare Play Console internal-test checklist.
+- [x] Prepare app description, privacy copy, and screenshot plan.
+- [x] Confirm what still needs external credentials or accounts.

@@ -24,6 +24,43 @@ data class ClassroomPilotGate(
     val blockers: List<String>
 )
 
+enum class BuildArtifactKind {
+    DebugApk,
+    ReleaseApk,
+    ReleaseAab
+}
+
+data class BuildArtifactInstruction(
+    val kind: BuildArtifactKind,
+    val gradleTask: String,
+    val outputPath: String,
+    val whenToUse: String
+)
+
+data class PlayConsoleInternalTestChecklist(
+    val requiredItems: List<String>,
+    val readyForPublicLaunch: Boolean
+)
+
+data class ScreenshotGroup(
+    val role: String,
+    val requiredScreens: List<String>,
+    val videoScenario: String
+)
+
+data class ScreenshotPlan(
+    val groups: List<ScreenshotGroup>,
+    val namingRule: String
+)
+
+data class ExternalCredentialGap(
+    val id: String,
+    val label: String,
+    val owner: String,
+    val reason: String,
+    val requiredForPublicLaunch: Boolean
+)
+
 object StoreReleaseContract {
     const val STORE_RELEASE_SCHEMA_VERSION = 9
 
@@ -77,5 +114,134 @@ object StoreReleaseContract {
             if (!testDeviceReady) add("test device")
         }
         return ClassroomPilotGate(blockers.isEmpty(), blockers)
+    }
+
+    fun buildArtifactInstructions(): List<BuildArtifactInstruction> {
+        return listOf(
+            BuildArtifactInstruction(
+                kind = BuildArtifactKind.DebugApk,
+                gradleTask = ":app:assembleDebug",
+                outputPath = "app/build/outputs/apk/debug/app-debug.apk",
+                whenToUse = "Use for classroom demos, emulator runs, and internal screenshots before signing."
+            ),
+            BuildArtifactInstruction(
+                kind = BuildArtifactKind.ReleaseApk,
+                gradleTask = ":app:assembleRelease",
+                outputPath = "app/build/outputs/apk/release/app-release-unsigned.apk",
+                whenToUse = "Use only to verify release build configuration; not enough for Play Store upload."
+            ),
+            BuildArtifactInstruction(
+                kind = BuildArtifactKind.ReleaseAab,
+                gradleTask = ":app:bundleRelease",
+                outputPath = "app/build/outputs/bundle/release/app-release.aab",
+                whenToUse = "Use for Play Console internal testing after signing and release credentials are ready."
+            )
+        )
+    }
+
+    fun playConsoleInternalTestChecklist(): PlayConsoleInternalTestChecklist {
+        return PlayConsoleInternalTestChecklist(
+            requiredItems = listOf(
+                "signed Android App Bundle",
+                "internal tester email list",
+                "privacy policy URL",
+                "Data Safety draft",
+                "app description",
+                "student/teacher/volunteer screenshots",
+                "release notes",
+                "contact email"
+            ),
+            readyForPublicLaunch = false
+        )
+    }
+
+    fun screenshotPlan(): ScreenshotPlan {
+        return ScreenshotPlan(
+            groups = listOf(
+                ScreenshotGroup(
+                    role = "student",
+                    requiredScreens = listOf(
+                        "role choice and student login",
+                        "check-in",
+                        "daily mission",
+                        "practice answer feedback",
+                        "support thread",
+                        "learning map"
+                    ),
+                    videoScenario = "Student completes check-in, finishes the assigned mission, asks for support, and returns to optional practice."
+                ),
+                ScreenshotGroup(
+                    role = "teacher",
+                    requiredScreens = listOf(
+                        "teacher home",
+                        "student roster",
+                        "student detail",
+                        "reply composer",
+                        "question bank",
+                        "class report"
+                    ),
+                    videoScenario = "Teacher identifies the priority student, reviews evidence, replies, and opens the class report."
+                ),
+                ScreenshotGroup(
+                    role = "volunteer",
+                    requiredScreens = listOf(
+                        "volunteer home",
+                        "handoff queue",
+                        "student handoff detail",
+                        "mentor script",
+                        "sync status"
+                    ),
+                    videoScenario = "Volunteer reviews one request, follows the script, leaves an internal handoff note, and returns to queue."
+                )
+            ),
+            namingRule = "Use role_screen_sequence, for example student_03_daily_mission.png and teacher_02_roster.mp4."
+        )
+    }
+
+    fun externalCredentialGaps(): List<ExternalCredentialGap> {
+        return listOf(
+            ExternalCredentialGap(
+                id = "firebase-auth",
+                label = "Firebase Auth or school account integration",
+                owner = "user-or-school",
+                reason = "Real login needs a Firebase project or school identity provider, OAuth settings, and role claims.",
+                requiredForPublicLaunch = true
+            ),
+            ExternalCredentialGap(
+                id = "google-services-json",
+                label = "google-services.json",
+                owner = "user-or-school",
+                reason = "Android Firebase clients require the project-specific configuration file.",
+                requiredForPublicLaunch = true
+            ),
+            ExternalCredentialGap(
+                id = "ai-proxy",
+                label = "Secure AI backend proxy",
+                owner = "user-or-school",
+                reason = "Production AI calls need a server-held key and HTTPS endpoint, not a mobile-held secret.",
+                requiredForPublicLaunch = true
+            ),
+            ExternalCredentialGap(
+                id = "release-keystore",
+                label = "Release signing keystore",
+                owner = "user",
+                reason = "Play Console upload requires a signed Android App Bundle.",
+                requiredForPublicLaunch = true
+            ),
+            ExternalCredentialGap(
+                id = "privacy-policy-url",
+                label = "Public privacy policy URL",
+                owner = "user-or-school",
+                reason = "Play Console Data Safety and public launch require a reachable privacy policy page.",
+                requiredForPublicLaunch = true
+            ),
+            ExternalCredentialGap(
+                id = "final-question-bank-license",
+                label = "Formal question bank license and content source",
+                owner = "user-or-school",
+                reason = "Public use needs verified content rights and a content-management owner.",
+                requiredForPublicLaunch = true
+            )
+        )
     }
 }

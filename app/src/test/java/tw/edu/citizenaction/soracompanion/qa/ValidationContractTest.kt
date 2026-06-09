@@ -52,4 +52,45 @@ class ValidationContractTest {
         assertTrue(gate.readyForStore)
         assertEquals(emptyList<String>(), gate.blockers)
     }
+
+    @Test
+    fun fullQaMatrixCoversAllRequiredRolePathsFromEntryToExit() {
+        val matrix = ValidationContract.fullQaMatrix()
+        val flowIds = matrix.map { it.flowId }
+
+        assertEquals(
+            listOf("student-happy-path", "student-free-practice", "student-support-path", "teacher-path", "volunteer-path"),
+            flowIds
+        )
+        matrix.forEach { flow ->
+            assertTrue(flow.entryScreen.isNotBlank())
+            assertTrue(flow.exitEvidence.isNotBlank())
+            assertTrue(flow.steps.size >= 4)
+            assertFalse(flow.exposesInternalCopy)
+            assertFalse(flow.hasDuplicateBottomNav)
+            assertFalse(flow.hasRoleMixedActions)
+        }
+    }
+
+    @Test
+    fun fullQaAuditBlocksCompletionWhenHighImpactIssuesRemain() {
+        val issue = QaIssue("qa-1", "student-support-path", "High", "Support route loops back unexpectedly.", true)
+        val blocked = ValidationContract.fullQaCompletionGate(
+            flowsWalked = true,
+            highImpactIssues = listOf(issue),
+            fullGradleVerificationPassed = true,
+            githubCleanAfterPush = true
+        )
+        val ready = ValidationContract.fullQaCompletionGate(
+            flowsWalked = true,
+            highImpactIssues = emptyList(),
+            fullGradleVerificationPassed = true,
+            githubCleanAfterPush = true
+        )
+
+        assertFalse(blocked.ready)
+        assertTrue(blocked.blockers.contains("high-impact issues"))
+        assertTrue(ready.ready)
+        assertEquals(emptyList<String>(), ready.blockers)
+    }
 }

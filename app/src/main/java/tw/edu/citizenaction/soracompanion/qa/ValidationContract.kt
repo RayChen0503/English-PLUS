@@ -17,6 +17,30 @@ data class ReleaseReadinessGate(
     val blockers: List<String>
 )
 
+data class FullQaFlow(
+    val flowId: String,
+    val role: String,
+    val entryScreen: String,
+    val steps: List<String>,
+    val exitEvidence: String,
+    val exposesInternalCopy: Boolean,
+    val hasDuplicateBottomNav: Boolean,
+    val hasRoleMixedActions: Boolean
+)
+
+data class QaIssue(
+    val issueId: String,
+    val flowId: String,
+    val severity: String,
+    val description: String,
+    val requiresFixBeforePilot: Boolean
+)
+
+data class FullQaGate(
+    val ready: Boolean,
+    val blockers: List<String>
+)
+
 object ValidationContract {
     const val VALIDATION_SCHEMA_VERSION = 8
 
@@ -69,5 +93,108 @@ object ValidationContract {
             readyForStore = blockers.isEmpty(),
             blockers = blockers
         )
+    }
+
+    fun fullQaMatrix(): List<FullQaFlow> {
+        return listOf(
+            FullQaFlow(
+                flowId = "student-happy-path",
+                role = "student",
+                entryScreen = "Role choice / student login",
+                steps = listOf(
+                    "Choose student track",
+                    "Complete four-question check-in",
+                    "Review today's mission",
+                    "Answer assigned practice items",
+                    "See mission completion encouragement"
+                ),
+                exitEvidence = "Student can tell today's task is complete and can continue optional practice.",
+                exposesInternalCopy = false,
+                hasDuplicateBottomNav = false,
+                hasRoleMixedActions = false
+            ),
+            FullQaFlow(
+                flowId = "student-free-practice",
+                role = "student",
+                entryScreen = "Student home / practice center",
+                steps = listOf(
+                    "Skip daily mission path",
+                    "Open practice center",
+                    "Choose level or question type",
+                    "Answer one item",
+                    "Return to support or map without being forced into check-in"
+                ),
+                exitEvidence = "Free practice remains optional and does not display daily-mission progress.",
+                exposesInternalCopy = false,
+                hasDuplicateBottomNav = false,
+                hasRoleMixedActions = false
+            ),
+            FullQaFlow(
+                flowId = "student-support-path",
+                role = "student",
+                entryScreen = "Student support center",
+                steps = listOf(
+                    "Open support center",
+                    "Choose a low-pressure help reason",
+                    "Send help request",
+                    "View teacher reply thread",
+                    "Return to one small practice item"
+                ),
+                exitEvidence = "Student sees support as a next step, not a staff-only workflow.",
+                exposesInternalCopy = false,
+                hasDuplicateBottomNav = false,
+                hasRoleMixedActions = false
+            ),
+            FullQaFlow(
+                flowId = "teacher-path",
+                role = "teacher",
+                entryScreen = "Teacher home",
+                steps = listOf(
+                    "Open class priority dashboard",
+                    "Review high-risk and pending help counts",
+                    "Open student detail",
+                    "Write or review reply",
+                    "Open report export"
+                ),
+                exitEvidence = "Teacher can identify the next student and action within one minute.",
+                exposesInternalCopy = false,
+                hasDuplicateBottomNav = false,
+                hasRoleMixedActions = false
+            ),
+            FullQaFlow(
+                flowId = "volunteer-path",
+                role = "volunteer",
+                entryScreen = "Volunteer handoff home",
+                steps = listOf(
+                    "Open handoff queue",
+                    "Review one student request",
+                    "Read suggested script",
+                    "Leave internal handoff note",
+                    "Return to volunteer home"
+                ),
+                exitEvidence = "Volunteer sees only support and handoff work, not teacher admin tools.",
+                exposesInternalCopy = false,
+                hasDuplicateBottomNav = false,
+                hasRoleMixedActions = false
+            )
+        )
+    }
+
+    fun fullQaCompletionGate(
+        flowsWalked: Boolean,
+        highImpactIssues: List<QaIssue>,
+        fullGradleVerificationPassed: Boolean,
+        githubCleanAfterPush: Boolean
+    ): FullQaGate {
+        val unresolvedHighImpact = highImpactIssues.any {
+            it.requiresFixBeforePilot && it.severity.equals("High", ignoreCase = true)
+        }
+        val blockers = buildList {
+            if (!flowsWalked) add("required role flows")
+            if (unresolvedHighImpact) add("high-impact issues")
+            if (!fullGradleVerificationPassed) add("full Gradle verification")
+            if (!githubCleanAfterPush) add("GitHub clean status")
+        }
+        return FullQaGate(ready = blockers.isEmpty(), blockers = blockers)
     }
 }
