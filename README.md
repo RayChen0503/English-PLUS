@@ -33,8 +33,10 @@ Do not reset to these tags unless a rollback is explicitly requested. The curren
 - Question bank center with level, unit, skill, and source metadata.
 - Offline task packs and sync center.
 - Cloud backend client scaffolding for future sync and collaboration endpoints.
-- Weekly report and shareable demo report text.
+- Separate student, class, and pilot reports with text/HTML export boundaries that are ready for PDF, Word, and teacher-dashboard rendering.
 - Product principles, OPPM checks, and in-app design system.
+- Design-system contracts for bottom navigation, button hierarchy, card layout, copy fit, and success/loading/empty/error states.
+- Privacy and data-governance contracts for sensitive emotional-support data, data export/deletion requests, no public ranking, API-key guardrails, and Firebase security-rule requirements.
 - JVM unit tests for repository data and core model invariants.
 
 ## Prototype Limits
@@ -46,8 +48,8 @@ This is not a production release yet. The following areas still need formal impl
 - Real-time multi-device collaboration.
 - Production AI proxy with server-side OpenAI key storage.
 - Complete licensed question bank and content management workflow.
-- PDF / Word report export and teacher dashboard.
-- Privacy policy, data safety form, and student data governance.
+- Deployed PDF / Word rendering service or teacher dashboard using the prepared report boundaries.
+- Public privacy policy URL and final Play Data Safety answers.
 - Full Android UI tests, physical-device testing, and multi-screen QA.
 
 ## Build And Test

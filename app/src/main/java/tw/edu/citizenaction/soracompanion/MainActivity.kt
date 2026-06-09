@@ -66,6 +66,10 @@ import tw.edu.citizenaction.soracompanion.model.TeacherWorkspaceContract
 import tw.edu.citizenaction.soracompanion.model.UserFlowContract
 import tw.edu.citizenaction.soracompanion.model.VolunteerHandoffContract
 import tw.edu.citizenaction.soracompanion.model.WeeklySignal
+import tw.edu.citizenaction.soracompanion.qa.ReportContext
+import tw.edu.citizenaction.soracompanion.qa.ReportExportContract
+import tw.edu.citizenaction.soracompanion.qa.ReportKind
+import tw.edu.citizenaction.soracompanion.qa.PrivacyGovernanceContract
 import tw.edu.citizenaction.soracompanion.state.PrototypeStateStore
 import tw.edu.citizenaction.soracompanion.ui.UiKit
 import tw.edu.citizenaction.soracompanion.ui.UiKit.ColorToken
@@ -394,6 +398,7 @@ class MainActivity : Activity() {
         root.addView(card("限制條件", student.constraint, ColorToken.WarningSoft))
         root.addView(card("學習偏好", student.learningStyle, ColorToken.SuccessSoft))
         root.addView(card("支持需求", student.supportNeed, ColorToken.VioletSoft))
+        root.addView(card("我的資料權利", PrivacyGovernanceContract.dataRightsPolicy().studentFacingCopy, ColorToken.PrimarySoft))
         root.addView(ui.primaryButton("依照檔案產生今日任務") { renderTaskQueue() })
         bottomNav()
     }
@@ -474,7 +479,7 @@ class MainActivity : Activity() {
     private fun renderLearningContract() {
         screen = Screen.Contract
         shell("今日學習契約", "先約定任務邊界，再開始學習")
-        root.addView(card("為什麼需要契約？", "偏鄉學生常遇到時間零碎、挫折累積、求助成本高。學習契約讓學生知道今天只要做到哪裡，也讓老師知道平台不會用排行榜或大量題目壓迫學生。", ColorToken.PrimarySoft))
+        root.addView(card("為什麼需要契約？", "偏鄉學生常遇到時間零碎、挫折累積、求助成本高。學習契約讓學生知道今天只要做到哪裡，也讓老師知道平台不會用公開比較或大量題目壓迫學生。", ColorToken.PrimarySoft))
         learningContracts.forEach { root.addView(contractCard(it)) }
         root.addView(ui.primaryButton("我接受今天的低壓任務") { renderTaskQueue() })
         root.addView(ui.secondaryButton("先做心情檢測") { renderCheckIn() })
@@ -1783,93 +1788,54 @@ class MainActivity : Activity() {
     }
 
     private fun buildDemoReportText(): String {
+        return ReportExportContract.renderText(ReportKind.Class, buildReportContext())
+    }
+
+    private fun buildReportContext(): ReportContext {
         val snapshot = stateStore.storageSnapshot()
         val latestCollaboration = collaborationNotes.firstOrNull()?.note ?: "尚未建立真人接力紀錄。"
         val latestSync = offlineSyncItems.firstOrNull()?.let { "${it.title} / ${it.status}" } ?: "尚未建立同步佇列。"
-        return """
-            English+ 老師週報摘要
-
-            一、學生目前狀態
-            English+ 先觀察學生今天的情緒、時間與作答狀況，再安排低壓英文任務。重點不是排名，而是看見學生在哪裡卡住、怎麼被接住。
-
-            二、本週學習資料
-            學生：${student.name} / ${student.location} / ${student.goal}
-            心情狀態：${mood.label}
-            今日任務時間：${minutes} 分鐘
-            微任務完成：${completedTasks} 個
-            信心值：${confidence}%
-            錯題修復：${repairedMistakeCount} 筆
-            學習事件：${snapshot.eventCount} 筆
-            協作紀錄：${snapshot.collaborationCount} 筆
-            待補傳同步：${snapshot.pendingSyncCount} 筆
-            已下載離線包：${snapshot.downloadedPackCount} 包
-
-            三、情緒斷點處理
-            目前主要斷點：${breakpoints.first().title}
-            斷點證據：${breakpoints.first().evidence}
-            AI 已做處理：${breakpoints.first().aiAction}
-            真人接力建議：${breakpoints.first().mentorAction}
-
-            四、最新接力與同步
-            最新協作：$latestCollaboration
-            最新同步項目：$latestSync
-
-            五、建議下一步
-            1. 若學生已主動求助，請先回覆一段能被學生看懂的短回饋。
-            2. 若學生連續錯題，請只陪練同一概念兩題，不追加新作業。
-            3. 若學生完成今日任務，可以鼓勵他保留節奏，不需要立刻加量。
-        """.trimIndent()
+        return ReportContext(
+            studentName = student.name,
+            classCode = currentAccount().classCode,
+            moodLabel = mood.label,
+            missionProgress = "${dailyQuestionDone.coerceAtLeast(0)}/${dailyQuestionGoal.coerceAtLeast(1)}",
+            supportSummary = "學習事件 ${snapshot.eventCount} 筆，協作紀錄 ${snapshot.collaborationCount} 筆。最新協作：$latestCollaboration",
+            handoffSummary = "主要斷點：${breakpoints.first().title}；真人接力建議：${breakpoints.first().mentorAction}",
+            syncSummary = "$latestSync；待補傳 ${snapshot.pendingSyncCount} 筆，已下載離線包 ${snapshot.downloadedPackCount} 包。",
+            generatedAtLabel = "本週"
+        )
     }
 
     private fun writeDemoReport(reportText: String): File {
         val targetDir = getExternalFilesDir(null) ?: filesDir
-        val file = File(targetDir, "english_plus_teacher_report.txt")
-        file.writeText(reportText, Charsets.UTF_8)
-        writeDemoReportHtml(reportText)
-        recordLearningEvent("report_export", "已匯出老師週報", file.absolutePath)
-        addOfflineSyncItem("老師週報匯出", "報告資料", "已產生 english_plus_teacher_report.txt，可分享給老師。")
-        return file
+        val pack = ReportExportContract.exportPackage(ReportKind.Class, buildReportContext())
+        var textFile: File? = null
+        pack.files.forEach { boundary ->
+            val file = File(targetDir, boundary.fileName)
+            file.writeText(boundary.content, Charsets.UTF_8)
+            if (boundary.mimeType.startsWith("text/plain")) {
+                textFile = file
+            }
+        }
+        val exportedTextFile = textFile ?: File(targetDir, "english_plus_class_report.txt").apply {
+            writeText(reportText, Charsets.UTF_8)
+        }
+        recordLearningEvent("report_export", "已匯出班級支持週報", exportedTextFile.absolutePath)
+        addOfflineSyncItem("班級支持週報匯出", "報告資料", "已產生 English+ 班級支持週報，可分享給老師。")
+        return exportedTextFile
     }
 
     private fun writeDemoReportHtml(reportText: String): File {
         val targetDir = getExternalFilesDir(null) ?: filesDir
-        val file = File(targetDir, "english_plus_teacher_report.html")
-        file.writeText(buildDemoReportHtml(reportText), Charsets.UTF_8)
+        val file = File(targetDir, "english_plus_class_report.html")
+        file.writeText(ReportExportContract.renderHtml("English+ 班級支持週報", buildReportContext(), reportText), Charsets.UTF_8)
         recordLearningEvent("report_export_html", "已匯出 HTML 老師報告", file.absolutePath)
         return file
     }
 
     private fun buildDemoReportHtml(reportText: String): String {
-        val escaped = reportText
-            .replace("&", "&amp;")
-            .replace("<", "&lt;")
-            .replace(">", "&gt;")
-        return """
-            <!doctype html>
-            <html lang="zh-Hant">
-            <head>
-              <meta charset="utf-8">
-              <meta name="viewport" content="width=device-width, initial-scale=1">
-              <title>English+ Teacher Report</title>
-              <style>
-                body { font-family: sans-serif; margin: 32px; color: #102033; line-height: 1.65; }
-                header { border-bottom: 3px solid #246BFD; margin-bottom: 24px; padding-bottom: 16px; }
-                h1 { margin: 0 0 8px; font-size: 28px; }
-                .meta { color: #64748b; font-size: 14px; }
-                pre { white-space: pre-wrap; background: #f8fafc; border: 1px solid #dbe3ef; border-radius: 12px; padding: 18px; }
-                .note { margin-top: 18px; color: #475569; font-size: 13px; }
-              </style>
-            </head>
-            <body>
-              <header>
-                <h1>English+ 老師週報</h1>
-                <div class="meta">學生：${student.name}｜班級：${currentAccount().classCode}</div>
-              </header>
-              <pre>$escaped</pre>
-              <div class="note">此 HTML 可由瀏覽器列印成 PDF；正式版可改由後端產生 PDF、Word 與老師後台報表。</div>
-            </body>
-            </html>
-        """.trimIndent()
+        return ReportExportContract.renderHtml("English+ 班級支持週報", buildReportContext(), reportText)
     }
 
     private fun shareTeacherReport(reportText: String) {

@@ -27,8 +27,56 @@ data class ScreenDensityPolicy(
     val copyRule: String
 )
 
+data class NavigationPolicy(
+    val maxBottomBarsPerScreen: Int,
+    val maxDestinations: Int
+) {
+    fun isValidBottomBarCount(count: Int): Boolean = count == maxBottomBarsPerScreen
+
+    fun isValidDestinationCount(count: Int): Boolean = count in 1..maxDestinations
+}
+
+data class ActionHierarchyPolicy(
+    val maxPrimaryActionsPerScreen: Int,
+    val maxSecondaryActionsPerScreen: Int
+) {
+    fun isValid(primaryActions: Int, secondaryActions: Int): Boolean {
+        return primaryActions in 0..maxPrimaryActionsPerScreen &&
+            secondaryActions in 0..maxSecondaryActionsPerScreen
+    }
+}
+
+data class CardLayoutPolicy(
+    val internalPaddingDp: Int,
+    val verticalGapDp: Int,
+    val radiusDp: Int,
+    val maxBodyLineChars: Int
+)
+
+data class CopyFitPolicy(
+    val maxNavLabelChars: Int,
+    val maxStatusPillChars: Int,
+    val maxButtonChars: Int
+) {
+    fun fitsNavLabel(label: String): Boolean = label.length <= maxNavLabelChars
+}
+
+enum class UiState {
+    Success,
+    Loading,
+    Empty,
+    Error
+}
+
+data class StateVisualPolicy(
+    val tokens: Map<UiState, String>,
+    val messages: Map<UiState, String>
+) {
+    fun messageFor(state: UiState): String = messages.getValue(state)
+}
+
 object DesignSystemContract {
-    const val DESIGN_SYSTEM_VERSION = 7
+    const val DESIGN_SYSTEM_VERSION = 12
 
     fun colorTokens(): Map<String, String> {
         return linkedMapOf(
@@ -82,6 +130,55 @@ object DesignSystemContract {
                 copyRule = "scan-friendly evidence and follow-up status"
             )
         }
+    }
+
+    fun navigationPolicy(): NavigationPolicy {
+        return NavigationPolicy(
+            maxBottomBarsPerScreen = 1,
+            maxDestinations = 5
+        )
+    }
+
+    fun actionHierarchyPolicy(): ActionHierarchyPolicy {
+        return ActionHierarchyPolicy(
+            maxPrimaryActionsPerScreen = 1,
+            maxSecondaryActionsPerScreen = 3
+        )
+    }
+
+    fun cardLayoutPolicy(): CardLayoutPolicy {
+        val rules = componentRules()
+        return CardLayoutPolicy(
+            internalPaddingDp = rules.cardPaddingDp,
+            verticalGapDp = 12,
+            radiusDp = rules.cardRadiusDp,
+            maxBodyLineChars = 64
+        )
+    }
+
+    fun copyFitPolicy(): CopyFitPolicy {
+        return CopyFitPolicy(
+            maxNavLabelChars = 4,
+            maxStatusPillChars = 8,
+            maxButtonChars = 16
+        )
+    }
+
+    fun stateVisualPolicy(): StateVisualPolicy {
+        return StateVisualPolicy(
+            tokens = linkedMapOf(
+                UiState.Success to UiKit.ColorToken.SuccessSoft,
+                UiState.Loading to UiKit.ColorToken.PrimarySoft,
+                UiState.Empty to UiKit.ColorToken.VioletSoft,
+                UiState.Error to UiKit.ColorToken.WarningSoft
+            ),
+            messages = linkedMapOf(
+                UiState.Success to "已完成，下一步可以繼續。",
+                UiState.Loading to "正在整理資料，請稍候。",
+                UiState.Empty to "還沒有資料，先完成一個小步驟。",
+                UiState.Error to "暫時無法完成，請稍後再試。"
+            )
+        )
     }
 
     fun isEightPointSpacing(valueDp: Int): Boolean {

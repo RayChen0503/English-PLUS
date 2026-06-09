@@ -48,4 +48,50 @@ class DesignSystemContractTest {
         assertEquals("evidence, owner, next action", teacher.primaryActionRule)
         assertTrue(student.maxCardsPerScreen < teacher.maxCardsPerScreen)
     }
+
+    @Test
+    fun navigationPolicyPreventsDuplicateBottomBarsAndOvercrowdedTabs() {
+        val policy = DesignSystemContract.navigationPolicy()
+
+        assertEquals(1, policy.maxBottomBarsPerScreen)
+        assertEquals(5, policy.maxDestinations)
+        assertTrue(policy.isValidBottomBarCount(1))
+        assertFalse(policy.isValidBottomBarCount(2))
+        assertTrue(policy.isValidDestinationCount(5))
+        assertFalse(policy.isValidDestinationCount(6))
+    }
+
+    @Test
+    fun actionHierarchyAllowsOnlyOnePrimaryActionPerFocusedScreen() {
+        val hierarchy = DesignSystemContract.actionHierarchyPolicy()
+
+        assertEquals(1, hierarchy.maxPrimaryActionsPerScreen)
+        assertTrue(hierarchy.isValid(primaryActions = 1, secondaryActions = 2))
+        assertFalse(hierarchy.isValid(primaryActions = 2, secondaryActions = 1))
+        assertFalse(hierarchy.isValid(primaryActions = 1, secondaryActions = 5))
+    }
+
+    @Test
+    fun cardAndCopyPoliciesProtectSmallScreensFromOverflow() {
+        val card = DesignSystemContract.cardLayoutPolicy()
+        val copy = DesignSystemContract.copyFitPolicy()
+
+        assertTrue(DesignSystemContract.isEightPointSpacing(card.verticalGapDp))
+        assertTrue(DesignSystemContract.isEightPointSpacing(card.internalPaddingDp))
+        assertEquals(8, card.radiusDp)
+        assertTrue(copy.maxNavLabelChars <= 4)
+        assertTrue(copy.fitsNavLabel("今日"))
+        assertFalse(copy.fitsNavLabel("完整學習報告"))
+    }
+
+    @Test
+    fun stateVisualPolicyDefinesConsistentSuccessLoadingEmptyAndErrorStates() {
+        val policy = DesignSystemContract.stateVisualPolicy()
+
+        assertEquals(setOf(UiState.Success, UiState.Loading, UiState.Empty, UiState.Error), policy.tokens.keys)
+        assertEquals(4, policy.tokens.values.toSet().size)
+        assertTrue(policy.messageFor(UiState.Success).contains("完成"))
+        assertTrue(policy.messageFor(UiState.Empty).contains("還沒有"))
+        assertTrue(policy.messageFor(UiState.Error).contains("再試"))
+    }
 }

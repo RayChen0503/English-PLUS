@@ -175,9 +175,9 @@ Only run the reset command when the user explicitly asks to roll back.
 - Modify: report/export contracts
 - Test: report/export tests
 
-- [ ] Student report, class report, and pilot report are separate.
-- [ ] Exported text is polished and does not include internal prototype labels.
-- [ ] PDF/Word-ready content boundaries are prepared even if final renderer stays local.
+- [x] Student report, class report, and pilot report are separate.
+- [x] Exported text is polished and does not include internal prototype labels.
+- [x] PDF/Word-ready content boundaries are prepared even if final renderer stays local.
 
 ## Round 12: Design System Hardening
 
@@ -186,11 +186,11 @@ Only run the reset command when the user explicitly asks to roll back.
 - Modify: shared button/card/bottom-nav rendering
 - Test: model-level layout rules where possible
 
-- [ ] One bottom navigation bar per screen.
-- [ ] Buttons have consistent hierarchy.
-- [ ] Cards use consistent spacing, border, color, and typography.
-- [ ] Mobile screens avoid text overflow on common emulator sizes.
-- [ ] Success, loading, empty, and error states are visually consistent.
+- [x] One bottom navigation bar per screen.
+- [x] Buttons have consistent hierarchy.
+- [x] Cards use consistent spacing, border, color, and typography.
+- [x] Mobile screens avoid text overflow on common emulator sizes.
+- [x] Success, loading, empty, and error states are visually consistent.
 
 ## Round 13: Safety, Privacy, And Data Governance
 
@@ -198,11 +198,11 @@ Only run the reset command when the user explicitly asks to roll back.
 - Modify: docs, auth/cloud contracts, report text
 - Test: privacy/safety guardrail tests
 
-- [ ] Student emotional-support data is treated as sensitive.
-- [ ] No public ranking language is shown.
-- [ ] Data deletion/export policy copy is prepared.
-- [ ] API keys are not committed.
-- [ ] Firebase/security rules requirements are documented.
+- [x] Student emotional-support data is treated as sensitive.
+- [x] No public ranking language is shown.
+- [x] Data deletion/export policy copy is prepared.
+- [x] API keys are not committed.
+- [x] Firebase/security rules requirements are documented.
 
 ## Round 14: Full QA
 
