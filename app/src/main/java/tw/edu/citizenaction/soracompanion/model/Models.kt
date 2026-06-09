@@ -1,8 +1,8 @@
 package tw.edu.citizenaction.soracompanion.model
 
-enum class Role { Student, Mentor }
+enum class Role { Student, Teacher, Volunteer, Mentor }
 
-enum class Screen { Home, CheckIn, Lesson, AiCoach, Breakpoints, Handoff, Map, Roster, Mentor, Report, Profile, Journey, Intervention, HelpRequest, StudentDetail, Contract, Reflection, ActionQueue, Account, StudentManager, AiLab, SyncCenter, QuestionBank, DesignSystem }
+enum class Screen { Home, CheckIn, Lesson, AiCoach, Breakpoints, Handoff, Map, Roster, Mentor, MentorScript, Report, Profile, Journey, Intervention, HelpRequest, StudentDetail, Contract, Reflection, ActionQueue, Account, StudentManager, AiLab, SyncCenter, QuestionBank, DesignSystem }
 
 enum class Mood(
     val label: String,

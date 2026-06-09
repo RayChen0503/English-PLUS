@@ -1,5 +1,7 @@
 package tw.edu.citizenaction.soracompanion.model
 
+import tw.edu.citizenaction.soracompanion.auth.AuthContract
+
 enum class SupportTarget { AiCoach, HumanHandoff, ReadingBreakdown, Recovery }
 
 object UserFlowContract {
@@ -7,10 +9,36 @@ object UserFlowContract {
     val defaultPreferredQuestionTypes = setOf("選擇題", "填空題")
 
     fun bottomNavLabels(role: Role): List<String> {
-        return if (role == Role.Student) {
-            listOf("首頁", "練習", "支持", "地圖", "檔案")
-        } else {
-            listOf("今日", "學生", "接力", "同步", "報告")
+        return when (normalizedRole(role)) {
+            Role.Student -> listOf("首頁", "練習", "支持", "地圖", "檔案")
+            Role.Teacher -> listOf("今日", "學生", "接力", "題庫", "報告")
+            Role.Volunteer -> listOf("今日", "接力", "學生", "同步", "腳本")
+            Role.Mentor -> listOf("今日", "接力", "學生", "同步", "腳本")
+        }
+    }
+
+    fun roleForAuthLabel(roleLabel: String): Role {
+        return when (AuthContract.normalizeRole(roleLabel)) {
+            AuthContract.ROLE_TEACHER -> Role.Teacher
+            AuthContract.ROLE_VOLUNTEER -> Role.Volunteer
+            else -> Role.Student
+        }
+    }
+
+    fun normalizedRole(role: Role): Role {
+        return if (role == Role.Mentor) Role.Volunteer else role
+    }
+
+    fun isStaffRole(role: Role): Boolean = normalizedRole(role) != Role.Student
+
+    fun isTeacherRole(role: Role): Boolean = normalizedRole(role) == Role.Teacher
+
+    fun roleTitle(role: Role): String {
+        return when (normalizedRole(role)) {
+            Role.Student -> "學生端"
+            Role.Teacher -> "老師端"
+            Role.Volunteer -> "志工端"
+            Role.Mentor -> "志工端"
         }
     }
 

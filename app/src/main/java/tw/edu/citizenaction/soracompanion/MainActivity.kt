@@ -148,7 +148,7 @@ class MainActivity : Activity() {
         managedStudentCount = saved.managedStudentCount
         offlinePendingCount = saved.offlinePendingCount
         selectedAccountName = saved.selectedAccountName
-        role = if (AuthContract.isStudentRole(currentAccount().roleLabel)) Role.Student else Role.Mentor
+        role = UserFlowContract.roleForAuthLabel(currentAccount().roleLabel)
         mentorReplyCount = saved.mentorReplyCount
         learningEventCount = saved.learningEventCount
         repairedMistakeCount = saved.repairedMistakeCount
@@ -255,7 +255,7 @@ class MainActivity : Activity() {
 
     private fun selectAccount(account: LocalAccount) {
         selectedAccountName = account.displayName
-        role = if (AuthContract.isStudentRole(account.roleLabel)) Role.Student else Role.Mentor
+        role = UserFlowContract.roleForAuthLabel(account.roleLabel)
         stateStore.markAccountUsed(account.displayName)
         persistState()
         recordLearningEvent("account_login", "切換登入：${account.displayName}", "角色：${account.roleLabel}｜班級/群組：${account.classCode}")
@@ -266,7 +266,12 @@ class MainActivity : Activity() {
         shell("English+", "偏鄉學生雙軌學習平台")
         hero("先接住情緒，再修復英文斷點", "學生卡關時由 AI 即時拆小任務；真正需要人的地方，再把斷點摘要交給雲端志工或老師。")
         root.addView(roleSwitch())
-        if (role == Role.Student) studentHome() else mentorHome()
+        when (UserFlowContract.normalizedRole(role)) {
+            Role.Student -> studentHome()
+            Role.Teacher -> teacherHome()
+            Role.Volunteer -> volunteerHome()
+            Role.Mentor -> volunteerHome()
+        }
         bottomNav()
     }
 
@@ -312,28 +317,54 @@ class MainActivity : Activity() {
         root.addView(ui.secondaryButton("帳號與班級資料") { renderAccountCenter() })
     }
 
-    private fun mentorHome() {
-        section("老師/志工工作台")
+    private fun teacherHome() {
+        section("老師工作台")
         root.addView(classContextCard())
         root.addView(metricRow(
             Metric("待關懷", "2 位", ColorToken.Warning),
             Metric("高風險", "1 個", ColorToken.Danger),
-            Metric("可處理", "15 分鐘", ColorToken.Success)
+            Metric("題庫", "${questions.size} 題", ColorToken.Primary)
         ))
-        root.addView(flowStrip("AI 低風險", "摘要整理", "真人接力", "週報回饋"))
+        root.addView(flowStrip("班級訊號", "學生列表", "接力分派", "週報回饋"))
         root.addView(card("今日優先處理", "${student.name}｜${student.grade}｜${student.goal}\n最新訊號：${breakpoints[0].evidence}", ColorToken.WarningSoft))
         root.addView(ui.primaryButton("查看待辦處理佇列") { renderActionQueue() })
         root.addView(actionGrid(
-            ActionItem("學生列表", "看誰需要接力") { renderRoster() },
-            ActionItem("斷點摘要", "看 AI 已處理什麼") { renderBreakpoints() },
-            ActionItem("接力優先序", "安排誰先處理") { renderHandoffBoard() },
+            ActionItem("學生列表", "看誰需要追蹤") { renderRoster() },
+            ActionItem("題庫中心", "看分級與題型") { renderQuestionBank() },
+            ActionItem("接力優先序", "分派老師/志工") { renderHandoffBoard() },
             ActionItem("週報摘要", "看本週支持證據") { renderWeeklyReport() }
         ))
         root.addView(ui.secondaryButton("學生資料管理") { renderStudentManager() })
         section("本週訊號")
         weeklySignals.forEach { root.addView(signalCard(it)) }
-        root.addView(card("操作紀錄摘要", "已處理待辦：${actionDoneCount} 件\n志工回覆：${mentorReplyCount} 則\n新增任務：${customTaskCount} 個", ColorToken.Card))
+        root.addView(card("操作紀錄摘要", "已處理待辦：${actionDoneCount} 件\n接力回覆：${mentorReplyCount} 則\n新增任務：${customTaskCount} 個", ColorToken.Card))
         root.addView(ui.secondaryButton("查看週報與提案摘要") { renderWeeklyReport() })
+    }
+
+    private fun volunteerHome() {
+        val pendingRequests = pendingStudentHelpRequests()
+        section("志工接力工作台")
+        root.addView(classContextCard())
+        root.addView(metricRow(
+            Metric("待回覆", "${pendingRequests.size} 位", if (pendingRequests.isNotEmpty()) ColorToken.Warning else ColorToken.Success),
+            Metric("接力紀錄", "${collaborationNotes.size} 筆", ColorToken.Primary),
+            Metric("可處理", "15 分鐘", ColorToken.Success)
+        ))
+        root.addView(flowStrip("看卡點", "回覆學生", "陪練一題", "留下紀錄"))
+        if (pendingRequests.isEmpty()) {
+            root.addView(card("目前沒有待回覆學生", "可以先看陪伴腳本或同步最新協作紀錄。", ColorToken.SuccessSoft))
+        } else {
+            root.addView(card("下一位先接住", "${pendingRequests.first().target}\n${collaborationField(pendingRequests.first().note, "求助原因：").ifBlank { "學生主動求助" }}", ColorToken.WarningSoft))
+        }
+        root.addView(ui.primaryButton("查看學生求助佇列") { renderActionQueue() })
+        root.addView(actionGrid(
+            ActionItem("接力優先序", "先看誰最需要人") { renderHandoffBoard() },
+            ActionItem("陪伴腳本", "直接照腳本陪練") { renderMentorScript() },
+            ActionItem("學生摘要", "只看必要背景") { renderRoster() },
+            ActionItem("同步紀錄", "拉取最新接力") { renderSyncCenter() }
+        ))
+        section("陪伴原則")
+        root.addView(card("志工只做下一小步", "先肯定學生卡住的地方，再用同一概念陪練一題；不追加作業、不評比分數。", ColorToken.PrimarySoft))
     }
 
     private fun renderProfile() {
@@ -356,9 +387,14 @@ class MainActivity : Activity() {
         root.addView(remoteAuthStatusCard())
         root.addView(remoteAuthLoginCard())
         accountList().forEach { root.addView(accountCard(it)) }
-        root.addView(ui.secondaryButton("切換到老師/志工端") {
-            val teacher = accountList().firstOrNull { AuthContract.isStaffRole(it.roleLabel) } ?: account
+        root.addView(ui.secondaryButton("切換到老師端") {
+            val teacher = accountList().firstOrNull { AuthContract.normalizeRole(it.roleLabel) == AuthContract.ROLE_TEACHER } ?: account
             selectAccount(teacher)
+            renderHome()
+        })
+        root.addView(ui.secondaryButton("切換到志工端") {
+            val volunteer = accountList().firstOrNull { AuthContract.normalizeRole(it.roleLabel) == AuthContract.ROLE_VOLUNTEER } ?: account
+            selectAccount(volunteer)
             renderHome()
         })
         bottomNav()
@@ -393,7 +429,7 @@ class MainActivity : Activity() {
     private fun renderRemoteLoginSuccess(session: AuthSession) {
         stateStore.saveAuthSession(session)
         selectedAccountName = session.displayName
-        role = if (AuthContract.isStudentRole(session.roleLabel)) Role.Student else Role.Mentor
+        role = UserFlowContract.roleForAuthLabel(session.roleLabel)
         persistState()
         addOfflineSyncItem("雲端登入成功：${session.displayName}", "正式登入", "角色 ${session.roleLabel} / 班級 ${session.classCode}", "已同步")
         recordLearningEvent("remote_login", "雲端登入成功", "${session.displayName} / ${session.roleLabel} / ${session.classCode}")
@@ -413,7 +449,7 @@ class MainActivity : Activity() {
         bottomNav()
     }
 
-    private fun roleLabel(): String = if (role == Role.Student) "學生端" else "老師/志工端"
+    private fun roleLabel(): String = UserFlowContract.roleTitle(role)
 
     private fun renderLearningContract() {
         screen = Screen.Contract
@@ -499,7 +535,7 @@ class MainActivity : Activity() {
         ))
         root.addView(card(
             "產品一致性",
-            "學生端維持低壓與短任務；老師/志工端維持證據、接力、追蹤。任何新功能都要先判斷放在哪一軌，不混在同一張卡裡。",
+            "學生端維持低壓與短任務；老師端看班級與題庫，志工端看接力與陪伴。任何新功能都要先判斷放在哪一軌，不混在同一張卡裡。",
             ColorToken.VioletSoft
         ))
         root.addView(ui.primaryButton("回產品設計原則") { renderDesignPrinciples() })
@@ -840,7 +876,7 @@ class MainActivity : Activity() {
 
     private fun renderStudentHelpSent(reason: String) {
         screen = Screen.HelpRequest
-        shell("求助已送出", "老師/志工端會看到你的卡點")
+        shell("求助已送出", "老師與志工會看到你的卡點")
         root.addView(card("已送出", "求助原因：$reason\n我們已保留目前題目、心情與任務狀態。", ColorToken.SuccessSoft))
         studentHelpThreads(4).forEach { root.addView(studentHelpThreadCard(it)) }
         root.addView(ui.primaryButton("等回覆時先做一題低壓練習") {
@@ -1237,7 +1273,7 @@ class MainActivity : Activity() {
         root.addView(card("同步班級", currentAccount().classCode, ColorToken.Card))
         root.addView(card(
             "同步規則",
-            "協作紀錄會自動避免重複；同一筆接力在不同裝置更新時，保留較新的版本。學生端不能建立正式接力紀錄，老師/志工端可以寫入。",
+            "協作紀錄會自動避免重複；同一筆接力在不同裝置更新時，保留較新的版本。學生端不能建立正式接力紀錄，老師與志工可以寫入。",
             ColorToken.VioletSoft
         ))
         bottomNav()
@@ -1508,7 +1544,7 @@ class MainActivity : Activity() {
     }
 
     private fun renderMentorScript() {
-        screen = Screen.Mentor
+        screen = Screen.MentorScript
         shell("志工陪伴腳本", "降低志工準備成本，也避免學生被再次打擊")
         root.addView(card("開場 30 秒", "先肯定：你願意回來做修復任務已經很好。今天我們只看一個規則，不看整章。", ColorToken.SuccessSoft))
         root.addView(card("引導問題", "1. He 是一個人還是很多人？\n2. 一個人通常搭配 is 還是 are？\n3. 你可以自己造一句 He is 嗎？", ColorToken.PrimarySoft))
@@ -1524,8 +1560,8 @@ class MainActivity : Activity() {
             )
             renderMentorScript()
         })
-        root.addView(ui.primaryButton("回老師工作台") {
-            role = Role.Mentor
+        root.addView(ui.primaryButton("回志工工作台") {
+            role = Role.Volunteer
             renderHome()
         })
         bottomNav()
@@ -1744,9 +1780,14 @@ class MainActivity : Activity() {
             selectAccount(studentAccount)
             renderHome()
         })
-        row.addView(ui.chipButton("老師/志工端", role == Role.Mentor) {
-            val mentorAccount = accountList().firstOrNull { AuthContract.isStaffRole(it.roleLabel) } ?: currentAccount()
-            selectAccount(mentorAccount)
+        row.addView(ui.chipButton("老師端", UserFlowContract.normalizedRole(role) == Role.Teacher) {
+            val teacherAccount = accountList().firstOrNull { AuthContract.normalizeRole(it.roleLabel) == AuthContract.ROLE_TEACHER } ?: currentAccount()
+            selectAccount(teacherAccount)
+            renderHome()
+        })
+        row.addView(ui.chipButton("志工端", UserFlowContract.normalizedRole(role) == Role.Volunteer) {
+            val volunteerAccount = accountList().firstOrNull { AuthContract.normalizeRole(it.roleLabel) == AuthContract.ROLE_VOLUNTEER } ?: currentAccount()
+            selectAccount(volunteerAccount)
             renderHome()
         })
         return ui.margins(row, 0, 8, 0, 16)
@@ -1758,28 +1799,40 @@ class MainActivity : Activity() {
             orientation = LinearLayout.HORIZONTAL
             setPadding(ui.dp(8), ui.dp(8), ui.dp(8), ui.dp(8))
         }
-        if (role == Role.Student) {
+        when (UserFlowContract.normalizedRole(role)) {
+            Role.Student -> {
             nav.addView(navDestination("首", "首頁", screen == Screen.Home || screen == Screen.Account) { renderHome() }, ui.weightParams())
             nav.addView(navDestination("練", "練習", screen == Screen.Lesson || screen == Screen.AiCoach || screen == Screen.Contract || screen == Screen.Reflection || screen == Screen.QuestionBank) { renderTaskQueue() }, ui.weightParams())
             nav.addView(navDestination("助", "支持", screen == Screen.HelpRequest || screen == Screen.Handoff) { renderStudentSupportCenter() }, ui.weightParams())
             nav.addView(navDestination("圖", "地圖", screen == Screen.Map) { renderMap() }, ui.weightParams())
             nav.addView(navDestination("檔", "檔案", screen == Screen.Profile) { renderProfile() }, ui.weightParams())
-        } else {
+            }
+            Role.Teacher -> {
             nav.addView(navDestination("今", "今日", screen == Screen.Home || screen == Screen.Account) { renderHome() }, ui.weightParams())
             nav.addView(navDestination("生", "學生", screen == Screen.Roster || screen == Screen.StudentDetail || screen == Screen.StudentManager) { renderRoster() }, ui.weightParams())
             nav.addView(navDestination("接", "接力", screen == Screen.Breakpoints || screen == Screen.Handoff || screen == Screen.ActionQueue || screen == Screen.Mentor) { renderHandoffBoard() }, ui.weightParams())
-            nav.addView(navDestination("雲", "同步", screen == Screen.SyncCenter) { renderSyncCenter() }, ui.weightParams())
+            nav.addView(navDestination("題", "題庫", screen == Screen.QuestionBank) { renderQuestionBank() }, ui.weightParams())
             nav.addView(navDestination("報", "報告", screen == Screen.Report) { renderWeeklyReport() }, ui.weightParams())
+            }
+            Role.Volunteer, Role.Mentor -> {
+            nav.addView(navDestination("今", "今日", screen == Screen.Home || screen == Screen.Account) { renderHome() }, ui.weightParams())
+            nav.addView(navDestination("接", "接力", screen == Screen.Breakpoints || screen == Screen.Handoff || screen == Screen.ActionQueue || screen == Screen.Mentor) { renderHandoffBoard() }, ui.weightParams())
+            nav.addView(navDestination("生", "學生", screen == Screen.Roster || screen == Screen.StudentDetail) { renderRoster() }, ui.weightParams())
+            nav.addView(navDestination("雲", "同步", screen == Screen.SyncCenter) { renderSyncCenter() }, ui.weightParams())
+            nav.addView(navDestination("陪", "腳本", screen == Screen.MentorScript) { renderMentorScript() }, ui.weightParams())
+            }
         }
         navRoot.addView(ui.margins(nav, 0, 0, 0, 0))
     }
 
     private fun navigationArea(): String = when (screen) {
         Screen.Home, Screen.Account -> if (role == Role.Student) "首頁" else "今日"
-        Screen.Lesson, Screen.AiCoach, Screen.Contract, Screen.Reflection, Screen.QuestionBank -> "練習"
+        Screen.Lesson, Screen.AiCoach, Screen.Contract, Screen.Reflection -> "練習"
+        Screen.QuestionBank -> if (UserFlowContract.isTeacherRole(role)) "題庫" else "練習"
         Screen.HelpRequest, Screen.Intervention -> "支持"
         Screen.Roster, Screen.StudentDetail, Screen.StudentManager -> "學生"
         Screen.Breakpoints, Screen.Handoff, Screen.ActionQueue, Screen.Mentor -> "接力"
+        Screen.MentorScript -> "腳本"
         Screen.SyncCenter -> "同步"
         Screen.Report -> "報告"
         Screen.Profile -> "檔案"

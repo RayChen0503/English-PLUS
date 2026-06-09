@@ -4,17 +4,33 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
+import tw.edu.citizenaction.soracompanion.auth.AuthContract
 
 class UserFlowContractTest {
     @Test
-    fun studentAndStaffNavigationStaySeparated() {
+    fun studentTeacherAndVolunteerNavigationStaySeparated() {
         val studentLabels = UserFlowContract.bottomNavLabels(Role.Student)
-        val staffLabels = UserFlowContract.bottomNavLabels(Role.Mentor)
+        val teacherLabels = UserFlowContract.bottomNavLabels(Role.Teacher)
+        val volunteerLabels = UserFlowContract.bottomNavLabels(Role.Volunteer)
 
         assertEquals(listOf("首頁", "練習", "支持", "地圖", "檔案"), studentLabels)
-        assertEquals(listOf("今日", "學生", "接力", "同步", "報告"), staffLabels)
-        assertFalse(staffLabels.contains("練習"))
-        assertFalse(staffLabels.contains("檔案"))
+        assertEquals(listOf("今日", "學生", "接力", "題庫", "報告"), teacherLabels)
+        assertEquals(listOf("今日", "接力", "學生", "同步", "腳本"), volunteerLabels)
+        assertFalse(teacherLabels.contains("練習"))
+        assertFalse(volunteerLabels.contains("題庫"))
+        assertFalse(volunteerLabels.contains("報告"))
+    }
+
+    @Test
+    fun authRolesMapToDistinctAppRolesAndLabels() {
+        assertEquals(Role.Student, UserFlowContract.roleForAuthLabel(AuthContract.ROLE_STUDENT))
+        assertEquals(Role.Teacher, UserFlowContract.roleForAuthLabel(AuthContract.ROLE_TEACHER))
+        assertEquals(Role.Volunteer, UserFlowContract.roleForAuthLabel(AuthContract.ROLE_VOLUNTEER))
+        assertEquals(Role.Volunteer, UserFlowContract.roleForAuthLabel("mentor"))
+
+        assertEquals("學生端", UserFlowContract.roleTitle(Role.Student))
+        assertEquals("老師端", UserFlowContract.roleTitle(Role.Teacher))
+        assertEquals("志工端", UserFlowContract.roleTitle(Role.Volunteer))
     }
 
     @Test
