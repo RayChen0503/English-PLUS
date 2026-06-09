@@ -11,6 +11,13 @@ English+ is an Android prototype for a rural English learning support platform. 
 - Target SDK: `35`
 - Current status: classroom demo / internal testing prototype
 
+## Protected Baselines
+
+- Earlier preserved classroom prototype tag: the existing initial-version rollback point.
+- `pre-perfect-rebuild-2026-06-09`: the latest baseline before the final product-readiness rebuild.
+
+Do not reset to these tags unless a rollback is explicitly requested. The current upgrade plan is documented in `docs/superpowers/plans/2026-06-09-perfect-product-readiness.md`.
+
 ## What Is Working Now
 
 - Student and teacher/volunteer tracks.
