@@ -62,7 +62,9 @@ import tw.edu.citizenaction.soracompanion.model.SyncRecord
 import tw.edu.citizenaction.soracompanion.model.SupportMessage
 import tw.edu.citizenaction.soracompanion.model.SupportTarget
 import tw.edu.citizenaction.soracompanion.model.TeacherAction
+import tw.edu.citizenaction.soracompanion.model.TeacherWorkspaceContract
 import tw.edu.citizenaction.soracompanion.model.UserFlowContract
+import tw.edu.citizenaction.soracompanion.model.VolunteerHandoffContract
 import tw.edu.citizenaction.soracompanion.model.WeeklySignal
 import tw.edu.citizenaction.soracompanion.state.PrototypeStateStore
 import tw.edu.citizenaction.soracompanion.ui.UiKit
@@ -328,15 +330,21 @@ class MainActivity : Activity() {
     }
 
     private fun teacherHome() {
+        val pendingRequests = pendingStudentHelpRequests()
+        val summary = TeacherWorkspaceContract.homeSummary(
+            roster = currentRoster(),
+            notes = collaborationNotes,
+            pendingSyncCount = offlinePendingCount
+        )
         section("老師工作台")
         root.addView(classContextCard())
         root.addView(metricRow(
-            Metric("待關懷", "2 位", ColorToken.Warning),
-            Metric("高風險", "1 個", ColorToken.Danger),
+            Metric("待回覆", "${summary.helpPending} 位", if (summary.helpPending > 0) ColorToken.Warning else ColorToken.Success),
+            Metric("高風險", "${summary.highRiskCount} 位", if (summary.highRiskCount > 0) ColorToken.Danger else ColorToken.Success),
             Metric("題庫", "${questions.size} 題", ColorToken.Primary)
         ))
-        root.addView(flowStrip("班級訊號", "學生列表", "接力分派", "週報回饋"))
-        root.addView(card("今日優先處理", "${student.name}｜${student.grade}｜${student.goal}\n最新訊號：${breakpoints[0].evidence}", ColorToken.WarningSoft))
+        root.addView(flowStrip("班級風險", "學生詳情", "回覆求助", "週報追蹤"))
+        root.addView(card("今日優先處理", "${summary.priorityStudent}\n${summary.nextAction}", if (pendingRequests.isNotEmpty()) ColorToken.WarningSoft else ColorToken.PrimarySoft))
         root.addView(ui.primaryButton("查看待辦處理佇列") { renderActionQueue() })
         root.addView(actionGrid(
             ActionItem("學生列表", "看誰需要追蹤") { renderRoster() },
@@ -353,6 +361,7 @@ class MainActivity : Activity() {
 
     private fun volunteerHome() {
         val pendingRequests = pendingStudentHelpRequests()
+        val workspace = VolunteerHandoffContract.workspaceFor(role)
         section("志工接力工作台")
         root.addView(classContextCard())
         root.addView(metricRow(
@@ -361,6 +370,7 @@ class MainActivity : Activity() {
             Metric("可處理", "15 分鐘", ColorToken.Success)
         ))
         root.addView(flowStrip("看卡點", "回覆學生", "陪練一題", "留下紀錄"))
+        root.addView(card("今天先做什麼", workspace.primaryAction, ColorToken.PrimarySoft))
         if (pendingRequests.isEmpty()) {
             root.addView(card("目前沒有待回覆學生", "可以先看陪伴腳本或同步最新協作紀錄。", ColorToken.SuccessSoft))
         } else {
@@ -1222,13 +1232,23 @@ class MainActivity : Activity() {
     private fun renderStudentDetail(row: StudentRow) {
         screen = Screen.StudentDetail
         shell("${row.name} 的接力資料", UserFlowContract.rosterSubtitle(role))
+        val detail = TeacherWorkspaceContract.studentDetail(
+            row = row,
+            notes = collaborationNotes,
+            recentAnswerTitles = listOf(
+                "今日任務 ${dailyQuestionDone.coerceAtLeast(0)}/${dailyQuestionGoal.coerceAtLeast(1)}",
+                activeQuestion().concept,
+                mistakeRecords.firstOrNull()?.concept ?: "尚無錯題紀錄"
+            ),
+            missionProgress = "${dailyQuestionDone.coerceAtLeast(0)}/${dailyQuestionGoal.coerceAtLeast(1)}"
+        )
         root.addView(metricRow(
             Metric("風險", row.risk, if (row.risk == "高") ColorToken.Danger else ColorToken.Warning),
-            Metric("狀態", if (row.risk == "低") "可自學" else "需追蹤", ColorToken.Primary),
-            Metric("接力", if (row.risk == "高") "今日" else "本週", ColorToken.Success)
+            Metric("求助", "${detail.helpRequestCount} 件", if (detail.helpRequestCount > 0) ColorToken.Warning else ColorToken.Success),
+            Metric("進度", detail.missionProgress, ColorToken.Primary)
         ))
         root.addView(card("目前斷點", row.issue, if (row.risk == "高") ColorToken.WarningSoft else ColorToken.PrimarySoft))
-        root.addView(card("最新狀態", row.status, ColorToken.Card))
+        root.addView(card("最新狀態", "${row.status}\n最近紀錄：${detail.recentAnswers.joinToString("、")}", ColorToken.Card))
         val nextStep = if (UserFlowContract.normalizedRole(role) == Role.Volunteer) {
             if (row.risk == "高") "先用陪伴腳本降低挫折，再只帶同一概念兩題。" else "保留低壓陪伴節奏，不追加作業。"
         } else {
@@ -1236,9 +1256,14 @@ class MainActivity : Activity() {
         }
         root.addView(card(UserFlowContract.studentDetailActionTitle(role), nextStep, ColorToken.SuccessSoft))
         if (UserFlowContract.normalizedRole(role) == Role.Volunteer) {
+            val request = CollaborationFlowContract.unansweredRequests(collaborationNotes, row.name).firstOrNull()
+            request?.let {
+                val action = VolunteerHandoffContract.actionForRequest(it, completed = false)
+                root.addView(card("志工下一步", "${action.nextStep}\n\n腳本：${action.script}", ColorToken.PrimarySoft))
+            }
             root.addView(ui.primaryButton("查看陪伴腳本") { renderMentorScript() })
         } else {
-            root.addView(ui.primaryButton("查看待回覆求助") { renderActionQueue() })
+            root.addView(ui.primaryButton(if (detail.primaryAction == "write_teacher_reply") "回覆學生求助" else "安排下一個任務") { renderActionQueue() })
         }
         root.addView(ui.secondaryButton("回學生列表") { renderRoster() })
         bottomNav()
@@ -1260,7 +1285,13 @@ class MainActivity : Activity() {
         if (pendingRequests.isEmpty()) {
             root.addView(card("目前沒有待回覆求助", "可以先看高風險學生，或同步遠端協作紀錄。", ColorToken.SuccessSoft))
         } else {
-            pendingRequests.forEach { root.addView(studentHelpRequestCard(it)) }
+            pendingRequests.forEach {
+                if (UserFlowContract.normalizedRole(role) == Role.Volunteer) {
+                    val action = VolunteerHandoffContract.actionForRequest(it, completed = false)
+                    root.addView(card("志工下一步：${action.studentName}", "${action.nextStep}\n\n腳本：${action.script}", ColorToken.PrimarySoft))
+                }
+                root.addView(studentHelpRequestCard(it))
+            }
         }
         handoffPriorities.forEach { root.addView(priorityCard(it)) }
         section("最新協作紀錄")
@@ -1666,12 +1697,18 @@ class MainActivity : Activity() {
         root.addView(card("結束紀錄", "能完成 2 題再加 They are；如果仍卡住，記錄為高優先斷點，不追加作業。", ColorToken.WarningSoft))
         root.addView(ui.secondaryButton("使用腳本並留下志工紀錄") {
             mentorReplyCount += 1
+            val handoffNote = VolunteerHandoffContract.internalHandoffNote(
+                volunteerName = currentAccount().displayName,
+                studentName = student.name,
+                summary = "已使用陪伴腳本完成一次低壓接力；學生能先回答 He is，暫不加新題型。",
+                createdAt = System.currentTimeMillis()
+            )
             addCollaborationNote(
-                actor = "Emily",
-                roleLabel = "雲端志工",
-                target = student.name,
-                note = "已使用陪伴腳本完成一次低壓接力；學生能先回答 He is，暫不加新題型。",
-                status = "腳本已用"
+                actor = handoffNote.actor,
+                roleLabel = handoffNote.role,
+                target = handoffNote.target,
+                note = handoffNote.note,
+                status = handoffNote.status
             )
             renderMentorScript()
         })
@@ -2892,19 +2929,28 @@ class MainActivity : Activity() {
 
     private fun collaborationNoteCard(note: CollaborationNote): View {
         val color = when (note.status) {
+            VolunteerHandoffContract.STATUS_INTERNAL_HANDOFF_NOTE -> ColorToken.Primary
             CollaborationFlowContract.STATUS_STAFF_REPLY, "已回覆", "腳本已用", "待辦已完成" -> ColorToken.Success
             CollaborationFlowContract.STATUS_STUDENT_REQUEST -> ColorToken.Warning
             "已處理" -> ColorToken.Primary
             else -> ColorToken.Warning
         }
+        val statusLabel = collaborationStatusLabel(note.status)
         val box = ui.container(ColorToken.Card, ColorToken.Border)
         val top = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
         top.addView(ui.label(note.actor, 16, ColorToken.Ink, true), LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f))
-        top.addView(ui.statusPill(note.status, color))
+        top.addView(ui.statusPill(statusLabel, color))
         box.addView(top)
         box.addView(ui.body("${note.role}｜對象：${note.target}", ColorToken.Muted).apply { setPadding(0, ui.dp(7), 0, 0) })
         box.addView(ui.body(note.note, "#334155"))
         return ui.margins(box, 0, 8, 0, 8)
+    }
+
+    private fun collaborationStatusLabel(status: String): String {
+        return when (status) {
+            VolunteerHandoffContract.STATUS_INTERNAL_HANDOFF_NOTE -> "內部接力紀錄"
+            else -> status
+        }
     }
 
     private fun syncCard(record: SyncRecord): View {

@@ -155,9 +155,9 @@ Only run the reset command when the user explicitly asks to roll back.
 - Modify: handoff board and mentor script flows
 - Test: volunteer workflow tests
 
-- [ ] Volunteers see only support/handoff work, not teacher admin tools.
-- [ ] Each volunteer action has a next step, script, and completion state.
-- [ ] Handoff notes are visible to teachers but do not become student-facing unless intended.
+- [x] Volunteers see only support/handoff work, not teacher admin tools.
+- [x] Each volunteer action has a next step, script, and completion state.
+- [x] Handoff notes are visible to teachers but do not become student-facing unless intended.
 
 ## Round 10: Teacher Workspace
 
@@ -165,9 +165,9 @@ Only run the reset command when the user explicitly asks to roll back.
 - Modify: teacher dashboard, roster, report, and question bank screens
 - Test: teacher workflow tests
 
-- [ ] Teacher home prioritizes class risk and next action.
-- [ ] Student detail shows progress, help requests, recent answers, and teacher reply actions.
-- [ ] Reports and question bank are reachable but not mixed with volunteer scripts.
+- [x] Teacher home prioritizes class risk and next action.
+- [x] Student detail shows progress, help requests, recent answers, and teacher reply actions.
+- [x] Reports and question bank are reachable but not mixed with volunteer scripts.
 
 ## Round 11: Reports And Export
 
