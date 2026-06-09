@@ -32,6 +32,7 @@ import tw.edu.citizenaction.soracompanion.model.AiScenario
 import tw.edu.citizenaction.soracompanion.model.AppState
 import tw.edu.citizenaction.soracompanion.model.Breakpoint
 import tw.edu.citizenaction.soracompanion.model.CollaborationNote
+import tw.edu.citizenaction.soracompanion.model.CollaborationFlowContract
 import tw.edu.citizenaction.soracompanion.model.DesignPrinciple
 import tw.edu.citizenaction.soracompanion.model.InterventionStep
 import tw.edu.citizenaction.soracompanion.model.JourneyStep
@@ -186,6 +187,39 @@ class MainActivity : Activity() {
         learningEventCount += 1
         recordLearningEvent("collaboration", "$actor 更新 $target", note)
         persistState()
+    }
+
+    private fun recordStudentHelpRequest(reason: String, studentText: String, platformAction: String, route: String) {
+        val q = activeQuestion()
+        val missionText = if (inDailyMission) {
+            "今日任務 $dailyQuestionDone/$dailyQuestionGoal"
+        } else {
+            "自由練習"
+        }
+        addCollaborationNote(
+            actor = student.name,
+            roleLabel = "學生",
+            target = student.name,
+            note = buildString {
+                appendLine("求助原因：$reason")
+                appendLine("學生說：$studentText")
+                appendLine("目前題目：${q.prompt}")
+                appendLine("概念：${q.concept}")
+                appendLine("心情：${mood.label}｜任務：$missionText｜路線：$route")
+                append("平台摘要：$platformAction")
+            },
+            status = CollaborationFlowContract.STATUS_STUDENT_REQUEST
+        )
+    }
+
+    private fun studentVisibleCollaborationNotes(limit: Int): List<CollaborationNote> {
+        return collaborationNotes
+            .filter { CollaborationFlowContract.visibleToStudent(it, student.name) }
+            .take(limit)
+    }
+
+    private fun pendingStudentHelpRequests(limit: Int = 8): List<CollaborationNote> {
+        return CollaborationFlowContract.unansweredRequests(collaborationNotes, student.name).take(limit)
     }
 
     private fun addOfflineSyncItem(title: String, category: String, detail: String, status: String = "待上傳") {
@@ -410,7 +444,15 @@ class MainActivity : Activity() {
         shell("情緒斷點處理流程", "把挫折訊號轉成可以被修復的設計動作")
         root.addView(card("斷點不是失敗", "平台要避免學生因為一次錯題就離開，所以每個斷點都要有觸發條件、介入動作、學生看得懂的語句，以及可交給老師的證據。", ColorToken.WarningSoft))
         interventionSteps.forEach { root.addView(interventionCard(it)) }
-        root.addView(ui.primaryButton("生成志工接力摘要") { renderHandoff() })
+        root.addView(ui.primaryButton("整理給老師/志工") {
+            if (role == Role.Student) {
+                val latest = breakpoints.first()
+                recordStudentHelpRequest(latest.title, latest.evidence, latest.aiAction, "老師接力")
+                renderStudentHelpSent(latest.title)
+            } else {
+                renderHandoff()
+            }
+        })
         bottomNav()
     }
 
@@ -420,7 +462,7 @@ class MainActivity : Activity() {
         root.addView(card("v0.6 檢核方向", "這頁用來確認我們做的不是單純英文練習 app，而是面向偏鄉學生、情緒斷點與雙軌接力的學習平台。", ColorToken.PrimarySoft))
         designPrinciples.forEach { root.addView(principleCard(it)) }
         root.addView(ui.secondaryButton("查看 English+ 設計系統") { renderDesignSystem() })
-        root.addView(ui.primaryButton("查看 OPPM 品質檢核") { renderMentorChecks() })
+        root.addView(ui.primaryButton("查看服務品質檢核") { renderMentorChecks() })
         bottomNav()
     }
 
@@ -744,9 +786,37 @@ class MainActivity : Activity() {
         screen = Screen.HelpRequest
         shell("主動求助", "讓學生用自己的話說出卡住的原因")
         root.addView(helpIntroCard())
+        val visibleReplies = studentVisibleCollaborationNotes(3)
+        if (visibleReplies.isNotEmpty()) {
+            section("最近的回覆")
+            visibleReplies.forEach { root.addView(studentConversationCard(it)) }
+        }
         root.addView(flowStrip("說出卡點", "平台分流", "下一步"))
         helpRequestOptions.forEach { root.addView(helpOptionCard(it)) }
+        root.addView(ui.secondaryButton("查看所有老師/志工回覆") { renderStudentSupportCenter() })
         root.addView(ui.secondaryButton("我還是想先自己試一題") { renderLesson() })
+        bottomNav()
+    }
+
+    private fun renderStudentSupportCenter() {
+        screen = Screen.HelpRequest
+        shell("支持與回覆", "可以求助，也可以看老師/志工回覆")
+        val visibleNotes = studentVisibleCollaborationNotes(12)
+        val pending = visibleNotes.count { CollaborationFlowContract.isStudentHelpRequest(it) }
+        val replies = visibleNotes.count { CollaborationFlowContract.isStaffReply(it) }
+        root.addView(metricRow(
+            Metric("待回覆", "$pending", if (pending > 0) ColorToken.Warning else ColorToken.Success),
+            Metric("已回覆", "$replies", ColorToken.Success),
+            Metric("信心", "$confidence%", ColorToken.Accent)
+        ))
+        if (visibleNotes.isEmpty()) {
+            root.addView(card("還沒有求助紀錄", "卡住時可以先選一個原因，English+ 會把題目、心情與卡點整理給老師或志工。", ColorToken.PrimarySoft))
+        } else {
+            section("我的支持紀錄")
+            visibleNotes.forEach { root.addView(studentConversationCard(it)) }
+        }
+        root.addView(ui.primaryButton("我要新增求助") { renderHelpRequest() })
+        root.addView(ui.secondaryButton("回到練習") { renderLesson() })
         bottomNav()
     }
 
@@ -764,9 +834,23 @@ class MainActivity : Activity() {
             }
             SupportTarget.HumanHandoff -> {
                 breakpoints.add(0, Breakpoint(option.reason, "高", option.studentText, option.platformAction, "志工先肯定狀態，再用同一概念做低壓陪練。"))
-                renderHandoff()
+                recordStudentHelpRequest(option.reason, option.studentText, option.platformAction, option.route)
+                renderStudentHelpSent(option.reason)
             }
         }
+    }
+
+    private fun renderStudentHelpSent(reason: String) {
+        screen = Screen.HelpRequest
+        shell("求助已送出", "老師/志工端會看到你的卡點")
+        root.addView(card("已送出", "求助原因：$reason\n我們已保留目前題目、心情與任務狀態。", ColorToken.SuccessSoft))
+        studentVisibleCollaborationNotes(4).forEach { root.addView(studentConversationCard(it)) }
+        root.addView(ui.primaryButton("等回覆時先做一題低壓練習") {
+            inDailyMission = false
+            renderLesson()
+        })
+        root.addView(ui.secondaryButton("查看支持與回覆") { renderStudentSupportCenter() })
+        bottomNav()
     }
 
     private fun renderReadingBreakdown() {
@@ -783,7 +867,8 @@ class MainActivity : Activity() {
         })
         root.addView(ui.secondaryButton("我想請人陪我看") {
             breakpoints.add(0, Breakpoint("閱讀題卡住", "中", "學生主動選擇閱讀拆解後仍想要陪伴。", "平台已提供三步拆解。", "志工陪學生先看題目，再一起找關鍵句。"))
-            renderHandoff()
+            recordStudentHelpRequest("閱讀題卡住", "我想請人陪我看閱讀題。", "平台已提供三步拆解，仍需要真人陪看。", "老師接力")
+            renderStudentHelpSent("閱讀題卡住")
         })
         bottomNav()
     }
@@ -794,13 +879,26 @@ class MainActivity : Activity() {
         root.addView(card("支持原則", "連續錯題、停留過久、重複退出都不是懲罰理由，而是調整任務與安排陪伴的訊號。", ColorToken.WarningSoft))
         breakpoints.forEach { root.addView(breakpointCard(it)) }
         root.addView(ui.secondaryButton("看看平台會怎麼支持我") { renderInterventionFlow() })
-        root.addView(ui.primaryButton("整理狀況給志工接力") { renderHandoff() })
+        root.addView(ui.primaryButton("整理狀況給老師/志工") {
+            if (role == Role.Student) {
+                val latest = breakpoints.first()
+                recordStudentHelpRequest(latest.title, latest.evidence, latest.aiAction, "老師接力")
+                renderStudentHelpSent(latest.title)
+            } else {
+                renderHandoff()
+            }
+        })
         bottomNav()
     }
 
     private fun renderHandoff() {
+        if (role == Role.Student) {
+            renderStudentSupportCenter()
+            return
+        }
         screen = Screen.Handoff
         shell("雲端志工接力", "把真人時間用在最值得的地方")
+        val latestRequest = pendingStudentHelpRequests(1).firstOrNull()
         root.addView(preparedHandoffCard())
         root.addView(card("學生摘要", "${student.name}｜${student.location}｜${student.goal}\n目前心情：${mood.label}\n今日任務時間：${minutes} 分鐘", ColorToken.PrimarySoft))
         root.addView(card("斷點摘要", "${breakpoints.first().title}\n證據：${breakpoints.first().evidence}\nAI 已做：${breakpoints.first().aiAction}", ColorToken.WarningSoft))
@@ -808,18 +906,9 @@ class MainActivity : Activity() {
         root.addView(card("協作狀態", "志工回覆：${mentorReplyCount} 則\n協作紀錄：${collaborationNotes.size} 筆\n待同步：${offlinePendingCount} 件", ColorToken.Card))
         root.addView(remoteCollaborationStatusCard())
         recentCollaborationNotes(3).forEach { root.addView(collaborationNoteCard(it)) }
-        root.addView(ui.secondaryButton("志工回覆並寫入接力紀錄") {
-            mentorReplyCount += 1
-            actionDoneCount = (actionDoneCount + 1).coerceAtMost(teacherActions.size)
-            addCollaborationNote(
-                actor = "Emily",
-                roleLabel = "雲端志工",
-                target = student.name,
-                note = "已回覆學生：先肯定願意回來，再陪練 He is / They are 各 2 題，不追加新作業。",
-                status = "已回覆"
-            )
-            renderHandoff()
-        })
+        latestRequest?.let {
+            root.addView(ui.primaryButton("回覆最新學生求助") { renderStaffReplyComposer(it) })
+        } ?: root.addView(ui.secondaryButton("查看待回覆求助") { renderActionQueue() })
         root.addView(ui.primaryButton("查看陪伴腳本") { renderMentorScript() })
         bottomNav()
     }
@@ -1071,8 +1160,20 @@ class MainActivity : Activity() {
     private fun renderHandoffBoard() {
         screen = Screen.Mentor
         shell("接力優先序", "把有限的真人時間安排到最需要的地方")
-        root.addView(card("排序規則", "高風險情緒斷點 > 連續錯題 > 重複退出 > 一般複習。AI 可處理低風險，真人處理高價值斷點。", ColorToken.PrimarySoft))
+        val pendingRequests = pendingStudentHelpRequests()
+        root.addView(metricRow(
+            Metric("待回覆", "${pendingRequests.size}", if (pendingRequests.isNotEmpty()) ColorToken.Warning else ColorToken.Success),
+            Metric("已回覆", "$mentorReplyCount", ColorToken.Success),
+            Metric("協作", "${collaborationNotes.size}", ColorToken.Primary)
+        ))
+        root.addView(card("排序規則", "學生主動求助 > 高風險情緒斷點 > 連續錯題 > 重複退出 > 一般複習。", ColorToken.PrimarySoft))
         root.addView(remoteCollaborationStatusCard())
+        section("學生求助")
+        if (pendingRequests.isEmpty()) {
+            root.addView(card("目前沒有待回覆求助", "可以先看高風險學生，或同步遠端協作紀錄。", ColorToken.SuccessSoft))
+        } else {
+            pendingRequests.forEach { root.addView(studentHelpRequestCard(it)) }
+        }
         handoffPriorities.forEach { root.addView(priorityCard(it)) }
         section("最新協作紀錄")
         recentCollaborationNotes(4).forEach { root.addView(collaborationNoteCard(it)) }
@@ -1085,13 +1186,21 @@ class MainActivity : Activity() {
     private fun renderActionQueue() {
         screen = Screen.ActionQueue
         shell("待辦處理佇列", "把志工、老師、小組各自要做的事排清楚")
+        val pendingRequests = pendingStudentHelpRequests()
         root.addView(metricRow(
-            Metric("待辦", "${teacherActions.size} 件", ColorToken.Warning),
+            Metric("待辦", "${teacherActions.size + pendingRequests.size} 件", ColorToken.Warning),
             Metric("已處理", "${actionDoneCount} 件", ColorToken.Success),
             Metric("協作", "${collaborationNotes.size} 筆", ColorToken.Primary)
         ))
-        root.addView(card("設計目的", "老師端不只要看到學生問題，也要知道誰負責、多久內處理、下一步做什麼。這可以降低真人接力的溝通成本。", ColorToken.PrimarySoft))
+        root.addView(card("今日重點", "先回覆學生主動求助，再處理一般待辦。每一次回覆都會回到學生端的支持頁。", ColorToken.PrimarySoft))
         root.addView(remoteCollaborationStatusCard())
+        section("學生求助待回覆")
+        if (pendingRequests.isEmpty()) {
+            root.addView(card("沒有學生求助待回覆", "目前可以處理一般待辦，或查看接力優先序。", ColorToken.SuccessSoft))
+        } else {
+            pendingRequests.forEach { root.addView(studentHelpRequestCard(it)) }
+        }
+        section("一般待辦")
         teacherActions.forEach { root.addView(teacherActionCard(it)) }
         root.addView(ui.primaryButton("標記一件待辦已處理") {
             actionDoneCount = (actionDoneCount + 1).coerceAtMost(teacherActions.size)
@@ -1194,15 +1303,15 @@ class MainActivity : Activity() {
 
     private fun renderAiLab() {
         screen = Screen.AiLab
-        shell("AI 提示實驗室", "可切換真 OpenAI API 與本機模擬")
+        shell("AI 回饋設定", "管理 AI 回饋與安全連線")
         root.addView(openAiStatusCard())
-        root.addView(card("第六輪 API 安全", "正式遠端 AI 只走 HTTPS 後端代理；手機端 Key 僅作開發展示 fallback，不能作為上架方案。", ColorToken.WarningSoft))
+        root.addView(card("AI 安全連線", "建議讓遠端 AI 走 HTTPS 後端代理；手機端只送學習脈絡，不保存正式金鑰。", ColorToken.WarningSoft))
         root.addView(aiProxyEndpointCard())
         root.addView(openAiKeyEntryCard())
-        root.addView(card("使用方式", "設定 OpenAI API Key 後可呼叫 Responses API 產生診斷、學生語氣回饋與志工接力摘要。沒有 Key 或網路失敗時，仍會保留本機模擬。", ColorToken.WarningSoft))
+        root.addView(card("使用方式", "設定 AI 後可產生診斷、學生語氣回饋與志工接力摘要。沒有可用連線時，會改用備援回饋。", ColorToken.WarningSoft))
         aiScenarios.forEach { root.addView(aiScenarioCard(it)) }
         root.addView(ui.primaryButton("呼叫真 AI 生成回饋") { renderLiveAiFeedback() })
-        root.addView(ui.secondaryButton("改用本機模擬生成") { renderGeneratedAiFeedback() })
+        root.addView(ui.secondaryButton("改用備援回饋生成") { renderGeneratedAiFeedback() })
         bottomNav()
     }
 
@@ -1212,15 +1321,15 @@ class MainActivity : Activity() {
             if (hasKey) ColorToken.SuccessSoft else ColorToken.WarningSoft,
             ColorToken.Border
         )
-        box.addView(ui.statusPill(if (hasKey) "真 AI 已啟用" else "本機模擬模式", if (hasKey) ColorToken.Success else ColorToken.Warning))
+        box.addView(ui.statusPill(if (hasKey) "真 AI 已啟用" else "備援回饋模式", if (hasKey) ColorToken.Success else ColorToken.Warning))
         box.addView(ui.label(if (hasKey) "OpenAI API Key 已儲存在本機" else "尚未設定 OpenAI API Key", 18, ColorToken.Ink, true).apply {
             layoutParams = ui.fullWidthParams()
         })
         box.addView(ui.body(
             if (hasKey) {
-                "按下「呼叫真 AI」時會送出目前題目、情緒狀態與錯題次數；如果網路或 API 失敗，會自動回到本機模擬。"
+                "按下「呼叫真 AI」時會送出目前題目、情緒狀態與錯題次數；如果網路或 API 失敗，會自動改用備援回饋。"
             } else {
-                "目前不會連線到外部 AI。你可以先用展示模式，或在下方貼上 OpenAI API Key 後啟用真 AI 回饋。"
+                "目前不會連線到外部 AI。你可以先用備援回饋，或在下方貼上 API Key 後啟用真 AI 回饋。"
             }
         ))
         return ui.margins(box, 0, 8, 0, 12)
@@ -1250,7 +1359,7 @@ class MainActivity : Activity() {
         })
         box.addView(ui.secondaryButton("清除 AI Proxy 端點") {
             stateStore.saveAiProxyEndpoint("")
-            recordLearningEvent("ai_proxy_config", "已清除 AI Proxy 端點", "AI 實驗室會回到本機 Key 或本機模擬。")
+            recordLearningEvent("ai_proxy_config", "已清除 AI Proxy 端點", "AI 回饋會回到本機 Key 或備援模式。")
             renderAiLab()
         })
         return ui.margins(box, 0, 0, 0, 12)
@@ -1259,7 +1368,7 @@ class MainActivity : Activity() {
     private fun openAiKeyEntryCard(): View {
         val box = ui.container(ColorToken.Card, ColorToken.Border)
         box.addView(ui.label("OpenAI Key 設定", 18, ColorToken.Ink, true))
-        box.addView(ui.body("Key 只會存在這台裝置的私人設定中，不會寫進 GitHub。課堂展示時可以留空，系統會使用本機模擬。"))
+        box.addView(ui.body("Key 只會存在這台裝置的私人設定中，不會寫進 GitHub。課堂展示時可以留空，系統會使用備援回饋。"))
 
         val input = EditText(this).apply {
             hint = if (stateStore.hasOpenAiApiKey()) "已設定，可貼上新 Key 覆蓋" else "貼上 sk- 開頭的 API Key"
@@ -1278,15 +1387,15 @@ class MainActivity : Activity() {
             val key = input.text.toString().trim()
             if (key.startsWith("sk-")) {
                 stateStore.saveOpenAiApiKey(key)
-                recordLearningEvent("ai_config", "已更新 OpenAI API Key", "真 AI 模式已可在 AI 提示實驗室呼叫。")
+                recordLearningEvent("ai_config", "已更新 OpenAI API Key", "真 AI 模式已可在 AI 回饋設定中呼叫。")
             } else {
                 recordLearningEvent("ai_config", "OpenAI API Key 未更新", "輸入內容不是 sk- 開頭，維持原本設定。")
             }
             renderAiLab()
         })
-        box.addView(ui.secondaryButton("清除 Key，改用本機模擬") {
+        box.addView(ui.secondaryButton("清除 Key，改用備援回饋") {
             stateStore.saveOpenAiApiKey("")
-            recordLearningEvent("ai_config", "已清除 OpenAI API Key", "AI 提示實驗室已回到本機模擬模式。")
+            recordLearningEvent("ai_config", "已清除 OpenAI API Key", "AI 回饋已回到備援模式。")
             renderAiLab()
         })
         return ui.margins(box, 0, 0, 0, 12)
@@ -1296,13 +1405,13 @@ class MainActivity : Activity() {
         val decision = stateStore.aiSecurityDecision(productionMode = true)
         if (!decision.canCallRemoteAi) {
             recordLearningEvent("ai_security_fallback", "Remote AI blocked by security contract", decision.warning)
-            renderGeneratedAiFeedback("第六輪 API 安全檢查：${decision.warning}\n已改用本機模擬，不會從手機端送出正式 OpenAI Key。")
+            renderGeneratedAiFeedback("AI 安全檢查：${decision.warning}\n已改用備援回饋，不會從手機端送出正式 OpenAI Key。")
             return
         }
         val apiKey = stateStore.openAiApiKey()
         if (!stateStore.hasAiProxyEndpoint() && !stateStore.hasOpenAiApiKey()) {
-            recordLearningEvent("ai_fallback", "未設定 OpenAI API Key", "使用本機 AI 模擬回饋。")
-            renderGeneratedAiFeedback("尚未設定 OpenAI API Key，已改用本機模擬。")
+            recordLearningEvent("ai_fallback", "未設定 OpenAI API Key", "使用備援 AI 回饋。")
+            renderGeneratedAiFeedback("尚未設定 OpenAI API Key，已改用備援回饋。")
             return
         }
         val q = activeQuestion()
@@ -1334,7 +1443,7 @@ class MainActivity : Activity() {
             } catch (error: Exception) {
                 runOnUiThread {
                     recordLearningEvent("ai_fallback", "OpenAI 呼叫失敗", error.message ?: "未知錯誤")
-                    renderGeneratedAiFeedback("OpenAI 呼叫失敗，已改用本機模擬：${error.message ?: "未知錯誤"}")
+                    renderGeneratedAiFeedback("OpenAI 呼叫失敗，已改用備援回饋：${error.message ?: "未知錯誤"}")
                 }
             }
         }.start()
@@ -1348,7 +1457,7 @@ class MainActivity : Activity() {
         root.addView(card("給志工的摘要", result.handoffSummary, ColorToken.Card))
         recordLearningEvent("ai_live", "OpenAI 生成回饋", result.diagnosis)
         root.addView(ui.primaryButton("回今日任務") { renderLesson() })
-        root.addView(ui.secondaryButton("回 AI 提示實驗室") { renderAiLab() })
+        root.addView(ui.secondaryButton("回 AI 回饋設定") { renderAiLab() })
         bottomNav()
     }
 
@@ -1479,20 +1588,12 @@ class MainActivity : Activity() {
         val latestCollaboration = collaborationNotes.firstOrNull()?.note ?: "尚未建立真人接力紀錄。"
         val latestSync = offlineSyncItems.firstOrNull()?.let { "${it.title} / ${it.status}" } ?: "尚未建立同步佇列。"
         return """
-            English+ 偏鄉學生雙軌學習平台展示報告
+            English+ 老師週報摘要
 
-            一、產品定位
-            English+ 是面向偏鄉國中生的低壓英文學習原型。平台核心不是大量刷題，而是先辨識學生的情緒斷點，把英文任務縮小，再由 AI 與真人志工雙軌接力。
+            一、學生目前狀態
+            English+ 先觀察學生今天的情緒、時間與作答狀況，再安排低壓英文任務。重點不是排名，而是看見學生在哪裡卡住、怎麼被接住。
 
-            二、目前可展示功能
-            1. 真實資料儲存：SQLite 已保存 App 狀態、學習事件、帳號、協作紀錄與同步佇列。
-            2. 登入與班級：本機展示帳號可切換學生、志工、老師，保留班級/群組代碼。
-            3. 真 AI 串接：AI 提示實驗室可設定 OpenAI API Key；沒有 Key 或失敗時回到本機模擬。
-            4. 老師/志工協作：志工回覆、陪伴腳本、老師待辦處理會寫入協作紀錄。
-            5. 離線與同步：任務包下載、答題、反思、AI 摘要與協作會進入待同步佇列。
-            6. 報告展示：本頁可輸出給老師/評審看的文字摘要。
-
-            三、本週展示資料
+            二、本週學習資料
             學生：${student.name} / ${student.location} / ${student.goal}
             心情狀態：${mood.label}
             今日任務時間：${minutes} 分鐘
@@ -1504,31 +1605,30 @@ class MainActivity : Activity() {
             待補傳同步：${snapshot.pendingSyncCount} 筆
             已下載離線包：${snapshot.downloadedPackCount} 包
 
-            四、情緒斷點處理
+            三、情緒斷點處理
             目前主要斷點：${breakpoints.first().title}
             斷點證據：${breakpoints.first().evidence}
             AI 已做處理：${breakpoints.first().aiAction}
             真人接力建議：${breakpoints.first().mentorAction}
 
-            五、最新接力與同步
+            四、最新接力與同步
             最新協作：$latestCollaboration
             最新同步項目：$latestSync
 
-            六、下一階段建議
-            1. 將 SQLite 資料層升級為 Room。
-            2. 用 Firebase 或校內後端做真帳號與雲端同步。
-            3. 將 OpenAI API Key 移到後端代理，不由手機端保存正式 Key。
-            4. 用真實學生訪談驗證：低壓任務、志工摘要、情緒斷點是否真的降低放棄感。
+            五、建議下一步
+            1. 若學生已主動求助，請先回覆一段能被學生看懂的短回饋。
+            2. 若學生連續錯題，請只陪練同一概念兩題，不追加新作業。
+            3. 若學生完成今日任務，可以鼓勵他保留節奏，不需要立刻加量。
         """.trimIndent()
     }
 
     private fun writeDemoReport(reportText: String): File {
         val targetDir = getExternalFilesDir(null) ?: filesDir
-        val file = File(targetDir, "english_plus_demo_report.txt")
+        val file = File(targetDir, "english_plus_teacher_report.txt")
         file.writeText(reportText, Charsets.UTF_8)
         writeDemoReportHtml(reportText)
-        recordLearningEvent("report_export", "已匯出展示報告", file.absolutePath)
-        addOfflineSyncItem("展示報告匯出", "報告資料", "已產生 english_plus_demo_report.txt，待正式版上傳到雲端或分享給老師。")
+        recordLearningEvent("report_export", "已匯出老師週報", file.absolutePath)
+        addOfflineSyncItem("老師週報匯出", "報告資料", "已產生 english_plus_teacher_report.txt，可分享給老師。")
         return file
     }
 
@@ -1657,7 +1757,7 @@ class MainActivity : Activity() {
         if (role == Role.Student) {
             nav.addView(navDestination("首", "首頁", screen == Screen.Home || screen == Screen.Account) { renderHome() }, ui.weightParams())
             nav.addView(navDestination("練", "練習", screen == Screen.Lesson || screen == Screen.AiCoach || screen == Screen.Contract || screen == Screen.Reflection || screen == Screen.QuestionBank) { renderTaskQueue() }, ui.weightParams())
-            nav.addView(navDestination("助", "支持", screen == Screen.HelpRequest || screen == Screen.Handoff) { renderHelpRequest() }, ui.weightParams())
+            nav.addView(navDestination("助", "支持", screen == Screen.HelpRequest || screen == Screen.Handoff) { renderStudentSupportCenter() }, ui.weightParams())
             nav.addView(navDestination("圖", "地圖", screen == Screen.Map) { renderMap() }, ui.weightParams())
             nav.addView(navDestination("檔", "檔案", screen == Screen.Profile) { renderProfile() }, ui.weightParams())
         } else {
@@ -2356,6 +2456,78 @@ class MainActivity : Activity() {
         return ui.margins(box, 0, 7, 0, 7)
     }
 
+    private fun studentHelpRequestCard(request: CollaborationNote): View {
+        val box = ui.container(ColorToken.WarningSoft, ColorToken.Border)
+        val top = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
+        top.addView(ui.label(request.target, 17, ColorToken.Ink, true), LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f))
+        top.addView(ui.statusPill("待回覆", ColorToken.Warning))
+        box.addView(top)
+        box.addView(ui.body("${request.actor}｜${request.role}", ColorToken.Muted).apply { setPadding(0, ui.dp(7), 0, 0) })
+        box.addView(ui.body(request.note, "#334155"))
+        box.addView(ui.primaryButton("回覆這位學生") { renderStaffReplyComposer(request) })
+        return ui.margins(box, 0, 8, 0, 8)
+    }
+
+    private fun renderStaffReplyComposer(request: CollaborationNote) {
+        screen = Screen.ActionQueue
+        shell("回覆學生", "讓學生看得懂下一步，而不是只留下內部紀錄")
+        root.addView(card("學生求助", request.note, ColorToken.WarningSoft))
+        val q = activeQuestion()
+        val input = EditText(this).apply {
+            setText(CollaborationFlowContract.defaultStaffReply(request.target, q.concept))
+            minLines = 4
+            maxLines = 8
+            textSize = 16f
+            setTextColor(Color.parseColor(ColorToken.Ink))
+            setHintTextColor(Color.parseColor(ColorToken.Muted))
+            background = ui.rounded(ColorToken.Surface, ColorToken.Border)
+            setPadding(ui.dp(14), ui.dp(12), ui.dp(14), ui.dp(12))
+            layoutParams = ui.fullWidthParams()
+        }
+        val box = ui.container(ColorToken.Card, ColorToken.Border)
+        box.addView(ui.label("回覆內容", 18, ColorToken.Ink, true))
+        box.addView(ui.body("這段文字會出現在學生端的「支持與回覆」。", ColorToken.Muted))
+        box.addView(input)
+        box.addView(ui.primaryButton("送出回覆給學生") {
+            val reply = input.text.toString().trim()
+                .ifBlank { CollaborationFlowContract.defaultStaffReply(request.target, q.concept) }
+            mentorReplyCount += 1
+            actionDoneCount = (actionDoneCount + 1).coerceAtMost(teacherActions.size + pendingStudentHelpRequests().size)
+            addCollaborationNote(
+                actor = currentAccount().displayName,
+                roleLabel = currentAccount().roleLabel,
+                target = request.target,
+                note = reply,
+                status = CollaborationFlowContract.STATUS_STAFF_REPLY
+            )
+            renderActionQueue()
+        })
+        box.addView(ui.secondaryButton("先不回覆，回接力佇列") { renderActionQueue() })
+        root.addView(ui.margins(box, 0, 8, 0, 12))
+        bottomNav()
+    }
+
+    private fun studentConversationCard(note: CollaborationNote): View {
+        val isReply = CollaborationFlowContract.isStaffReply(note)
+        val fill = if (isReply) ColorToken.SuccessSoft else ColorToken.WarningSoft
+        val color = if (isReply) ColorToken.Success else ColorToken.Warning
+        val title = if (isReply) "老師/志工回覆" else "我的求助"
+        val box = ui.container(fill, ColorToken.Border)
+        val top = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
+        top.addView(ui.label(title, 17, ColorToken.Ink, true), LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f))
+        top.addView(ui.statusPill(if (isReply) "已收到" else "等待中", color))
+        box.addView(top)
+        box.addView(ui.body("${note.actor}｜${note.role}", ColorToken.Muted).apply { setPadding(0, ui.dp(7), 0, 0) })
+        box.addView(ui.body(note.note, "#334155"))
+        if (isReply) {
+            box.addView(ui.primaryButton("照這個回饋練一題") {
+                inDailyMission = false
+                renderLesson()
+            })
+        }
+        return ui.margins(box, 0, 8, 0, 8)
+    }
+
     private fun teacherActionCard(action: TeacherAction): View {
         val index = teacherActions.indexOf(action)
         val completed = index in 0 until actionDoneCount
@@ -2394,10 +2566,10 @@ class MainActivity : Activity() {
         return listOf(
             CollaborationNote(
                 actor = "系統",
-                role = "展示資料",
+                role = "提醒",
                 target = student.name,
-                note = "尚未建立真人接力紀錄。可以從雲端志工接力、陪伴腳本或待辦佇列新增。",
-                status = "待建立"
+                note = "目前還沒有接力紀錄。學生求助或老師回覆後，會出現在這裡。",
+                status = "尚未建立"
             )
         )
     }
@@ -2454,7 +2626,8 @@ class MainActivity : Activity() {
 
     private fun collaborationNoteCard(note: CollaborationNote): View {
         val color = when (note.status) {
-            "已回覆", "腳本已用", "待辦已完成" -> ColorToken.Success
+            CollaborationFlowContract.STATUS_STAFF_REPLY, "已回覆", "腳本已用", "待辦已完成" -> ColorToken.Success
+            CollaborationFlowContract.STATUS_STUDENT_REQUEST -> ColorToken.Warning
             "已處理" -> ColorToken.Primary
             else -> ColorToken.Warning
         }
