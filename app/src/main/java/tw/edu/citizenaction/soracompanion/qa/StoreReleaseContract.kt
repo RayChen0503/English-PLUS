@@ -62,13 +62,20 @@ data class ExternalCredentialGap(
 )
 
 object StoreReleaseContract {
-    const val STORE_RELEASE_SCHEMA_VERSION = 9
+    const val STORE_RELEASE_SCHEMA_VERSION = 10
 
     fun playStoreListing(): PlayStoreListing {
         return PlayStoreListing(
             appName = "English+",
-            shortDescription = "給偏鄉學生的低壓英文學習與老師接力平台。",
-            fullDescription = "English+ 協助偏鄉學生在英文卡關時先被接住，再回到學習。平台提供心情檢測、3-5 分鐘短任務、錯題修復、AI 低壓提示、老師/志工接力、離線保存與學習報告，目標不是排名，而是讓學生願意繼續完成下一小步。",
+            shortDescription = "偏鄉學生英語練習、每日任務與情緒支持平台",
+            fullDescription = """
+                English+ 是為偏鄉學生設計的英語練習與支持平台。學生先用簡短檢測整理今天的情緒、
+                可用時間與想練習的題型，再進入適合自己的每日任務與自由練習。答錯時，系統會提供
+                清楚詳解與低壓力提示；需要真人陪伴時，老師與志工可以接續看見求助脈絡並回覆。
+
+                這個版本適合課堂內測、專題展示與小規模試用，重點是讓英文卡關不只停在分數，而是
+                變成下一個可完成的小步驟。
+            """.trimIndent(),
             contactEmail = "english-plus@example.edu"
         )
     }

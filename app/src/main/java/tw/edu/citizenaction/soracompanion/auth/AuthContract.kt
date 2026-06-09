@@ -57,7 +57,7 @@ object AuthContract {
             provider = claims.provider.trim().lowercase().ifBlank { PROVIDER_SCHOOL },
             userId = normalizeUserId(claims.displayName.ifBlank { claims.subject }),
             displayName = claims.displayName.trim().ifBlank { claims.subject.trim() },
-            classCode = claims.classCode.trim().uppercase().ifBlank { "DEMO-CLASS" },
+            classCode = claims.classCode.trim().uppercase().ifBlank { "CLASS-LOCAL" },
             roleLabel = role,
             isDemo = false
         )
@@ -71,8 +71,8 @@ object AuthContract {
         return AuthIdentitySession(
             provider = PROVIDER_DEMO,
             userId = normalizeUserId(displayName),
-            displayName = displayName.trim().ifBlank { "Demo User" },
-            classCode = classCode.trim().uppercase().ifBlank { "DEMO-CLASS" },
+            displayName = displayName.trim().ifBlank { "班級使用者" },
+            classCode = classCode.trim().uppercase().ifBlank { "CLASS-LOCAL" },
             roleLabel = normalizeRole(roleLabel),
             isDemo = true
         )
@@ -86,16 +86,16 @@ object AuthContract {
         val normalizedProvider = provider.trim().lowercase()
         return when {
             normalizedProvider == PROVIDER_DEMO -> AuthBoundaryStatus(
-                state = "demo",
-                message = "可使用展示帳號進行課堂測試。"
+                state = "classroom",
+                message = "可使用班級測試帳號完成今天的課堂流程。"
             )
             hasRemoteCredential && isValidEndpoint(endpoint) -> AuthBoundaryStatus(
                 state = "ready",
-                message = "正式登入已準備好，可用${providerDisplayName(normalizedProvider)}連線。"
+                message = "學校帳號已可使用，角色會依帳號權限判斷。"
             )
             else -> AuthBoundaryStatus(
                 state = "setup-required",
-                message = "目前可先使用展示帳號；正式登入需要學校或雲端登入設定。"
+                message = "目前可先使用班級帳號；跨裝置使用需要學校登入服務。"
             )
         }
     }
@@ -153,7 +153,7 @@ object AuthContract {
             PROVIDER_FIREBASE -> "Firebase Auth"
             PROVIDER_GOOGLE -> "Google Sign-In"
             PROVIDER_SCHOOL -> "School SSO"
-            PROVIDER_DEMO -> "Demo Mode"
+            PROVIDER_DEMO -> "班級測試帳號"
             else -> provider.ifBlank { "Remote Auth" }
         }
     }
@@ -161,9 +161,9 @@ object AuthContract {
     private fun roleFromClaims(roles: Set<String>, fallbackRole: String): String {
         val normalized = roles.map { it.trim().lowercase() }.toSet()
         return when {
-            normalized.any { it.contains("teacher") || it.contains("?葦") } -> ROLE_TEACHER
-            normalized.any { it.contains("volunteer") || it.contains("mentor") || it.contains("敹極") } -> ROLE_VOLUNTEER
-            normalized.any { it.contains("student") || it.contains("摮貊?") } -> ROLE_STUDENT
+            normalized.any { it.contains("teacher") || it.contains("老師") } -> ROLE_TEACHER
+            normalized.any { it.contains("volunteer") || it.contains("mentor") || it.contains("志工") } -> ROLE_VOLUNTEER
+            normalized.any { it.contains("student") || it.contains("學生") } -> ROLE_STUDENT
             else -> normalizeRole(fallbackRole)
         }
     }
@@ -175,6 +175,6 @@ object AuthContract {
             .lowercase()
             .replace(Regex("[^a-z0-9]+"), "-")
             .trim('-')
-            .ifBlank { "demo-user" }
+            .ifBlank { "class-user" }
     }
 }

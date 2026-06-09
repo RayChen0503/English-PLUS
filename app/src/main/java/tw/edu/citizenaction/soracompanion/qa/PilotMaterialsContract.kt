@@ -28,31 +28,31 @@ data class ObservationSheet(
 )
 
 object PilotMaterialsContract {
-    const val MATERIALS_SCHEMA_VERSION = 11
+    const val MATERIALS_SCHEMA_VERSION = 12
 
     fun teacherBrief(): TeacherBrief {
         return TeacherBrief(
-            title = "English+ 教室內測老師簡報",
+            title = "English+ 內測老師說明",
             talkingPoints = listOf(
-                "English+ 不是排名工具，而是幫學生在卡關時被接住。",
-                "學生先做 3-5 分鐘短任務；錯題會變成修復線索，不會變成公開懲罰。",
-                "AI 負責把錯題拆小；老師與志工負責處理需要真人陪伴的情緒斷點。",
-                "內測時請觀察學生是否願意回來做下一題，而不只看答對率。",
-                "所有回饋都以支持、修復、接力為主，不公開比較學生。"
+                "English+ 的核心不是讓學生一直刷題，而是先接住情緒，再安排可以完成的英文小任務。",
+                "學生會先完成簡短檢測，系統依照心情、時間、挑戰意願與題型偏好安排今日任務。",
+                "答錯時，學生會看到清楚回饋；需要真人陪伴時，老師與志工可以看到求助脈絡並接力回覆。",
+                "老師端先呈現班級優先序、學生求助、近期練習紀錄與回覆動作，不混入志工行政資訊。",
+                "資料只用來安排下一步與支持，不做評分依據。",
+                "系統不做公開排名，也不把情緒狀態當成比較學生的依據。"
             ),
-            demoReminder = "Start with student home, then task, AI fallback, handoff, sync, question bank, and report."
+            demoReminder = "展示順序：學生首頁、心情檢測、今日任務、內建提示、老師回覆、志工接力、同步中心與報告。"
         )
     }
 
     fun consentNotice(): ConsentNotice {
         return ConsentNotice(
             sections = linkedMapOf(
-                "資料會用在哪裡" to "內測資料只用於理解學生學習狀態、情緒斷點、錯題修復與老師/志工接力。",
-                "誰可以看到" to "學生本人、授課老師、指定志工與課程團隊可查看必要資料；不公開給其他學生比較。",
-                "資料權利" to "學生或家長可要求匯出自己的學習資料、刪除內測紀錄，或停止使用 English+。",
-                "退出方式" to "學生或家長可要求停止使用，並請老師或課程團隊協助移除或匿名化使用資料。",
-                "AI 使用說明" to "AI 只用於產生低壓提示與修復建議；正式版不得把正式 OpenAI Key 放在手機端。",
-                "不公開排名" to "English+ 不公開比較學生，也不把學生情緒斷點視為失敗。"
+                "資料會怎麼使用" to "English+ 會保存學生的學習紀錄、求助內容、老師回覆與同步狀態，用來安排任務與提供支持。",
+                "學生可以選擇什麼" to "學生可以選擇今天的心情、可用時間、是否挑戰較難題目，以及想練習的題型。",
+                "老師與志工會看到什麼" to "老師與志工只會看到協助學生下一步所需的學習脈絡、求助原因與回覆紀錄。",
+                "AI 使用說明" to "AI 只用於產生低壓提示、錯題詳解與接力摘要；公開使用前應改由安全後端保管服務憑證。",
+                "退出與刪除" to "若學生或班級不再參與測試，應可匯出或刪除相關紀錄，並停止後續使用。"
             ),
             allowPublicRanking = false
         )
@@ -62,11 +62,11 @@ object PilotMaterialsContract {
         return FeedbackForm(
             title = "English+ 內測回饋表",
             questions = listOf(
-                FeedbackQuestion("student", "你打開 App 後，是否很快知道今天先做什麼？", "choice + short text"),
-                FeedbackQuestion("student", "當你答錯或卡住時，提示是否讓你比較敢繼續？", "choice + short text"),
-                FeedbackQuestion("teacher", "你是否能在一分鐘內看懂學生下一步需要什麼？", "scale + note"),
-                FeedbackQuestion("teacher", "報告與接力摘要是否足夠支持教學判斷？", "scale + note"),
-                FeedbackQuestion("volunteer", "志工是否能根據摘要直接陪學生完成下一小步？", "scale + note")
+                FeedbackQuestion("student", "今天的任務有沒有讓你知道下一步要做什麼？", "choice + short text"),
+                FeedbackQuestion("student", "答錯後的回饋是否有幫助你繼續練習？", "choice + short text"),
+                FeedbackQuestion("teacher", "老師端是否能快速看出哪位學生需要先接住？", "scale + note"),
+                FeedbackQuestion("teacher", "學生詳情與回覆流程是否足夠清楚？", "scale + note"),
+                FeedbackQuestion("volunteer", "志工端的陪伴腳本與接力摘要是否足以開始協助學生？", "scale + note")
             )
         )
     }
@@ -79,7 +79,7 @@ object PilotMaterialsContract {
                 "student understood next small task",
                 "teacher next action identified",
                 "handoff summary understandable",
-                "AI/local fallback message felt low-pressure",
+                "built-in or AI message felt low-pressure",
                 "sync/report state was understandable",
                 "question bank level and skill were understandable"
             )

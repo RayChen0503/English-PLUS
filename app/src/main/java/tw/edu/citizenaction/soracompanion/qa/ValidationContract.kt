@@ -41,8 +41,17 @@ data class FullQaGate(
     val blockers: List<String>
 )
 
+data class ProductRealityItem(
+    val id: String,
+    val label: String,
+    val implementedInApp: Boolean,
+    val requiresExternalDecision: Boolean,
+    val nextOwner: String,
+    val userSafeStatus: String
+)
+
 object ValidationContract {
-    const val VALIDATION_SCHEMA_VERSION = 8
+    const val VALIDATION_SCHEMA_VERSION = 9
 
     fun automatedChecks(): List<AutomatedCheck> {
         return listOf(
@@ -196,5 +205,58 @@ object ValidationContract {
             if (!githubCleanAfterPush) add("GitHub clean status")
         }
         return FullQaGate(ready = blockers.isEmpty(), blockers = blockers)
+    }
+
+    fun productRealityInventory(): List<ProductRealityItem> {
+        return listOf(
+            ProductRealityItem(
+                id = "local-learning-records",
+                label = "Local learning records",
+                implementedInApp = true,
+                requiresExternalDecision = false,
+                nextOwner = "team",
+                userSafeStatus = "學習紀錄會先保存在這台裝置，方便課堂內測與後續補傳。"
+            ),
+            ProductRealityItem(
+                id = "student-teacher-local-loop",
+                label = "Student and staff support loop",
+                implementedInApp = true,
+                requiresExternalDecision = false,
+                nextOwner = "team",
+                userSafeStatus = "學生求助、老師回覆與志工接力已能在同一裝置形成閉環。"
+            ),
+            ProductRealityItem(
+                id = "firebase-auth",
+                label = "Firebase or school sign-in",
+                implementedInApp = false,
+                requiresExternalDecision = true,
+                nextOwner = "school",
+                userSafeStatus = "可先用班級帳號進入；若要跨裝置使用，需接上學校或雲端登入。"
+            ),
+            ProductRealityItem(
+                id = "cross-device-sync",
+                label = "Cross-device cloud sync",
+                implementedInApp = false,
+                requiresExternalDecision = true,
+                nextOwner = "school",
+                userSafeStatus = "目前學習資料會先保存，等雲端服務確認後再同步到班級空間。"
+            ),
+            ProductRealityItem(
+                id = "secure-ai-proxy",
+                label = "Secure AI proxy",
+                implementedInApp = false,
+                requiresExternalDecision = true,
+                nextOwner = "team",
+                userSafeStatus = "AI 會優先使用安全連線；未連線時仍提供可讀的學習提示。"
+            ),
+            ProductRealityItem(
+                id = "formal-question-bank-license",
+                label = "Formal question-bank license",
+                implementedInApp = false,
+                requiresExternalDecision = true,
+                nextOwner = "user",
+                userSafeStatus = "題庫已可分級練習；公開使用前仍需確認正式題源與授權。"
+            )
+        )
     }
 }

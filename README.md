@@ -39,6 +39,7 @@ Do not reset to these tags unless a rollback is explicitly requested. The curren
 - Privacy and data-governance contracts for sensitive emotional-support data, data export/deletion requests, no public ranking, API-key guardrails, and Firebase security-rule requirements.
 - Full QA matrix for student happy path, free practice, student support, teacher path, and volunteer path.
 - Internal-test readiness checklist for APK/AAB artifacts, Play Console setup, screenshots, and external credential gaps.
+- Round 16 real-state inventory that separates implemented local capabilities from external dependencies, with tests preventing normal screens from exposing prototype/setup wording.
 - JVM unit tests for repository data and core model invariants.
 
 ## Prototype Limits
@@ -97,6 +98,8 @@ The project now has a release build type and a placeholder `proguard-rules.pro`,
 - Closed/internal testing.
 
 The current internal-test and screenshot plan is documented in `docs/round-14-15-full-qa-internal-test-readiness.md`.
+
+The real-state audit is documented in `docs/round-16-real-state-audit.md`.
 
 ## Project Structure
 

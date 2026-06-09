@@ -12,8 +12,13 @@ class StoreReleaseContractTest {
 
         assertEquals("English+", listing.appName)
         assertTrue(listing.shortDescription.length in 20..80)
-        assertTrue(listing.fullDescription.contains("偏鄉學生"))
-        assertTrue(listing.fullDescription.contains("情緒斷點") || listing.fullDescription.contains("卡關"))
+        assertTrue(listing.shortDescription.contains("偏鄉"))
+        assertTrue(listing.shortDescription.contains("英語"))
+        assertTrue(listing.fullDescription.contains("情緒"))
+        assertTrue(listing.fullDescription.contains("老師"))
+        assertTrue(listing.fullDescription.contains("志工"))
+        assertFalse(hasPrivateUseCharacter(listing.fullDescription))
+        assertFalse(listing.fullDescription.contains('\uFFFD'))
         assertTrue(listing.contactEmail.contains("@"))
     }
 
@@ -97,5 +102,9 @@ class StoreReleaseContractTest {
         assertTrue(gaps.any { it.id == "google-services-json" && it.owner == "user-or-school" })
         assertTrue(gaps.any { it.id == "ai-proxy" && it.reason.contains("server") })
         assertTrue(gaps.any { it.id == "release-keystore" && it.requiredForPublicLaunch })
+    }
+
+    private fun hasPrivateUseCharacter(text: String): Boolean {
+        return text.any { it.code in 0xE000..0xF8FF }
     }
 }

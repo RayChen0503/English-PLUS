@@ -14,7 +14,7 @@ class PilotMaterialsRendererTest {
         assertTrue(markdown.contains("## Talking Points"))
         assertTrue(markdown.contains("- "))
         assertTrue(markdown.contains("## Demo Reminder"))
-        assertTrue(markdown.contains("AI fallback"))
+        assertTrue(markdown.contains("內建提示"))
     }
 
     @Test

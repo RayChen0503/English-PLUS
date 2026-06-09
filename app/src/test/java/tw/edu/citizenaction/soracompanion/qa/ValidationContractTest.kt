@@ -4,6 +4,7 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
+import java.io.File
 
 class ValidationContractTest {
     @Test
@@ -92,5 +93,53 @@ class ValidationContractTest {
         assertTrue(blocked.blockers.contains("high-impact issues"))
         assertTrue(ready.ready)
         assertEquals(emptyList<String>(), ready.blockers)
+    }
+
+    @Test
+    fun round16RealityInventorySeparatesDoneWorkFromExternalDependencies() {
+        val inventory = ValidationContract.productRealityInventory()
+        val byId = inventory.associateBy { it.id }
+
+        assertTrue(byId.getValue("local-learning-records").implementedInApp)
+        assertFalse(byId.getValue("firebase-auth").implementedInApp)
+        assertFalse(byId.getValue("cross-device-sync").implementedInApp)
+        assertFalse(byId.getValue("secure-ai-proxy").implementedInApp)
+        assertFalse(byId.getValue("formal-question-bank-license").implementedInApp)
+
+        inventory.forEach { item ->
+            assertTrue(item.userSafeStatus.isNotBlank())
+            assertFalse(item.userSafeStatus.contains("demo", ignoreCase = true))
+            assertFalse(item.userSafeStatus.contains("prototype", ignoreCase = true))
+            assertFalse(item.userSafeStatus.contains("API"))
+            if (!item.implementedInApp) {
+                assertTrue(item.requiresExternalDecision)
+                assertTrue(item.nextOwner in setOf("user", "school", "team"))
+            }
+        }
+    }
+
+    @Test
+    fun round16NormalAppScreensDoNotExposePrototypeOrSetupCopy() {
+        val mainActivity = File("src/main/java/tw/edu/citizenaction/soracompanion/MainActivity.kt")
+            .takeIf { it.exists() }
+            ?: File("app/src/main/java/tw/edu/citizenaction/soracompanion/MainActivity.kt")
+        val source = mainActivity.readText()
+        val forbiddenNormalScreenCopy = listOf(
+            "本機展示帳號",
+            "展示登入",
+            "展示同步",
+            "展示清單",
+            "本機備援",
+            "demo mode",
+            "正式版",
+            "尚未設定正式登入端點",
+            "尚未設定雲端後端",
+            "尚未設定協作後端",
+            "尚未接雲端"
+        )
+
+        forbiddenNormalScreenCopy.forEach { phrase ->
+            assertFalse("Normal app screens should not expose '$phrase'", source.contains(phrase))
+        }
     }
 }

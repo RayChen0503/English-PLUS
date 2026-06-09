@@ -223,3 +223,19 @@ Only run the reset command when the user explicitly asks to roll back.
 - [x] Prepare Play Console internal-test checklist.
 - [x] Prepare app description, privacy copy, and screenshot plan.
 - [x] Confirm what still needs external credentials or accounts.
+
+## Round 16: Real State Audit And Anti-False Completion
+
+**Files:**
+- Modify: `app/src/main/java/tw/edu/citizenaction/soracompanion/qa/ValidationContract.kt`
+- Modify: `app/src/main/java/tw/edu/citizenaction/soracompanion/auth/AuthContract.kt`
+- Modify: `app/src/main/java/tw/edu/citizenaction/soracompanion/qa/StoreReleaseContract.kt`
+- Modify: `app/src/main/java/tw/edu/citizenaction/soracompanion/MainActivity.kt`
+- Test: `app/src/test/java/tw/edu/citizenaction/soracompanion/qa/ValidationContractTest.kt`
+- Test: `app/src/test/java/tw/edu/citizenaction/soracompanion/auth/AuthContractTest.kt`
+- Test: `app/src/test/java/tw/edu/citizenaction/soracompanion/qa/StoreReleaseContractTest.kt`
+
+- [x] Add a real product-state inventory that separates implemented local app capabilities from external dependencies.
+- [x] Prevent normal app screens from exposing setup, backend, fallback, or prototype copy.
+- [x] Replace corrupted auth and store listing copy with readable user-facing text.
+- [x] Document which items remain external decisions instead of claiming they are finished.

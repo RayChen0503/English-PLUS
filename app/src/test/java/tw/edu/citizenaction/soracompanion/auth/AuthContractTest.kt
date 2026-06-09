@@ -12,6 +12,9 @@ class AuthContractTest {
         assertEquals(AuthContract.ROLE_TEACHER, AuthContract.normalizeRole("teacher"))
         assertEquals(AuthContract.ROLE_VOLUNTEER, AuthContract.normalizeRole("volunteer"))
         assertEquals(AuthContract.ROLE_VOLUNTEER, AuthContract.normalizeRole("mentor"))
+        assertEquals("學生", AuthContract.ROLE_STUDENT)
+        assertEquals("老師", AuthContract.ROLE_TEACHER)
+        assertEquals("志工", AuthContract.ROLE_VOLUNTEER)
         assertEquals(AuthContract.ROLE_STUDENT, AuthContract.normalizeRole(""))
     }
 
@@ -95,8 +98,10 @@ class AuthContractTest {
         )
 
         assertEquals("ready", status.state)
-        assertTrue(status.message.contains("正式登入"))
+        assertTrue(status.message.contains("學校帳號"))
         assertFalse(status.message.contains("token", ignoreCase = true))
         assertFalse(status.message.contains("implementation", ignoreCase = true))
+        assertFalse(status.message.contains("demo", ignoreCase = true))
+        assertFalse(status.message.contains("API"))
     }
 }
