@@ -1,0 +1,197 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function signedIn() {
+      return request.auth != null;
+    }
+
+    function isSelf(uid) {
+      return signedIn() && request.auth.uid == uid;
+    }
+
+    function memberPath(classId, uid) {
+      return /databases/$(database)/documents/classes/$(classId)/members/$(uid);
+    }
+
+    function isClassMember(classId) {
+      return signedIn() && exists(memberPath(classId, request.auth.uid));
+    }
+
+    function memberData(classId) {
+      return get(memberPath(classId, request.auth.uid)).data;
+    }
+
+    function memberRole(classId) {
+      return memberData(classId).role;
+    }
+
+    function isClassStudent(classId) {
+      return isClassMember(classId) && memberRole(classId) == "student";
+    }
+
+    function isClassTeacher(classId) {
+      return isClassMember(classId) && memberRole(classId) == "teacher";
+    }
+
+    function isClassVolunteer(classId) {
+      return isClassMember(classId) && memberRole(classId) == "volunteer";
+    }
+
+    function isOwnerStudent(studentUid) {
+      return isSelf(studentUid);
+    }
+
+    function assignedToStudent(classId, studentUid) {
+      return isClassVolunteer(classId)
+        && exists(/databases/$(database)/documents/classes/$(classId)/staffAssignments/$(request.auth.uid + "_" + studentUid));
+    }
+
+    function threadPath(classId, threadId) {
+      return /databases/$(database)/documents/classes/$(classId)/supportThreads/$(threadId);
+    }
+
+    function canReadStudentRecord(classId, studentUid) {
+      return isOwnerStudent(studentUid)
+        || isClassTeacher(classId)
+        || assignedToStudent(classId, studentUid);
+    }
+
+    function canReadThread(classId, threadId) {
+      let thread = get(threadPath(classId, threadId)).data;
+      return isClassTeacher(classId)
+        || (isSelf(thread.studentUid) && thread.studentVisible == true)
+        || (isClassVolunteer(classId) && thread.assignedToUid == request.auth.uid);
+    }
+
+    function canWriteStaffReply(classId, threadId) {
+      let thread = get(threadPath(classId, threadId)).data;
+      return isClassTeacher(classId)
+        || (isClassVolunteer(classId) && thread.assignedToUid == request.auth.uid);
+    }
+
+    match /appConfig/{docId} {
+      allow read: if signedIn();
+      allow write: if false;
+    }
+
+    match /users/{uid} {
+      allow read: if isSelf(uid);
+      allow create: if isSelf(uid);
+      allow update: if isSelf(uid)
+        && !request.resource.data.diff(resource.data).affectedKeys().hasAny(["primaryRole"]);
+      allow delete: if false;
+    }
+
+    match /classes/{classId} {
+      allow read: if isClassMember(classId);
+      allow write: if false;
+
+      match /members/{uid} {
+        allow read: if isSelf(uid) || isClassTeacher(classId);
+        allow write: if isClassTeacher(classId);
+      }
+
+      match /students/{studentUid} {
+        allow read: if canReadStudentRecord(classId, studentUid);
+        allow create, update: if isOwnerStudent(studentUid) || isClassTeacher(classId);
+        allow delete: if false;
+
+        match /checkIns/{dateKey} {
+          allow read: if canReadStudentRecord(classId, studentUid);
+          allow create: if isOwnerStudent(studentUid);
+          allow update: if isOwnerStudent(studentUid) || isClassTeacher(classId);
+          allow delete: if false;
+        }
+
+        match /dailyMissions/{missionId} {
+          allow read: if canReadStudentRecord(classId, studentUid);
+          allow create, update: if isOwnerStudent(studentUid) || isClassTeacher(classId);
+          allow delete: if false;
+        }
+
+        match /answerEvents/{eventId} {
+          allow read: if canReadStudentRecord(classId, studentUid);
+          allow create: if isOwnerStudent(studentUid);
+          allow update, delete: if false;
+        }
+
+        match /learningEvents/{eventId} {
+          allow read: if canReadStudentRecord(classId, studentUid);
+          allow create: if isOwnerStudent(studentUid);
+          allow update, delete: if false;
+        }
+      }
+
+      match /supportThreads/{threadId} {
+        allow read: if canReadThread(classId, threadId);
+
+        allow create: if isClassStudent(classId)
+          && request.resource.data.studentUid == request.auth.uid
+          && request.resource.data.classId == classId
+          && request.resource.data.studentVisible == true;
+
+        allow update: if canWriteStaffReply(classId, threadId)
+          || (
+            isSelf(resource.data.studentUid)
+            && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+              "status",
+              "updatedAt",
+              "latestMessagePreview"
+            ])
+          );
+
+        allow delete: if false;
+
+        match /messages/{messageId} {
+          allow read: if canReadThread(classId, threadId)
+            && (
+              resource.data.visibility == "studentVisible"
+              || canWriteStaffReply(classId, threadId)
+            );
+
+          allow create: if (
+              isSelf(get(threadPath(classId, threadId)).data.studentUid)
+              && request.resource.data.authorUid == request.auth.uid
+              && request.resource.data.authorRole == "student"
+              && request.resource.data.visibility == "studentVisible"
+            )
+            || (
+              canWriteStaffReply(classId, threadId)
+              && request.resource.data.authorUid == request.auth.uid
+              && request.resource.data.authorRole in ["teacher", "volunteer"]
+              && request.resource.data.visibility in ["studentVisible", "staffOnly"]
+            );
+
+          allow update, delete: if false;
+        }
+      }
+
+      match /staffAssignments/{assignmentId} {
+        allow read: if isClassTeacher(classId)
+          || (isClassVolunteer(classId) && resource.data.assignedToUid == request.auth.uid)
+          || isSelf(resource.data.studentUid);
+
+        allow create, update: if isClassTeacher(classId);
+        allow delete: if false;
+      }
+
+      match /questionBank/{questionId} {
+        allow read: if isClassMember(classId)
+          && (resource.data.reviewState == "approved" || isClassTeacher(classId));
+        allow create, update: if isClassTeacher(classId);
+        allow delete: if false;
+      }
+
+      match /reports/{reportId} {
+        allow read, create, update: if isClassTeacher(classId);
+        allow delete: if false;
+      }
+
+      match /syncQueue/{syncItemId} {
+        allow read, create, update: if isClassTeacher(classId);
+        allow delete: if false;
+      }
+    }
+  }
+}

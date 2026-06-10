@@ -22,10 +22,15 @@ The Android app remains the working classroom prototype. The iOS work should sta
    SwiftUI screen map, role-separated user flows, proposed view files, navigation rules, and UX quality gates.
 3. `round-3-ios-data-format-spec.md`
    Android-to-iOS data contracts for roles, accounts, question bank, check-in, daily missions, support threads, staff assignments, and sync.
+4. `round-4-firebase-auth-firestore-schema.md`
+   Firebase Auth strategy, confirmed Firebase/iOS identifiers, Firestore collection schema, role permissions, backend proxy boundary, and setup order.
+5. `firebase/firestore.rules.draft`
+   Draft Firestore security rules for student, teacher, and volunteer access control.
+6. `firebase/firestore.indexes.draft.json`
+   Draft Firestore composite indexes for support, assignment, student, question-bank, and answer-event queries.
 
 Future rounds will add:
 
-- Firebase Auth / Firestore schema and security-rule draft.
 - OpenRouter backend proxy contract.
 - TestFlight preparation checklist.
 - Privacy and real-student-data checklist.
