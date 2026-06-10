@@ -49,11 +49,11 @@ class CloudDataContractTest {
     @Test
     fun syncMetadataDeclaresSchemaAndCollections() {
         val scope = CloudDataContract.buildScope("CLASS-8A", "Teacher Lin", AuthContract.ROLE_TEACHER)
-        val metadata = CloudDataContract.buildSyncMetadata(scope, "android-demo")
+        val metadata = CloudDataContract.buildSyncMetadata(scope, "android-classroom")
 
-        assertEquals(3, metadata["schemaVersion"])
+        assertEquals(4, metadata["schemaVersion"])
         assertEquals("English+", metadata["app"])
-        assertEquals("android-demo", metadata["deviceLabel"])
+        assertEquals("android-classroom", metadata["deviceLabel"])
         assertEquals("CLASS-8A", metadata["classId"])
         assertEquals("teacher-lin", metadata["userId"])
         assertEquals(AuthContract.ROLE_TEACHER, metadata["roleLabel"])
@@ -62,18 +62,20 @@ class CloudDataContractTest {
     }
 
     @Test
-    fun syncQueueTracksRetryBlockedAndLastSuccessState() {
+    fun syncQueueTracksRetryBackoffBlockedAndReadableState() {
         val pending = OfflineSyncItem(
-            title = "Student help request",
+            title = "學生求助",
             category = "help_request",
-            detail = "Need teacher reply",
+            detail = "需要老師回覆",
             status = "queued",
             updatedAt = 100L
         )
 
         val queued = CloudDataContract.queueItemFromOfflineSync(pending)
-        val retried = CloudDataContract.recordSyncFailure(queued, "network unavailable", now = 200L)
-        val blocked = retried.copy(attemptCount = 3)
+        val retried = CloudDataContract.recordSyncFailure(queued, "network unavailable", now = 1_000L)
+        val retryPlan = CloudDataContract.retryPlanFor(retried, now = 1_000L)
+        val blocked = retried.copy(attemptCount = 3, status = "blocked")
+        val blockedPlan = CloudDataContract.retryPlanFor(blocked, now = 2_000L)
         val state = CloudDataContract.buildQueueState(
             items = listOf(blocked),
             networkAvailable = true,
@@ -83,10 +85,30 @@ class CloudDataContractTest {
         assertEquals("help_request", queued.collection)
         assertEquals(1, retried.attemptCount)
         assertEquals("retry", retried.status)
+        assertTrue(retryPlan.canRetry)
+        assertEquals(30_000L, retryPlan.retryAfterMillis)
+        assertEquals(31_000L, retryPlan.nextAttemptAt)
+        assertFalse(blockedPlan.canRetry)
+        assertTrue(blockedPlan.userMessage.contains("需要處理"))
         assertEquals(1, state.blockedCount)
         assertEquals(150L, state.lastSuccessAt)
         assertEquals("resolve-blocked-items", state.nextAction)
-        assertTrue(state.message.contains("需要人工確認"))
+        assertTrue(state.message.contains("需要處理"))
+        assertFalse(state.message.any { it.code in 0xE000..0xF8FF })
+    }
+
+    @Test
+    fun successfulSyncClearsRetryState() {
+        val queued = CloudDataContract.queueItemFromOfflineSync(
+            OfflineSyncItem("學生回覆已讀", "collaborationNotes", "學生看見老師回覆", "待上傳", 100L)
+        )
+        val failed = CloudDataContract.recordSyncFailure(queued, "timeout", now = 200L)
+        val synced = CloudDataContract.recordSyncSuccess(failed, now = 300L)
+
+        assertEquals(0, synced.attemptCount)
+        assertEquals("synced", synced.status)
+        assertEquals("", synced.lastError)
+        assertEquals(300L, synced.updatedAt)
     }
 
     @Test

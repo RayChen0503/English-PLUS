@@ -40,6 +40,7 @@ Do not reset to these tags unless a rollback is explicitly requested. The curren
 - Full QA matrix for student happy path, free practice, student support, teacher path, and volunteer path.
 - Internal-test readiness checklist for APK/AAB artifacts, Play Console setup, screenshots, and external credential gaps.
 - Round 16 real-state inventory that separates implemented local capabilities from external dependencies, with tests preventing normal screens from exposing prototype/setup wording.
+- Round 17-18 local collaboration loop and sync readiness: student help requests, teacher/volunteer replies, student-visible timelines, retry/backoff planning, and collaboration conflict reports are now tested as contracts.
 - JVM unit tests for repository data and core model invariants.
 
 ## Prototype Limits
@@ -100,6 +101,8 @@ The project now has a release build type and a placeholder `proguard-rules.pro`,
 The current internal-test and screenshot plan is documented in `docs/round-14-15-full-qa-internal-test-readiness.md`.
 
 The real-state audit is documented in `docs/round-16-real-state-audit.md`.
+
+The local collaboration loop and sync-readiness work is documented in `docs/round-17-18-local-loop-sync.md`.
 
 ## Project Structure
 

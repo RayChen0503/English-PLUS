@@ -239,3 +239,31 @@ Only run the reset command when the user explicitly asks to roll back.
 - [x] Prevent normal app screens from exposing setup, backend, fallback, or prototype copy.
 - [x] Replace corrupted auth and store listing copy with readable user-facing text.
 - [x] Document which items remain external decisions instead of claiming they are finished.
+
+## Round 17: Local Student-Staff Collaboration Loop
+
+**Files:**
+- Modify: `app/src/main/java/tw/edu/citizenaction/soracompanion/model/CollaborationFlowContract.kt`
+- Modify: `app/src/main/java/tw/edu/citizenaction/soracompanion/MainActivity.kt`
+- Test: `app/src/test/java/tw/edu/citizenaction/soracompanion/model/CollaborationFlowContractTest.kt`
+
+- [x] Replace ambiguous collaboration statuses with readable local state labels.
+- [x] Build a single local support-loop snapshot for student, teacher, and volunteer views.
+- [x] Keep student-visible timelines separate from internal staff handoff notes.
+- [x] Make teacher and volunteer next actions explicit without mixing their roles.
+- [x] Add tests covering pending, replied, read, staff-visible, and student-visible states.
+
+## Round 18: Sync Retry And Conflict Readiness
+
+**Files:**
+- Modify: `app/src/main/java/tw/edu/citizenaction/soracompanion/cloud/CloudDataContract.kt`
+- Modify: `app/src/main/java/tw/edu/citizenaction/soracompanion/cloud/CollaborationSyncContract.kt`
+- Modify: `app/src/main/java/tw/edu/citizenaction/soracompanion/MainActivity.kt`
+- Test: `app/src/test/java/tw/edu/citizenaction/soracompanion/cloud/CloudDataContractTest.kt`
+- Test: `app/src/test/java/tw/edu/citizenaction/soracompanion/cloud/CollaborationSyncContractTest.kt`
+
+- [x] Add sync success recording so completed items leave retry state.
+- [x] Add retry/backoff planning with blocked-state handling after repeated failures.
+- [x] Keep sync queue messages readable for normal users.
+- [x] Add collaboration conflict reports with `latest-createdAt-wins`.
+- [x] Update schema versions and tests so future backend work has a stable contract.

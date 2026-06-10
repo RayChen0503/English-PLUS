@@ -26,6 +26,15 @@ data class CloudQueueState(
     val message: String
 )
 
+data class CloudRetryPlan(
+    val attemptCount: Int,
+    val canRetry: Boolean,
+    val isDue: Boolean,
+    val retryAfterMillis: Long,
+    val nextAttemptAt: Long,
+    val userMessage: String
+)
+
 data class CloudAccessScope(
     val classId: String,
     val userId: String,
@@ -38,7 +47,7 @@ data class CloudAccessScope(
 }
 
 object CloudDataContract {
-    const val SCHEMA_VERSION = 3
+    const val SCHEMA_VERSION = 4
 
     val syncedCollections = listOf(
         "appState",
@@ -51,8 +60,8 @@ object CloudDataContract {
 
     fun buildScope(classCode: String, accountName: String, roleLabel: String): CloudAccessScope {
         return CloudAccessScope(
-            classId = normalizeId(classCode, fallback = "DEMO-CLASS").uppercase(),
-            userId = normalizeId(accountName, fallback = "demo-user"),
+            classId = normalizeId(classCode, fallback = "CLASS-LOCAL").uppercase(),
+            userId = normalizeId(accountName, fallback = "class-user"),
             roleLabel = AuthContract.normalizeRole(roleLabel)
         )
     }
@@ -117,6 +126,48 @@ object CloudDataContract {
         )
     }
 
+    fun recordSyncSuccess(
+        item: CloudSyncQueueItem,
+        now: Long
+    ): CloudSyncQueueItem {
+        return item.copy(
+            attemptCount = 0,
+            status = "synced",
+            lastError = "",
+            updatedAt = now
+        )
+    }
+
+    fun retryPlanFor(
+        item: CloudSyncQueueItem,
+        now: Long
+    ): CloudRetryPlan {
+        val safeAttempt = item.attemptCount.coerceAtLeast(0)
+        val blocked = item.status == "blocked" || safeAttempt >= 3
+        val synced = item.status == "synced"
+        val delay = if (safeAttempt <= 0) {
+            0L
+        } else {
+            (30_000L * (1 shl (safeAttempt - 1).coerceAtMost(3))).coerceAtMost(300_000L)
+        }
+        val nextAttemptAt = item.updatedAt + delay
+        val canRetry = !blocked && !synced
+        val message = when {
+            synced -> "這筆資料已同步完成。"
+            blocked -> "同步已暫停，需要處理錯誤後再補傳。"
+            delay == 0L -> "資料已排入同步佇列。"
+            else -> "資料會在稍後自動重試；你可以先繼續使用。"
+        }
+        return CloudRetryPlan(
+            attemptCount = safeAttempt,
+            canRetry = canRetry,
+            isDue = canRetry && now >= nextAttemptAt,
+            retryAfterMillis = delay,
+            nextAttemptAt = nextAttemptAt,
+            userMessage = message
+        )
+    }
+
     fun buildQueueState(
         items: List<CloudSyncQueueItem>,
         networkAvailable: Boolean,
@@ -132,9 +183,9 @@ object CloudDataContract {
             else -> "idle"
         }
         val message = when (nextAction) {
-            "wait-for-network" -> "網路尚未可用，系統會保留本機資料並等待補傳。"
-            "resolve-blocked-items" -> "有同步項目重試多次仍失敗，需要人工確認後再補傳。"
-            "sync-now" -> "已有本機資料待同步，可以開始補傳。"
+            "wait-for-network" -> "目前沒有可用網路，資料已保存在這台裝置，稍後會再補傳。"
+            "resolve-blocked-items" -> "有資料重試太多次，需要處理錯誤後再補傳。"
+            "sync-now" -> "有資料等待同步，可以現在補傳到班級空間。"
             else -> "目前沒有待同步資料。"
         }
         return CloudQueueState(

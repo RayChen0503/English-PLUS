@@ -2,8 +2,17 @@ package tw.edu.citizenaction.soracompanion.cloud
 
 import tw.edu.citizenaction.soracompanion.model.CollaborationNote
 
+data class CollaborationConflictReport(
+    val mergedNotes: List<CollaborationNote>,
+    val deduplicatedEvents: Int,
+    val localOnlyEvents: Int,
+    val remoteOnlyEvents: Int,
+    val rule: String,
+    val userMessage: String
+)
+
 object CollaborationSyncContract {
-    const val COLLABORATION_SCHEMA_VERSION = 4
+    const val COLLABORATION_SCHEMA_VERSION = 5
 
     fun eventId(note: CollaborationNote): String {
         return listOf(note.actor, note.role, note.target, note.note)
@@ -24,6 +33,23 @@ object CollaborationSyncContract {
             .sortedByDescending { it.createdAt }
     }
 
+    fun resolveConflictReport(
+        localNotes: List<CollaborationNote>,
+        remoteNotes: List<CollaborationNote>
+    ): CollaborationConflictReport {
+        val localIds = localNotes.map { eventId(it) }.toSet()
+        val remoteIds = remoteNotes.map { eventId(it) }.toSet()
+        val merged = mergeNotes(localNotes, remoteNotes)
+        return CollaborationConflictReport(
+            mergedNotes = merged,
+            deduplicatedEvents = localIds.intersect(remoteIds).size,
+            localOnlyEvents = (localIds - remoteIds).size,
+            remoteOnlyEvents = (remoteIds - localIds).size,
+            rule = "latest-createdAt-wins",
+            userMessage = "已保留最新紀錄，重複接力內容不會顯示兩次。"
+        )
+    }
+
     fun buildCollaborationSyncMetadata(
         scope: CloudAccessScope,
         pushFirst: Boolean
@@ -36,7 +62,7 @@ object CollaborationSyncContract {
             "userId" to scope.userId,
             "roleLabel" to scope.roleLabel,
             "collectionPath" to scope.collaborationCollectionPath,
-            "conflictRule" to "same eventId keeps latest createdAt"
+            "conflictRule" to "latest-createdAt-wins"
         )
     }
 

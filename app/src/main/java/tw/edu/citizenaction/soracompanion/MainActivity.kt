@@ -250,7 +250,7 @@ class MainActivity : Activity() {
 
     private fun syncReadinessText(): String {
         val networkText = if (isNetworkAvailable()) "網路可用" else "目前離線"
-        val backendText = if (stateStore.hasCloudBackend()) "後端端點已設定" else "尚未設定後端端點"
+        val backendText = if (stateStore.hasCloudBackend()) "同步連線可用" else "同步連線待補"
         val pendingText = "待補傳 $offlinePendingCount 筆"
         val queue = CloudDataContract.buildQueueState(
             items = offlineSyncItems.map { CloudDataContract.queueItemFromOfflineSync(it) },
@@ -870,13 +870,13 @@ class MainActivity : Activity() {
         screen = Screen.HelpRequest
         shell("支持與回覆", "可以求助，也可以看老師/志工回覆")
         val threads = studentHelpThreads(12)
-        val pending = CollaborationFlowContract.waitingRequestCount(collaborationNotes, student.name)
-        val unreadReplies = CollaborationFlowContract.unreadRepliesForStudent(collaborationNotes, student.name).size
+        val supportLoop = CollaborationFlowContract.localSupportLoopSnapshot(collaborationNotes, student.name)
         root.addView(metricRow(
-            Metric("待回覆", "$pending", if (pending > 0) ColorToken.Warning else ColorToken.Success),
-            Metric("新回覆", "$unreadReplies", if (unreadReplies > 0) ColorToken.Warning else ColorToken.Success),
+            Metric("待回覆", "${supportLoop.waitingRequests}", if (supportLoop.waitingRequests > 0) ColorToken.Warning else ColorToken.Success),
+            Metric("新回覆", "${supportLoop.unreadReplies}", if (supportLoop.unreadReplies > 0) ColorToken.Warning else ColorToken.Success),
             Metric("信心", "$confidence%", ColorToken.Accent)
         ))
+        root.addView(card("目前狀態", "${supportLoop.latestStatus}\n${supportLoop.studentNextAction}", if (supportLoop.unreadReplies > 0) ColorToken.SuccessSoft else ColorToken.PrimarySoft))
         if (threads.isEmpty()) {
             root.addView(card("還沒有求助紀錄", "卡住時可以先選一個原因，English+ 會把題目、心情與卡點整理給老師或志工。", ColorToken.PrimarySoft))
         } else {
@@ -1319,6 +1319,8 @@ class MainActivity : Activity() {
         val pendingRequests = pendingStudentHelpRequests()
         val summary = CollaborationFlowContract.staffQueueSummary(collaborationNotes, teacherActions.size, actionDoneCount)
         val roleQueue = CollaborationFlowContract.staffRoleQueue(collaborationNotes, currentAccount().roleLabel)
+        val queueStudent = pendingRequests.firstOrNull()?.target ?: student.name
+        val supportLoop = CollaborationFlowContract.localSupportLoopSnapshot(collaborationNotes, queueStudent)
         root.addView(metricRow(
             Metric("待辦", "${summary.totalPending} 件", if (summary.totalPending > 0) ColorToken.Warning else ColorToken.Success),
             Metric("已處理", "${summary.completed} 件", ColorToken.Success),
@@ -1335,6 +1337,11 @@ class MainActivity : Activity() {
         ))
         val queueLabel = if (roleQueue.meaning == "teacher_follow_up") "老師追蹤" else "志工陪伴"
         root.addView(ui.body("佇列：$queueLabel｜待回覆：${roleQueue.helpPending}｜本角色已回覆：${roleQueue.repliedCount}", ColorToken.Muted))
+        root.addView(card(
+            "目前接力狀態",
+            "${supportLoop.latestStatus}｜${if (UserFlowContract.isTeacherRole(role)) supportLoop.teacherNextAction else supportLoop.volunteerNextAction}",
+            if (supportLoop.staffCanReply) ColorToken.WarningSoft else ColorToken.SuccessSoft
+        ))
         root.addView(remoteCollaborationStatusCard())
         section("學生求助待回覆")
         if (pendingRequests.isEmpty()) {
@@ -2299,6 +2306,15 @@ class MainActivity : Activity() {
             setPadding(0, ui.dp(12), 0, ui.dp(4))
         })
         box.addView(ui.body(syncReadinessText(), "#334155"))
+        val retryPlan = offlineSyncItems
+            .map { CloudDataContract.queueItemFromOfflineSync(it) }
+            .firstOrNull { it.status != "synced" }
+            ?.let { CloudDataContract.retryPlanFor(it, System.currentTimeMillis()) }
+        if (retryPlan != null) {
+            box.addView(ui.body("重試提示：${retryPlan.userMessage}", ColorToken.Muted).apply {
+                setPadding(0, ui.dp(6), 0, 0)
+            })
+        }
         box.addView(ui.body("按下智慧同步時，English+ 會先檢查網路與後端 URL；失敗就保留待補傳，成功才把本機佇列標記為已同步。", ColorToken.Muted).apply {
             setPadding(0, ui.dp(6), 0, 0)
         })

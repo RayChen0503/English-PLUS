@@ -21,24 +21,38 @@ data class StaffRoleQueue(
     val repliedCount: Int
 )
 
+data class LocalSupportLoopSnapshot(
+    val studentName: String,
+    val waitingRequests: Int,
+    val unreadReplies: Int,
+    val latestStatus: String,
+    val studentNextAction: String,
+    val teacherNextAction: String,
+    val volunteerNextAction: String,
+    val staffCanReply: Boolean,
+    val closed: Boolean
+)
+
 object CollaborationFlowContract {
-    const val STATUS_STAFF_REPLY_READ = "?單撌脩"
-    const val STATUS_STUDENT_REQUEST = "待老師/志工回覆"
-    const val STATUS_STAFF_REPLY = "已回覆給學生"
-    const val STATUS_STAFF_NOTE = "接力紀錄"
+    const val STATUS_STUDENT_REQUEST = "學生求助"
+    const val STATUS_STAFF_REPLY = "老師/志工已回覆"
+    const val STATUS_STAFF_REPLY_READ = "學生已讀回覆"
+    const val STATUS_STAFF_NOTE = "內部接力紀錄"
 
     fun isStudentHelpRequest(note: CollaborationNote): Boolean {
         return note.status == STATUS_STUDENT_REQUEST
     }
 
     fun isStaffReply(note: CollaborationNote): Boolean {
-        return note.status == STATUS_STAFF_REPLY || note.status == "已回覆" || note.status == "腳本已用"
+        return note.status == STATUS_STAFF_REPLY ||
+            note.status == STATUS_STAFF_REPLY_READ ||
+            note.status == "已回覆"
     }
 
     fun pendingRequests(notes: List<CollaborationNote>, studentName: String? = null): List<CollaborationNote> {
         return notes.filter { note ->
             isStudentHelpRequest(note) && (studentName == null || note.target == studentName)
-        }
+        }.sortedBy { it.createdAt }
     }
 
     fun unansweredRequests(notes: List<CollaborationNote>, studentName: String? = null): List<CollaborationNote> {
@@ -54,6 +68,18 @@ object CollaborationFlowContract {
         return note.target == studentName && (isStudentHelpRequest(note) || isStaffReply(note))
     }
 
+    fun studentVisibleTimeline(notes: List<CollaborationNote>, studentName: String): List<CollaborationNote> {
+        return notes
+            .filter { visibleToStudent(it, studentName) }
+            .sortedBy { it.createdAt }
+    }
+
+    fun staffVisibleQueue(notes: List<CollaborationNote>, staffRole: String): List<CollaborationNote> {
+        val role = AuthContract.normalizeRole(staffRole)
+        if (!AuthContract.isStaffRole(role)) return emptyList()
+        return unansweredRequests(notes)
+    }
+
     fun buildCustomStaffReply(
         request: CollaborationNote,
         staffName: String,
@@ -62,18 +88,18 @@ object CollaborationFlowContract {
         createdAt: Long
     ): CollaborationNote {
         return CollaborationNote(
-            actor = staffName.trim().ifBlank { "English+ staff" },
+            actor = staffName.trim().ifBlank { "English+ 接力者" },
             role = AuthContract.normalizeRole(staffRole),
             target = request.target,
-            note = message.trim().ifBlank { defaultStaffReply(request.target, "English+") },
+            note = message.trim().ifBlank { defaultStaffReply(request.target, "今天的題目") },
             status = STATUS_STAFF_REPLY,
             createdAt = createdAt
         )
     }
 
     fun markReplyRead(reply: CollaborationNote): CollaborationNote {
-        return if (isStaffReply(reply) && !reply.note.startsWith("[read] ")) {
-            reply.copy(status = STATUS_STAFF_REPLY, note = "[read] ${reply.note}")
+        return if (isStaffReply(reply)) {
+            reply.copy(status = STATUS_STAFF_REPLY_READ, note = reply.note.removePrefix("[read] ").trim())
         } else {
             reply
         }
@@ -101,7 +127,12 @@ object CollaborationFlowContract {
     }
 
     fun requestStatusLabel(request: CollaborationNote, notes: List<CollaborationNote>): String {
-        return if (latestReplyFor(request, notes) == null) "等待中" else "已回覆"
+        val reply = latestReplyFor(request, notes)
+        return when {
+            reply == null -> "等待回覆"
+            reply.status == STATUS_STAFF_REPLY_READ || reply.note.startsWith("[read] ") -> "已讀回覆"
+            else -> "已有回覆"
+        }
     }
 
     fun waitingRequestCount(notes: List<CollaborationNote>, studentName: String): Int {
@@ -113,6 +144,36 @@ object CollaborationFlowContract {
             .map { request -> StudentHelpThread(request, latestReplyFor(request, notes)) }
             .sortedByDescending { it.request.createdAt }
             .take(limit)
+    }
+
+    fun localSupportLoopSnapshot(notes: List<CollaborationNote>, studentName: String): LocalSupportLoopSnapshot {
+        val waiting = unansweredRequests(notes, studentName)
+        val unread = unreadRepliesForStudent(notes, studentName)
+        val threads = studentThreads(notes, studentName)
+        val latestThread = threads.firstOrNull()
+        val latestStatus = when {
+            unread.isNotEmpty() -> "已有回覆"
+            waiting.isNotEmpty() -> "等待回覆"
+            latestThread?.latestReply != null -> "已讀回覆"
+            else -> "沒有求助"
+        }
+        val studentNextAction = when (latestStatus) {
+            "等待回覆" -> "先做一題低壓練習，不需要重複送同一個求助。"
+            "已有回覆" -> "閱讀回覆，確認下一步，再回到一題小練習。"
+            "已讀回覆" -> "照回饋練一題，完成後再決定要不要繼續挑戰。"
+            else -> "需要幫忙時可以先說一句卡在哪裡。"
+        }
+        return LocalSupportLoopSnapshot(
+            studentName = studentName,
+            waitingRequests = waiting.size,
+            unreadReplies = unread.size,
+            latestStatus = latestStatus,
+            studentNextAction = studentNextAction,
+            teacherNextAction = if (waiting.isNotEmpty()) "回覆第一位等待中的學生，給一個明確下一步。" else "檢查已回覆學生是否完成下一題。",
+            volunteerNextAction = if (waiting.isNotEmpty()) "依照陪練腳本陪練，不新增老師行政任務。" else "整理接力紀錄，等待下一位需要陪練的學生。",
+            staffCanReply = waiting.isNotEmpty(),
+            closed = waiting.isEmpty() && unread.isEmpty() && latestThread?.latestReply != null
+        )
     }
 
     fun staffQueueSummary(
@@ -142,12 +203,12 @@ object CollaborationFlowContract {
         return StaffRoleQueue(
             roleLabel = role,
             meaning = meaning,
-            helpPending = unansweredRequests(notes).size,
+            helpPending = if (AuthContract.isStaffRole(role)) unansweredRequests(notes).size else 0,
             repliedCount = notes.count { isStaffReply(it) && AuthContract.normalizeRole(it.role) == role }
         )
     }
 
     fun defaultStaffReply(studentName: String, concept: String): String {
-        return "$studentName，我有看到你的求助。先不要急著加新題，我們先把「$concept」用同一種題型陪你練兩題；如果還卡住，我會再幫你拆更小。"
+        return "$studentName，我先陪你把「$concept」拆小一點。下一步先看題目裡最明顯的線索，完成一題就好；如果還卡住，再把你卡住的句子圈起來，我們一起看。"
     }
 }
