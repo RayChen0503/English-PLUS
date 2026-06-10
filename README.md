@@ -41,6 +41,7 @@ Do not reset to these tags unless a rollback is explicitly requested. The curren
 - Internal-test readiness checklist for APK/AAB artifacts, Play Console setup, screenshots, and external credential gaps.
 - Round 16 real-state inventory that separates implemented local capabilities from external dependencies, with tests preventing normal screens from exposing prototype/setup wording.
 - Round 17-18 local collaboration loop and sync readiness: student help requests, teacher/volunteer replies, student-visible timelines, retry/backoff planning, and collaboration conflict reports are now tested as contracts.
+- Round 19-20 production handoff and showcase evidence gates: backend/login/security decisions, AI proxy requirements, and student/teacher/volunteer media coverage are now explicit and tested.
 - JVM unit tests for repository data and core model invariants.
 
 ## Prototype Limits
@@ -103,6 +104,8 @@ The current internal-test and screenshot plan is documented in `docs/round-14-15
 The real-state audit is documented in `docs/round-16-real-state-audit.md`.
 
 The local collaboration loop and sync-readiness work is documented in `docs/round-17-18-local-loop-sync.md`.
+
+The production handoff and showcase evidence gates are documented in `docs/round-19-20-production-handoff-evidence.md`.
 
 ## Project Structure
 

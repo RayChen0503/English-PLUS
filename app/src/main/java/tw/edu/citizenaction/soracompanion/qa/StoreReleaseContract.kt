@@ -53,6 +53,35 @@ data class ScreenshotPlan(
     val namingRule: String
 )
 
+data class DemoEvidenceItem(
+    val role: String,
+    val screenId: String,
+    val mediaType: String,
+    val label: String,
+    val acceptanceNote: String
+)
+
+data class DemoEvidencePackage(
+    val items: List<DemoEvidenceItem>,
+    val folderRule: String,
+    val minimumVideoSeconds: Int
+)
+
+data class DemoMediaCapture(
+    val role: String,
+    val screenId: String,
+    val mediaType: String,
+    val durationSeconds: Int,
+    val hasUserAction: Boolean,
+    val isDuplicate: Boolean,
+    val exposesInternalCopy: Boolean
+)
+
+data class DemoEvidenceGate(
+    val readyForShowcase: Boolean,
+    val blockers: List<String>
+)
+
 data class ExternalCredentialGap(
     val id: String,
     val label: String,
@@ -202,6 +231,67 @@ object StoreReleaseContract {
                 )
             ),
             namingRule = "Use role_screen_sequence, for example student_03_daily_mission.png and teacher_02_roster.mp4."
+        )
+    }
+
+    fun demoEvidencePackage(): DemoEvidencePackage {
+        val items = listOf(
+            DemoEvidenceItem("student", "student_01_role_login", "screenshot", "學生端入口與登入", "看得到學生路徑，沒有老師或志工工作台混入。"),
+            DemoEvidenceItem("student", "student_02_check_in", "screenshot", "四題心情檢測", "心情、時間、挑戰意願與題型偏好都能完成。"),
+            DemoEvidenceItem("student", "student_03_daily_mission", "screenshot", "今日任務與做題進度", "進度只計算今日任務答對題，不包含心情檢測。"),
+            DemoEvidenceItem("student", "student_04_practice_feedback", "screenshot", "答題回饋", "答對與答錯都有明確狀態與下一步。"),
+            DemoEvidenceItem("student", "student_05_mission_complete", "screenshot", "今日任務完成", "完成後有明確鼓勵，並提供自由練習。"),
+            DemoEvidenceItem("student", "student_06_free_practice", "screenshot", "自由練習中心", "學生可選難度、題型與挑戰，不被強迫回心情檢測。"),
+            DemoEvidenceItem("student", "student_07_support_thread", "screenshot", "學生支援串", "學生能看見求助、回覆與下一步。"),
+            DemoEvidenceItem("student", "student_08_learning_map", "screenshot", "學習地圖", "顯示學習節點與進度，不混入老師資料。"),
+            DemoEvidenceItem("student", "student_09_checkin_video", "video", "學生心情檢測到完成任務影片", "完整錄到檢測、任務、做題、完成鼓勵。"),
+            DemoEvidenceItem("student", "student_10_free_practice_video", "video", "學生自由練習影片", "完整錄到直接進練習中心、選題、作答與回饋。"),
+            DemoEvidenceItem("teacher", "teacher_01_home", "screenshot", "老師今日工作台", "先看到最需要接住的學生與班級狀態。"),
+            DemoEvidenceItem("teacher", "teacher_02_roster", "screenshot", "學生名單", "學生清單、風險與進度可掃描。"),
+            DemoEvidenceItem("teacher", "teacher_03_student_detail", "screenshot", "學生詳情", "看得到學習紀錄、求助與下一步。"),
+            DemoEvidenceItem("teacher", "teacher_04_reply", "screenshot", "老師回覆", "能給學生自訂回覆，不只是固定文案。"),
+            DemoEvidenceItem("teacher", "teacher_05_question_bank", "screenshot", "題庫管理", "題型、難度、來源與審題狀態清楚。"),
+            DemoEvidenceItem("teacher", "teacher_06_report", "screenshot", "班級報告", "報告能說明班級進度與支援狀態。"),
+            DemoEvidenceItem("teacher", "teacher_07_priority_video", "video", "老師接住學生影片", "錄到老師找出優先學生、看證據、回覆與返回工作台。"),
+            DemoEvidenceItem("volunteer", "volunteer_01_home", "screenshot", "志工接力首頁", "志工只看到陪練與接力，不看到老師行政。"),
+            DemoEvidenceItem("volunteer", "volunteer_02_queue", "screenshot", "接力佇列", "等待陪練學生與狀態清楚。"),
+            DemoEvidenceItem("volunteer", "volunteer_03_student_context", "screenshot", "學生接力脈絡", "志工看得到需要陪伴的原因與下一步。"),
+            DemoEvidenceItem("volunteer", "volunteer_04_script", "screenshot", "陪練腳本", "腳本協助志工陪練，而不是替老師做行政。"),
+            DemoEvidenceItem("volunteer", "volunteer_05_sync", "screenshot", "接力同步狀態", "同步或待補傳狀態可理解。"),
+            DemoEvidenceItem("volunteer", "volunteer_06_handoff_video", "video", "志工接力影片", "錄到接單、查看腳本、留下接力紀錄與返回佇列。")
+        )
+        return DemoEvidencePackage(
+            items = items,
+            folderRule = "Use separate folders: student, teacher, volunteer. File names must match role_sequence_screen, such as student_03_daily_mission.png.",
+            minimumVideoSeconds = 45
+        )
+    }
+
+    fun demoEvidenceGate(captures: List<DemoMediaCapture>): DemoEvidenceGate {
+        val packageSpec = demoEvidencePackage()
+        val requiredIds = packageSpec.items.map { it.screenId }.toSet()
+        val capturedIds = captures.map { it.screenId }.toSet()
+        val capturedRoles = captures.map { it.role }.toSet()
+        val blockers = buildList {
+            if (!capturedRoles.containsAll(setOf("student", "teacher", "volunteer")) || !capturedIds.containsAll(requiredIds)) {
+                add("missing role coverage")
+            }
+            if (captures.any { it.isDuplicate } || captures.size != capturedIds.size) {
+                add("duplicate captures")
+            }
+            if (captures.any { it.mediaType == "video" && it.durationSeconds < packageSpec.minimumVideoSeconds }) {
+                add("videos too short")
+            }
+            if (captures.any { !it.hasUserAction }) {
+                add("missing user actions")
+            }
+            if (captures.any { it.exposesInternalCopy }) {
+                add("internal copy exposed")
+            }
+        }
+        return DemoEvidenceGate(
+            readyForShowcase = blockers.isEmpty(),
+            blockers = blockers
         )
     }
 

@@ -267,3 +267,27 @@ Only run the reset command when the user explicitly asks to roll back.
 - [x] Keep sync queue messages readable for normal users.
 - [x] Add collaboration conflict reports with `latest-createdAt-wins`.
 - [x] Update schema versions and tests so future backend work has a stable contract.
+
+## Round 19: Production Backend Handoff Gate
+
+**Files:**
+- Create: `app/src/main/java/tw/edu/citizenaction/soracompanion/qa/ProductionDeploymentContract.kt`
+- Test: `app/src/test/java/tw/edu/citizenaction/soracompanion/qa/ProductionDeploymentContractTest.kt`
+
+- [x] Define the remaining external decisions for auth provider, cloud database, AI proxy, security rules, question bank, and release signing.
+- [x] Add a backend handoff gate that blocks production use when HTTPS endpoints, Firebase config, role claims, privacy URL, or server-held AI key are missing.
+- [x] Explicitly reject storing a production AI key on the Android app.
+- [x] Outline student, teacher, and volunteer security rule boundaries.
+- [x] Keep user-facing decision text free of internal setup labels.
+
+## Round 20: Showcase Evidence Gate
+
+**Files:**
+- Modify: `app/src/main/java/tw/edu/citizenaction/soracompanion/qa/StoreReleaseContract.kt`
+- Test: `app/src/test/java/tw/edu/citizenaction/soracompanion/qa/StoreReleaseContractTest.kt`
+
+- [x] Define a complete student, teacher, and volunteer screenshot/video evidence package.
+- [x] Require two student videos: daily mission flow and free-practice flow.
+- [x] Require teacher and volunteer videos that show real user actions, not only login.
+- [x] Block showcase readiness when media is missing, duplicated, too short, actionless, or exposes internal copy.
+- [x] Document the capture folder and naming rules.

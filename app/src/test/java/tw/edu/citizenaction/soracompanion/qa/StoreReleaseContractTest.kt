@@ -95,6 +95,79 @@ class StoreReleaseContractTest {
     }
 
     @Test
+    fun demoEvidencePackageDefinesNonDuplicateScreenshotAndVideoCoverageForAllRoles() {
+        val evidence = StoreReleaseContract.demoEvidencePackage()
+        val roles = evidence.items.map { it.role }.toSet()
+        val screenIds = evidence.items.map { it.screenId }
+
+        assertEquals(setOf("student", "teacher", "volunteer"), roles)
+        assertEquals(screenIds.size, screenIds.toSet().size)
+        assertTrue(evidence.items.count { it.role == "student" && it.mediaType == "video" } >= 2)
+        assertTrue(evidence.items.count { it.role == "teacher" && it.mediaType == "video" } >= 1)
+        assertTrue(evidence.items.count { it.role == "volunteer" && it.mediaType == "video" } >= 1)
+        assertTrue(evidence.items.count { it.role == "student" && it.mediaType == "screenshot" } >= 8)
+        assertTrue(evidence.items.count { it.role == "teacher" && it.mediaType == "screenshot" } >= 6)
+        assertTrue(evidence.items.count { it.role == "volunteer" && it.mediaType == "screenshot" } >= 5)
+        assertTrue(evidence.folderRule.contains("student"))
+        assertTrue(evidence.folderRule.contains("teacher"))
+        assertTrue(evidence.folderRule.contains("volunteer"))
+        evidence.items.forEach {
+            assertFalse(it.label.contains("API"))
+            assertFalse(it.label.contains("debug", ignoreCase = true))
+            assertFalse(it.label.contains("prototype", ignoreCase = true))
+            assertTrue(it.acceptanceNote.isNotBlank())
+        }
+    }
+
+    @Test
+    fun demoEvidenceGateBlocksMissingDuplicateOrTooShortMedia() {
+        val duplicate = DemoMediaCapture(
+            role = "student",
+            screenId = "student_login",
+            mediaType = "screenshot",
+            durationSeconds = 0,
+            hasUserAction = true,
+            isDuplicate = true,
+            exposesInternalCopy = false
+        )
+        val tooShortTeacherVideo = DemoMediaCapture(
+            role = "teacher",
+            screenId = "teacher_priority_video",
+            mediaType = "video",
+            durationSeconds = 10,
+            hasUserAction = true,
+            isDuplicate = false,
+            exposesInternalCopy = false
+        )
+
+        val blocked = StoreReleaseContract.demoEvidenceGate(
+            captures = listOf(duplicate, tooShortTeacherVideo)
+        )
+
+        assertFalse(blocked.readyForShowcase)
+        assertTrue(blocked.blockers.contains("missing role coverage"))
+        assertTrue(blocked.blockers.contains("duplicate captures"))
+        assertTrue(blocked.blockers.contains("videos too short"))
+
+        val accepted = StoreReleaseContract.demoEvidenceGate(
+            captures = StoreReleaseContract.demoEvidencePackage().items.map {
+                DemoMediaCapture(
+                    role = it.role,
+                    screenId = it.screenId,
+                    mediaType = it.mediaType,
+                    durationSeconds = if (it.mediaType == "video") 75 else 0,
+                    hasUserAction = true,
+                    isDuplicate = false,
+                    exposesInternalCopy = false
+                )
+            }
+        )
+
+        assertTrue(accepted.readyForShowcase)
+        assertEquals(emptyList<String>(), accepted.blockers)
+    }
+
+    @Test
     fun externalCredentialGapsAreExplicitBeforeStoreLaunch() {
         val gaps = StoreReleaseContract.externalCredentialGaps()
 
