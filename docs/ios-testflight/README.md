@@ -36,11 +36,18 @@ The Android app remains the working classroom prototype. The iOS work should sta
    Request contract schema for iOS-to-backend AI calls.
 10. `firebase/openrouter-ai-proxy.secret.local.example`
    Local emulator secret example for the OpenRouter API key.
+11. `round-6-privacy-real-student-data-checklist.md`
+   Privacy and real-student-data checklist covering names, class/school/grade, mood visibility, consent, retention, deletion, role visibility, AI minimization, and TestFlight privacy risk.
+12. `privacy/consent-copy-draft.md`
+   Student, teacher, and volunteer consent copy drafts for the future iOS app.
+13. `privacy/data-retention-deletion-playbook.md`
+   Retention, deletion, de-identification, and privacy audit workflow draft.
+14. `privacy/app-privacy-label-draft.md`
+   App Store Connect / TestFlight privacy label preparation draft.
 
 Future rounds will add:
 
 - TestFlight preparation checklist.
-- Privacy and real-student-data checklist.
 - Xcode build and upload handoff steps.
 
 ## How To Continue On Mac
