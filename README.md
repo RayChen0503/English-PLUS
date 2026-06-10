@@ -43,6 +43,7 @@ Do not reset to these tags unless a rollback is explicitly requested. The curren
 - Round 17-18 local collaboration loop and sync readiness: student help requests, teacher/volunteer replies, student-visible timelines, retry/backoff planning, and collaboration conflict reports are now tested as contracts.
 - Round 19-20 production handoff and showcase evidence gates: backend/login/security decisions, AI proxy requirements, and student/teacher/volunteer media coverage are now explicit and tested.
 - Round 21-22 backend handoff and privacy operations: endpoint manifests, payload examples, deployment runbook, internal-test consent, data lifecycle, and Play Data Safety draft are now explicit and tested.
+- Round 23 unified product-readiness gate: classroom demo, internal pilot, and public launch readiness are now evaluated from one tested contract.
 - JVM unit tests for repository data and core model invariants.
 
 ## Prototype Limits
@@ -109,6 +110,8 @@ The local collaboration loop and sync-readiness work is documented in `docs/roun
 The production handoff and showcase evidence gates are documented in `docs/round-19-20-production-handoff-evidence.md`.
 
 The backend handoff and privacy operations work is documented in `docs/round-21-22-backend-privacy-operations.md`.
+
+The unified product-readiness gate is documented in `docs/round-23-product-readiness-gate.md`.
 
 ## Project Structure
 

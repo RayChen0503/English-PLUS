@@ -313,3 +313,15 @@ Only run the reset command when the user explicitly asks to roll back.
 - [x] Add data lifecycle actions for export, deletion, opt-out, and incident review.
 - [x] Add a Play Data Safety draft mapping data types to purpose, sharing boundary, retention, deletion, and contact route.
 - [x] Keep sensitive emotional support and collaboration data hidden from other students.
+
+## Round 23: Unified Product Readiness Gate
+
+**Files:**
+- Create: `app/src/main/java/tw/edu/citizenaction/soracompanion/qa/ProductReadinessContract.kt`
+- Test: `app/src/test/java/tw/edu/citizenaction/soracompanion/qa/ProductReadinessContractTest.kt`
+
+- [x] Add a single product-readiness snapshot and report that evaluates classroom demo, internal pilot, and public launch separately.
+- [x] Keep the default local prototype honest: ready for classroom demo, not yet ready for internal pilot or public launch.
+- [x] Require physical-device testing, classroom consent, and accepted evidence before internal pilot.
+- [x] Require backend deployment, signed release, privacy policy URL, Play Data Safety review, and formal question-bank license before public launch.
+- [x] Link the checklist back to existing QA, store, production, privacy, and question-bank contracts.
