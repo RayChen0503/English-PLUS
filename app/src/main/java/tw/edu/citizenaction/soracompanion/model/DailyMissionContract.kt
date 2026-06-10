@@ -88,10 +88,10 @@ object DailyMissionContract {
         val safeMinutes = minutes.coerceAtLeast(1)
         val routeLabel = if (challengeWanted) "挑戰路線" else "低壓修復"
         return DailyMissionSummary(
-            title = "完成 $safeGoal 題今日任務",
-            description = "$safeMinutes 分鐘內先完成$types，不急著把整張卷子寫完。",
+            title = "完成 $safeGoal 題小任務",
+            description = "今天用 $safeMinutes 分鐘練$types，答對才會推進進度。",
             routeLabel = routeLabel,
-            progressRule = "答對才會前進，答錯會停在原題看提示。"
+            progressRule = "只計算今日題目任務；自由練習不會改變進度。"
         )
     }
 
@@ -100,8 +100,8 @@ object DailyMissionContract {
         val safeDone = done.coerceIn(0, safeGoal)
         return DailyMissionCompletionCopy(
             title = "今日任務完成",
-            body = "你已完成 $safeDone/$safeGoal。今天最重要的小步驟已經達標，可以停在這裡。",
-            nextAction = "想多練時，再進入自主練習。"
+            body = "你已經完成今天的題目任務：$safeDone/$safeGoal 題。可以先休息，也可以改成自由練習繼續挑戰。",
+            nextAction = "自由練習不會影響今日進度。"
         )
     }
 

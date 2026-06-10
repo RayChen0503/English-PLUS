@@ -13,12 +13,12 @@ class UserFlowContractTest {
         val teacherLabels = UserFlowContract.bottomNavLabels(Role.Teacher)
         val volunteerLabels = UserFlowContract.bottomNavLabels(Role.Volunteer)
 
-        assertEquals(listOf("首頁", "練習", "支持", "地圖", "檔案"), studentLabels)
-        assertEquals(listOf("今日", "學生", "接力", "題庫", "報告"), teacherLabels)
+        assertEquals(listOf("首頁", "練習", "支持", "地圖", "我的"), studentLabels)
+        assertEquals(listOf("今日", "學生", "接力", "報告", "題庫"), teacherLabels)
         assertEquals(listOf("今日", "接力", "學生", "同步", "腳本"), volunteerLabels)
         assertFalse(teacherLabels.contains("練習"))
-        assertFalse(volunteerLabels.contains("題庫"))
         assertFalse(volunteerLabels.contains("報告"))
+        assertFalse(volunteerLabels.contains("題庫"))
     }
 
     @Test
@@ -62,7 +62,7 @@ class UserFlowContractTest {
     fun helpRoutesDoNotCollapseIntoTheSameSupportPath() {
         assertEquals(SupportTarget.AiCoach, UserFlowContract.supportTarget("AI 陪伴"))
         assertEquals(SupportTarget.ReadingBreakdown, UserFlowContract.supportTarget("閱讀拆解"))
-        assertEquals(SupportTarget.Recovery, UserFlowContract.supportTarget("復原模式"))
+        assertEquals(SupportTarget.Recovery, UserFlowContract.supportTarget("復原任務"))
         assertEquals(SupportTarget.HumanHandoff, UserFlowContract.supportTarget("志工接力"))
         assertEquals(SupportTarget.HumanHandoff, UserFlowContract.supportTarget("老師接力"))
     }
@@ -92,9 +92,9 @@ class UserFlowContractTest {
 
     @Test
     fun staffCopyChangesByTeacherOrVolunteerRole() {
-        assertEquals("讓老師先看見誰需要追蹤", UserFlowContract.rosterSubtitle(Role.Teacher))
-        assertEquals("只看必要背景，先知道今天怎麼陪", UserFlowContract.rosterSubtitle(Role.Volunteer))
-        assertEquals("老師下一步", UserFlowContract.studentDetailActionTitle(Role.Teacher))
-        assertEquals("志工下一步", UserFlowContract.studentDetailActionTitle(Role.Volunteer))
+        assertEquals("先看班級風險與需要接住的學生。", UserFlowContract.rosterSubtitle(Role.Teacher))
+        assertEquals("先看分派給你的接力學生與下一步。", UserFlowContract.rosterSubtitle(Role.Volunteer))
+        assertEquals("老師回覆", UserFlowContract.studentDetailActionTitle(Role.Teacher))
+        assertEquals("志工陪練", UserFlowContract.studentDetailActionTitle(Role.Volunteer))
     }
 }

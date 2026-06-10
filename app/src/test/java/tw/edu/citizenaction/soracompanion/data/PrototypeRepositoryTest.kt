@@ -4,6 +4,7 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
+import tw.edu.citizenaction.soracompanion.model.UserFlowContract
 
 class PrototypeRepositoryTest {
     @Test
@@ -27,14 +28,15 @@ class PrototypeRepositoryTest {
         val types = items.map { it.question.type }.toSet()
         val levels = items.map { it.level }.toSet()
 
-        assertTrue("should keep simple choice questions as the lower bound", types.contains("選擇題"))
-        assertTrue("should include fill-in questions", types.contains("填空題"))
-        assertTrue("should include cloze passage questions", types.contains("克漏字"))
-        assertTrue("should include reading comprehension questions", types.contains("閱讀理解"))
-        assertTrue("should include translation or sentence reordering questions", types.contains("翻譯/句子重組"))
+        assertTrue("should keep simple choice questions as the lower bound", types.contains(UserFlowContract.TYPE_CHOICE))
+        assertTrue("should include fill-in questions", types.contains(UserFlowContract.TYPE_FILL_BLANK))
+        assertTrue("should include cloze passage questions", types.contains(UserFlowContract.TYPE_CLOZE))
+        assertTrue("should include reading comprehension questions", types.contains(UserFlowContract.TYPE_READING))
+        assertTrue("should include translation or sentence reordering questions", types.contains(UserFlowContract.TYPE_TRANSLATION))
         assertTrue("should keep A1 entry-level items", levels.contains("A1"))
         assertTrue("should include A2 bridge items", levels.contains("A2"))
         assertTrue("should include B1 CAP challenge items", levels.contains("B1"))
+        assertTrue("should include B2 stretch items", levels.contains("B2"))
         assertTrue(
             "CAP-style originals should be marked in the source",
             items.any { it.source.contains("CAP-style original") }
@@ -45,11 +47,11 @@ class PrototypeRepositoryTest {
     fun questionBankHasEnoughItemsPerQuestionTypeForPractice() {
         val counts = PrototypeRepository.questionBankItems.groupingBy { it.question.type }.eachCount()
 
-        assertTrue("choice questions should have enough warm-up items", counts.getValue("選擇題") >= 180)
-        assertTrue("fill-in questions should have enough grammar practice", counts.getValue("填空題") >= 180)
-        assertTrue("cloze questions should have enough passage practice", counts.getValue("克漏字") >= 180)
-        assertTrue("reading comprehension should have enough article/message practice", counts.getValue("閱讀理解") >= 180)
-        assertTrue("translation/reordering should have enough sentence practice", counts.getValue("翻譯/句子重組") >= 180)
+        assertTrue("choice questions should have enough warm-up items", counts.getValue(UserFlowContract.TYPE_CHOICE) >= 180)
+        assertTrue("fill-in questions should have enough grammar practice", counts.getValue(UserFlowContract.TYPE_FILL_BLANK) >= 180)
+        assertTrue("cloze questions should have enough passage practice", counts.getValue(UserFlowContract.TYPE_CLOZE) >= 180)
+        assertTrue("reading comprehension should have enough article/message practice", counts.getValue(UserFlowContract.TYPE_READING) >= 180)
+        assertTrue("translation/reordering should have enough sentence practice", counts.getValue(UserFlowContract.TYPE_TRANSLATION) >= 180)
     }
 
     @Test

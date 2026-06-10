@@ -5,13 +5,19 @@ import tw.edu.citizenaction.soracompanion.auth.AuthContract
 enum class SupportTarget { AiCoach, HumanHandoff, ReadingBreakdown, Recovery }
 
 object UserFlowContract {
-    val questionTypes = listOf("選擇題", "填空題", "克漏字", "閱讀理解", "翻譯/句子重組")
-    val defaultPreferredQuestionTypes = setOf("選擇題", "填空題")
+    const val TYPE_CHOICE = "選擇題"
+    const val TYPE_FILL_BLANK = "填空題"
+    const val TYPE_CLOZE = "克漏字"
+    const val TYPE_READING = "閱讀理解"
+    const val TYPE_TRANSLATION = "翻譯/句子重組"
+
+    val questionTypes = listOf(TYPE_CHOICE, TYPE_FILL_BLANK, TYPE_CLOZE, TYPE_READING, TYPE_TRANSLATION)
+    val defaultPreferredQuestionTypes = setOf(TYPE_CHOICE, TYPE_FILL_BLANK)
 
     fun bottomNavLabels(role: Role): List<String> {
         return when (normalizedRole(role)) {
-            Role.Student -> listOf("首頁", "練習", "支持", "地圖", "檔案")
-            Role.Teacher -> listOf("今日", "學生", "接力", "題庫", "報告")
+            Role.Student -> listOf("首頁", "練習", "支持", "地圖", "我的")
+            Role.Teacher -> listOf("今日", "學生", "接力", "報告", "題庫")
             Role.Volunteer -> listOf("今日", "接力", "學生", "同步", "腳本")
             Role.Mentor -> listOf("今日", "接力", "學生", "同步", "腳本")
         }
@@ -48,16 +54,16 @@ object UserFlowContract {
 
     fun rosterSubtitle(role: Role): String {
         return when (normalizedRole(role)) {
-            Role.Teacher -> "讓老師先看見誰需要追蹤"
-            Role.Volunteer -> "只看必要背景，先知道今天怎麼陪"
-            else -> "查看自己的學習與支持狀態"
+            Role.Teacher -> "先看班級風險與需要接住的學生。"
+            Role.Volunteer -> "先看分派給你的接力學生與下一步。"
+            else -> "先看自己的任務與支持訊息。"
         }
     }
 
     fun studentDetailActionTitle(role: Role): String {
         return when (normalizedRole(role)) {
-            Role.Teacher -> "老師下一步"
-            Role.Volunteer -> "志工下一步"
+            Role.Teacher -> "老師回覆"
+            Role.Volunteer -> "志工陪練"
             else -> "下一步"
         }
     }
@@ -123,9 +129,9 @@ object UserFlowContract {
 
     fun supportTarget(route: String): SupportTarget {
         return when (route) {
-            "AI 陪伴", "AI 先處理" -> SupportTarget.AiCoach
+            "AI 陪伴", "AI 拆解" -> SupportTarget.AiCoach
             "閱讀拆解" -> SupportTarget.ReadingBreakdown
-            "復原模式" -> SupportTarget.Recovery
+            "復原任務" -> SupportTarget.Recovery
             else -> SupportTarget.HumanHandoff
         }
     }

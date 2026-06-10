@@ -97,6 +97,7 @@ class OpenRouterClient(
         val response = postJson(ENDPOINT, body)
         return parseDailyTaskPlanResponse(response, model, questionBank.map { it.id }.toSet())
     }
+
     private fun postJson(endpoint: String, body: JSONObject): String {
         val connection = (URL(endpoint).openConnection() as HttpURLConnection).apply {
             requestMethod = "POST"
@@ -260,12 +261,13 @@ class OpenRouterClient(
                 if (id.isNotBlank() && allowedIds.contains(id) && !ids.contains(id)) ids.add(id)
             }
             return AiDailyTaskPlan(
-                title = json.optString("title", "今日 AI 任務"),
-                studentMessage = json.optString("studentMessage", "依照你的狀態，先完成一小組剛好的英文練習。"),
+                title = json.optString("title", "今日任務建議"),
+                studentMessage = json.optString("studentMessage", "English+ 已先整理一份可開始的短任務；完成後可以再自由練習。"),
                 recommendedItemIds = ids,
                 source = "OpenRouter Chat Completions / $model"
             )
         }
+
         fun parseSupportResponse(responseText: String, model: String): AiSupportResult {
             val response = JSONObject(responseText.ifBlank { "{}" })
             val choices = response.optJSONArray("choices") ?: JSONArray()
@@ -274,9 +276,9 @@ class OpenRouterClient(
             val content = extractJsonObject(rawContent)
             val json = JSONObject(content)
             return AiSupportResult(
-                diagnosis = json.optString("diagnosis", "OpenRouter 已回覆，但沒有提供診斷欄位。"),
-                studentFeedback = json.optString("studentFeedback", "OpenRouter 已回覆，但沒有提供學生回饋欄位。"),
-                handoffSummary = json.optString("handoffSummary", "OpenRouter 已回覆，但沒有提供接力摘要欄位。"),
+                diagnosis = json.optString("diagnosis", "English+ 已整理出目前卡住的概念。"),
+                studentFeedback = json.optString("studentFeedback", "先看一個提示，再回到同一題試一次。"),
+                handoffSummary = json.optString("handoffSummary", "若學生仍卡住，建議老師或志工陪他重看題目與概念。"),
                 source = "OpenRouter Chat Completions / $model"
             )
         }

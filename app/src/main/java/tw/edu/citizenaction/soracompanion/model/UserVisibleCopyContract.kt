@@ -28,9 +28,29 @@ object UserVisibleCopyContract {
         "展示模式"
     )
 
+    private val mojibakeFragments = listOf(
+        "�",
+        "嚗",
+        "蝧",
+        "撌",
+        "憿",
+        "隞",
+        "雿",
+        "銝",
+        "摰",
+        "敺",
+        "蝺",
+        "蜓",
+        "頝",
+        "",
+        "",
+        "",
+        ""
+    )
+
     fun audit(texts: List<String>): CopyAuditResult {
         val normalizedTexts = texts.filter { it.isNotBlank() }
-        val terms = internalTerms
+        val terms = (internalTerms + mojibakeFragments)
             .filter { term ->
                 normalizedTexts.any { text -> text.contains(term, ignoreCase = true) }
             }

@@ -45,6 +45,7 @@ Do not reset to these tags unless a rollback is explicitly requested. The curren
 - Round 21-22 backend handoff and privacy operations: endpoint manifests, payload examples, deployment runbook, internal-test consent, data lifecycle, and Play Data Safety draft are now explicit and tested.
 - Round 23 unified product-readiness gate: classroom demo, internal pilot, and public launch readiness are now evaluated from one tested contract.
 - Round 24-25 user-facing copy and daily mission polish: normal screens no longer expose implementation wording, and daily mission progress now counts only correctly answered assigned questions.
+- Round 26-28 student mission, question bank, and AI polish: role/check-in/task labels are clean, the practice bank has 1,000+ varied questions, and AI fallback/normal support screens no longer expose setup details.
 - JVM unit tests for repository data and core model invariants.
 
 ## Prototype Limits
@@ -115,6 +116,8 @@ The backend handoff and privacy operations work is documented in `docs/round-21-
 The unified product-readiness gate is documented in `docs/round-23-product-readiness-gate.md`.
 
 The user-facing copy cleanup and daily mission progress polish are documented in `docs/round-24-25-copy-daily-mission-polish.md`.
+
+The student mission, question bank, and AI polish work is documented in `docs/round-26-28-student-bank-ai-polish.md`.
 
 ## Project Structure
 

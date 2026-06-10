@@ -23,24 +23,26 @@ object AiLearningPlanContract {
             safeMinutes <= 8 -> 3
             else -> 4
         }
-        val safeAvailableTypes = availableTypes.ifEmpty { listOf("choice") }
+        val safeAvailableTypes = availableTypes.ifEmpty { listOf("選擇題") }
         val selectedTypes = preferredTypes
             .filter { it in safeAvailableTypes }
             .ifEmpty { safeAvailableTypes.take(2) }
-        val isLowPressure = moodLabel.contains("低") || moodLabel.contains("不好") || !challengeWanted
+        val isLowPressure = moodLabel.contains("低落") ||
+            moodLabel.contains("不穩") ||
+            !challengeWanted
         val routeLabel = if (isLowPressure) "低壓修復" else "挑戰路線"
         val typeText = selectedTypes.joinToString("、").ifBlank { "選擇題" }
         val message = if (isLowPressure) {
-            "先完成 $questionGoal 題$typeText。今天重點是重新開始，不是衝題數。"
+            "今天先做 $questionGoal 題$typeText，把任務縮小到可以開始的程度。"
         } else {
-            "先完成 $questionGoal 題$typeText。答對後再開放更難的自主練習。"
+            "今天做 $questionGoal 題$typeText，答對後可以再進自由練習挑戰。"
         }
         return AiDailyMissionPlan(
             routeLabel = routeLabel,
             questionGoal = questionGoal,
             recommendedTypes = selectedTypes,
             studentMessage = message,
-            handoffHint = "若連續卡住，先給提示，再由老師或志工接力。"
+            handoffHint = "如果卡住，English+ 會先提供提示；仍需要陪伴時再整理給老師或志工。"
         )
     }
 

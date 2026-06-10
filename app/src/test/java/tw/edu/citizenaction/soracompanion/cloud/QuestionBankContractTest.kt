@@ -79,7 +79,7 @@ class QuestionBankContractTest {
         assertEquals(5, blueprint.totalQuestions)
         assertEquals(listOf("A1", "A2", "B1", "B2"), blueprint.availableLevels)
         assertEquals(listOf("選擇題", "填空題", "克漏字", "閱讀理解", "翻譯/句子重組"), blueprint.availableTypes)
-        assertEquals("挑戰模式會優先加入 B1/B2 題，但仍保留 A1/A2 當暖身。", blueprint.recommendation)
+        assertEquals("可以挑戰 B1/B2 題目，但會保留 A1/A2 作為暖身。", blueprint.recommendation)
     }
 
     @Test
@@ -104,13 +104,13 @@ class QuestionBankContractTest {
     @Test
     fun sessionCandidatesRecoverWhenRecentPromptsWouldEmptyTheSession() {
         val items = listOf(
-            item("q1", "A1", "choice", "seen choice"),
-            item("q2", "A2", "blank", "seen blank")
+            item("q1", "A1", "選擇題", "seen choice"),
+            item("q2", "A2", "填空題", "seen blank")
         )
 
         val candidates = QuestionBankContract.sessionCandidates(
             items = items,
-            preferredTypes = setOf("choice", "blank"),
+            preferredTypes = setOf("選擇題", "填空題"),
             recentlySeenPrompts = setOf("seen choice", "seen blank"),
             challengeWanted = false
         )

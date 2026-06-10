@@ -79,9 +79,9 @@ object QuestionBankContract {
         val preferred = preferredTypes.ifEmpty { availableTypes.toSet() }
         val matchingCount = items.count { it.question.type in preferred }
         val recommendation = when {
-            challengeWanted -> "挑戰模式會優先加入 B1/B2 題，但仍保留 A1/A2 當暖身。"
-            matchingCount == 0 -> "目前偏好題型不足，系統會先用可用題型安排暖身。"
-            else -> "一般模式會先穩定 A1/A2，再逐步混入 B1 題。"
+            challengeWanted -> "可以挑戰 B1/B2 題目，但會保留 A1/A2 作為暖身。"
+            matchingCount == 0 -> "目前沒有符合偏好的題型，先從最穩定的題目開始。"
+            else -> "先從 A1/A2 題目暖身，再依答題狀況提高難度。"
         }
         return PracticeBlueprint(
             totalQuestions = items.distinctBy { it.question.prompt }.size,

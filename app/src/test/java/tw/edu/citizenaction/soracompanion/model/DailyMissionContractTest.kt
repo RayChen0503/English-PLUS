@@ -33,15 +33,15 @@ class DailyMissionContractTest {
     @Test
     fun missionSelectionUsesQuestionBankRecoveryWhenRecentHistoryCoversPreferredBank() {
         val items = listOf(
-            bankItem("q1", "A1", "choice", "seen choice"),
-            bankItem("q2", "A2", "blank", "seen blank")
+            bankItem("q1", "A1", "選擇題", "seen choice"),
+            bankItem("q2", "A2", "填空題", "seen blank")
         )
 
         val selected = DailyMissionContract.selectQuestions(
             bankItems = items,
             fallbackQuestions = emptyList(),
             requestedGoal = 2,
-            preferredTypes = setOf("choice", "blank"),
+            preferredTypes = setOf("選擇題", "填空題"),
             challengeWanted = false,
             seed = 0,
             recentlySeenPrompts = setOf("seen choice", "seen blank")
@@ -117,10 +117,10 @@ class DailyMissionContractTest {
             challengeWanted = true
         )
 
-        assertEquals("完成 2 題今日任務", summary.title)
-        assertEquals("5 分鐘內先完成填空題、閱讀理解，不急著把整張卷子寫完。", summary.description)
+        assertEquals("完成 2 題小任務", summary.title)
+        assertEquals("今天用 5 分鐘練填空題、閱讀理解，答對才會推進進度。", summary.description)
         assertEquals("挑戰路線", summary.routeLabel)
-        assertEquals("答對才會前進，答錯會停在原題看提示。", summary.progressRule)
+        assertEquals("只計算今日題目任務；自由練習不會改變進度。", summary.progressRule)
     }
 
     @Test
@@ -129,8 +129,8 @@ class DailyMissionContractTest {
 
         assertEquals("今日任務完成", copy.title)
         assertTrue(copy.body.contains("3/3"))
-        assertTrue(copy.body.contains("可以停在這裡"))
-        assertTrue(copy.nextAction.contains("自主練習"))
+        assertTrue(copy.body.contains("你已經完成今天的題目任務"))
+        assertTrue(copy.nextAction.contains("自由練習"))
     }
 
     private fun bankItem(

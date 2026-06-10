@@ -9,7 +9,7 @@ class AiLearningPlanContractTest {
     @Test
     fun localPlanTurnsCheckInIntoOneDailyMission() {
         val plan = AiLearningPlanContract.localDailyMissionPlan(
-            moodLabel = "低",
+            moodLabel = "低落",
             minutes = 3,
             challengeWanted = false,
             preferredTypes = setOf("填空題", "翻譯/句子重組"),
@@ -19,7 +19,7 @@ class AiLearningPlanContractTest {
         assertEquals("低壓修復", plan.routeLabel)
         assertEquals(1, plan.questionGoal)
         assertEquals(listOf("填空題", "翻譯/句子重組"), plan.recommendedTypes)
-        assertTrue(plan.studentMessage.contains("先完成 1 題"))
+        assertTrue(plan.studentMessage.contains("今天先做 1 題"))
         assertFalse(plan.studentMessage.contains("API"))
     }
 
@@ -33,7 +33,7 @@ class AiLearningPlanContractTest {
             availableTypes = emptyList()
         )
 
-        assertEquals(listOf("choice"), plan.recommendedTypes)
+        assertEquals(listOf("選擇題"), plan.recommendedTypes)
         assertFalse(plan.studentMessage.contains("API"))
     }
 
