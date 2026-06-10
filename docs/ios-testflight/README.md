@@ -18,10 +18,11 @@ The Android app remains the working classroom prototype. The iOS work should sta
 
 1. `round-1-migration-master-spec.md`  
    Overall migration goal, fixed decisions, target scope, risk boundaries, and Mac handoff direction.
+2. `round-2-swiftui-screen-map.md`
+   SwiftUI screen map, role-separated user flows, proposed view files, navigation rules, and UX quality gates.
 
 Future rounds will add:
 
-- SwiftUI screen map for student, teacher, and volunteer flows.
 - Firebase Auth / Firestore schema and security-rule draft.
 - OpenRouter backend proxy contract.
 - Android question bank and support-flow export format.
