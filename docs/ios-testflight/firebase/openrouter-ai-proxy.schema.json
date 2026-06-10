@@ -1,0 +1,120 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://englishplus.local/schemas/openrouter-ai-proxy.schema.json",
+  "title": "English+ AI Proxy Contract",
+  "type": "object",
+  "required": ["taskType", "classId"],
+  "additionalProperties": false,
+  "properties": {
+    "taskType": {
+      "type": "string",
+      "enum": [
+        "dailyMission",
+        "wrongAnswerExplanation",
+        "emotionalSupport",
+        "teacherFeedbackDraft",
+        "volunteerReplyCoach",
+        "progressSummary"
+      ]
+    },
+    "classId": {
+      "type": "string",
+      "pattern": "^[A-Z0-9-]{3,64}$"
+    },
+    "studentUid": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 128
+    },
+    "sessionId": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 256
+    },
+    "qualityMode": {
+      "type": "string",
+      "enum": ["free", "quality"],
+      "default": "free"
+    },
+    "locale": {
+      "type": "string",
+      "enum": ["zh-TW", "en-US"],
+      "default": "zh-TW"
+    },
+    "context": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "moodScore": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 5
+        },
+        "availableTimeLevel": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 5
+        },
+        "wantsChallenge": {
+          "type": "boolean"
+        },
+        "preferredQuestionTypes": {
+          "type": "array",
+          "maxItems": 8,
+          "items": {
+            "type": "string",
+            "enum": [
+              "multipleChoice",
+              "fillBlank",
+              "cloze",
+              "translation",
+              "sentenceReorder",
+              "reading"
+            ]
+          }
+        },
+        "recentAccuracy": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        },
+        "recentWeakSkills": {
+          "type": "array",
+          "maxItems": 10,
+          "items": {
+            "type": "string",
+            "maxLength": 80
+          }
+        },
+        "questionType": {
+          "type": "string"
+        },
+        "questionPrompt": {
+          "type": "string",
+          "maxLength": 1200
+        },
+        "studentAnswer": {
+          "type": "string",
+          "maxLength": 300
+        },
+        "correctAnswer": {
+          "type": "string",
+          "maxLength": 300
+        },
+        "explanation": {
+          "type": "string",
+          "maxLength": 1000
+        },
+        "supportReason": {
+          "type": "string",
+          "maxLength": 600
+        },
+        "attemptCount": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 20
+        }
+      }
+    }
+  }
+}

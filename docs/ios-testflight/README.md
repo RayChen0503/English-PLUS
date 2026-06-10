@@ -28,10 +28,17 @@ The Android app remains the working classroom prototype. The iOS work should sta
    Draft Firestore security rules for student, teacher, and volunteer access control.
 6. `firebase/firestore.indexes.draft.json`
    Draft Firestore composite indexes for support, assignment, student, question-bank, and answer-event queries.
+7. `round-5-openrouter-cloud-functions-proxy.md`
+   OpenRouter AI proxy contract using Firebase Cloud Functions, including model strategy, privacy boundaries, rate limits, and Mac setup order.
+8. `firebase/openrouter-ai-proxy.example.ts`
+   TypeScript reference implementation for the future callable AI proxy.
+9. `firebase/openrouter-ai-proxy.schema.json`
+   Request contract schema for iOS-to-backend AI calls.
+10. `firebase/openrouter-ai-proxy.secret.local.example`
+   Local emulator secret example for the OpenRouter API key.
 
 Future rounds will add:
 
-- OpenRouter backend proxy contract.
 - TestFlight preparation checklist.
 - Privacy and real-student-data checklist.
 - Xcode build and upload handoff steps.
