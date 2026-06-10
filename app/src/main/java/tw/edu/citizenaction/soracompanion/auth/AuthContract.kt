@@ -110,9 +110,9 @@ object AuthContract {
 
     fun validateLoginInput(username: String, password: String, classCode: String): List<String> {
         val problems = mutableListOf<String>()
-        if (username.trim().isBlank()) problems.add("account is required")
-        if (password.isBlank()) problems.add("password is required")
-        if (classCode.trim().isBlank()) problems.add("class code is required")
+        if (username.trim().isBlank()) problems.add("請輸入帳號")
+        if (password.isBlank()) problems.add("請輸入密碼")
+        if (classCode.trim().isBlank()) problems.add("請輸入班級代碼")
         return problems
     }
 
@@ -150,11 +150,11 @@ object AuthContract {
 
     fun providerDisplayName(provider: String): String {
         return when (provider.trim().lowercase()) {
-            PROVIDER_FIREBASE -> "Firebase Auth"
-            PROVIDER_GOOGLE -> "Google Sign-In"
-            PROVIDER_SCHOOL -> "School SSO"
+            PROVIDER_FIREBASE -> "學校帳號"
+            PROVIDER_GOOGLE -> "Google 帳號"
+            PROVIDER_SCHOOL -> "學校帳號"
             PROVIDER_DEMO -> "班級測試帳號"
-            else -> provider.ifBlank { "Remote Auth" }
+            else -> "學校帳號"
         }
     }
 

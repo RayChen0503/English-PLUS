@@ -33,6 +33,12 @@ data class LocalSupportLoopSnapshot(
     val closed: Boolean
 )
 
+data class StudentHelpRequestDecision(
+    val canCreate: Boolean,
+    val message: String,
+    val existingRequest: CollaborationNote?
+)
+
 object CollaborationFlowContract {
     const val STATUS_STUDENT_REQUEST = "學生求助"
     const val STATUS_STAFF_REPLY = "老師/志工已回覆"
@@ -146,6 +152,30 @@ object CollaborationFlowContract {
             .take(limit)
     }
 
+    fun studentHelpRequestDecision(
+        notes: List<CollaborationNote>,
+        studentName: String,
+        reason: String
+    ): StudentHelpRequestDecision {
+        val normalizedReason = normalizeReason(reason)
+        val sameOpenRequest = unansweredRequests(notes, studentName).firstOrNull { request ->
+            normalizeReason(extractReason(request.note)) == normalizedReason
+        }
+        return if (sameOpenRequest == null) {
+            StudentHelpRequestDecision(
+                canCreate = true,
+                message = "可以送出這次求助，English+ 會整理給老師或志工。",
+                existingRequest = null
+            )
+        } else {
+            StudentHelpRequestDecision(
+                canCreate = false,
+                message = "這個求助仍在等待回覆，先看目前進度或做一題低壓練習。",
+                existingRequest = sameOpenRequest
+            )
+        }
+    }
+
     fun localSupportLoopSnapshot(notes: List<CollaborationNote>, studentName: String): LocalSupportLoopSnapshot {
         val waiting = unansweredRequests(notes, studentName)
         val unread = unreadRepliesForStudent(notes, studentName)
@@ -210,5 +240,17 @@ object CollaborationFlowContract {
 
     fun defaultStaffReply(studentName: String, concept: String): String {
         return "$studentName，我先陪你把「$concept」拆小一點。下一步先看題目裡最明顯的線索，完成一題就好；如果還卡住，再把你卡住的句子圈起來，我們一起看。"
+    }
+
+    private fun extractReason(note: String): String {
+        return note.lineSequence()
+            .firstOrNull { it.startsWith("求助原因：") }
+            ?.substringAfter("求助原因：")
+            ?.trim()
+            .orEmpty()
+    }
+
+    private fun normalizeReason(reason: String): String {
+        return reason.trim().lowercase().replace(Regex("\\s+"), "")
     }
 }

@@ -31,9 +31,10 @@ class AuthContractTest {
     fun reportsMissingLoginFieldsBeforeNetworkRequest() {
         val problems = AuthContract.validateLoginInput("", "", "")
 
-        assertTrue(problems.any { it.contains("account") })
-        assertTrue(problems.any { it.contains("password") })
-        assertTrue(problems.any { it.contains("class") })
+        assertEquals(listOf("請輸入帳號", "請輸入密碼", "請輸入班級代碼"), problems)
+        assertFalse(problems.joinToString().contains("account", ignoreCase = true))
+        assertFalse(problems.joinToString().contains("password", ignoreCase = true))
+        assertFalse(problems.joinToString().contains("class", ignoreCase = true))
     }
 
     @Test
@@ -103,5 +104,22 @@ class AuthContractTest {
         assertFalse(status.message.contains("implementation", ignoreCase = true))
         assertFalse(status.message.contains("demo", ignoreCase = true))
         assertFalse(status.message.contains("API"))
+    }
+
+    @Test
+    fun providerNamesStayUserFacingInsteadOfImplementationFacing() {
+        val names = listOf(
+            AuthContract.providerDisplayName(AuthContract.PROVIDER_FIREBASE),
+            AuthContract.providerDisplayName(AuthContract.PROVIDER_GOOGLE),
+            AuthContract.providerDisplayName(AuthContract.PROVIDER_SCHOOL),
+            AuthContract.providerDisplayName(AuthContract.PROVIDER_DEMO),
+            AuthContract.providerDisplayName("")
+        )
+
+        assertEquals(listOf("學校帳號", "Google 帳號", "學校帳號", "班級測試帳號", "學校帳號"), names)
+        val joined = names.joinToString(" ")
+        assertFalse(joined.contains("Firebase", ignoreCase = true))
+        assertFalse(joined.contains("SSO", ignoreCase = true))
+        assertFalse(joined.contains("Remote", ignoreCase = true))
     }
 }

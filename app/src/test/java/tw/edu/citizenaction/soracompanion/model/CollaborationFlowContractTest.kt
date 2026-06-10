@@ -58,6 +58,49 @@ class CollaborationFlowContractTest {
     }
 
     @Test
+    fun studentCannotCreateDuplicateOpenHelpRequestForSameReason() {
+        val request = helpRequest(reason = "閱讀題卡住")
+
+        val duplicateDecision = CollaborationFlowContract.studentHelpRequestDecision(
+            notes = listOf(request),
+            studentName = "小安",
+            reason = "閱讀題卡住"
+        )
+        val differentReasonDecision = CollaborationFlowContract.studentHelpRequestDecision(
+            notes = listOf(request),
+            studentName = "小安",
+            reason = "句子重組卡住"
+        )
+
+        assertFalse(duplicateDecision.canCreate)
+        assertEquals(request, duplicateDecision.existingRequest)
+        assertTrue(duplicateDecision.message.contains("等待回覆"))
+        assertTrue(differentReasonDecision.canCreate)
+    }
+
+    @Test
+    fun studentCanAskAgainAfterStaffReplyClosesOpenRequest() {
+        val request = helpRequest(reason = "閱讀題卡住")
+        val reply = CollaborationFlowContract.buildCustomStaffReply(
+            request = request,
+            staffName = "林老師",
+            staffRole = AuthContract.ROLE_TEACHER,
+            message = "先看題目問什麼，再找第一段關鍵句。",
+            createdAt = 20
+        )
+
+        val decision = CollaborationFlowContract.studentHelpRequestDecision(
+            notes = listOf(request, reply),
+            studentName = "小安",
+            reason = "閱讀題卡住"
+        )
+
+        assertTrue(decision.canCreate)
+        assertEquals(null, decision.existingRequest)
+        assertTrue(decision.message.contains("可以送出"))
+    }
+
+    @Test
     fun readReplyKeepsThreadVisibleButRemovesUnreadBadge() {
         val request = helpRequest()
         val reply = CollaborationFlowContract.buildCustomStaffReply(
@@ -145,12 +188,12 @@ class CollaborationFlowContractTest {
         assertFalse(reply.contains("API"))
     }
 
-    private fun helpRequest(): CollaborationNote {
+    private fun helpRequest(reason: String = "閱讀卡住"): CollaborationNote {
         return CollaborationNote(
             actor = "小安",
             role = AuthContract.ROLE_STUDENT,
             target = "小安",
-            note = "求助原因：閱讀卡住\n學生說：我看不懂這題。",
+            note = "求助原因：$reason\n學生說：我看不懂這題。",
             status = CollaborationFlowContract.STATUS_STUDENT_REQUEST,
             createdAt = 10
         )

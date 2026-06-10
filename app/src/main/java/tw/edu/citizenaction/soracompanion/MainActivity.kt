@@ -197,7 +197,12 @@ class MainActivity : Activity() {
         persistState()
     }
 
-    private fun recordStudentHelpRequest(reason: String, studentText: String, platformAction: String, route: String) {
+    private fun recordStudentHelpRequest(reason: String, studentText: String, platformAction: String, route: String): Boolean {
+        val decision = CollaborationFlowContract.studentHelpRequestDecision(collaborationNotes, student.name, reason)
+        if (!decision.canCreate) {
+            lastAnswerMessage = decision.message
+            return false
+        }
         val q = activeQuestion()
         val missionText = if (inDailyMission) {
             "今日任務 $dailyQuestionDone/$dailyQuestionGoal"
@@ -218,6 +223,7 @@ class MainActivity : Activity() {
             },
             status = CollaborationFlowContract.STATUS_STUDENT_REQUEST
         )
+        return true
     }
 
     private fun studentHelpThreads(limit: Int = 8) =
@@ -452,8 +458,11 @@ class MainActivity : Activity() {
         root.addView(ui.primaryButton("整理給老師/志工") {
             if (role == Role.Student) {
                 val latest = breakpoints.first()
-                recordStudentHelpRequest(latest.title, latest.evidence, latest.aiAction, "老師接力")
-                renderStudentHelpSent(latest.title)
+                if (recordStudentHelpRequest(latest.title, latest.evidence, latest.aiAction, "老師接力")) {
+                    renderStudentHelpSent(latest.title)
+                } else {
+                    renderStudentSupportCenter()
+                }
             } else {
                 renderHandoff()
             }
@@ -484,7 +493,7 @@ class MainActivity : Activity() {
             Metric("基準間距", "8pt", ColorToken.Success),
             Metric("觸控高度", "48+", ColorToken.Accent)
         ))
-        section("色彩 token")
+        section("色彩規範")
         root.addView(designTokenCard("Ink", ColorToken.Ink, "主要標題與重要資訊，避免整頁太淡而失去方向感。", ColorToken.Ink))
         root.addView(designTokenCard("Primary", ColorToken.Primary, "主要行動、目前所在狀態、可繼續前進的提示。", ColorToken.Primary))
         root.addView(designTokenCard("Accent", ColorToken.Accent, "時間、節奏、短任務提醒，不當作危險警示使用。", ColorToken.Accent))
@@ -850,9 +859,12 @@ class MainActivity : Activity() {
                 renderRecoveryMode()
             }
             SupportTarget.HumanHandoff -> {
-                breakpoints.add(0, Breakpoint(option.reason, "高", option.studentText, option.platformAction, "志工先肯定狀態，再用同一概念做低壓陪練。"))
-                recordStudentHelpRequest(option.reason, option.studentText, option.platformAction, option.route)
-                renderStudentHelpSent(option.reason)
+                if (recordStudentHelpRequest(option.reason, option.studentText, option.platformAction, option.route)) {
+                    breakpoints.add(0, Breakpoint(option.reason, "高", option.studentText, option.platformAction, "志工先肯定狀態，再用同一概念做低壓陪練。"))
+                    renderStudentHelpSent(option.reason)
+                } else {
+                    renderStudentSupportCenter()
+                }
             }
         }
     }
@@ -883,9 +895,12 @@ class MainActivity : Activity() {
             renderLesson()
         })
         root.addView(ui.secondaryButton("我想請人陪我看") {
-            breakpoints.add(0, Breakpoint("閱讀題卡住", "中", "學生主動選擇閱讀拆解後仍想要陪伴。", "平台已提供三步拆解。", "志工陪學生先看題目，再一起找關鍵句。"))
-            recordStudentHelpRequest("閱讀題卡住", "我想請人陪我看閱讀題。", "平台已提供三步拆解，仍需要真人陪看。", "老師接力")
-            renderStudentHelpSent("閱讀題卡住")
+            if (recordStudentHelpRequest("閱讀題卡住", "我想請人陪我看閱讀題。", "平台已提供三步拆解，仍需要真人陪看。", "老師接力")) {
+                breakpoints.add(0, Breakpoint("閱讀題卡住", "中", "學生主動選擇閱讀拆解後仍想要陪伴。", "平台已提供三步拆解。", "志工陪學生先看題目，再一起找關鍵句。"))
+                renderStudentHelpSent("閱讀題卡住")
+            } else {
+                renderStudentSupportCenter()
+            }
         })
         bottomNav()
     }
@@ -899,8 +914,11 @@ class MainActivity : Activity() {
         root.addView(ui.primaryButton("整理狀況給老師/志工") {
             if (role == Role.Student) {
                 val latest = breakpoints.first()
-                recordStudentHelpRequest(latest.title, latest.evidence, latest.aiAction, "老師接力")
-                renderStudentHelpSent(latest.title)
+                if (recordStudentHelpRequest(latest.title, latest.evidence, latest.aiAction, "老師接力")) {
+                    renderStudentHelpSent(latest.title)
+                } else {
+                    renderStudentSupportCenter()
+                }
             } else {
                 renderHandoff()
             }
@@ -1327,7 +1345,7 @@ class MainActivity : Activity() {
         if (!stateStore.hasCloudBackend()) {
             shell("接力紀錄已保存", "目前先查看這台裝置的接力紀錄")
             root.addView(card("目前狀態", "接力紀錄已保存在這台裝置。", ColorToken.WarningSoft))
-            root.addView(ui.primaryButton("前往同步中心設定") { renderSyncCenter() })
+            root.addView(ui.primaryButton("查看資料更新狀態") { renderSyncCenter() })
             root.addView(ui.secondaryButton("回接力優先序") { renderHandoffBoard() })
             bottomNav()
             return
@@ -2178,8 +2196,8 @@ class MainActivity : Activity() {
         val backendReady = stateStore.hasCloudBackend()
         val ready = networkReady && backendReady
         val box = ui.container(if (ready) ColorToken.SuccessSoft else ColorToken.WarningSoft, ColorToken.Border)
-        box.addView(ui.statusPill(if (ready) "真同步可執行" else "同步需補件", if (ready) ColorToken.Success else ColorToken.Warning))
-        box.addView(ui.label("智慧同步檢查", 18, ColorToken.Ink, true).apply {
+        box.addView(ui.statusPill(if (ready) "資料更新可用" else "稍後更新", if (ready) ColorToken.Success else ColorToken.Warning))
+        box.addView(ui.label("資料更新狀態", 18, ColorToken.Ink, true).apply {
             setPadding(0, ui.dp(12), 0, ui.dp(4))
         })
         box.addView(ui.body(syncReadinessText(), "#334155"))
@@ -2247,14 +2265,14 @@ class MainActivity : Activity() {
         val accounts = accountList()
         val studentCount = accounts.count { AuthContract.isStudentRole(it.roleLabel) }
         val staffCount = accounts.count { AuthContract.isStaffRole(it.roleLabel) }
-        val endpointState = if (stateStore.hasRemoteAuthEndpoint()) "已設定" else "待設定"
+        val accountMode = if (stateStore.hasRemoteAuthEndpoint()) "學校帳號" else "班級帳號"
         val box = ui.container(ColorToken.Card, ColorToken.Border)
         box.addView(ui.statusPill("帳號狀態", ColorToken.Primary))
         box.addView(ui.label("角色與登入狀態", 18, ColorToken.Ink, true).apply {
             setPadding(0, ui.dp(12), 0, ui.dp(4))
         })
         box.addView(ui.body(
-            "學生帳號：$studentCount\n老師/志工帳號：$staffCount\n學校登入：$endpointState\n角色來源：學校帳號或班級帳號設定",
+            "學生帳號：$studentCount\n老師/志工帳號：$staffCount\n目前登入：$accountMode\n角色會依帳號自動套用",
             "#334155"
         ))
         box.addView(ui.body(

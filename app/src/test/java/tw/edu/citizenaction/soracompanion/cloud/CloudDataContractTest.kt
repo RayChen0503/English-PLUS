@@ -47,6 +47,26 @@ class CloudDataContractTest {
     }
 
     @Test
+    fun roleScopedCloudWritesMatchProductResponsibilities() {
+        val student = CloudDataContract.buildScope("CLASS-8A", "Ray Chen", AuthContract.ROLE_STUDENT)
+        val teacher = CloudDataContract.buildScope("CLASS-8A", "Teacher Lin", AuthContract.ROLE_TEACHER)
+        val volunteer = CloudDataContract.buildScope("CLASS-8A", "Emily Mentor", AuthContract.ROLE_VOLUNTEER)
+
+        assertTrue(CloudDataContract.canWriteRecord(student, "student_help_request", "ray-chen"))
+        assertTrue(CloudDataContract.canWriteRecord(student, "learning_event", "ray-chen"))
+        assertTrue(CloudDataContract.canWriteRecord(student, "mission_completion", "ray-chen"))
+        assertFalse(CloudDataContract.canWriteRecord(student, "staff_reply", "ray-chen"))
+        assertFalse(CloudDataContract.canWriteRecord(student, "student_help_request", "other-student"))
+
+        assertTrue(CloudDataContract.canWriteRecord(teacher, "staff_reply", "ray-chen"))
+        assertTrue(CloudDataContract.canWriteRecord(teacher, "staff_note", "ray-chen"))
+        assertTrue(CloudDataContract.canWriteRecord(teacher, "question_bank", "ray-chen"))
+        assertTrue(CloudDataContract.canWriteRecord(volunteer, "staff_reply", "ray-chen"))
+        assertTrue(CloudDataContract.canWriteRecord(volunteer, "staff_note", "ray-chen"))
+        assertFalse(CloudDataContract.canWriteRecord(volunteer, "question_bank", "ray-chen"))
+    }
+
+    @Test
     fun syncMetadataDeclaresSchemaAndCollections() {
         val scope = CloudDataContract.buildScope("CLASS-8A", "Teacher Lin", AuthContract.ROLE_TEACHER)
         val metadata = CloudDataContract.buildSyncMetadata(scope, "android-classroom")
@@ -149,9 +169,32 @@ class CloudDataContractTest {
 
         assertEquals(scope.collaborationCollectionPath, requestPayload["collectionPath"])
         assertEquals("student_help_request", requestPayload["recordType"])
+        assertEquals(true, requestPayload["studentVisible"])
+        assertEquals(false, requestPayload["staffOnly"])
         assertEquals("staff_reply", replyPayload["recordType"])
+        assertEquals(true, replyPayload["studentVisible"])
+        assertEquals(false, replyPayload["staffOnly"])
         assertEquals("learning_event", eventPayload["recordType"])
         assertEquals("mission_completion", missionPayload["recordType"])
         assertEquals("3/3", missionPayload["progress"])
+    }
+
+    @Test
+    fun staffNotesStayStaffOnlyInCloudPayloads() {
+        val scope = CloudDataContract.buildScope("CLASS-8A", "Teacher Lin", AuthContract.ROLE_TEACHER)
+        val internalNote = CollaborationNote(
+            actor = "Teacher Lin",
+            role = AuthContract.ROLE_TEACHER,
+            target = "Ray Chen",
+            note = "下次先觀察閱讀題，不直接增加作業。",
+            status = CollaborationFlowContract.STATUS_STAFF_NOTE,
+            createdAt = 5000L
+        )
+
+        val payload = CloudDataContract.collaborationPayload(scope, internalNote)
+
+        assertEquals("staff_note", payload["recordType"])
+        assertEquals(false, payload["studentVisible"])
+        assertEquals(true, payload["staffOnly"])
     }
 }

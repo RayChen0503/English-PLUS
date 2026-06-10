@@ -96,6 +96,28 @@ object CloudDataContract {
         return AuthContract.normalizeRole(scope.roleLabel) == AuthContract.ROLE_TEACHER
     }
 
+    fun canWriteRecord(scope: CloudAccessScope, recordType: String, targetUserId: String): Boolean {
+        val type = recordType.trim().lowercase().replace("-", "_")
+        val target = normalizeId(targetUserId, fallback = "")
+        val isOwnStudentRecord = scope.userId == target
+        return when {
+            AuthContract.isStudentRole(scope.roleLabel) -> {
+                isOwnStudentRecord && type in setOf(
+                    "student_help_request",
+                    "learning_event",
+                    "mission_completion"
+                )
+            }
+            AuthContract.normalizeRole(scope.roleLabel) == AuthContract.ROLE_TEACHER -> {
+                type in setOf("staff_reply", "staff_note", "question_bank")
+            }
+            AuthContract.normalizeRole(scope.roleLabel) == AuthContract.ROLE_VOLUNTEER -> {
+                type in setOf("staff_reply", "staff_note")
+            }
+            else -> false
+        }
+    }
+
     fun queueItemFromOfflineSync(item: OfflineSyncItem): CloudSyncQueueItem {
         return CloudSyncQueueItem(
             collection = item.category.trim().ifBlank { "offlineSyncItems" },
@@ -207,11 +229,14 @@ object CloudDataContract {
             CollaborationFlowContract.isStaffReply(note) -> "staff_reply"
             else -> "staff_note"
         }
+        val studentVisible = recordType == "student_help_request" || recordType == "staff_reply"
         return mapOf(
             "schemaVersion" to SCHEMA_VERSION,
             "collectionPath" to scope.collaborationCollectionPath,
             "documentId" to normalizeId("${note.target}-${note.createdAt}-${recordType}", fallback = "collaboration-note"),
             "recordType" to recordType,
+            "studentVisible" to studentVisible,
+            "staffOnly" to !studentVisible,
             "classId" to scope.classId,
             "actor" to note.actor,
             "role" to AuthContract.normalizeRole(note.role),
