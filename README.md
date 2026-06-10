@@ -122,6 +122,8 @@ The student mission, question bank, and AI polish work is documented in `docs/ro
 
 The auth, sync, and support-loop polish work is documented in `docs/round-29-31-auth-sync-loop-polish.md`.
 
+The iOS/TestFlight migration handoff starts at `docs/ios-testflight/README.md`.
+
 ## Project Structure
 
 ```text
