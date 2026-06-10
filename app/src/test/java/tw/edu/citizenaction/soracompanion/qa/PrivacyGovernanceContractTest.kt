@@ -57,4 +57,52 @@ class PrivacyGovernanceContractTest {
         assertTrue(requirements.any { it.contains("deny other students") })
         assertTrue(requirements.any { it.contains("audit") })
     }
+
+    @Test
+    fun internalTestConsentPacketCoversStudentGuardianTeacherVolunteerAndSchool() {
+        val packet = PrivacyGovernanceContract.internalTestConsentPacket()
+        val audiences = packet.sections.map { it.audience }.toSet()
+
+        assertEquals(setOf("學生", "家長/監護人", "老師", "志工", "學校/課程團隊"), audiences)
+        assertTrue(packet.summary.contains("內測"))
+        assertTrue(packet.summary.contains("可退出"))
+        packet.sections.forEach { section ->
+            assertTrue(section.mustTellUser.isNotBlank())
+            assertTrue(section.requiredConsentItems.isNotEmpty())
+            assertFalse(section.mustTellUser.contains("debug", ignoreCase = true))
+            assertFalse(section.mustTellUser.contains("prototype", ignoreCase = true))
+        }
+    }
+
+    @Test
+    fun dataLifecycleRunbookCoversExportDeleteOptOutAndIncidentResponse() {
+        val runbook = PrivacyGovernanceContract.dataLifecycleRunbook()
+        val actionIds = runbook.map { it.actionId }.toSet()
+
+        assertTrue(actionIds.contains("export-student-data"))
+        assertTrue(actionIds.contains("delete-test-records"))
+        assertTrue(actionIds.contains("opt-out"))
+        assertTrue(actionIds.contains("incident-review"))
+        runbook.forEach { action ->
+            assertTrue(action.owner in setOf("老師", "課程團隊", "學校管理者"))
+            assertTrue(action.studentFacingResult.isNotBlank())
+            assertTrue(action.deadlineDays in 1..30)
+            assertFalse(action.staffProcedure.contains("TODO", ignoreCase = true))
+        }
+    }
+
+    @Test
+    fun playDataSafetyDraftMapsSensitiveDataToPurposeSharingAndDeletion() {
+        val draft = PrivacyGovernanceContract.playDataSafetyDraft()
+
+        assertTrue(draft.entries.any { it.dataType == StudentDataType.LearningRecord && it.purpose.contains("學習") })
+        assertTrue(draft.entries.any { it.dataType == StudentDataType.EmotionalSupport && it.sensitive })
+        assertTrue(draft.entries.any { it.dataType == StudentDataType.AiSupportContext && it.sharedWith.contains("安全後端") })
+        assertTrue(draft.deletionPath.contains("刪除"))
+        assertTrue(draft.contactRoute.contains("老師"))
+        draft.entries.forEach {
+            assertFalse(it.sharedWith.contains("其他學生"))
+            assertTrue(it.retentionSummary.isNotBlank())
+        }
+    }
 }

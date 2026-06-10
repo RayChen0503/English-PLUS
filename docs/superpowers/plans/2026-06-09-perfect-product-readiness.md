@@ -291,3 +291,25 @@ Only run the reset command when the user explicitly asks to roll back.
 - [x] Require teacher and volunteer videos that show real user actions, not only login.
 - [x] Block showcase readiness when media is missing, duplicated, too short, actionless, or exposes internal copy.
 - [x] Document the capture folder and naming rules.
+
+## Round 21: Backend Endpoint And Payload Handoff
+
+**Files:**
+- Modify: `app/src/main/java/tw/edu/citizenaction/soracompanion/qa/ProductionDeploymentContract.kt`
+- Test: `app/src/test/java/tw/edu/citizenaction/soracompanion/qa/ProductionDeploymentContractTest.kt`
+
+- [x] Define the production backend endpoint manifest for health check, login, push sync, fetch sync, AI support, and question-bank import.
+- [x] Add example backend payloads that use current schema versions without including secrets, passwords, or production keys.
+- [x] Add a deployment runbook that orders local verification before credentialed backend launch.
+- [x] Require role claims, HTTPS endpoints, server-side AI proxy, and closed internal testing before wider sharing.
+
+## Round 22: Privacy Operations And Data Safety
+
+**Files:**
+- Modify: `app/src/main/java/tw/edu/citizenaction/soracompanion/qa/PrivacyGovernanceContract.kt`
+- Test: `app/src/test/java/tw/edu/citizenaction/soracompanion/qa/PrivacyGovernanceContractTest.kt`
+
+- [x] Add an internal-test consent packet for students, guardians, teachers, volunteers, and the school/team.
+- [x] Add data lifecycle actions for export, deletion, opt-out, and incident review.
+- [x] Add a Play Data Safety draft mapping data types to purpose, sharing boundary, retention, deletion, and contact route.
+- [x] Keep sensitive emotional support and collaboration data hidden from other students.

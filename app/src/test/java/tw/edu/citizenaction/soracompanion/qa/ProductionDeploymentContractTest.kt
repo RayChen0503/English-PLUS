@@ -96,4 +96,65 @@ class ProductionDeploymentContractTest {
             assertFalse(it.serverCheck.contains("trust UI", ignoreCase = true))
         }
     }
+
+    @Test
+    fun backendEndpointManifestCoversAuthSyncAiQuestionBankAndHealthCheck() {
+        val manifest = ProductionDeploymentContract.backendEndpointManifest()
+        val actions = manifest.map { it.action }.toSet()
+
+        assertTrue(actions.contains("login"))
+        assertTrue(actions.contains("pushSync"))
+        assertTrue(actions.contains("fetchSync"))
+        assertTrue(actions.contains("aiSupport"))
+        assertTrue(actions.contains("questionBankImport"))
+        assertTrue(actions.contains("healthCheck"))
+
+        manifest.forEach { endpoint ->
+            assertTrue(endpoint.method in setOf("GET", "POST"))
+            assertTrue(endpoint.path.startsWith("/"))
+            assertTrue(endpoint.responseFields.isNotEmpty())
+            assertFalse(endpoint.path.contains("localhost", ignoreCase = true))
+            assertFalse(endpoint.description.contains("TODO", ignoreCase = true))
+            if (endpoint.authRequired) {
+                assertTrue(endpoint.requiredHeaders.contains("Authorization"))
+                assertTrue(endpoint.allowedRoles.isNotEmpty())
+            }
+        }
+    }
+
+    @Test
+    fun backendPayloadExamplesUseCurrentSchemasAndNeverContainSecrets() {
+        val examples = ProductionDeploymentContract.backendPayloadExamples()
+        val byAction = examples.associateBy { it.action }
+
+        assertEquals(ProductionDeploymentContract.PRODUCTION_DEPLOYMENT_SCHEMA_VERSION, byAction.getValue("deployment").schemaVersion)
+        assertTrue(byAction.getValue("login").jsonBody.contains("classCode"))
+        assertTrue(byAction.getValue("pushSync").jsonBody.contains("schemaVersion"))
+        assertTrue(byAction.getValue("aiSupport").jsonBody.contains("taskType"))
+        assertTrue(byAction.getValue("questionBankImport").jsonBody.contains("questionBankSchemaVersion"))
+
+        examples.forEach { example ->
+            assertFalse(example.jsonBody.contains("sk-"))
+            assertFalse(example.jsonBody.contains("secret", ignoreCase = true))
+            assertFalse(example.jsonBody.contains("password"))
+            assertTrue(example.validationNote.isNotBlank())
+        }
+    }
+
+    @Test
+    fun deploymentRunbookOrdersLocalVerificationBeforeCredentialedBackendLaunch() {
+        val steps = ProductionDeploymentContract.deploymentRunbook()
+
+        assertEquals(1, steps.first().order)
+        assertTrue(steps.first().title.contains("本機"))
+        assertTrue(steps.any { it.title.contains("HTTPS") })
+        assertTrue(steps.any { it.title.contains("角色") })
+        assertTrue(steps.any { it.title.contains("AI") })
+        assertTrue(steps.any { it.title.contains("內測") })
+        assertTrue(steps.zipWithNext().all { (a, b) -> a.order < b.order })
+        steps.forEach {
+            assertTrue(it.acceptanceCheck.isNotBlank())
+            assertFalse(it.acceptanceCheck.contains("TODO", ignoreCase = true))
+        }
+    }
 }

@@ -22,8 +22,34 @@ data class SecurityRuleRequirement(
     val serverCheck: String
 )
 
+data class BackendEndpointSpec(
+    val action: String,
+    val method: String,
+    val path: String,
+    val requiredHeaders: List<String>,
+    val requestFields: List<String>,
+    val responseFields: List<String>,
+    val authRequired: Boolean,
+    val allowedRoles: List<String>,
+    val description: String
+)
+
+data class BackendPayloadExample(
+    val action: String,
+    val schemaVersion: Int,
+    val jsonBody: String,
+    val validationNote: String
+)
+
+data class DeploymentRunbookStep(
+    val order: Int,
+    val title: String,
+    val owner: String,
+    val acceptanceCheck: String
+)
+
 object ProductionDeploymentContract {
-    const val PRODUCTION_DEPLOYMENT_SCHEMA_VERSION = 1
+    const val PRODUCTION_DEPLOYMENT_SCHEMA_VERSION = 2
 
     fun deploymentDecisionMatrix(): List<DeploymentDecision> {
         return listOf(
@@ -129,6 +155,147 @@ object ProductionDeploymentContract {
                 allowedReads = listOf("assigned handoff queue", "student support context", "mentor script", "sync status"),
                 allowedWrites = listOf("handoff notes", "volunteer replies", "support completion state"),
                 serverCheck = "Server verifies volunteer claim, assignment scope, and class membership before writing handoff records."
+            )
+        )
+    }
+
+    fun backendEndpointManifest(): List<BackendEndpointSpec> {
+        return listOf(
+            BackendEndpointSpec(
+                action = "healthCheck",
+                method = "GET",
+                path = "/health",
+                requiredHeaders = emptyList(),
+                requestFields = emptyList(),
+                responseFields = listOf("status", "schemaVersion", "serverTime"),
+                authRequired = false,
+                allowedRoles = emptyList(),
+                description = "Verifies that the school backend is reachable before enabling remote flows."
+            ),
+            BackendEndpointSpec(
+                action = "login",
+                method = "POST",
+                path = "/auth/login",
+                requiredHeaders = listOf("Content-Type"),
+                requestFields = listOf("schemaVersion", "app", "classCode", "account", "credentialProof", "provider"),
+                responseFields = listOf("token", "displayName", "classCode", "roleClaims", "expiresAt"),
+                authRequired = false,
+                allowedRoles = emptyList(),
+                description = "Exchanges a school account or identity proof for role claims used by English+."
+            ),
+            BackendEndpointSpec(
+                action = "pushSync",
+                method = "POST",
+                path = "/sync/push",
+                requiredHeaders = listOf("Authorization", "Content-Type"),
+                requestFields = listOf("schemaVersion", "classId", "userId", "collections", "payload", "lastLocalUpdateAt"),
+                responseFields = listOf("accepted", "serverCursor", "conflicts", "retryAfter"),
+                authRequired = true,
+                allowedRoles = listOf("學生", "老師", "志工"),
+                description = "Uploads local learning, mission, and collaboration records to the class space."
+            ),
+            BackendEndpointSpec(
+                action = "fetchSync",
+                method = "POST",
+                path = "/sync/fetch",
+                requiredHeaders = listOf("Authorization", "Content-Type"),
+                requestFields = listOf("schemaVersion", "classId", "userId", "cursor", "collections"),
+                responseFields = listOf("serverCursor", "records", "deletedIds", "serverTime"),
+                authRequired = true,
+                allowedRoles = listOf("學生", "老師", "志工"),
+                description = "Fetches class-scoped updates while respecting the user's role and assignment."
+            ),
+            BackendEndpointSpec(
+                action = "aiSupport",
+                method = "POST",
+                path = "/ai/support",
+                requiredHeaders = listOf("Authorization", "Content-Type"),
+                requestFields = listOf("schemaVersion", "taskType", "role", "classId", "studentContext", "learningContext"),
+                responseFields = listOf("message", "suggestedMission", "safetyFlags", "usedModel"),
+                authRequired = true,
+                allowedRoles = listOf("學生", "老師", "志工"),
+                description = "Runs daily mission, wrong-answer, and support suggestions through a server-held model key."
+            ),
+            BackendEndpointSpec(
+                action = "questionBankImport",
+                method = "POST",
+                path = "/question-bank/import",
+                requiredHeaders = listOf("Authorization", "Content-Type"),
+                requestFields = listOf("questionBankSchemaVersion", "classId", "importBatch", "items", "reviewState"),
+                responseFields = listOf("acceptedCount", "rejectedCount", "reviewRequired", "importId"),
+                authRequired = true,
+                allowedRoles = listOf("老師"),
+                description = "Lets teachers or content maintainers import reviewed English+ question sets."
+            )
+        )
+    }
+
+    fun backendPayloadExamples(): List<BackendPayloadExample> {
+        return listOf(
+            BackendPayloadExample(
+                action = "deployment",
+                schemaVersion = PRODUCTION_DEPLOYMENT_SCHEMA_VERSION,
+                jsonBody = """{"schemaVersion":$PRODUCTION_DEPLOYMENT_SCHEMA_VERSION,"app":"English+","environment":"internal-test","androidPackage":"tw.edu.citizenaction.soracompanion"}""",
+                validationNote = "Used by the team to verify that the backend and Android build agree on environment and package."
+            ),
+            BackendPayloadExample(
+                action = "login",
+                schemaVersion = PRODUCTION_DEPLOYMENT_SCHEMA_VERSION,
+                jsonBody = """{"schemaVersion":$PRODUCTION_DEPLOYMENT_SCHEMA_VERSION,"app":"English+","classCode":"YILAN-8A","account":"student@example.edu","credentialProof":"one-time-code-or-provider-token","provider":"school"}""",
+                validationNote = "Real credentials must be exchanged server-side and never stored in the sample."
+            ),
+            BackendPayloadExample(
+                action = "pushSync",
+                schemaVersion = PRODUCTION_DEPLOYMENT_SCHEMA_VERSION,
+                jsonBody = """{"schemaVersion":4,"classId":"YILAN-8A","userId":"xiao-an","collections":["learningEvents","collaborationNotes"],"payload":{"records":[]},"lastLocalUpdateAt":1700000000000}""",
+                validationNote = "Payload follows the app sync schema and must be authorized by class and role."
+            ),
+            BackendPayloadExample(
+                action = "aiSupport",
+                schemaVersion = PRODUCTION_DEPLOYMENT_SCHEMA_VERSION,
+                jsonBody = """{"schemaVersion":$PRODUCTION_DEPLOYMENT_SCHEMA_VERSION,"taskType":"dailyMission","role":"學生","classId":"YILAN-8A","studentContext":{"mood":3,"minutes":5},"learningContext":{"preferredTypes":["克漏字","翻譯"]}}""",
+                validationNote = "The server holds model credentials and returns only the generated learning support."
+            ),
+            BackendPayloadExample(
+                action = "questionBankImport",
+                schemaVersion = PRODUCTION_DEPLOYMENT_SCHEMA_VERSION,
+                jsonBody = """{"questionBankSchemaVersion":3,"classId":"YILAN-8A","importBatch":"exam-style-001","items":[],"reviewState":"teacher-review"}""",
+                validationNote = "Question sets require source review and teacher-only publish permission."
+            )
+        )
+    }
+
+    fun deploymentRunbook(): List<DeploymentRunbookStep> {
+        return listOf(
+            DeploymentRunbookStep(
+                order = 1,
+                title = "本機驗證與版本凍結",
+                owner = "team",
+                acceptanceCheck = "Gradle test, debug build, lint, and GitHub clean status all pass before external credentials are added."
+            ),
+            DeploymentRunbookStep(
+                order = 2,
+                title = "HTTPS 後端健康檢查",
+                owner = "school",
+                acceptanceCheck = "The /health endpoint returns schemaVersion, status, and serverTime over HTTPS."
+            ),
+            DeploymentRunbookStep(
+                order = 3,
+                title = "角色 claims 與班級權限",
+                owner = "school",
+                acceptanceCheck = "Student, teacher, and volunteer claims map to the same permissions as the tested contract."
+            ),
+            DeploymentRunbookStep(
+                order = 4,
+                title = "AI 後端代理",
+                owner = "team",
+                acceptanceCheck = "Model credentials stay on the server and the Android app receives only generated support text."
+            ),
+            DeploymentRunbookStep(
+                order = 5,
+                title = "封閉內測與回收機制",
+                owner = "user",
+                acceptanceCheck = "Internal testers, privacy contact, opt-out path, and rollback commit are documented before sharing the app."
             )
         )
     }

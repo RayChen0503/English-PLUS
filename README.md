@@ -42,6 +42,7 @@ Do not reset to these tags unless a rollback is explicitly requested. The curren
 - Round 16 real-state inventory that separates implemented local capabilities from external dependencies, with tests preventing normal screens from exposing prototype/setup wording.
 - Round 17-18 local collaboration loop and sync readiness: student help requests, teacher/volunteer replies, student-visible timelines, retry/backoff planning, and collaboration conflict reports are now tested as contracts.
 - Round 19-20 production handoff and showcase evidence gates: backend/login/security decisions, AI proxy requirements, and student/teacher/volunteer media coverage are now explicit and tested.
+- Round 21-22 backend handoff and privacy operations: endpoint manifests, payload examples, deployment runbook, internal-test consent, data lifecycle, and Play Data Safety draft are now explicit and tested.
 - JVM unit tests for repository data and core model invariants.
 
 ## Prototype Limits
@@ -106,6 +107,8 @@ The real-state audit is documented in `docs/round-16-real-state-audit.md`.
 The local collaboration loop and sync-readiness work is documented in `docs/round-17-18-local-loop-sync.md`.
 
 The production handoff and showcase evidence gates are documented in `docs/round-19-20-production-handoff-evidence.md`.
+
+The backend handoff and privacy operations work is documented in `docs/round-21-22-backend-privacy-operations.md`.
 
 ## Project Structure
 
