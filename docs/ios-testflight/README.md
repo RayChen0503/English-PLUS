@@ -20,12 +20,13 @@ The Android app remains the working classroom prototype. The iOS work should sta
    Overall migration goal, fixed decisions, target scope, risk boundaries, and Mac handoff direction.
 2. `round-2-swiftui-screen-map.md`
    SwiftUI screen map, role-separated user flows, proposed view files, navigation rules, and UX quality gates.
+3. `round-3-ios-data-format-spec.md`
+   Android-to-iOS data contracts for roles, accounts, question bank, check-in, daily missions, support threads, staff assignments, and sync.
 
 Future rounds will add:
 
 - Firebase Auth / Firestore schema and security-rule draft.
 - OpenRouter backend proxy contract.
-- Android question bank and support-flow export format.
 - TestFlight preparation checklist.
 - Privacy and real-student-data checklist.
 - Xcode build and upload handoff steps.
