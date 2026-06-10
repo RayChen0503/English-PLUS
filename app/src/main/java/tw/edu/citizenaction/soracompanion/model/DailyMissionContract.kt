@@ -20,6 +20,14 @@ data class DailyMissionCompletionCopy(
     val nextAction: String
 )
 
+data class DailyMissionProgressCopy(
+    val title: String,
+    val body: String,
+    val percent: Int,
+    val remaining: Int,
+    val isComplete: Boolean
+)
+
 object DailyMissionContract {
     fun goalForMinutes(minutes: Int): Int = UserFlowContract.questionGoal(minutes)
 
@@ -46,6 +54,25 @@ object DailyMissionContract {
         return DailyMissionProgress(
             done = nextDone,
             isComplete = goal > 0 && nextDone >= goal
+        )
+    }
+
+    fun progressCopy(inDailyMission: Boolean, goal: Int, done: Int): DailyMissionProgressCopy? {
+        if (!shouldShowProgress(inDailyMission, goal)) return null
+        val safeGoal = goal.coerceAtLeast(1)
+        val safeDone = done.coerceIn(0, safeGoal)
+        val remaining = remaining(safeGoal, safeDone)
+        val body = if (remaining == 0) {
+            "已完成 $safeDone/$safeGoal 題，今日任務達標。"
+        } else {
+            "已完成 $safeDone/$safeGoal 題，還剩 $remaining 題。"
+        }
+        return DailyMissionProgressCopy(
+            title = "今日題目任務",
+            body = body,
+            percent = progressPercent(safeGoal, safeDone),
+            remaining = remaining,
+            isComplete = remaining == 0
         )
     }
 

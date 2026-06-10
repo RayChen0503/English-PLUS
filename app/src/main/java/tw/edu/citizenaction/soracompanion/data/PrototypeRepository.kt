@@ -523,8 +523,8 @@ object PrototypeRepository {
         MentorCheck("低壓任務入口", "通過", "學生打開首頁後能很快看到今天先做什麼。", "#0F766E"),
         MentorCheck("題型難度梯度", "已加強", "題庫已從入門選擇題延伸到會考填空、克漏字、閱讀與翻譯。", "#0F766E"),
         MentorCheck("真人接力", "待實測", "需要用實際老師/志工確認摘要是否夠清楚。", "#B45309"),
-        MentorCheck("離線同步", "展示完成", "本機保存與待同步狀態可被看見。", "#0F766E"),
-        MentorCheck("正式後端", "未部署", "Firebase 或校內後端仍屬內測後任務。", "#B45309")
+        MentorCheck("離線保存", "已完成", "網路不穩時仍能先保存學習與接力紀錄。", "#0F766E"),
+        MentorCheck("班級資料服務", "待連線", "若團隊提供服務網址，老師與志工可跨裝置更新紀錄。", "#B45309")
     )
 
     val handoffPriorities = listOf(
@@ -581,9 +581,9 @@ object PrototypeRepository {
     )
 
     val syncRecords = listOf(
-        SyncRecord("短任務完成紀錄", "已保存", "本機已記錄 1 次 be 動詞練習。"),
-        SyncRecord("會考題型進度", "待同步", "學生已開始克漏字與閱讀理解。"),
-        SyncRecord("志工接力摘要", "已排隊", "等待雲端後端正式設定。")
+        SyncRecord("短任務完成紀錄", "已保存", "已記錄 1 次 be 動詞練習。"),
+        SyncRecord("會考題型進度", "待更新", "學生已開始克漏字與閱讀理解。"),
+        SyncRecord("志工接力摘要", "已排隊", "等待班級資料服務連線。")
     )
 
     val localAccounts = listOf(

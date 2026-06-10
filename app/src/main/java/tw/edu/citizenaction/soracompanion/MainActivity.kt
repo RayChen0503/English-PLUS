@@ -250,7 +250,7 @@ class MainActivity : Activity() {
 
     private fun syncReadinessText(): String {
         val networkText = if (isNetworkAvailable()) "網路可用" else "目前離線"
-        val backendText = if (stateStore.hasCloudBackend()) "同步連線可用" else "同步連線待補"
+        val backendText = if (stateStore.hasCloudBackend()) "班級資料連線可用" else "尚未連到班級資料服務"
         val pendingText = "待補傳 $offlinePendingCount 筆"
         val queue = CloudDataContract.buildQueueState(
             items = offlineSyncItems.map { CloudDataContract.queueItemFromOfflineSync(it) },
@@ -259,7 +259,12 @@ class MainActivity : Activity() {
                 .filter { it.status.contains("已同步") }
                 .maxOfOrNull { it.updatedAt } ?: 0L
         )
-        return "$networkText\n$backendText\n$pendingText\n下一步：${queue.message}"
+        val nextStep = if (offlinePendingCount > 0) {
+            "下一步：網路恢復後再更新。"
+        } else {
+            "下一步：目前沒有需要補傳的紀錄。"
+        }
+        return "$networkText\n$backendText\n$pendingText\n$nextStep"
     }
 
     private fun accountList(): List<LocalAccount> = stateStore.localAccounts(defaultAccounts)
@@ -280,7 +285,7 @@ class MainActivity : Activity() {
     private fun renderHome() {
         screen = Screen.Home
         shell("English+", "偏鄉學生雙軌學習平台")
-        hero("先接住情緒，再修復英文斷點", "學生卡關時由 AI 即時拆小任務；真正需要人的地方，再把斷點摘要交給雲端志工或老師。")
+        hero("先接住情緒，再修復英文斷點", "學生卡關時先把題目拆小；真正需要人的地方，再把卡點整理給老師或志工。")
         root.addView(roleSwitch())
         when (UserFlowContract.normalizedRole(role)) {
             Role.Student -> studentHome()
@@ -298,14 +303,14 @@ class MainActivity : Activity() {
         root.addView(trackEntry(
             "學習軌",
             "先完成一個低壓任務",
-            "現在最適合先做 ${minutes} 分鐘短任務，完成後會把這一小步寫回學習進度。",
+            "現在先做 ${minutes} 分鐘短任務，完成後就會更新今天的學習進度。",
             ColorToken.PrimarySoft,
             "查看今日任務"
         ) { renderTaskQueue() })
         root.addView(trackEntry(
             "支持軌",
             "先說說現在的感受",
-            "如果今天比較累，先被理解也算前進。平台會依心情調整短練習、陪伴和接力。",
+            "如果今天比較累，先被理解也算前進。English+ 會依心情調整短練習和陪伴。",
             ColorToken.AccentSoft,
             "先做心情回報"
         ) { renderCheckIn() })
@@ -322,7 +327,7 @@ class MainActivity : Activity() {
         root.addView(ui.secondaryButton("查看所有任務安排") { renderTaskQueue() })
         section("今天的支持")
         supportMessages.take(1).forEach { root.addView(messageCard(it)) }
-        root.addView(ui.secondaryButton("我想請平台幫我整理求助訊息") { renderHelpRequest() })
+        root.addView(ui.secondaryButton("我想整理求助訊息") { renderHelpRequest() })
         section("更多探索")
         root.addView(actionGrid(
             ActionItem("學習檔案", "看目標與偏好") { renderProfile() },
@@ -429,15 +434,15 @@ class MainActivity : Activity() {
         screen = Screen.Account
         val endpoint = stateStore.remoteAuthEndpoint()
         if (!stateStore.hasRemoteAuthEndpoint()) {
-            shell("使用班級帳號登入", "之後可接學校帳號")
-            root.addView(card("目前狀態", "目前可以先用班級帳號進入。", ColorToken.WarningSoft))
+            shell("使用班級帳號登入", "也可以之後改接學校帳號")
+            root.addView(card("目前可以進入", "先使用班級帳號完成今天的學習流程。", ColorToken.WarningSoft))
             root.addView(remoteAuthLoginCard())
             root.addView(ui.secondaryButton("回帳號中心") { renderAccountCenter() })
             bottomNav()
             return
         }
-        shell("正在登入", "呼叫正式登入端點驗證帳號")
-        root.addView(card("登入端點", endpoint, ColorToken.PrimarySoft))
+        shell("正在登入", "正在確認你的帳號")
+        root.addView(card("登入中", "English+ 正在確認帳號與班級資料。", ColorToken.PrimarySoft))
         root.addView(card("登入帳號", "$username\n班級/群組：${classCode.ifBlank { "未填" }}", ColorToken.Card))
         bottomNav()
 
@@ -456,9 +461,9 @@ class MainActivity : Activity() {
         selectedAccountName = session.displayName
         role = UserFlowContract.roleForAuthLabel(session.roleLabel)
         persistState()
-        addOfflineSyncItem("雲端登入成功：${session.displayName}", "正式登入", "角色 ${session.roleLabel} / 班級 ${session.classCode}", "已同步")
-        recordLearningEvent("remote_login", "雲端登入成功", "${session.displayName} / ${session.roleLabel} / ${session.classCode}")
-        shell("雲端登入成功", "正式帳號已寫入本機帳號清單")
+        addOfflineSyncItem("學校帳號登入成功：${session.displayName}", "帳號", "角色 ${session.roleLabel} / 班級 ${session.classCode}", "已同步")
+        recordLearningEvent("remote_login", "學校帳號登入成功", "${session.displayName} / ${session.roleLabel} / ${session.classCode}")
+        shell("登入成功", "帳號與角色已更新")
         root.addView(card("登入結果", stateStore.authSessionSummary(), ColorToken.SuccessSoft))
         root.addView(ui.primaryButton("進入首頁") { renderHome() })
         root.addView(ui.secondaryButton("回帳號中心") { renderAccountCenter() })
@@ -466,9 +471,9 @@ class MainActivity : Activity() {
     }
 
     private fun renderRemoteLoginFailure(message: String) {
-        recordLearningEvent("remote_login_failed", "雲端登入失敗", message)
+        recordLearningEvent("remote_login_failed", "學校帳號登入失敗", message)
         shell("登入暫時失敗", "你仍可使用班級帳號")
-        root.addView(card("錯誤訊息", message, ColorToken.WarningSoft))
+        root.addView(card("無法完成登入", message, ColorToken.WarningSoft))
         root.addView(card("下一步", "你仍可以先使用班級帳號進入；若要使用學校帳號，請稍後重新登入。", ColorToken.Card))
         root.addView(ui.primaryButton("回帳號中心") { renderAccountCenter() })
         bottomNav()
@@ -653,6 +658,7 @@ class MainActivity : Activity() {
         val q = activeQuestion()
         shell(if (inDailyMission) "今日題目任務" else "自由練習", "一題一概念，避免二度挫折")
         root.addView(lessonFocusCard())
+        dailyMissionProgressCard()?.let { root.addView(it) }
         root.addView(questionCard(q))
         root.addView(lessonSupportCard())
         root.addView(lessonExitCard())
@@ -664,7 +670,7 @@ class MainActivity : Activity() {
     private fun renderRecoveryMode() {
         screen = Screen.Lesson
         shell("復原任務", "狀態不好時也能完成的一小步")
-        root.addView(card("為什麼切換？", "當心情低落或連續答錯時，平台會把原本任務縮成更小的復原任務，避免直接退出。", ColorToken.WarningSoft))
+        root.addView(card("為什麼切換？", "當心情低落或連續答錯時，English+ 會把原本任務縮成更小的復原任務，避免直接退出。", ColorToken.WarningSoft))
         root.addView(card("復原任務內容", "只判斷一件事：He 要搭配 is。\n完成後就可以休息，也會算進學習地圖。", ColorToken.PrimarySoft))
         root.addView(ui.primaryButton("完成復原任務") {
             completedTasks += 1
@@ -785,23 +791,25 @@ class MainActivity : Activity() {
             "這題已完成。你可以繼續自由練習，也可以先停下來。"
         }
         root.addView(card("下一步", nextText, ColorToken.PrimarySoft))
-        root.addView(ui.primaryButton("做一個 20 秒反思") { renderReflection() })
         root.addView(ui.primaryButton(if (inDailyMission) "繼續今日任務" else "繼續下一題") { renderLesson() })
+        if (!inDailyMission) {
+            root.addView(ui.secondaryButton("做一個 20 秒反思") { renderReflection() })
+        }
         root.addView(ui.secondaryButton("回學習地圖") { renderMap() })
         bottomNav()
     }
 
     private fun renderDailyMissionComplete(q: Question) {
         screen = Screen.Lesson
-        inDailyMission = false
         val completion = DailyMissionContract.completionCopy(
             goal = dailyQuestionGoal,
             done = dailyQuestionDone
         )
         shell(completion.title, "你已經完成今天最重要的英文小步驟")
-        root.addView(successSummaryCard(q))
+        root.addView(successSummaryCard(q, missionDone = dailyQuestionDone, missionGoal = dailyQuestionGoal))
         root.addView(card("完成今日題目任務", completion.body, ColorToken.SuccessSoft))
         root.addView(card("可以停在這裡", completion.nextAction, ColorToken.PrimarySoft))
+        inDailyMission = false
         root.addView(ui.primaryButton("繼續自主練習") { renderLesson() })
         root.addView(ui.secondaryButton("回首頁") { renderHome() })
         bottomNav()
@@ -830,9 +838,9 @@ class MainActivity : Activity() {
         screen = Screen.Reflection
         shell("反思已保存", "把今天的小進步放回週報")
         root.addView(card("學生選擇", prompt.studentChoice, ColorToken.PrimarySoft))
-        root.addView(card("平台回應", prompt.platformResponse, ColorToken.SuccessSoft))
-        root.addView(card("目前信心值", "$confidence%｜下次會從同一個斷點繼續，而不是直接加難度。", ColorToken.Card))
-        root.addView(card("已寫入學習紀錄", "學習事件：${learningEventCount} 筆\n修復紀錄：${repairedMistakeCount} 筆\n待同步：${offlinePendingCount} 筆", ColorToken.PrimarySoft))
+        root.addView(card("English+ 回應", prompt.platformResponse, ColorToken.SuccessSoft))
+        root.addView(card("下次方向", "下次會從同一個斷點繼續，而不是直接加難度。", ColorToken.Card))
+        root.addView(card("已寫入學習紀錄", "學習事件：${learningEventCount} 筆\n修復紀錄：${repairedMistakeCount} 筆\n待更新：${offlinePendingCount} 筆", ColorToken.PrimarySoft))
         root.addView(ui.primaryButton("回學習地圖") { renderMap() })
         bottomNav()
     }
@@ -874,7 +882,7 @@ class MainActivity : Activity() {
         root.addView(metricRow(
             Metric("待回覆", "${supportLoop.waitingRequests}", if (supportLoop.waitingRequests > 0) ColorToken.Warning else ColorToken.Success),
             Metric("新回覆", "${supportLoop.unreadReplies}", if (supportLoop.unreadReplies > 0) ColorToken.Warning else ColorToken.Success),
-            Metric("信心", "$confidence%", ColorToken.Accent)
+            Metric("心情", mood.label, ColorToken.Accent)
         ))
         root.addView(card("目前狀態", "${supportLoop.latestStatus}\n${supportLoop.studentNextAction}", if (supportLoop.unreadReplies > 0) ColorToken.SuccessSoft else ColorToken.PrimarySoft))
         if (threads.isEmpty()) {
@@ -971,7 +979,7 @@ class MainActivity : Activity() {
         root.addView(card("學生摘要", "${student.name}｜${student.location}｜${student.goal}\n目前心情：${mood.label}\n今日任務時間：${minutes} 分鐘", ColorToken.PrimarySoft))
         root.addView(card("斷點摘要", "${breakpoints.first().title}\n證據：${breakpoints.first().evidence}\nAI 已做：${breakpoints.first().aiAction}", ColorToken.WarningSoft))
         root.addView(card("建議陪伴語", "你願意回來做修復任務已經很好。今天我們只看一個規則，先不追完整進度。", ColorToken.SuccessSoft))
-        root.addView(card("協作狀態", "志工回覆：${mentorReplyCount} 則\n協作紀錄：${collaborationNotes.size} 筆\n待同步：${offlinePendingCount} 件", ColorToken.Card))
+        root.addView(card("協作狀態", "志工回覆：${mentorReplyCount} 則\n協作紀錄：${collaborationNotes.size} 筆\n待更新：${offlinePendingCount} 件", ColorToken.Card))
         root.addView(remoteCollaborationStatusCard())
         recentCollaborationNotes(3).forEach { root.addView(collaborationNoteCard(it)) }
         latestRequest?.let {
@@ -984,17 +992,17 @@ class MainActivity : Activity() {
     private fun renderMap() {
         screen = Screen.Map
         shell("個人化學習地圖", "固定節奏比一次衝刺更重要")
-        root.addView(card("本週總覽", "完成微任務：$completedTasks\n信心值：$confidence%\n目前重點：${modules[1].title}", ColorToken.PrimarySoft))
+        root.addView(card("本週總覽", "完成微任務：$completedTasks\n目前心情：${mood.label}\n目前重點：${modules[1].title}", ColorToken.PrimarySoft))
         root.addView(storageStatusCard())
         root.addView(questionBankSummaryCard())
         modules.forEach { root.addView(moduleCard(it)) }
         section("學習紀錄時間線")
         root.addView(timelineCard("今日答題紀錄", "已累積 ${learningEventCount} 筆學習事件，包含答題、反思、求助與修復。", ColorToken.Primary))
         root.addView(timelineCard("錯題修復", "已完成 ${repairedMistakeCount} 筆錯題修復，會進入老師端週報。", ColorToken.Success))
-        root.addView(timelineCard("待同步紀錄", "目前有 ${offlinePendingCount} 筆本機紀錄等待同步。", if (offlinePendingCount > 0) ColorToken.Warning else ColorToken.Success))
+        root.addView(timelineCard("待更新紀錄", "目前有 ${offlinePendingCount} 筆學習紀錄等待更新到班級資料。", if (offlinePendingCount > 0) ColorToken.Warning else ColorToken.Success))
         section("錯題修復紀錄")
         mistakeRecords.forEach { root.addView(mistakeCard(it)) }
-        root.addView(ui.secondaryButton("查看正式題庫中心") { renderQuestionBank() })
+        root.addView(ui.secondaryButton("查看題庫中心") { renderQuestionBank() })
         root.addView(ui.secondaryButton("查看離線任務包") { renderOfflinePacks() })
         section("陪伴時間線")
         supportMessages.forEach { root.addView(messageCard(it)) }
@@ -1019,7 +1027,7 @@ class MainActivity : Activity() {
         )
         val skillCounts = bankItems.groupingBy { it.skill }.eachCount()
         val levelCounts = bankItems.groupingBy { it.level }.eachCount()
-        shell("正式題庫中心", "依程度、單元、技能管理 English+ 題目")
+        shell("題庫中心", "依程度、單元、技能管理 English+ 題目")
         root.addView(questionBankSummaryCard())
         root.addView(metricRow(
             Metric("題目", "${blueprint.totalQuestions} 題", ColorToken.Primary),
@@ -1033,7 +1041,7 @@ class MainActivity : Activity() {
             root.addView(timelineCard(skill, "$count 題｜可作為老師後台篩選與分級派題依據", ColorToken.Primary))
         }
         section("題目清單預覽")
-        root.addView(card("練習可用題庫", "目前學生練習會從完整 ${bankItems.size} 題中依序進行；這裡只預覽前 60 題，避免老師端頁面過長。", ColorToken.Card))
+        root.addView(card("練習可用題庫", "目前學生練習會從 ${bankItems.size} 題中依任務與偏好抽題；這裡只預覽前 60 題，避免頁面過長。", ColorToken.Card))
         bankItems.take(60).forEach { root.addView(questionBankItemCard(it)) }
         root.addView(ui.primaryButton("用目前題庫開始練習") {
             inDailyMission = false
@@ -1058,13 +1066,13 @@ class MainActivity : Activity() {
         offlinePacks.forEach { root.addView(offlinePackCard(it)) }
         section("同步狀態")
         offlineSyncItems.take(4).ifEmpty {
-            syncRecords.map { OfflineSyncItem(it.title, "等待同步", it.detail, it.status) }
+            syncRecords.map { OfflineSyncItem(it.title, "等待更新", it.detail, it.status) }
         }.forEach { root.addView(offlineSyncItemCard(it)) }
-        root.addView(ui.primaryButton("補傳 1 筆待同步紀錄") {
+        root.addView(ui.primaryButton("更新 1 筆紀錄") {
             addOfflineSyncItem(
                 title = "手動補傳檢查",
                 category = "同步檢查",
-                detail = "模擬網路恢復後補傳最新學習紀錄。",
+                detail = "網路恢復後更新最新學習紀錄。",
                 status = "已同步"
             )
             renderSyncCenter()
@@ -1076,7 +1084,7 @@ class MainActivity : Activity() {
 
     private fun renderSyncCenter() {
         screen = Screen.SyncCenter
-        shell("離線同步中心", "模擬網路不穩時的資料保存與補傳")
+        shell("資料更新中心", "網路不穩時先保存，之後再更新")
         refreshOfflineSyncState()
         root.addView(storageStatusCard())
         root.addView(cloudBackendStatusCard())
@@ -1095,24 +1103,24 @@ class MainActivity : Activity() {
                 .maxOfOrNull { it.updatedAt } ?: 0L
         )
         root.addView(card(
-            "同步佇列下一步",
-            "狀態：${queueState.nextAction}\n待處理：${queueState.pendingCount}｜重試：${queueState.retryCount}｜需確認：${queueState.blockedCount}\n${queueState.message}",
+            "資料更新下一步",
+            "待處理：${queueState.pendingCount}｜需確認：${queueState.blockedCount}\n${if (queueState.pendingCount > 0) "網路可用時可以再更新。" else "目前沒有需要補傳的紀錄。"}",
             if (queueState.blockedCount > 0) ColorToken.WarningSoft else ColorToken.PrimarySoft
         ))
         root.addView(card("同步策略", "學生離線時仍可完成短任務；網路恢復後，微任務、反思、志工接力摘要會補傳。", ColorToken.PrimarySoft))
         offlineSyncItems.ifEmpty {
-            syncRecords.map { OfflineSyncItem(it.title, "等待同步", it.detail, it.status) }
+            syncRecords.map { OfflineSyncItem(it.title, "等待更新", it.detail, it.status) }
         }.forEach { root.addView(offlineSyncItemCard(it)) }
-        root.addView(card("本機待同步明細", "學習事件：${learningEventCount} 筆\n志工回覆：${mentorReplyCount} 則\n協作紀錄：${collaborationNotes.size} 筆\n老師新增任務：${customTaskCount} 個", ColorToken.Card))
+        root.addView(card("待更新明細", "學習事件：${learningEventCount} 筆\n志工回覆：${mentorReplyCount} 則\n協作紀錄：${collaborationNotes.size} 筆\n老師新增任務：${customTaskCount} 個", ColorToken.Card))
         root.addView(ui.primaryButton("全部標記為已同步") {
             stateStore.markOfflineSyncItemsSynced()
             refreshOfflineSyncState()
             persistState()
-            recordLearningEvent("sync", "本機紀錄已標記同步", "待同步數已歸零，資料仍保留在裝置中。")
+            recordLearningEvent("sync", "紀錄已標記同步", "待更新數已歸零，資料仍保留在裝置中。")
             renderSyncCenter()
         })
         root.addView(ui.primaryButton("智慧同步：檢查網路並補傳") { renderSmartSyncProgress() })
-        root.addView(ui.secondaryButton("同步到雲端後端") { renderCloudSyncProgress() })
+        root.addView(ui.secondaryButton("更新到班級資料") { renderCloudSyncProgress() })
         bottomNav()
     }
 
@@ -1123,13 +1131,13 @@ class MainActivity : Activity() {
         val networkReady = isNetworkAvailable()
         if (!networkReady || !stateStore.hasCloudBackend()) {
             val reason = when {
-                !networkReady -> "目前沒有可用網路，已保留待補傳佇列。"
-                else -> "目前連線尚未完成，已保留待補傳佇列。"
+                !networkReady -> "目前沒有可用網路，學習紀錄已保留，稍後可以再更新。"
+                else -> "目前還沒有班級資料連線，學習紀錄已保留。"
             }
-            addOfflineSyncItem("智慧同步等待補傳", "真同步", reason, "待上傳")
-            recordLearningEvent("smart_sync_waiting", "智慧同步等待補傳", reason)
-            shell("智慧同步等待補傳", "資料仍保留在本機 SQLite")
-            root.addView(card("同步暫停", "$reason\n\n${syncReadinessText()}", ColorToken.WarningSoft))
+            addOfflineSyncItem("資料等待更新", "資料更新", reason, "待上傳")
+            recordLearningEvent("smart_sync_waiting", "資料等待更新", reason)
+            shell("資料等待更新", "學習紀錄已保留")
+            root.addView(card("暫時無法更新", "$reason\n\n${syncReadinessText()}", ColorToken.WarningSoft))
             root.addView(cloudBackendSettingsCard())
             offlineSyncItems.take(6).forEach { root.addView(offlineSyncItemCard(it)) }
             root.addView(ui.primaryButton("回同步中心") { renderSyncCenter() })
@@ -1137,9 +1145,9 @@ class MainActivity : Activity() {
             return
         }
 
-        shell("智慧同步進行中", "網路與後端端點皆可用，正在補傳本機佇列")
-        root.addView(card("真同步檢查通過", "網路可用\n端點：$endpoint\n待補傳：$offlinePendingCount 筆", ColorToken.PrimarySoft))
-        root.addView(card("補傳內容", "學習紀錄、協作紀錄、題庫摘要、離線佇列與目前學生狀態會一起包成 JSON 送出。", ColorToken.Card))
+        shell("資料更新中", "正在更新學習與接力紀錄")
+        root.addView(card("可以更新", "網路可用\n待更新：$offlinePendingCount 筆", ColorToken.PrimarySoft))
+        root.addView(card("更新內容", "學習紀錄、協作紀錄、題庫摘要與目前學生狀態會一起更新。", ColorToken.Card))
         bottomNav()
 
         Thread {
@@ -1151,8 +1159,8 @@ class MainActivity : Activity() {
                 runOnUiThread { renderSmartSyncResult(result) }
             } catch (error: Exception) {
                 runOnUiThread {
-                    addOfflineSyncItem("智慧同步補傳失敗", "真同步", error.message ?: "未知錯誤", "待上傳")
-                    recordLearningEvent("smart_sync_failed", "智慧同步補傳失敗", error.message ?: "未知錯誤")
+                    addOfflineSyncItem("資料更新失敗", "資料更新", error.message ?: "未知錯誤", "待上傳")
+                    recordLearningEvent("smart_sync_failed", "資料更新失敗", error.message ?: "未知錯誤")
                     renderCloudSyncFailure(error.message ?: "未知錯誤")
                 }
             }
@@ -1162,12 +1170,11 @@ class MainActivity : Activity() {
     private fun renderSmartSyncResult(result: CloudSyncResult) {
         screen = Screen.SyncCenter
         stateStore.markOfflineSyncItemsSynced()
-        addOfflineSyncItem("智慧同步補傳完成", "真同步", "後端回應 ${result.statusCode}，本機待補傳佇列已標記完成。", "已同步")
+        addOfflineSyncItem("資料更新完成", "資料更新", "待補傳紀錄已標記完成。", "已同步")
         refreshOfflineSyncState()
-        recordLearningEvent("smart_sync_success", "智慧同步補傳完成", "HTTP ${result.statusCode}")
-        shell("智慧同步完成", "本機佇列已補傳到雲端後端")
-        root.addView(card("同步成功", "HTTP ${result.statusCode}\n目前待補傳：$offlinePendingCount 筆", ColorToken.SuccessSoft))
-        root.addView(card("後端回應", result.responseText.ifBlank { "後端未回傳內容" }, ColorToken.Card))
+        recordLearningEvent("smart_sync_success", "資料更新完成", "待補傳紀錄已標記完成")
+        shell("資料更新完成", "班級資料已更新")
+        root.addView(card("更新成功", "目前待補傳：$offlinePendingCount 筆", ColorToken.SuccessSoft))
         root.addView(ui.primaryButton("回同步中心") { renderSyncCenter() })
         bottomNav()
     }
@@ -1177,16 +1184,15 @@ class MainActivity : Activity() {
         val endpoint = stateStore.cloudBackendUrl()
         if (!stateStore.hasCloudBackend()) {
             shell("同步服務準備中", "可先離線保存學習紀錄")
-            root.addView(card("目前狀態", "學習紀錄會先保存在這台裝置，之後再補傳。", ColorToken.WarningSoft))
+            root.addView(card("目前狀態", "學習紀錄會先保存在這台裝置，之後再更新。", ColorToken.WarningSoft))
             root.addView(cloudBackendSettingsCard())
             root.addView(ui.secondaryButton("回同步中心") { renderSyncCenter() })
             bottomNav()
             return
         }
 
-        shell("正在同步雲端", "將本機 SQLite 摘要打包成 JSON POST 到後端")
-        root.addView(card("同步端點", endpoint, ColorToken.PrimarySoft))
-        root.addView(card("同步內容", "App 狀態、學習事件、協作紀錄、離線同步佇列會一起送出。", ColorToken.Card))
+        shell("正在更新班級資料", "正在送出學習與接力摘要")
+        root.addView(card("更新內容", "學習事件、協作紀錄與待更新項目會一起送出。", ColorToken.Card))
         bottomNav()
 
         Thread {
@@ -1207,20 +1213,19 @@ class MainActivity : Activity() {
         screen = Screen.SyncCenter
         stateStore.markOfflineSyncItemsSynced()
         refreshOfflineSyncState()
-        recordLearningEvent("cloud_sync", "雲端後端同步完成", "HTTP ${result.statusCode} / ${result.responseText.take(160)}")
+        recordLearningEvent("cloud_sync", "班級資料更新完成", result.responseText.take(160))
         persistState()
-        shell("雲端同步完成", "後端已接收 English+ 本機資料摘要")
-        root.addView(card("後端回應", "HTTP ${result.statusCode}\n${result.responseText.ifBlank { "後端未回傳內容" }}", ColorToken.SuccessSoft))
-        root.addView(card("同步後狀態", "待補傳：${offlinePendingCount} 件\n同步佇列：${offlineSyncItems.size} 筆", ColorToken.Card))
+        shell("資料更新完成", "班級資料已接收 English+ 摘要")
+        root.addView(card("更新成功", "待補傳：${offlinePendingCount} 件\n紀錄數：${offlineSyncItems.size} 筆", ColorToken.SuccessSoft))
         root.addView(ui.primaryButton("回同步中心") { renderSyncCenter() })
         bottomNav()
     }
 
     private fun renderCloudSyncFailure(message: String) {
         screen = Screen.SyncCenter
-        shell("雲端同步失敗", "本機資料已保留，可稍後重試")
-        root.addView(card("錯誤訊息", message, ColorToken.WarningSoft))
-        root.addView(card("下一步", "同步失敗不會清掉本機資料與待同步佇列。網路恢復後可以再重試。", ColorToken.Card))
+        shell("資料更新失敗", "資料已保留，可稍後重試")
+        root.addView(card("無法更新", message, ColorToken.WarningSoft))
+        root.addView(card("下一步", "更新失敗不會清掉已保存的資料。網路恢復後可以再重試。", ColorToken.Card))
         root.addView(ui.primaryButton("回同步中心") { renderSyncCenter() })
         bottomNav()
     }
@@ -1288,7 +1293,7 @@ class MainActivity : Activity() {
         root.addView(remoteCollaborationStatusCard())
         section("學生求助")
         if (pendingRequests.isEmpty()) {
-            root.addView(card("目前沒有待回覆求助", "可以先看高風險學生，或同步遠端協作紀錄。", ColorToken.SuccessSoft))
+            root.addView(card("目前沒有待回覆求助", "可以先看高風險學生，或更新班級接力紀錄。", ColorToken.SuccessSoft))
         } else {
             pendingRequests.forEach {
                 if (UserFlowContract.normalizedRole(role) == Role.Volunteer) {
@@ -1379,20 +1384,19 @@ class MainActivity : Activity() {
     private fun renderRemoteCollaborationSync(pushFirst: Boolean) {
         screen = Screen.ActionQueue
         if (!stateStore.hasCloudBackend()) {
-            shell("接力同步準備中", "目前先查看這台裝置的接力紀錄")
-            root.addView(card("目前狀態", "接力紀錄會先保存在這台裝置。", ColorToken.WarningSoft))
+            shell("接力紀錄已保存", "目前先查看這台裝置的接力紀錄")
+            root.addView(card("目前狀態", "接力紀錄已保存在這台裝置。", ColorToken.WarningSoft))
             root.addView(ui.primaryButton("前往同步中心設定") { renderSyncCenter() })
             root.addView(ui.secondaryButton("回接力優先序") { renderHandoffBoard() })
             bottomNav()
             return
         }
 
-        shell("同步多人協作", if (pushFirst) "先推送本機協作，再拉取遠端更新" else "正在拉取遠端協作紀錄")
-        root.addView(card("協作後端", stateStore.cloudBackendUrl(), ColorToken.PrimarySoft))
+        shell("更新多人接力", if (pushFirst) "先送出這台裝置的紀錄，再更新班級資料" else "正在更新班級接力紀錄")
         root.addView(card("同步班級", currentAccount().classCode, ColorToken.Card))
         root.addView(card(
             "同步規則",
-            "協作紀錄會自動避免重複；同一筆接力在不同裝置更新時，保留較新的版本。學生端不能建立正式接力紀錄，老師與志工可以寫入。",
+            "接力紀錄會自動避免重複；同一筆接力在不同裝置更新時，保留較新的版本。學生可以求助，老師與志工可以回覆。",
             ColorToken.VioletSoft
         ))
         bottomNav()
@@ -1414,9 +1418,9 @@ class MainActivity : Activity() {
 
     private fun renderRemoteCollaborationResult(importedCount: Int) {
         collaborationNotes = stateStore.collaborationNotes()
-        recordLearningEvent("collaboration_sync", "多人協作同步完成", "匯入 $importedCount 筆遠端協作紀錄。")
-        shell("多人協作同步完成", "已更新老師/志工接力紀錄")
-        root.addView(card("同步結果", "匯入遠端協作紀錄：$importedCount 筆\n目前本機協作紀錄：${collaborationNotes.size} 筆", ColorToken.SuccessSoft))
+        recordLearningEvent("collaboration_sync", "多人協作同步完成", "新增 $importedCount 筆班級接力紀錄。")
+        shell("多人接力已更新", "已更新老師/志工接力紀錄")
+        root.addView(card("更新結果", "新增接力紀錄：$importedCount 筆\n目前接力紀錄：${collaborationNotes.size} 筆", ColorToken.SuccessSoft))
         recentCollaborationNotes(5).forEach { root.addView(collaborationNoteCard(it)) }
         root.addView(ui.primaryButton("回接力優先序") { renderHandoffBoard() })
         bottomNav()
@@ -1424,8 +1428,8 @@ class MainActivity : Activity() {
 
     private fun renderRemoteCollaborationFailure(message: String) {
         recordLearningEvent("collaboration_sync_failed", "多人協作同步失敗", message)
-        shell("多人協作同步失敗", "本機協作資料已保留")
-        root.addView(card("錯誤訊息", message, ColorToken.WarningSoft))
+        shell("多人接力更新失敗", "接力資料已保留")
+        root.addView(card("無法更新", message, ColorToken.WarningSoft))
         root.addView(card("下一步", "協作同步失敗時，老師與志工仍可先保存這次處理紀錄；等網路恢復後再同步。", ColorToken.Card))
         root.addView(ui.primaryButton("回接力優先序") { renderHandoffBoard() })
         bottomNav()
@@ -1469,15 +1473,15 @@ class MainActivity : Activity() {
 
     private fun renderAiLab() {
         screen = Screen.AiLab
-        shell("AI 支持與任務建議", "先把學生今天能做的下一步整理清楚")
+        shell("支持回饋與任務建議", "先把學生今天能做的下一步整理清楚")
         root.addView(aiMissionPlanCard())
         root.addView(openAiStatusCard())
         root.addView(aiProxyEndpointCard())
         root.addView(openAiKeyEntryCard())
-        root.addView(card("AI 會用在哪裡", "每日任務建議、錯題詳解、學生語氣回饋與接力摘要。沒有可用連線時，English+ 仍會提供內建學習提示。", ColorToken.PrimarySoft))
+        root.addView(card("會用在哪裡", "每日任務建議、錯題詳解、學生語氣回饋與接力摘要。沒有可用連線時，English+ 仍會提供內建學習提示。", ColorToken.PrimarySoft))
         aiScenarios.forEach { root.addView(aiScenarioCard(it)) }
         root.addView(ui.primaryButton("生成本題支持回饋") { renderLiveAiFeedback() })
-        root.addView(ui.secondaryButton("改用備援回饋生成") { renderGeneratedAiFeedback() })
+        root.addView(ui.secondaryButton("改用內建提示") { renderGeneratedAiFeedback() })
         bottomNav()
     }
 
@@ -1518,9 +1522,9 @@ class MainActivity : Activity() {
         })
         box.addView(ui.body(
             if (hasKey) {
-                "生成時會送出目前題目、情緒狀態與錯題次數；如果網路或外部服務失敗，會自動改用備援回饋。"
+                "生成時會參考目前題目、情緒狀態與錯題次數；如果連線失敗，English+ 會改用內建提示。"
             } else {
-                "學生仍會看到可用的任務建議與錯題提示；正式連線可由安全後端或內測憑證啟用。"
+                "學生仍會看到可用的任務建議與錯題提示；需要線上回饋時，可由團隊提供服務連線。"
             }
         ))
         return ui.margins(box, 0, 8, 0, 12)
@@ -1528,8 +1532,8 @@ class MainActivity : Activity() {
 
     private fun aiProxyEndpointCard(): View {
         val box = ui.container(ColorToken.Card, ColorToken.Border)
-        box.addView(ui.label("安全後端連線", 18, ColorToken.Ink, true))
-        box.addView(ui.body("建議使用學校或團隊的安全後端連線。手機只送學習脈絡，不保存服務憑證。"))
+        box.addView(ui.label("AI 服務網址", 18, ColorToken.Ink, true))
+        box.addView(ui.body("如果團隊提供服務網址，可以貼上後啟用線上回饋。"))
         val input = EditText(this).apply {
             hint = "https://example.com/api/english-plus/ai"
             setText(stateStore.aiProxyEndpoint())
@@ -1543,14 +1547,14 @@ class MainActivity : Activity() {
             layoutParams = ui.fullWidthParams()
         }
         box.addView(input)
-        box.addView(ui.primaryButton("儲存安全後端連線") {
+        box.addView(ui.primaryButton("儲存服務網址") {
             stateStore.saveAiProxyEndpoint(input.text.toString())
-            recordLearningEvent("ai_proxy_config", "已更新 AI Proxy 端點", stateStore.aiProxyEndpoint().ifBlank { "已清空" })
+            recordLearningEvent("ai_proxy_config", "已更新 AI 服務網址", stateStore.aiProxyEndpoint().ifBlank { "已清空" })
             renderAiLab()
         })
-        box.addView(ui.secondaryButton("清除安全後端連線") {
+        box.addView(ui.secondaryButton("清除服務網址") {
             stateStore.saveAiProxyEndpoint("")
-            recordLearningEvent("ai_proxy_config", "已清除 AI Proxy 端點", "AI 回饋會回到本機 Key 或備援模式。")
+            recordLearningEvent("ai_proxy_config", "已清除 AI 服務網址", "AI 回饋會改用內建提示。")
             renderAiLab()
         })
         return ui.margins(box, 0, 0, 0, 12)
@@ -1558,11 +1562,11 @@ class MainActivity : Activity() {
 
     private fun openAiKeyEntryCard(): View {
         val box = ui.container(ColorToken.Card, ColorToken.Border)
-        box.addView(ui.label("外部 AI 連線憑證", 18, ColorToken.Ink, true))
-        box.addView(ui.body("這是內測用的本機連線方式。課堂展示時可以留空，系統會使用備援回饋。"))
+        box.addView(ui.label("AI 連線憑證", 18, ColorToken.Ink, true))
+        box.addView(ui.body("若團隊提供臨時連線憑證，可以貼上啟用；沒有也能使用內建提示。"))
 
         val input = EditText(this).apply {
-            hint = if (stateStore.hasOpenAiApiKey()) "已設定，可貼上新的憑證覆蓋" else "貼上內測連線憑證"
+            hint = if (stateStore.hasOpenAiApiKey()) "已設定，可貼上新的憑證覆蓋" else "貼上團隊提供的連線憑證"
             inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_PASSWORD
             setSingleLine(true)
             textSize = 15f
@@ -1574,19 +1578,19 @@ class MainActivity : Activity() {
         }
         box.addView(input)
 
-        box.addView(ui.primaryButton("儲存並啟用外部 AI") {
+        box.addView(ui.primaryButton("儲存並啟用 AI 回饋") {
             val key = input.text.toString().trim()
             if (key.startsWith("sk-")) {
                 stateStore.saveOpenAiApiKey(key)
-                recordLearningEvent("ai_config", "已更新外部 AI 連線憑證", "外部 AI 模式已可在支持頁呼叫。")
+                recordLearningEvent("ai_config", "已更新 AI 連線憑證", "線上 AI 回饋已可在支持頁呼叫。")
             } else {
-                recordLearningEvent("ai_config", "外部 AI 連線憑證未更新", "輸入內容不是支援格式，維持原本設定。")
+                recordLearningEvent("ai_config", "AI 連線憑證未更新", "輸入內容不是支援格式，維持原本設定。")
             }
             renderAiLab()
         })
-        box.addView(ui.secondaryButton("清除憑證，改用備援回饋") {
+        box.addView(ui.secondaryButton("清除憑證，改用內建提示") {
             stateStore.saveOpenAiApiKey("")
-            recordLearningEvent("ai_config", "已清除外部 AI 連線憑證", "AI 回饋已回到備援模式。")
+            recordLearningEvent("ai_config", "已清除 AI 連線憑證", "AI 回饋已改用內建提示。")
             renderAiLab()
         })
         return ui.margins(box, 0, 0, 0, 12)
@@ -1596,13 +1600,13 @@ class MainActivity : Activity() {
         val decision = stateStore.aiSecurityDecision(productionMode = true)
         if (!decision.canCallRemoteAi) {
             recordLearningEvent("ai_security_fallback", "Remote AI blocked by security contract", decision.warning)
-            renderGeneratedAiFeedback("安全檢查：目前改用備援回饋，不會從手機端送出正式服務憑證。")
+            renderGeneratedAiFeedback("目前先使用內建提示。")
             return
         }
         val apiKey = stateStore.openAiApiKey()
         if (!stateStore.hasAiProxyEndpoint() && !stateStore.hasOpenAiApiKey()) {
-            recordLearningEvent("ai_fallback", "未設定外部 AI 連線憑證", "使用備援 AI 回饋。")
-            renderGeneratedAiFeedback("目前使用備援回饋。")
+            recordLearningEvent("ai_fallback", "未設定 AI 連線憑證", "使用內建 AI 回饋。")
+            renderGeneratedAiFeedback("目前使用內建提示。")
             return
         }
         val q = activeQuestion()
@@ -1633,8 +1637,8 @@ class MainActivity : Activity() {
                 runOnUiThread { renderLiveAiResult(result) }
             } catch (error: Exception) {
                 runOnUiThread {
-                    recordLearningEvent("ai_fallback", "外部 AI 呼叫失敗", error.message ?: "未知錯誤")
-                    renderGeneratedAiFeedback("外部 AI 暫時無法回應，已改用備援回饋。")
+                    recordLearningEvent("ai_fallback", "線上 AI 呼叫失敗", error.message ?: "未知錯誤")
+                    renderGeneratedAiFeedback("線上回饋暫時無法回應，已改用內建提示。")
                 }
             }
         }.start()
@@ -1642,22 +1646,22 @@ class MainActivity : Activity() {
 
     private fun renderLiveAiResult(result: AiSupportResult) {
         screen = Screen.AiLab
-        shell("AI 生成結果", result.source)
+        shell("AI 生成結果", "已產生短回饋與接力摘要")
         root.addView(card("診斷", result.diagnosis, ColorToken.WarningSoft))
         root.addView(card("給學生的話", result.studentFeedback, ColorToken.SuccessSoft))
         root.addView(card("給志工的摘要", result.handoffSummary, ColorToken.Card))
-        recordLearningEvent("ai_live", "外部 AI 生成回饋", result.diagnosis)
+        recordLearningEvent("ai_live", "線上 AI 生成回饋", result.diagnosis)
         root.addView(ui.primaryButton("回今日任務") { renderLesson() })
-        root.addView(ui.secondaryButton("回 AI 支持") { renderAiLab() })
+        root.addView(ui.secondaryButton("回支持回饋") { renderAiLab() })
         bottomNav()
     }
 
     private fun renderGeneratedAiFeedback(notice: String? = null) {
         screen = Screen.AiLab
         val q = activeQuestion()
-        shell("AI 生成結果模擬", "依目前題型與錯題狀態產生個人化回饋")
-        notice?.let { root.addView(card("AI 狀態", it, ColorToken.WarningSoft)) }
-        root.addView(card("輸入資料", "${q.prompt}\n題型：${q.type}\n目前錯誤次數：$wrongAttempts", ColorToken.PrimarySoft))
+        shell("支持回饋", "依目前題型與錯題狀態產生個人化回饋")
+        notice?.let { root.addView(card("目前回饋方式", it, ColorToken.WarningSoft)) }
+        root.addView(card("題目資訊", "${q.prompt}\n題型：${q.type}\n目前錯誤次數：$wrongAttempts", ColorToken.PrimarySoft))
         root.addView(card("診斷", aiDiagnosis(q), ColorToken.WarningSoft))
         root.addView(card("給學生的話", aiStudentFeedback(q), ColorToken.SuccessSoft))
         root.addView(card("給志工的摘要", aiHandoffSummary(q), ColorToken.Card))
@@ -1666,7 +1670,7 @@ class MainActivity : Activity() {
             learningEventCount += 1
             addOfflineSyncItem("AI 摘要待辦：${q.concept}", "AI 接力摘要", aiHandoffSummary(q))
             persistState()
-            recordLearningEvent("ai_local", "本機 AI 模擬回饋", aiDiagnosis(q))
+            recordLearningEvent("ai_local", "內建 AI 回饋", aiDiagnosis(q))
             renderGeneratedAiFeedback()
         })
         root.addView(ui.primaryButton("回今日任務") { renderLesson() })
@@ -1801,7 +1805,7 @@ class MainActivity : Activity() {
     private fun buildReportContext(): ReportContext {
         val snapshot = stateStore.storageSnapshot()
         val latestCollaboration = collaborationNotes.firstOrNull()?.note ?: "尚未建立真人接力紀錄。"
-        val latestSync = offlineSyncItems.firstOrNull()?.let { "${it.title} / ${it.status}" } ?: "尚未建立同步佇列。"
+        val latestSync = offlineSyncItems.firstOrNull()?.let { "${it.title} / ${it.status}" } ?: "尚未建立資料更新紀錄。"
         return ReportContext(
             studentName = student.name,
             classCode = currentAccount().classCode,
@@ -1809,7 +1813,7 @@ class MainActivity : Activity() {
             missionProgress = "${dailyQuestionDone.coerceAtLeast(0)}/${dailyQuestionGoal.coerceAtLeast(1)}",
             supportSummary = "學習事件 ${snapshot.eventCount} 筆，協作紀錄 ${snapshot.collaborationCount} 筆。最新協作：$latestCollaboration",
             handoffSummary = "主要斷點：${breakpoints.first().title}；真人接力建議：${breakpoints.first().mentorAction}",
-            syncSummary = "$latestSync；待補傳 ${snapshot.pendingSyncCount} 筆，已下載離線包 ${snapshot.downloadedPackCount} 包。",
+            syncSummary = "$latestSync；待更新 ${snapshot.pendingSyncCount} 筆，已下載離線包 ${snapshot.downloadedPackCount} 包。",
             generatedAtLabel = "本週"
         )
     }
@@ -2033,7 +2037,7 @@ class MainActivity : Activity() {
         box.addView(metricRow(
             Metric("心情", mood.label, mood.color),
             Metric("任務", "${minutes} 分", ColorToken.Accent),
-            Metric("信心", "$confidence%", ColorToken.Success)
+            Metric("題目", "${recommendedQuestionGoal()} 題", ColorToken.Success)
         ))
         box.addView(ui.primaryButton("開始這個任務") { renderTaskQueue() })
         box.addView(ui.secondaryButton("我想先調整今天狀態") { renderCheckIn() })
@@ -2078,14 +2082,14 @@ class MainActivity : Activity() {
     private fun checkInIntroCard(): View {
         val box = ui.sectionBand(ColorToken.AccentSoft)
         box.addView(ui.statusPill("CHECK IN", ColorToken.Accent))
-        box.addView(ui.label("先讓平台知道今天的你", 21, ColorToken.Ink, true).apply {
+        box.addView(ui.label("先看今天適合怎麼開始", 21, ColorToken.Ink, true).apply {
             setPadding(0, ui.dp(12), 0, ui.dp(4))
         })
         box.addView(ui.body("心情不是額外步驟，它會幫你把任務縮到今天還做得到的大小。", "#334155"))
         box.addView(metricRow(
             Metric("建議", mood.planName, mood.color),
             Metric("時間", "${minutes} 分", ColorToken.Primary),
-            Metric("狀態", "$confidence%", ColorToken.Success)
+            Metric("題目", "${recommendedQuestionGoal()} 題", ColorToken.Success)
         ))
         return ui.margins(box, 0, 8, 0, 16)
     }
@@ -2099,7 +2103,7 @@ class MainActivity : Activity() {
             "English+ 會依你現在的狀態安排任務長度，讓開始比硬撐更容易。"
         }
         val box = ui.container(fill, ColorToken.Border)
-        box.addView(ui.statusPill("平台回應", color))
+        box.addView(ui.statusPill("English+ 回應", color))
         box.addView(ui.label("你選的是：${mood.label}", 18, ColorToken.Ink, true).apply {
             setPadding(0, ui.dp(12), 0, ui.dp(4))
         })
@@ -2225,7 +2229,7 @@ class MainActivity : Activity() {
         val snapshot = stateStore.storageSnapshot()
         val stateText = if (snapshot.stateSaved) "已保存" else "尚未建立"
         val box = ui.container(ColorToken.SuccessSoft, ColorToken.Border)
-        box.addView(ui.statusPill("本機資料庫", ColorToken.Success))
+        box.addView(ui.statusPill("學習紀錄", ColorToken.Success))
         box.addView(ui.label("學習紀錄已寫入手機", 18, ColorToken.Ink, true).apply {
             setPadding(0, ui.dp(12), 0, ui.dp(4))
         })
@@ -2235,7 +2239,7 @@ class MainActivity : Activity() {
             Metric("待補傳", "${snapshot.pendingSyncCount} 筆", if (snapshot.pendingSyncCount > 0) ColorToken.Warning else ColorToken.Success)
         ))
         box.addView(ui.body("最新紀錄：${snapshot.latestEventTitle}\n協作紀錄：${snapshot.collaborationCount} 筆｜離線包：${snapshot.downloadedPackCount} 包", "#334155"))
-        box.addView(ui.body("目前先存在 SQLite；同步中心會把待補傳資料整理成佇列，之後可接 Firebase 或校內後端。", ColorToken.Muted).apply {
+        box.addView(ui.body("網路不穩時會先保存；等連線恢復後，再更新到班級資料。", ColorToken.Muted).apply {
             setPadding(0, ui.dp(6), 0, 0)
         })
         return ui.margins(box, 0, 8, 0, 12)
@@ -2246,8 +2250,8 @@ class MainActivity : Activity() {
         val skillCount = bankItems.map { it.skill }.distinct().size
         val unitCount = bankItems.map { it.unit }.distinct().size
         val box = ui.container(ColorToken.SuccessSoft, ColorToken.Border)
-        box.addView(ui.statusPill("題庫已本機化", ColorToken.Success))
-        box.addView(ui.label("English+ 正式題庫骨架", 18, ColorToken.Ink, true).apply {
+        box.addView(ui.statusPill("題庫已整理", ColorToken.Success))
+        box.addView(ui.label("English+ 題庫", 18, ColorToken.Ink, true).apply {
             setPadding(0, ui.dp(12), 0, ui.dp(4))
         })
         box.addView(metricRow(
@@ -2255,7 +2259,7 @@ class MainActivity : Activity() {
             Metric("單元", "$unitCount 組", ColorToken.Accent),
             Metric("技能", "$skillCount 類", ColorToken.Success)
         ))
-        box.addView(ui.body("練習題已整理成分級題庫，保留 level、unit、skill、source 欄位，後續可接分級題庫或老師後台匯入。", "#334155"))
+        box.addView(ui.body("練習題已依程度、單元與題型整理，學生會依任務與偏好抽題。", "#334155"))
         box.addView(ui.secondaryButton("打開題庫中心") { renderQuestionBank() })
         return ui.margins(box, 0, 8, 0, 12)
     }
@@ -2281,15 +2285,15 @@ class MainActivity : Activity() {
     private fun cloudBackendStatusCard(): View {
         val hasBackend = stateStore.hasCloudBackend()
         val box = ui.container(if (hasBackend) ColorToken.SuccessSoft else ColorToken.WarningSoft, ColorToken.Border)
-        box.addView(ui.statusPill(if (hasBackend) "同步連線可用" else "等待同步連線", if (hasBackend) ColorToken.Success else ColorToken.Warning))
+        box.addView(ui.statusPill(if (hasBackend) "資料連線可用" else "等待資料連線", if (hasBackend) ColorToken.Success else ColorToken.Warning))
         box.addView(ui.label(if (hasBackend) "可同步到班級空間" else "目前先保存到這台裝置", 18, ColorToken.Ink, true).apply {
             setPadding(0, ui.dp(12), 0, ui.dp(4))
         })
         box.addView(ui.body(
             if (hasBackend) {
-                "目前端點：${stateStore.cloudBackendUrl()}\n按下同步後會以 JSON POST 傳送本機摘要。"
+                "按下更新後，學習與接力紀錄會送到班級資料。"
             } else {
-                "貼上 Firebase Cloud Function、校內 API 或測試 webhook URL 後，就能把本機資料送到雲端。"
+                "若團隊提供班級資料服務，可以在下方貼上服務網址。"
             },
             "#334155"
         ))
@@ -2315,7 +2319,7 @@ class MainActivity : Activity() {
                 setPadding(0, ui.dp(6), 0, 0)
             })
         }
-        box.addView(ui.body("按下智慧同步時，English+ 會先檢查網路與後端 URL；失敗就保留待補傳，成功才把本機佇列標記為已同步。", ColorToken.Muted).apply {
+        box.addView(ui.body("按下更新時，English+ 會先檢查網路；失敗就保留紀錄，成功才標記為已更新。", ColorToken.Muted).apply {
             setPadding(0, ui.dp(6), 0, 0)
         })
         return ui.margins(box, 0, 8, 0, 12)
@@ -2323,8 +2327,8 @@ class MainActivity : Activity() {
 
     private fun cloudBackendSettingsCard(): View {
         val box = ui.container(ColorToken.Card, ColorToken.Border)
-        box.addView(ui.label("雲端後端設定", 18, ColorToken.Ink, true))
-        box.addView(ui.body("支援任何可接收 JSON POST 的 HTTPS/HTTP 端點。Firebase Cloud Functions、學校後端 API、測試 webhook 都可以。"))
+        box.addView(ui.label("班級資料服務", 18, ColorToken.Ink, true))
+        box.addView(ui.body("若團隊提供服務網址，可以貼上後讓老師與志工跨裝置查看紀錄。"))
         val input = EditText(this).apply {
             hint = "https://example.com/api/english-plus/sync"
             setText(stateStore.cloudBackendUrl())
@@ -2338,14 +2342,14 @@ class MainActivity : Activity() {
             layoutParams = ui.fullWidthParams()
         }
         box.addView(input)
-        box.addView(ui.primaryButton("儲存雲端端點") {
+        box.addView(ui.primaryButton("儲存服務網址") {
             stateStore.saveCloudBackendUrl(input.text.toString())
-            recordLearningEvent("cloud_backend_config", "已更新雲端後端端點", stateStore.cloudBackendUrl().ifBlank { "已清空" })
+            recordLearningEvent("cloud_backend_config", "已更新班級資料服務網址", stateStore.cloudBackendUrl().ifBlank { "已清空" })
             renderSyncCenter()
         })
-        box.addView(ui.secondaryButton("清除端點，保留本機模式") {
+        box.addView(ui.secondaryButton("清除服務網址") {
             stateStore.saveCloudBackendUrl("")
-            recordLearningEvent("cloud_backend_config", "已清除雲端後端端點", "回到純本機 SQLite 模式。")
+            recordLearningEvent("cloud_backend_config", "已清除班級資料服務網址", "紀錄會先保存在這台裝置。")
             renderSyncCenter()
         })
         return ui.margins(box, 0, 8, 0, 12)
@@ -2389,16 +2393,16 @@ class MainActivity : Activity() {
         val staffCount = accounts.count { AuthContract.isStaffRole(it.roleLabel) }
         val endpointState = if (stateStore.hasRemoteAuthEndpoint()) "已設定" else "待設定"
         val box = ui.container(ColorToken.Card, ColorToken.Border)
-        box.addView(ui.statusPill("第二輪帳號正式化", ColorToken.Primary))
+        box.addView(ui.statusPill("帳號狀態", ColorToken.Primary))
         box.addView(ui.label("角色與登入狀態", 18, ColorToken.Ink, true).apply {
             setPadding(0, ui.dp(12), 0, ui.dp(4))
         })
         box.addView(ui.body(
-            "學生帳號：$studentCount\n老師/志工帳號：$staffCount\n正式登入：$endpointState\n角色來源：正式帳號權限或班級帳號設定",
+            "學生帳號：$studentCount\n老師/志工帳號：$staffCount\n學校登入：$endpointState\n角色來源：學校帳號或班級帳號設定",
             "#334155"
         ))
         box.addView(ui.body(
-            "目前保留班級測試帳號，避免沒有學校帳號服務時課堂流程中斷；公開使用前會改由正式帳號權限管理。",
+            "目前保留班級帳號，避免沒有學校帳號服務時課堂流程中斷。",
             ColorToken.Muted
         ).apply { setPadding(0, ui.dp(8), 0, 0) })
         return ui.margins(box, 0, 8, 0, 12)
@@ -2406,8 +2410,8 @@ class MainActivity : Activity() {
 
     private fun remoteAuthLoginCard(): View {
         val box = ui.container(ColorToken.Card, ColorToken.Border)
-        box.addView(ui.label("正式登入設定", 18, ColorToken.Ink, true))
-        box.addView(ui.body("若學校已有正式登入服務，可以貼上登入網址並測試帳號；沒有正式服務時，班級帳號仍可完整操作課堂流程。"))
+        box.addView(ui.label("學校帳號設定", 18, ColorToken.Ink, true))
+        box.addView(ui.body("若學校已有登入服務，可以貼上登入網址並測試帳號；沒有也能用班級帳號完成課堂流程。"))
 
         val endpointInput = EditText(this).apply {
             hint = "https://example.com/api/auth/login"
@@ -2459,7 +2463,7 @@ class MainActivity : Activity() {
         box.addView(usernameInput)
         box.addView(passwordInput)
         box.addView(classInput)
-        box.addView(ui.primaryButton("儲存端點並登入") {
+        box.addView(ui.primaryButton("儲存網址並登入") {
             stateStore.saveRemoteAuthEndpoint(endpointInput.text.toString())
             renderRemoteLoginProgress(
                 username = usernameInput.text.toString().trim(),
@@ -2467,9 +2471,9 @@ class MainActivity : Activity() {
                 classCode = classInput.text.toString().trim()
             )
         })
-        box.addView(ui.secondaryButton("只儲存登入端點") {
+        box.addView(ui.secondaryButton("只儲存登入網址") {
             stateStore.saveRemoteAuthEndpoint(endpointInput.text.toString())
-            recordLearningEvent("remote_auth_config", "已更新正式登入端點", stateStore.remoteAuthEndpoint().ifBlank { "已清空" })
+            recordLearningEvent("remote_auth_config", "已更新學校登入網址", stateStore.remoteAuthEndpoint().ifBlank { "已清空" })
             renderAccountCenter()
         })
         return ui.margins(box, 0, 8, 0, 12)
@@ -2528,9 +2532,9 @@ class MainActivity : Activity() {
             setPadding(0, ui.dp(12), 0, ui.dp(4))
         })
         box.addView(ui.body(if (inDailyMission) {
-            "上方進度只計算今天題目任務；答錯不會增加，也不會跳題。"
+            "進度只計算今天題目任務；答對才會前進，答錯會停在原題看提示。"
         } else {
-            "自由練習不顯示每日進度條，適合完成任務後再挑戰。"
+            "自由練習沒有今日進度壓力，適合完成任務後再挑戰。"
         }, "#334155"))
         box.addView(ui.body("答錯會改變支持路徑，不會把你推進更難的題目。", ColorToken.Success).apply {
             setPadding(0, ui.dp(8), 0, 0)
@@ -2538,18 +2542,47 @@ class MainActivity : Activity() {
         return ui.margins(box, 0, 8, 0, 12)
     }
 
+    private fun dailyMissionProgressCard(): View? {
+        val copy = DailyMissionContract.progressCopy(
+            inDailyMission = inDailyMission,
+            goal = dailyQuestionGoal,
+            done = dailyQuestionDone
+        ) ?: return null
+        val box = ui.container(ColorToken.Card, ColorToken.Border)
+        val top = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
+        top.addView(ui.label(copy.title, 18, ColorToken.Ink, true), LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f))
+        top.addView(ui.statusPill("${copy.percent}%", if (copy.isComplete) ColorToken.Success else ColorToken.Primary))
+        box.addView(top)
+        box.addView(ui.body(copy.body, "#334155").apply {
+            setPadding(0, ui.dp(8), 0, 0)
+        })
+        box.addView(ProgressBar(this, null, android.R.attr.progressBarStyleHorizontal).apply {
+            max = dailyQuestionGoal.coerceAtLeast(1)
+            progress = dailyQuestionDone.coerceIn(0, dailyQuestionGoal.coerceAtLeast(1))
+            setPadding(0, ui.dp(8), 0, ui.dp(8))
+        })
+        val note = if (copy.isComplete) {
+            "今天的指定題目已完成。"
+        } else {
+            "答對才會前進；自由練習不會改變這個進度。"
+        }
+        box.addView(ui.body(note, ColorToken.Muted))
+        return ui.margins(box, 0, 8, 0, 12)
+    }
+
     private fun lessonSupportCard(): View {
         val fill = if (wrongAttempts > 0) ColorToken.WarningSoft else ColorToken.Card
         val box = ui.container(fill, ColorToken.Border)
         box.addView(ui.statusPill("即時狀態", if (wrongAttempts > 0) ColorToken.Warning else ColorToken.Success))
+        val progressLabel = if (inDailyMission) {
+            "${DailyMissionContract.remaining(dailyQuestionGoal, dailyQuestionDone)} 題"
+        } else {
+            "${currentQuestionIndex + 1}/${questions.size}"
+        }
         box.addView(metricRow(
-            Metric(
-                if (inDailyMission) "今日" else "題庫",
-                if (inDailyMission) "$dailyQuestionDone/$dailyQuestionGoal" else "${currentQuestionIndex + 1}/${questions.size}",
-                ColorToken.Primary
-            ),
-            Metric("卡住", "$wrongAttempts/3", if (wrongAttempts > 0) ColorToken.Warning else ColorToken.Success),
-            Metric("信心", "$confidence%", ColorToken.Accent)
+            Metric(if (inDailyMission) "還剩" else "目前題目", progressLabel, ColorToken.Primary),
+            Metric("重試", "$wrongAttempts 次", if (wrongAttempts > 0) ColorToken.Warning else ColorToken.Success),
+            Metric("模式", if (inDailyMission) "今日任務" else "自由練習", ColorToken.Accent)
         ))
         box.addView(ui.body(lastAnswerMessage, "#334155"))
         if (DailyMissionContract.shouldShowProgress(inDailyMission, dailyQuestionGoal)) {
@@ -2581,19 +2614,35 @@ class MainActivity : Activity() {
         return ui.margins(box, 0, 8, 0, 8)
     }
 
-    private fun successSummaryCard(question: Question): View {
+    private fun successSummaryCard(question: Question, missionDone: Int? = null, missionGoal: Int? = null): View {
         val box = ui.sectionBand(ColorToken.SuccessSoft)
         box.addView(ui.statusPill("答對", ColorToken.Success))
         box.addView(ui.label("答對了，這一題完成", 24, ColorToken.Ink, true).apply {
             setPadding(0, ui.dp(12), 0, ui.dp(4))
         })
         box.addView(ui.body("你的答案：${question.answer}\n${question.explanation}", "#334155"))
-        box.addView(metricRow(
-            Metric("任務", "$completedTasks", ColorToken.Primary),
-            Metric("信心", "$confidence%", ColorToken.Success),
-            Metric("結果", "正確", ColorToken.Success)
-        ))
-        box.addView(ui.body("下一步已開啟：可以進下一題，也可以先做 20 秒反思把完成感留下來。", ColorToken.Primary))
+        val done = missionDone ?: if (inDailyMission) dailyQuestionDone else null
+        val goal = missionGoal ?: if (inDailyMission) dailyQuestionGoal else null
+        if (done != null && goal != null && goal > 0) {
+            val remaining = DailyMissionContract.remaining(goal, done)
+            box.addView(metricRow(
+                Metric("今日任務", "$done/$goal", ColorToken.Primary),
+                Metric("還剩", "$remaining 題", if (remaining == 0) ColorToken.Success else ColorToken.Accent),
+                Metric("結果", "正確", ColorToken.Success)
+            ))
+            box.addView(ui.body(if (remaining == 0) {
+                "今日題目任務已達標。"
+            } else {
+                "進度已更新，下一題會接著今天的任務走。"
+            }, ColorToken.Primary))
+        } else {
+            box.addView(metricRow(
+                Metric("練習", "完成 1 題", ColorToken.Primary),
+                Metric("模式", "自由練習", ColorToken.Accent),
+                Metric("結果", "正確", ColorToken.Success)
+            ))
+            box.addView(ui.body("可以繼續下一題，也可以先做 20 秒反思把完成感留下來。", ColorToken.Primary))
+        }
         return ui.margins(box, 0, 8, 0, 16)
     }
 
@@ -2863,21 +2912,21 @@ class MainActivity : Activity() {
         val hasBackend = stateStore.hasCloudBackend()
         val box = ui.container(if (hasBackend) ColorToken.SuccessSoft else ColorToken.WarningSoft, ColorToken.Border)
         box.addView(ui.statusPill(if (hasBackend) "多人協作可同步" else "接力紀錄已保存", if (hasBackend) ColorToken.Success else ColorToken.Warning))
-        box.addView(ui.label(if (hasBackend) "老師/志工紀錄可推送與拉取" else "接力同步準備中", 18, ColorToken.Ink, true).apply {
+        box.addView(ui.label(if (hasBackend) "老師/志工紀錄可跨裝置更新" else "接力紀錄已保留", 18, ColorToken.Ink, true).apply {
             setPadding(0, ui.dp(12), 0, ui.dp(4))
         })
         box.addView(ui.body(
             if (hasBackend) {
-                "目前使用同步中心的雲端端點：${stateStore.cloudBackendUrl()}\n可推送本機協作並拉取遠端協作 feed。"
+                "老師與志工可以更新彼此的接力紀錄。"
             } else {
-                "先到同步中心貼上後端 URL，才能讓老師與志工跨裝置看到彼此的協作紀錄。"
+                "先到資料更新中心貼上服務網址，才能讓老師與志工跨裝置看到彼此的紀錄。"
             },
             "#334155"
         ))
-        box.addView(ui.primaryButton(if (hasBackend) "推送並拉取協作紀錄" else "前往同步中心設定") {
+        box.addView(ui.primaryButton(if (hasBackend) "更新接力紀錄" else "前往資料更新中心") {
             if (hasBackend) renderRemoteCollaborationSync(pushFirst = true) else renderSyncCenter()
         })
-        box.addView(ui.secondaryButton("只拉取遠端協作") {
+        box.addView(ui.secondaryButton("只查看最新班級紀錄") {
             renderRemoteCollaborationSync(pushFirst = false)
         })
         return ui.margins(box, 0, 8, 0, 12)
@@ -2896,15 +2945,15 @@ class MainActivity : Activity() {
                     actor = item.optString("actor", "遠端使用者"),
                     role = item.optString("role", item.optString("roleLabel", "協作者")),
                     target = item.optString("target", currentAccount().classCode),
-                    note = item.optString("note", item.optString("content", "遠端協作紀錄")),
-                    status = item.optString("status", "遠端同步"),
+                    note = item.optString("note", item.optString("content", "班級接力紀錄")),
+                    status = item.optString("status", "已更新"),
                     createdAt = item.optLong("createdAt", System.currentTimeMillis())
                 )
             )
         }
         val importedCount = stateStore.addUniqueCollaborationNotes(imported)
         if (importedCount > 0) {
-            addOfflineSyncItem("遠端協作匯入", "多人協作", "已匯入 ${imported.size} 筆遠端老師/志工紀錄。", "已同步")
+            addOfflineSyncItem("班級接力紀錄更新", "多人協作", "已新增 ${imported.size} 筆老師/志工紀錄。", "已同步")
         }
         return importedCount
     }
@@ -2996,16 +3045,6 @@ class MainActivity : Activity() {
         }, LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f))
         top.addView(ui.statusPill("一個概念", ColorToken.Success))
         box.addView(top)
-        if (DailyMissionContract.shouldShowProgress(inDailyMission, dailyQuestionGoal)) {
-            box.addView(ui.body("今日任務進度：$dailyQuestionDone / $dailyQuestionGoal", ColorToken.Primary).apply {
-                setPadding(0, ui.dp(12), 0, 0)
-            })
-            box.addView(ProgressBar(this, null, android.R.attr.progressBarStyleHorizontal).apply {
-                max = dailyQuestionGoal.coerceAtLeast(1)
-                progress = dailyQuestionDone.coerceIn(0, dailyQuestionGoal.coerceAtLeast(1))
-                setPadding(0, ui.dp(8), 0, ui.dp(8))
-            })
-        }
         box.addView(ui.label(questionInstruction(question), 14, ColorToken.Primary, true))
         box.addView(ui.label(question.prompt, 27, ColorToken.Ink, true).apply {
             setPadding(0, ui.dp(10), 0, ui.dp(12))

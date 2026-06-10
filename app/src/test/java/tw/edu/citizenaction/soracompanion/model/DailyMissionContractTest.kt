@@ -2,6 +2,7 @@ package tw.edu.citizenaction.soracompanion.model
 
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -86,6 +87,25 @@ class DailyMissionContractTest {
         assertTrue(DailyMissionContract.shouldShowProgress(inDailyMission = true, goal = 3))
         assertEquals(2, DailyMissionContract.remaining(goal = 3, done = 1))
         assertEquals(100, DailyMissionContract.progressPercent(goal = 3, done = 5))
+    }
+
+    @Test
+    fun progressCopyOnlyExplainsDailyQuestionMission() {
+        val copy = DailyMissionContract.progressCopy(
+            inDailyMission = true,
+            goal = 3,
+            done = 1
+        )
+
+        assertEquals("今日題目任務", copy?.title)
+        assertEquals("已完成 1/3 題，還剩 2 題。", copy?.body)
+        assertEquals(33, copy?.percent)
+        assertFalse(copy?.body.orEmpty().contains("心情"))
+        assertFalse(copy?.body.orEmpty().contains("反思"))
+        assertFalse(copy?.body.orEmpty().contains("同步"))
+
+        assertNull(DailyMissionContract.progressCopy(inDailyMission = false, goal = 3, done = 1))
+        assertNull(DailyMissionContract.progressCopy(inDailyMission = true, goal = 0, done = 0))
     }
 
     @Test

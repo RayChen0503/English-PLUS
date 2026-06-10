@@ -31,8 +31,8 @@ class PrototypeStateStore(context: Context) {
         database.addLearningEvent(
             LearningEvent(
                 type = "migration",
-                title = "已建立本機資料庫",
-                detail = "從舊版展示狀態建立 English+ SQLite 本機資料。"
+                title = "已建立學習紀錄",
+                detail = "English+ 已準備好保存學習與接力紀錄。"
             )
         )
         return migrated
