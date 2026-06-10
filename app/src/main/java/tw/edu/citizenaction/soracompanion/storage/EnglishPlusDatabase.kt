@@ -526,7 +526,8 @@ class EnglishPlusDatabase(context: Context) : SQLiteOpenHelper(context, DB_NAME,
     }
 
     companion object {
+        const val SchemaVersion = 8
         private const val DB_NAME = "english_plus_local.db"
-        private const val DB_VERSION = 7
+        private const val DB_VERSION = SchemaVersion
     }
 }
