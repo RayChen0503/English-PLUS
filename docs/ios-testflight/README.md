@@ -52,6 +52,10 @@ The Android app remains the working classroom prototype. The iOS work should sta
    Firebase iOS setup guide for `tw.edu.englishplus`, including `GoogleService-Info.plist` and Swift Package Manager steps.
 18. `xcode-handoff/swiftui-starter-map.md`
    Compact SwiftUI file/screen/component map for the first iOS build.
+19. `handoff/EnglishPlus_iOS_Mac_Teammate_Handoff.pdf`
+   Polished PDF handoff manual for the Mac teammate, covering current status, how to read the migration docs, Xcode steps, GitHub Desktop workflow, Firebase setup path, and TestFlight timing.
+20. `handoff/EnglishPlus_iOS_Mac_Teammate_Handoff.docx`
+   Editable source version of the teammate handoff manual.
 
 Future rounds will add:
 
