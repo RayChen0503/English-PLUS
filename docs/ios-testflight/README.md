@@ -44,11 +44,18 @@ The Android app remains the working classroom prototype. The iOS work should sta
    Retention, deletion, de-identification, and privacy audit workflow draft.
 14. `privacy/app-privacy-label-draft.md`
    App Store Connect / TestFlight privacy label preparation draft.
+15. `round-8-xcode-development-handoff.md`
+   Detailed Mac/Xcode handoff guide for the teammate building the SwiftUI iOS prototype with GitHub Desktop, main branch workflow, Firebase setup path, and first local prototype scope.
+16. `xcode-handoff/github-desktop-main-workflow.md`
+   Step-by-step GitHub Desktop workflow for cloning, committing, pushing, and avoiding fork/conflict mistakes on `main`.
+17. `xcode-handoff/firebase-ios-setup-for-teammate.md`
+   Firebase iOS setup guide for `tw.edu.englishplus`, including `GoogleService-Info.plist` and Swift Package Manager steps.
+18. `xcode-handoff/swiftui-starter-map.md`
+   Compact SwiftUI file/screen/component map for the first iOS build.
 
 Future rounds will add:
 
 - TestFlight preparation checklist.
-- Xcode build and upload handoff steps.
 
 ## How To Continue On Mac
 
