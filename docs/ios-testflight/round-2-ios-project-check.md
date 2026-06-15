@@ -81,19 +81,33 @@ Result:
 - `xcodebuild -list`: succeeded and found target/scheme `EnglishPlus`.
 - `Info.plist` lint: passed.
 - Generic iOS Simulator build: passed, `BUILD SUCCEEDED`.
+- Signed iOS Simulator device build: passed, `BUILD SUCCEEDED`.
 - Built app display name: `English+`.
 - Built app bundle identifier: `tw.edu.englishplus`.
 
 ## Simulator Run Status
 
-Simulator runtime/device launch could not be completed in this round because `simctl` currently lists no available runtimes or devices:
+Follow-up simulator verification was completed after installing the missing iOS Simulator runtime.
+
+Runtime and test device:
 
 ```text
-== Runtimes ==
-== Devices ==
+iOS 26.5 (26.5 - 23F77) - com.apple.CoreSimulator.SimRuntime.iOS-26-5
+EnglishPlus Test iPhone - 4935AFC4-E765-4863-BB3A-A8616B31CDFC
 ```
 
-The app compiles for the iOS Simulator SDK. Once an iOS Simulator runtime and device are available in Xcode, the next step is to boot a simulator, install the built app, and confirm the role-selection screen appears.
+Verification steps completed:
+
+- Installed the iOS 26.5 Simulator runtime.
+- Restarted CoreSimulator after the first runtime setup stalled.
+- Created a fresh dedicated simulator named `EnglishPlus Test iPhone`.
+- Waited for first-boot data migration and system app setup to finish.
+- Installed `EnglishPlus.app` into the simulator.
+- Confirmed the app bundle exists in the simulator app container.
+- Confirmed the `EnglishPlus` process is running.
+- Captured a simulator screenshot showing the English+ role-selection screen with student, teacher, and volunteer options.
+
+Note: `simctl launch` did not return promptly even though the app process started successfully. The running process and simulator screenshot confirmed the app was launched.
 
 ## Round 2 Self-Check
 
@@ -104,6 +118,6 @@ The app compiles for the iOS Simulator SDK. Once an iOS Simulator runtime and de
 - Student/teacher/volunteer role shells exist: yes
 - Android files preserved: yes
 - Simulator build: yes
-- Simulator run: blocked by missing simulator runtime/device
+- Simulator run: yes, verified on `EnglishPlus Test iPhone`
 - Commit created: yes, as the Round 2 iOS project skeleton checkpoint
 - Push completed: yes, after the Round 2 checkpoint commit

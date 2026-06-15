@@ -44,3 +44,10 @@ xcodebuild \
 ```
 
 The Android prototype remains in the existing Android project folders and should not be moved or removed during iOS setup.
+
+Simulator verification:
+
+- iOS 26.5 Simulator runtime is installed.
+- A dedicated simulator named `EnglishPlus Test iPhone` was created for this project.
+- The app installs and launches on that simulator.
+- The first screen shows the English+ role selection for student, teacher, and volunteer.

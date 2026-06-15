@@ -30,8 +30,9 @@ The repository has been cloned on the Mac and confirmed up to date with `origin/
 - A full Xcode app was found at `/Users/zhengyouxi/Downloads/Xcode.app`.
 - Using `DEVELOPER_DIR=/Users/zhengyouxi/Downloads/Xcode.app/Contents/Developer`, `xcodebuild` reports Xcode 26.5.
 - iOS and iOS Simulator SDKs are available through that Xcode install.
-- Simulator services can be reached outside the Codex sandbox, but no available simulator runtimes/devices were listed during this check.
-- Because the repository does not yet contain an Xcode project, iOS build/run cannot be verified yet.
+- Simulator services can be reached outside the Codex sandbox.
+- Follow-up status: iOS 26.5 Simulator runtime is now installed, and iPhone simulator devices are available.
+- Because the repository did not yet contain an Xcode project during Round 1, iOS build/run verification moved to Round 2.
 
 Before simulator verification in later rounds, either move Xcode to `/Applications/Xcode.app` or select the current full Xcode developer directory, for example:
 
@@ -41,9 +42,9 @@ sudo xcode-select --switch /Users/zhengyouxi/Downloads/Xcode.app/Contents/Develo
 
 ## Local GitHub Push Status
 
-Local push verification through the Mac git credential chain is currently blocked.
+Local push verification through the Mac git credential chain is now resolved.
 
-Observed status:
+Initial observed status before re-authentication:
 
 - GitHub CLI account `yusi-1027` is present but its stored token is invalid.
 - `git push --dry-run origin main` fails with GitHub authentication failure.
@@ -51,7 +52,11 @@ Observed status:
 - DNS resolution later recovered, and `git push origin main` reached GitHub but still failed with invalid username/token.
 - A GitHub device-login attempt was started but did not complete before it was stopped.
 
-Before future local pushes from Terminal or GitHub Desktop, complete GitHub re-authentication for the collaborator account.
+Follow-up status after user sign-in:
+
+- GitHub CLI authentication is healthy as `yusi-1027`.
+- Local git credential helper is configured through `gh auth git-credential`.
+- Round 1 and Round 2 checkpoint commits have been pushed to `origin/main`.
 
 ## Round 1 Self-Check
 
@@ -62,6 +67,6 @@ Before future local pushes from Terminal or GitHub Desktop, complete GitHub re-a
 - iOS target folder prepared: yes, `ios/EnglishPlus/`
 - Full Xcode found: yes, `/Users/zhengyouxi/Downloads/Xcode.app`
 - Android files preserved: yes
-- Simulator build/run checked: blocked until the Xcode project exists and a simulator runtime/device is available
+- Simulator build/run checked: moved to Round 2, after the Xcode project was created
 - Commit created: yes, as the local Round 1 environment checkpoint
-- Local git push verified: no, blocked by GitHub authentication
+- Local git push verified: yes, after GitHub re-authentication
