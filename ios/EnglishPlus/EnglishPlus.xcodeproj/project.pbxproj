@@ -1,0 +1,501 @@
+// !$*UTF8*$!
+{
+	archiveVersion = 1;
+	classes = {
+	};
+	objectVersion = 56;
+	objects = {
+
+/* Begin PBXBuildFile section */
+		100000000000000000000101 /* EnglishPlusApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 100000000000000000000001 /* EnglishPlusApp.swift */; };
+		100000000000000000000102 /* AppState.swift in Sources */ = {isa = PBXBuildFile; fileRef = 100000000000000000000002 /* AppState.swift */; };
+		100000000000000000000103 /* AppRoute.swift in Sources */ = {isa = PBXBuildFile; fileRef = 100000000000000000000003 /* AppRoute.swift */; };
+		100000000000000000000104 /* RootView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 100000000000000000000004 /* RootView.swift */; };
+		100000000000000000000105 /* EPTheme.swift in Sources */ = {isa = PBXBuildFile; fileRef = 100000000000000000000005 /* EPTheme.swift */; };
+		100000000000000000000106 /* UserRole.swift in Sources */ = {isa = PBXBuildFile; fileRef = 100000000000000000000006 /* UserRole.swift */; };
+		100000000000000000000107 /* DemoUser.swift in Sources */ = {isa = PBXBuildFile; fileRef = 100000000000000000000007 /* DemoUser.swift */; };
+		100000000000000000000108 /* Question.swift in Sources */ = {isa = PBXBuildFile; fileRef = 100000000000000000000008 /* Question.swift */; };
+		100000000000000000000109 /* AuthService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 100000000000000000000009 /* AuthService.swift */; };
+		100000000000000000000110 /* MockAuthService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 100000000000000000000010 /* MockAuthService.swift */; };
+		100000000000000000000111 /* SeedData.swift in Sources */ = {isa = PBXBuildFile; fileRef = 100000000000000000000011 /* SeedData.swift */; };
+		100000000000000000000112 /* RoleSelectionView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 100000000000000000000012 /* RoleSelectionView.swift */; };
+		100000000000000000000113 /* DemoLoginView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 100000000000000000000013 /* DemoLoginView.swift */; };
+		100000000000000000000114 /* StudentShellView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 100000000000000000000014 /* StudentShellView.swift */; };
+		100000000000000000000115 /* StudentHomeView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 100000000000000000000015 /* StudentHomeView.swift */; };
+		100000000000000000000116 /* PracticeCenterView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 100000000000000000000016 /* PracticeCenterView.swift */; };
+		100000000000000000000117 /* SupportView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 100000000000000000000017 /* SupportView.swift */; };
+		100000000000000000000118 /* TeacherShellView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 100000000000000000000018 /* TeacherShellView.swift */; };
+		100000000000000000000119 /* TeacherHomeView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 100000000000000000000019 /* TeacherHomeView.swift */; };
+		100000000000000000000120 /* VolunteerShellView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 100000000000000000000020 /* VolunteerShellView.swift */; };
+		100000000000000000000121 /* VolunteerHomeView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 100000000000000000000021 /* VolunteerHomeView.swift */; };
+		100000000000000000000122 /* seed_questions.json in Resources */ = {isa = PBXBuildFile; fileRef = 100000000000000000000022 /* seed_questions.json */; };
+/* End PBXBuildFile section */
+
+/* Begin PBXFileReference section */
+		100000000000000000000001 /* EnglishPlusApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EnglishPlusApp.swift; sourceTree = "<group>"; };
+		100000000000000000000002 /* AppState.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppState.swift; sourceTree = "<group>"; };
+		100000000000000000000003 /* AppRoute.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppRoute.swift; sourceTree = "<group>"; };
+		100000000000000000000004 /* RootView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RootView.swift; sourceTree = "<group>"; };
+		100000000000000000000005 /* EPTheme.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EPTheme.swift; sourceTree = "<group>"; };
+		100000000000000000000006 /* UserRole.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UserRole.swift; sourceTree = "<group>"; };
+		100000000000000000000007 /* DemoUser.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DemoUser.swift; sourceTree = "<group>"; };
+		100000000000000000000008 /* Question.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Question.swift; sourceTree = "<group>"; };
+		100000000000000000000009 /* AuthService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AuthService.swift; sourceTree = "<group>"; };
+		100000000000000000000010 /* MockAuthService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MockAuthService.swift; sourceTree = "<group>"; };
+		100000000000000000000011 /* SeedData.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SeedData.swift; sourceTree = "<group>"; };
+		100000000000000000000012 /* RoleSelectionView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RoleSelectionView.swift; sourceTree = "<group>"; };
+		100000000000000000000013 /* DemoLoginView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DemoLoginView.swift; sourceTree = "<group>"; };
+		100000000000000000000014 /* StudentShellView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StudentShellView.swift; sourceTree = "<group>"; };
+		100000000000000000000015 /* StudentHomeView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StudentHomeView.swift; sourceTree = "<group>"; };
+		100000000000000000000016 /* PracticeCenterView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PracticeCenterView.swift; sourceTree = "<group>"; };
+		100000000000000000000017 /* SupportView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SupportView.swift; sourceTree = "<group>"; };
+		100000000000000000000018 /* TeacherShellView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TeacherShellView.swift; sourceTree = "<group>"; };
+		100000000000000000000019 /* TeacherHomeView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TeacherHomeView.swift; sourceTree = "<group>"; };
+		100000000000000000000020 /* VolunteerShellView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VolunteerShellView.swift; sourceTree = "<group>"; };
+		100000000000000000000021 /* VolunteerHomeView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VolunteerHomeView.swift; sourceTree = "<group>"; };
+		100000000000000000000022 /* seed_questions.json */ = {isa = PBXFileReference; lastKnownFileType = text.json; path = seed_questions.json; sourceTree = "<group>"; };
+		100000000000000000000023 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
+		100000000000000000000024 /* EnglishPlus.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = EnglishPlus.app; sourceTree = BUILT_PRODUCTS_DIR; };
+/* End PBXFileReference section */
+
+/* Begin PBXFrameworksBuildPhase section */
+		100000000000000000000201 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXFrameworksBuildPhase section */
+
+/* Begin PBXGroup section */
+		100000000000000000000301 = {
+			isa = PBXGroup;
+			children = (
+				100000000000000000000302 /* EnglishPlus */,
+				100000000000000000000303 /* Products */,
+			);
+			sourceTree = "<group>";
+		};
+		100000000000000000000302 /* EnglishPlus */ = {
+			isa = PBXGroup;
+			children = (
+				100000000000000000000023 /* Info.plist */,
+				100000000000000000000304 /* App */,
+				100000000000000000000305 /* Core */,
+				100000000000000000000306 /* Models */,
+				100000000000000000000307 /* Services */,
+				100000000000000000000308 /* Data */,
+				100000000000000000000309 /* Features */,
+				100000000000000000000310 /* Resources */,
+			);
+			path = EnglishPlus;
+			sourceTree = "<group>";
+		};
+		100000000000000000000303 /* Products */ = {
+			isa = PBXGroup;
+			children = (
+				100000000000000000000024 /* EnglishPlus.app */,
+			);
+			name = Products;
+			sourceTree = "<group>";
+		};
+		100000000000000000000304 /* App */ = {
+			isa = PBXGroup;
+			children = (
+				100000000000000000000001 /* EnglishPlusApp.swift */,
+				100000000000000000000002 /* AppState.swift */,
+				100000000000000000000003 /* AppRoute.swift */,
+				100000000000000000000004 /* RootView.swift */,
+			);
+			path = App;
+			sourceTree = "<group>";
+		};
+		100000000000000000000305 /* Core */ = {
+			isa = PBXGroup;
+			children = (
+				100000000000000000000005 /* EPTheme.swift */,
+			);
+			path = Core;
+			sourceTree = "<group>";
+		};
+		100000000000000000000306 /* Models */ = {
+			isa = PBXGroup;
+			children = (
+				100000000000000000000006 /* UserRole.swift */,
+				100000000000000000000007 /* DemoUser.swift */,
+				100000000000000000000008 /* Question.swift */,
+			);
+			path = Models;
+			sourceTree = "<group>";
+		};
+		100000000000000000000307 /* Services */ = {
+			isa = PBXGroup;
+			children = (
+				100000000000000000000009 /* AuthService.swift */,
+				100000000000000000000010 /* MockAuthService.swift */,
+			);
+			path = Services;
+			sourceTree = "<group>";
+		};
+		100000000000000000000308 /* Data */ = {
+			isa = PBXGroup;
+			children = (
+				100000000000000000000011 /* SeedData.swift */,
+			);
+			path = Data;
+			sourceTree = "<group>";
+		};
+		100000000000000000000309 /* Features */ = {
+			isa = PBXGroup;
+			children = (
+				100000000000000000000311 /* RoleSelection */,
+				100000000000000000000312 /* Student */,
+				100000000000000000000313 /* Teacher */,
+				100000000000000000000314 /* Volunteer */,
+				100000000000000000000315 /* Practice */,
+				100000000000000000000316 /* Support */,
+			);
+			path = Features;
+			sourceTree = "<group>";
+		};
+		100000000000000000000310 /* Resources */ = {
+			isa = PBXGroup;
+			children = (
+				100000000000000000000022 /* seed_questions.json */,
+			);
+			path = Resources;
+			sourceTree = "<group>";
+		};
+		100000000000000000000311 /* RoleSelection */ = {
+			isa = PBXGroup;
+			children = (
+				100000000000000000000012 /* RoleSelectionView.swift */,
+				100000000000000000000013 /* DemoLoginView.swift */,
+			);
+			path = RoleSelection;
+			sourceTree = "<group>";
+		};
+		100000000000000000000312 /* Student */ = {
+			isa = PBXGroup;
+			children = (
+				100000000000000000000014 /* StudentShellView.swift */,
+				100000000000000000000015 /* StudentHomeView.swift */,
+			);
+			path = Student;
+			sourceTree = "<group>";
+		};
+		100000000000000000000313 /* Teacher */ = {
+			isa = PBXGroup;
+			children = (
+				100000000000000000000018 /* TeacherShellView.swift */,
+				100000000000000000000019 /* TeacherHomeView.swift */,
+			);
+			path = Teacher;
+			sourceTree = "<group>";
+		};
+		100000000000000000000314 /* Volunteer */ = {
+			isa = PBXGroup;
+			children = (
+				100000000000000000000020 /* VolunteerShellView.swift */,
+				100000000000000000000021 /* VolunteerHomeView.swift */,
+			);
+			path = Volunteer;
+			sourceTree = "<group>";
+		};
+		100000000000000000000315 /* Practice */ = {
+			isa = PBXGroup;
+			children = (
+				100000000000000000000016 /* PracticeCenterView.swift */,
+			);
+			path = Practice;
+			sourceTree = "<group>";
+		};
+		100000000000000000000316 /* Support */ = {
+			isa = PBXGroup;
+			children = (
+				100000000000000000000017 /* SupportView.swift */,
+			);
+			path = Support;
+			sourceTree = "<group>";
+		};
+/* End PBXGroup section */
+
+/* Begin PBXNativeTarget section */
+		100000000000000000000401 /* EnglishPlus */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 100000000000000000000501 /* Build configuration list for PBXNativeTarget "EnglishPlus" */;
+			buildPhases = (
+				100000000000000000000202 /* Sources */,
+				100000000000000000000201 /* Frameworks */,
+				100000000000000000000203 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = EnglishPlus;
+			productName = EnglishPlus;
+			productReference = 100000000000000000000024 /* EnglishPlus.app */;
+			productType = "com.apple.product-type.application";
+		};
+/* End PBXNativeTarget section */
+
+/* Begin PBXProject section */
+		100000000000000000000402 /* Project object */ = {
+			isa = PBXProject;
+			attributes = {
+				BuildIndependentTargetsInParallel = 1;
+				LastSwiftUpdateCheck = 2650;
+				LastUpgradeCheck = 2650;
+				TargetAttributes = {
+					100000000000000000000401 = {
+						CreatedOnToolsVersion = 26.5;
+					};
+				};
+			};
+			buildConfigurationList = 100000000000000000000502 /* Build configuration list for PBXProject "EnglishPlus" */;
+			compatibilityVersion = "Xcode 14.0";
+			developmentRegion = en;
+			hasScannedForEncodings = 0;
+			knownRegions = (
+				en,
+				Base,
+			);
+			mainGroup = 100000000000000000000301;
+			productRefGroup = 100000000000000000000303 /* Products */;
+			projectDirPath = "";
+			projectRoot = "";
+			targets = (
+				100000000000000000000401 /* EnglishPlus */,
+			);
+		};
+/* End PBXProject section */
+
+/* Begin PBXResourcesBuildPhase section */
+		100000000000000000000203 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				100000000000000000000122 /* seed_questions.json in Resources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXResourcesBuildPhase section */
+
+/* Begin PBXSourcesBuildPhase section */
+		100000000000000000000202 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				100000000000000000000101 /* EnglishPlusApp.swift in Sources */,
+				100000000000000000000102 /* AppState.swift in Sources */,
+				100000000000000000000103 /* AppRoute.swift in Sources */,
+				100000000000000000000104 /* RootView.swift in Sources */,
+				100000000000000000000105 /* EPTheme.swift in Sources */,
+				100000000000000000000106 /* UserRole.swift in Sources */,
+				100000000000000000000107 /* DemoUser.swift in Sources */,
+				100000000000000000000108 /* Question.swift in Sources */,
+				100000000000000000000109 /* AuthService.swift in Sources */,
+				100000000000000000000110 /* MockAuthService.swift in Sources */,
+				100000000000000000000111 /* SeedData.swift in Sources */,
+				100000000000000000000112 /* RoleSelectionView.swift in Sources */,
+				100000000000000000000113 /* DemoLoginView.swift in Sources */,
+				100000000000000000000114 /* StudentShellView.swift in Sources */,
+				100000000000000000000115 /* StudentHomeView.swift in Sources */,
+				100000000000000000000116 /* PracticeCenterView.swift in Sources */,
+				100000000000000000000117 /* SupportView.swift in Sources */,
+				100000000000000000000118 /* TeacherShellView.swift in Sources */,
+				100000000000000000000119 /* TeacherHomeView.swift in Sources */,
+				100000000000000000000120 /* VolunteerShellView.swift in Sources */,
+				100000000000000000000121 /* VolunteerHomeView.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXSourcesBuildPhase section */
+
+/* Begin XCBuildConfiguration section */
+		100000000000000000000601 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = EnglishPlus/Info.plist;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = tw.edu.englishplus;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = iphoneos;
+				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
+				SUPPORTS_MACCATALYST = NO;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = 1;
+			};
+			name = Debug;
+		};
+		100000000000000000000602 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = EnglishPlus/Info.plist;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = tw.edu.englishplus;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = iphoneos;
+				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
+				SUPPORTS_MACCATALYST = NO;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = 1;
+			};
+			name = Release;
+		};
+		100000000000000000000603 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++20";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = dwarf;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				ENABLE_TESTABILITY = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu17;
+				GCC_DYNAMIC_NO_PIC = NO;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_OPTIMIZATION_LEVEL = 0;
+				GCC_PREPROCESSOR_DEFINITIONS = (
+					"DEBUG=1",
+					"$(inherited)",
+				);
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				LOCALIZATION_PREFERS_STRING_CATALOGS = YES;
+				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
+				MTL_FAST_MATH = YES;
+				ONLY_ACTIVE_ARCH = YES;
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = DEBUG;
+				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
+			};
+			name = Debug;
+		};
+		100000000000000000000604 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++20";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
+				ENABLE_NS_ASSERTIONS = NO;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu17;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				LOCALIZATION_PREFERS_STRING_CATALOGS = YES;
+				MTL_ENABLE_DEBUG_INFO = NO;
+				MTL_FAST_MATH = YES;
+				SWIFT_COMPILATION_MODE = wholemodule;
+				VALIDATE_PRODUCT = YES;
+			};
+			name = Release;
+		};
+/* End XCBuildConfiguration section */
+
+/* Begin XCConfigurationList section */
+		100000000000000000000501 /* Build configuration list for PBXNativeTarget "EnglishPlus" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				100000000000000000000601 /* Debug */,
+				100000000000000000000602 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		100000000000000000000502 /* Build configuration list for PBXProject "EnglishPlus" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				100000000000000000000603 /* Debug */,
+				100000000000000000000604 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+/* End XCConfigurationList section */
+	};
+	rootObject = 100000000000000000000402 /* Project object */;
+}
