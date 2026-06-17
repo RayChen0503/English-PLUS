@@ -6,3 +6,8 @@ local.properties
 *.iml
 app/build/
 ios/**/GoogleService-Info.plist
+functions/node_modules/
+functions/lib/
+functions/.secret.local
+functions/.env.local
+firebase-debug.log

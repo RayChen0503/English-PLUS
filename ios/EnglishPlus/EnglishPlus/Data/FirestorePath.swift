@@ -55,6 +55,14 @@ enum FirestorePath {
         "\(classDocument(classId: classId))/reports/\(segment(reportId))"
     }
 
+    static func aiUsage(classId: String, dateKey: String, uid: String) -> String {
+        "\(classDocument(classId: classId))/aiUsage/\(segment(dateKey))_\(segment(uid))"
+    }
+
+    static func aiEvent(classId: String, eventId: String) -> String {
+        "\(classDocument(classId: classId))/aiEvents/\(segment(eventId))"
+    }
+
     static func syncQueueItem(classId: String, syncItemId: String) -> String {
         "\(classDocument(classId: classId))/syncQueue/\(segment(syncItemId))"
     }

@@ -109,6 +109,11 @@
           "type": "string",
           "maxLength": 600
         },
+        "supportThreadId": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        },
         "attemptCount": {
           "type": "integer",
           "minimum": 0,

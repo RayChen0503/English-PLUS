@@ -191,3 +191,28 @@ struct FirestoreStaffAssignmentDocument: Codable, Equatable {
     let createdAt: Date
     let updatedAt: Date
 }
+
+struct FirestoreAiUsageDocument: Codable, Equatable {
+    let uid: String
+    let dateKey: String
+    let role: UserRole
+    let callCount: Int
+    let tokenTotal: Int
+    let updatedAt: Date
+}
+
+struct FirestoreAiEventDocument: Codable, Equatable {
+    let uid: String
+    let role: UserRole
+    let dateKey: String
+    let taskType: AiTaskType
+    let ok: Bool
+    let fallbackUsed: Bool
+    let modelUsed: String?
+    let qualityMode: AiQualityMode
+    let promptTokens: Int
+    let completionTokens: Int
+    let totalTokens: Int
+    let source: String
+    let createdAt: Date
+}
