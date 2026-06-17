@@ -33,6 +33,9 @@
 		100000000000000000000125 /* SupportSeed.swift in Sources */ = {isa = PBXBuildFile; fileRef = 100000000000000000000027 /* SupportSeed.swift */; };
 		100000000000000000000126 /* DailyMissionSeed.swift in Sources */ = {isa = PBXBuildFile; fileRef = 100000000000000000000028 /* DailyMissionSeed.swift */; };
 		100000000000000000000127 /* SeedData in Resources */ = {isa = PBXBuildFile; fileRef = 100000000000000000000029 /* SeedData */; };
+		100000000000000000000128 /* FirestorePath.swift in Sources */ = {isa = PBXBuildFile; fileRef = 100000000000000000000030 /* FirestorePath.swift */; };
+		100000000000000000000129 /* FirestoreSeedMapper.swift in Sources */ = {isa = PBXBuildFile; fileRef = 100000000000000000000031 /* FirestoreSeedMapper.swift */; };
+		100000000000000000000130 /* FirestoreSchema.swift in Sources */ = {isa = PBXBuildFile; fileRef = 100000000000000000000032 /* FirestoreSchema.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -64,6 +67,9 @@
 		100000000000000000000027 /* SupportSeed.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SupportSeed.swift; sourceTree = "<group>"; };
 		100000000000000000000028 /* DailyMissionSeed.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DailyMissionSeed.swift; sourceTree = "<group>"; };
 		100000000000000000000029 /* SeedData */ = {isa = PBXFileReference; lastKnownFileType = folder; path = SeedData; sourceTree = "<group>"; };
+		100000000000000000000030 /* FirestorePath.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FirestorePath.swift; sourceTree = "<group>"; };
+		100000000000000000000031 /* FirestoreSeedMapper.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FirestoreSeedMapper.swift; sourceTree = "<group>"; };
+		100000000000000000000032 /* FirestoreSchema.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FirestoreSchema.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -136,6 +142,7 @@
 				100000000000000000000026 /* AppUserProfile.swift */,
 				100000000000000000000027 /* SupportSeed.swift */,
 				100000000000000000000028 /* DailyMissionSeed.swift */,
+				100000000000000000000032 /* FirestoreSchema.swift */,
 			);
 			path = Models;
 			sourceTree = "<group>";
@@ -154,6 +161,8 @@
 			children = (
 				100000000000000000000011 /* SeedData.swift */,
 				100000000000000000000025 /* SeedLoader.swift */,
+				100000000000000000000030 /* FirestorePath.swift */,
+				100000000000000000000031 /* FirestoreSeedMapper.swift */,
 			);
 			path = Data;
 			sourceTree = "<group>";
@@ -315,6 +324,9 @@
 				100000000000000000000123 /* SeedLoader.swift in Sources */,
 				100000000000000000000125 /* SupportSeed.swift in Sources */,
 				100000000000000000000126 /* DailyMissionSeed.swift in Sources */,
+				100000000000000000000128 /* FirestorePath.swift in Sources */,
+				100000000000000000000129 /* FirestoreSeedMapper.swift in Sources */,
+				100000000000000000000130 /* FirestoreSchema.swift in Sources */,
 				100000000000000000000112 /* RoleSelectionView.swift in Sources */,
 				100000000000000000000113 /* DemoLoginView.swift in Sources */,
 				100000000000000000000114 /* StudentShellView.swift in Sources */,

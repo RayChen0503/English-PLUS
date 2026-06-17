@@ -26,37 +26,39 @@ The Android app remains the working classroom prototype. The iOS work should sta
    Mac/Xcode implementation check for bundled iOS seed JSON, Swift Codable models, seed validation, and simulator build/run verification.
 5. `round-4-firebase-auth-firestore-schema.md`
    Firebase Auth strategy, confirmed Firebase/iOS identifiers, Firestore collection schema, role permissions, backend proxy boundary, and setup order.
-6. `firebase/firestore.rules.draft`
+6. `round-4-ios-backend-implementation-check.md`
+   iOS implementation check for Firebase constants, Firestore path builders, Swift document models, seed-to-Firestore mapping, config safety, and simulator build/run verification.
+7. `firebase/firestore.rules.draft`
    Draft Firestore security rules for student, teacher, and volunteer access control.
-7. `firebase/firestore.indexes.draft.json`
+8. `firebase/firestore.indexes.draft.json`
    Draft Firestore composite indexes for support, assignment, student, question-bank, and answer-event queries.
-8. `round-5-openrouter-cloud-functions-proxy.md`
+9. `round-5-openrouter-cloud-functions-proxy.md`
    OpenRouter AI proxy contract using Firebase Cloud Functions, including model strategy, privacy boundaries, rate limits, and Mac setup order.
-9. `firebase/openrouter-ai-proxy.example.ts`
+10. `firebase/openrouter-ai-proxy.example.ts`
    TypeScript reference implementation for the future callable AI proxy.
-10. `firebase/openrouter-ai-proxy.schema.json`
+11. `firebase/openrouter-ai-proxy.schema.json`
    Request contract schema for iOS-to-backend AI calls.
-11. `firebase/openrouter-ai-proxy.secret.local.example`
+12. `firebase/openrouter-ai-proxy.secret.local.example`
    Local emulator secret example for the OpenRouter API key.
-12. `round-6-privacy-real-student-data-checklist.md`
+13. `round-6-privacy-real-student-data-checklist.md`
    Privacy and real-student-data checklist covering names, class/school/grade, mood visibility, consent, retention, deletion, role visibility, AI minimization, and TestFlight privacy risk.
-13. `privacy/consent-copy-draft.md`
+14. `privacy/consent-copy-draft.md`
    Student, teacher, and volunteer consent copy drafts for the future iOS app.
-14. `privacy/data-retention-deletion-playbook.md`
+15. `privacy/data-retention-deletion-playbook.md`
    Retention, deletion, de-identification, and privacy audit workflow draft.
-15. `privacy/app-privacy-label-draft.md`
+16. `privacy/app-privacy-label-draft.md`
    App Store Connect / TestFlight privacy label preparation draft.
-16. `round-8-xcode-development-handoff.md`
+17. `round-8-xcode-development-handoff.md`
    Detailed Mac/Xcode handoff guide for the teammate building the SwiftUI iOS prototype with GitHub Desktop, main branch workflow, Firebase setup path, and first local prototype scope.
-17. `xcode-handoff/github-desktop-main-workflow.md`
+18. `xcode-handoff/github-desktop-main-workflow.md`
    Step-by-step GitHub Desktop workflow for cloning, committing, pushing, and avoiding fork/conflict mistakes on `main`.
-18. `xcode-handoff/firebase-ios-setup-for-teammate.md`
+19. `xcode-handoff/firebase-ios-setup-for-teammate.md`
    Firebase iOS setup guide for `tw.edu.englishplus`, including `GoogleService-Info.plist` and Swift Package Manager steps.
-19. `xcode-handoff/swiftui-starter-map.md`
+20. `xcode-handoff/swiftui-starter-map.md`
    Compact SwiftUI file/screen/component map for the first iOS build.
-20. `handoff/EnglishPlus_iOS_Mac_Teammate_Handoff.pdf`
+21. `handoff/EnglishPlus_iOS_Mac_Teammate_Handoff.pdf`
    Polished PDF handoff manual for the Mac teammate, covering current status, how to read the migration docs, Xcode steps, GitHub Desktop workflow, Firebase setup path, and TestFlight timing.
-21. `handoff/EnglishPlus_iOS_Mac_Teammate_Handoff.docx`
+22. `handoff/EnglishPlus_iOS_Mac_Teammate_Handoff.docx`
    Editable source version of the teammate handoff manual.
 
 Future rounds will add:
