@@ -612,7 +612,7 @@ After Apple Developer is active:
 3. Xcode account can select the Developer Team.
 4. Signing can be configured.
 5. App Store Connect app can be created.
-6. TestFlight upload can happen later in Round 7.
+6. TestFlight upload can happen after the Round 8 signing, archive, and App Store Connect prerequisites are satisfied.
 
 Until then, local Simulator development is enough.
 
