@@ -4,7 +4,8 @@ import SwiftUI
 struct EnglishPlusApp: App {
     @StateObject private var appState = AppState(
         authService: MockAuthService(),
-        firestoreService: MockFirestoreService()
+        firestoreService: MockFirestoreService(),
+        aiService: MockAIService()
     )
     @StateObject private var learningRepository = MockLearningRepository()
 

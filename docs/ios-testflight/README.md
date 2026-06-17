@@ -48,23 +48,25 @@ The Android app remains the working classroom prototype. The iOS work should sta
    Implementation check for AuthService, FirestoreService, replaceable Firebase boundary, consent flow, privacy paths, rules coverage, and simulator verification.
 16. `windows-handoff-rounds-1-6-completion-audit.md`
    Audit against the Windows handoff log's Round 1-6 definitions, including student flow, staff support, seed data, local repository, Firebase boundary, and validation status.
-17. `privacy/consent-copy-draft.md`
+17. `round-7-ai-service-implementation-check.md`
+   Implementation check for the high-level AIService boundary, MockAIService, RemoteAIService, Cloud Functions proxy route, AI use cases, and OpenRouter key safety.
+18. `privacy/consent-copy-draft.md`
    Student, teacher, and volunteer consent copy drafts for the future iOS app.
-18. `privacy/data-retention-deletion-playbook.md`
+19. `privacy/data-retention-deletion-playbook.md`
    Retention, deletion, de-identification, and privacy audit workflow draft.
-19. `privacy/app-privacy-label-draft.md`
+20. `privacy/app-privacy-label-draft.md`
    App Store Connect / TestFlight privacy label preparation draft.
-20. `round-8-xcode-development-handoff.md`
+21. `round-8-xcode-development-handoff.md`
    Detailed Mac/Xcode handoff guide for the teammate building the SwiftUI iOS prototype with GitHub Desktop, main branch workflow, Firebase setup path, and first local prototype scope.
-21. `xcode-handoff/github-desktop-main-workflow.md`
+22. `xcode-handoff/github-desktop-main-workflow.md`
    Step-by-step GitHub Desktop workflow for cloning, committing, pushing, and avoiding fork/conflict mistakes on `main`.
-22. `xcode-handoff/firebase-ios-setup-for-teammate.md`
+23. `xcode-handoff/firebase-ios-setup-for-teammate.md`
    Firebase iOS setup guide for `tw.edu.englishplus`, including `GoogleService-Info.plist` and Swift Package Manager steps.
-23. `xcode-handoff/swiftui-starter-map.md`
+24. `xcode-handoff/swiftui-starter-map.md`
    Compact SwiftUI file/screen/component map for the first iOS build.
-24. `handoff/EnglishPlus_iOS_Mac_Teammate_Handoff.pdf`
+25. `handoff/EnglishPlus_iOS_Mac_Teammate_Handoff.pdf`
    Polished PDF handoff manual for the Mac teammate, covering current status, how to read the migration docs, Xcode steps, GitHub Desktop workflow, Firebase setup path, and TestFlight timing.
-25. `handoff/EnglishPlus_iOS_Mac_Teammate_Handoff.docx`
+26. `handoff/EnglishPlus_iOS_Mac_Teammate_Handoff.docx`
    Editable source version of the teammate handoff manual.
 
 Future rounds will add:

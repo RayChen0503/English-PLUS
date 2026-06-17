@@ -1,0 +1,151 @@
+import Foundation
+
+enum RemoteAIServiceError: Error {
+    case missingAuthenticatedIdToken
+    case invalidFunctionResponse
+    case functionReturnedStatus(Int)
+}
+
+protocol AiProxyTransport {
+    func call(_ request: AiProxyRequest, currentUser: DemoUser?) async throws -> AiProxyResponse
+}
+
+struct RemoteAIService: AIService {
+    private let transport: AiProxyTransport
+    private let fallbackService: AIService
+
+    init(
+        transport: AiProxyTransport = FirebaseCallableAiProxyTransport(),
+        fallbackService: AIService = MockAIService()
+    ) {
+        self.transport = transport
+        self.fallbackService = fallbackService
+    }
+
+    func generateDailyMission(
+        context: DailyMissionAIContext,
+        currentUser: DemoUser?
+    ) async -> AiProxyResponse {
+        await callOrFallback(.dailyMission(context: context), currentUser: currentUser) {
+            await fallbackService.generateDailyMission(context: context, currentUser: currentUser)
+        }
+    }
+
+    func explainWrongAnswer(
+        context: WrongAnswerAIContext,
+        currentUser: DemoUser?
+    ) async -> AiProxyResponse {
+        await callOrFallback(.wrongAnswerExplanation(context: context), currentUser: currentUser) {
+            await fallbackService.explainWrongAnswer(context: context, currentUser: currentUser)
+        }
+    }
+
+    func provideEmotionalSupport(
+        context: SupportAIContext,
+        currentUser: DemoUser?
+    ) async -> AiProxyResponse {
+        await callOrFallback(.emotionalSupport(context: context), currentUser: currentUser) {
+            await fallbackService.provideEmotionalSupport(context: context, currentUser: currentUser)
+        }
+    }
+
+    func draftTeacherFeedback(
+        context: SupportAIContext,
+        currentUser: DemoUser?
+    ) async -> AiProxyResponse {
+        await callOrFallback(.teacherFeedbackDraft(context: context), currentUser: currentUser) {
+            await fallbackService.draftTeacherFeedback(context: context, currentUser: currentUser)
+        }
+    }
+
+    func coachVolunteerReply(
+        context: SupportAIContext,
+        currentUser: DemoUser?
+    ) async -> AiProxyResponse {
+        await callOrFallback(.volunteerReplyCoach(context: context), currentUser: currentUser) {
+            await fallbackService.coachVolunteerReply(context: context, currentUser: currentUser)
+        }
+    }
+
+    func recommendPractice(
+        context: PracticeRecommendationAIContext,
+        currentUser: DemoUser?
+    ) async -> AiProxyResponse {
+        await callOrFallback(.progressSummary(context: context), currentUser: currentUser) {
+            await fallbackService.recommendPractice(context: context, currentUser: currentUser)
+        }
+    }
+
+    private func callOrFallback(
+        _ request: AiProxyRequest,
+        currentUser: DemoUser?,
+        fallback: () async -> AiProxyResponse
+    ) async -> AiProxyResponse {
+        do {
+            return try await transport.call(request, currentUser: currentUser)
+        } catch {
+            return await fallback()
+        }
+    }
+}
+
+struct FirebaseCallableAiProxyTransport: AiProxyTransport {
+    typealias IdTokenProvider = () async throws -> String?
+
+    private let endpoint: URL
+    private let idTokenProvider: IdTokenProvider
+    private let session: URLSession
+    private let encoder: JSONEncoder
+    private let decoder: JSONDecoder
+
+    init(
+        projectId: String = FirebaseBackendConfig.projectId,
+        region: String = "asia-east1",
+        callableName: String = "englishPlusAiProxy",
+        idTokenProvider: @escaping IdTokenProvider = { nil },
+        session: URLSession = .shared,
+        encoder: JSONEncoder = JSONEncoder(),
+        decoder: JSONDecoder = JSONDecoder()
+    ) {
+        endpoint = URL(string: "https://\(region)-\(projectId).cloudfunctions.net/\(callableName)")!
+        self.idTokenProvider = idTokenProvider
+        self.session = session
+        self.encoder = encoder
+        self.decoder = decoder
+    }
+
+    func call(_ request: AiProxyRequest, currentUser: DemoUser?) async throws -> AiProxyResponse {
+        guard let idToken = try await idTokenProvider(), !idToken.isEmpty else {
+            throw RemoteAIServiceError.missingAuthenticatedIdToken
+        }
+
+        var urlRequest = URLRequest(url: endpoint)
+        urlRequest.httpMethod = "POST"
+        urlRequest.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        urlRequest.setValue("Bearer \(idToken)", forHTTPHeaderField: "Authorization")
+        urlRequest.httpBody = try encoder.encode(CallableRequestEnvelope(data: request))
+
+        let (data, response) = try await session.data(for: urlRequest)
+        guard let httpResponse = response as? HTTPURLResponse else {
+            throw RemoteAIServiceError.invalidFunctionResponse
+        }
+        guard (200..<300).contains(httpResponse.statusCode) else {
+            throw RemoteAIServiceError.functionReturnedStatus(httpResponse.statusCode)
+        }
+
+        let envelope = try decoder.decode(CallableResponseEnvelope.self, from: data)
+        guard let result = envelope.result ?? envelope.data else {
+            throw RemoteAIServiceError.invalidFunctionResponse
+        }
+        return result
+    }
+}
+
+private struct CallableRequestEnvelope: Encodable {
+    let data: AiProxyRequest
+}
+
+private struct CallableResponseEnvelope: Decodable {
+    let result: AiProxyResponse?
+    let data: AiProxyResponse?
+}

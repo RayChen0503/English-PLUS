@@ -65,11 +65,14 @@
             "type": "string",
             "enum": [
               "multipleChoice",
+              "vocabulary",
+              "grammar",
               "fillBlank",
               "cloze",
               "translation",
               "sentenceReorder",
-              "reading"
+              "reading",
+              "dialogue"
             ]
           }
         },

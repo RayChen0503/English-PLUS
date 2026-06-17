@@ -363,7 +363,7 @@ function getTaskInstruction(taskType: TaskType): string {
       return [
         "Create a short daily English mission.",
         "Return JSON with track, summary, targetCorrectCount, recommendedMinutes, and questionPlan.",
-        "Question types may include multipleChoice, fillBlank, cloze, translation, sentenceReorder, reading.",
+        "Question types may include multipleChoice, vocabulary, grammar, fillBlank, cloze, translation, sentenceReorder, reading, dialogue.",
       ].join(" ");
     case "wrongAnswerExplanation":
       return "Explain why the answer is wrong, give one hint, and encourage a retry. Return JSON.";
