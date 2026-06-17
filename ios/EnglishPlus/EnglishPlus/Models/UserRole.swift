@@ -1,6 +1,6 @@
 import Foundation
 
-enum UserRole: String, CaseIterable, Identifiable {
+enum UserRole: String, CaseIterable, Identifiable, Codable {
     case student
     case teacher
     case volunteer

@@ -1,0 +1,17 @@
+{
+  "schemaVersion": 1,
+  "timeScaleRules": [
+    { "timeScale": 1, "minutes": 3, "label": "今天只做一小步" },
+    { "timeScale": 2, "minutes": 3, "label": "短任務" },
+    { "timeScale": 3, "minutes": 5, "label": "穩定練習" },
+    { "timeScale": 4, "minutes": 8, "label": "完整暖身" },
+    { "timeScale": 5, "minutes": 12, "label": "挑戰練習" }
+  ],
+  "goalRules": [
+    { "minMinutes": 1, "maxMinutes": 3, "questionGoal": 1 },
+    { "minMinutes": 4, "maxMinutes": 5, "questionGoal": 2 },
+    { "minMinutes": 6, "maxMinutes": 8, "questionGoal": 3 },
+    { "minMinutes": 9, "maxMinutes": null, "questionGoal": 4 }
+  ],
+  "defaultPreferredQuestionTypes": ["choice", "fillBlank"]
+}

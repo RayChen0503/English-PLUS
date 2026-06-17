@@ -1,6 +1,8 @@
 import SwiftUI
 
 struct SupportView: View {
+    private let supportOptions = SeedData.supportOptions
+
     var body: some View {
         NavigationStack {
             ZStack {
@@ -10,9 +12,13 @@ struct SupportView: View {
                         .font(.title.bold())
                         .foregroundStyle(EPTheme.ink)
 
-                    supportRow(title: "先看提示", subtitle: "用一句話提醒自己卡在哪裡", icon: "lightbulb")
-                    supportRow(title: "請老師協助", subtitle: "把題目和你的想法送給老師看", icon: "person.2")
-                    supportRow(title: "請志工陪伴", subtitle: "需要鼓勵或陪你整理下一步時使用", icon: "heart")
+                    ForEach(supportOptions) { option in
+                        supportRow(
+                            title: option.reason,
+                            subtitle: option.platformAction,
+                            icon: iconName(for: option.route)
+                        )
+                    }
 
                     Spacer()
                 }
@@ -39,5 +45,18 @@ struct SupportView: View {
         .padding(16)
         .background(.white)
         .clipShape(RoundedRectangle(cornerRadius: EPTheme.cardRadius))
+    }
+
+    private func iconName(for route: SupportRoute) -> String {
+        switch route {
+        case .aiCoach:
+            return "lightbulb"
+        case .humanHandoff:
+            return "person.2"
+        case .readingBreakdown:
+            return "doc.text.magnifyingglass"
+        case .recovery:
+            return "heart"
+        }
     }
 }

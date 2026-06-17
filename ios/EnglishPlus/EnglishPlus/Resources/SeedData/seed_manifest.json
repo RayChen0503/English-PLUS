@@ -1,0 +1,12 @@
+{
+  "app": "English+",
+  "seedSchemaVersion": 1,
+  "generatedFrom": "Android PrototypeRepository.kt",
+  "generatedAt": "2026-06-15T00:00:00Z",
+  "files": [
+    "accounts_seed.json",
+    "question_bank_seed.json",
+    "daily_mission_rules_seed.json",
+    "support_options_seed.json"
+  ]
+}

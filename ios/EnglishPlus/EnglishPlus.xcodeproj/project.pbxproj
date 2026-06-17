@@ -28,7 +28,11 @@
 		100000000000000000000119 /* TeacherHomeView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 100000000000000000000019 /* TeacherHomeView.swift */; };
 		100000000000000000000120 /* VolunteerShellView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 100000000000000000000020 /* VolunteerShellView.swift */; };
 		100000000000000000000121 /* VolunteerHomeView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 100000000000000000000021 /* VolunteerHomeView.swift */; };
-		100000000000000000000122 /* seed_questions.json in Resources */ = {isa = PBXBuildFile; fileRef = 100000000000000000000022 /* seed_questions.json */; };
+		100000000000000000000123 /* SeedLoader.swift in Sources */ = {isa = PBXBuildFile; fileRef = 100000000000000000000025 /* SeedLoader.swift */; };
+		100000000000000000000124 /* AppUserProfile.swift in Sources */ = {isa = PBXBuildFile; fileRef = 100000000000000000000026 /* AppUserProfile.swift */; };
+		100000000000000000000125 /* SupportSeed.swift in Sources */ = {isa = PBXBuildFile; fileRef = 100000000000000000000027 /* SupportSeed.swift */; };
+		100000000000000000000126 /* DailyMissionSeed.swift in Sources */ = {isa = PBXBuildFile; fileRef = 100000000000000000000028 /* DailyMissionSeed.swift */; };
+		100000000000000000000127 /* SeedData in Resources */ = {isa = PBXBuildFile; fileRef = 100000000000000000000029 /* SeedData */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -53,9 +57,13 @@
 		100000000000000000000019 /* TeacherHomeView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TeacherHomeView.swift; sourceTree = "<group>"; };
 		100000000000000000000020 /* VolunteerShellView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VolunteerShellView.swift; sourceTree = "<group>"; };
 		100000000000000000000021 /* VolunteerHomeView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VolunteerHomeView.swift; sourceTree = "<group>"; };
-		100000000000000000000022 /* seed_questions.json */ = {isa = PBXFileReference; lastKnownFileType = text.json; path = seed_questions.json; sourceTree = "<group>"; };
 		100000000000000000000023 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
 		100000000000000000000024 /* EnglishPlus.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = EnglishPlus.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		100000000000000000000025 /* SeedLoader.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SeedLoader.swift; sourceTree = "<group>"; };
+		100000000000000000000026 /* AppUserProfile.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppUserProfile.swift; sourceTree = "<group>"; };
+		100000000000000000000027 /* SupportSeed.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SupportSeed.swift; sourceTree = "<group>"; };
+		100000000000000000000028 /* DailyMissionSeed.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DailyMissionSeed.swift; sourceTree = "<group>"; };
+		100000000000000000000029 /* SeedData */ = {isa = PBXFileReference; lastKnownFileType = folder; path = SeedData; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -125,6 +133,9 @@
 				100000000000000000000006 /* UserRole.swift */,
 				100000000000000000000007 /* DemoUser.swift */,
 				100000000000000000000008 /* Question.swift */,
+				100000000000000000000026 /* AppUserProfile.swift */,
+				100000000000000000000027 /* SupportSeed.swift */,
+				100000000000000000000028 /* DailyMissionSeed.swift */,
 			);
 			path = Models;
 			sourceTree = "<group>";
@@ -142,6 +153,7 @@
 			isa = PBXGroup;
 			children = (
 				100000000000000000000011 /* SeedData.swift */,
+				100000000000000000000025 /* SeedLoader.swift */,
 			);
 			path = Data;
 			sourceTree = "<group>";
@@ -162,7 +174,7 @@
 		100000000000000000000310 /* Resources */ = {
 			isa = PBXGroup;
 			children = (
-				100000000000000000000022 /* seed_questions.json */,
+				100000000000000000000029 /* SeedData */,
 			);
 			path = Resources;
 			sourceTree = "<group>";
@@ -277,7 +289,7 @@
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				100000000000000000000122 /* seed_questions.json in Resources */,
+				100000000000000000000127 /* SeedData in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -296,9 +308,13 @@
 				100000000000000000000106 /* UserRole.swift in Sources */,
 				100000000000000000000107 /* DemoUser.swift in Sources */,
 				100000000000000000000108 /* Question.swift in Sources */,
+				100000000000000000000124 /* AppUserProfile.swift in Sources */,
 				100000000000000000000109 /* AuthService.swift in Sources */,
 				100000000000000000000110 /* MockAuthService.swift in Sources */,
 				100000000000000000000111 /* SeedData.swift in Sources */,
+				100000000000000000000123 /* SeedLoader.swift in Sources */,
+				100000000000000000000125 /* SupportSeed.swift in Sources */,
+				100000000000000000000126 /* DailyMissionSeed.swift in Sources */,
 				100000000000000000000112 /* RoleSelectionView.swift in Sources */,
 				100000000000000000000113 /* DemoLoginView.swift in Sources */,
 				100000000000000000000114 /* StudentShellView.swift in Sources */,

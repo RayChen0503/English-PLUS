@@ -1,0 +1,33 @@
+{
+  "schemaVersion": 1,
+  "supportOptions": [
+    {
+      "id": "question-meaning",
+      "reason": "我看不懂這題",
+      "studentText": "我不知道這題在問什麼。",
+      "platformAction": "English+ 先把題目拆成一句話。",
+      "route": "aiCoach"
+    },
+    {
+      "id": "human-company",
+      "reason": "我想要有人陪我",
+      "studentText": "我知道答案好像不對，但不知道差在哪裡。",
+      "platformAction": "系統會整理給老師或志工。",
+      "route": "humanHandoff"
+    },
+    {
+      "id": "reading-too-long",
+      "reason": "閱讀題太長",
+      "studentText": "我看到閱讀題就停住。",
+      "platformAction": "先抓題目關鍵字，再回原文找句子。",
+      "route": "readingBreakdown"
+    },
+    {
+      "id": "low-energy",
+      "reason": "今天狀態不好",
+      "studentText": "我想先做很小的任務。",
+      "platformAction": "切換成復原任務。",
+      "route": "recovery"
+    }
+  ]
+}

@@ -1,0 +1,181 @@
+{
+  "questionBankSchemaVersion": 5,
+  "app": "English+",
+  "items": [
+    {
+      "id": "cap-style-0001",
+      "level": "A1",
+      "unit": "基礎文法",
+      "skill": "主詞搭配",
+      "source": "English+ seed from Android PrototypeRepository.kt",
+      "reviewState": "approved",
+      "importBatchId": "ios-round-3-seed",
+      "updatedAt": "2026-06-15T00:00:00Z",
+      "question": {
+        "prompt": "He ___ a student.",
+        "type": "choice",
+        "options": ["am", "is", "are", "be"],
+        "answer": "is",
+        "acceptedAnswers": ["is"],
+        "explanation": "He 是第三人稱單數，be 動詞要用 is。",
+        "concept": "be 動詞：He/She/It + is",
+        "repairHint": "先看主詞 He，再選 is。"
+      }
+    },
+    {
+      "id": "cap-style-0002",
+      "level": "A1",
+      "unit": "基礎文法",
+      "skill": "主詞搭配",
+      "source": "English+ seed from Android PrototypeRepository.kt",
+      "reviewState": "approved",
+      "importBatchId": "ios-round-3-seed",
+      "updatedAt": "2026-06-15T00:00:00Z",
+      "question": {
+        "prompt": "They ___ my friends.",
+        "type": "choice",
+        "options": ["is", "are", "am", "be"],
+        "answer": "are",
+        "acceptedAnswers": ["are"],
+        "explanation": "They 是複數主詞，be 動詞要用 are。",
+        "concept": "be 動詞：複數主詞 + are",
+        "repairHint": "They 不是單數，所以不用 is。"
+      }
+    },
+    {
+      "id": "cap-style-0003",
+      "level": "A2",
+      "unit": "文法填空",
+      "skill": "文法判斷",
+      "source": "English+ seed from Android PrototypeRepository.kt",
+      "reviewState": "approved",
+      "importBatchId": "ios-round-3-seed",
+      "updatedAt": "2026-06-15T00:00:00Z",
+      "question": {
+        "prompt": "If it ___ tomorrow, we will stay home.",
+        "type": "fillBlank",
+        "options": ["rains", "will rain", "rained", "is raining"],
+        "answer": "rains",
+        "acceptedAnswers": ["rains"],
+        "explanation": "if 條件句的未來意思，if 子句用現在式。",
+        "concept": "if 條件句",
+        "repairHint": "看到 if + tomorrow，先想 if 子句不用 will。"
+      }
+    },
+    {
+      "id": "cap-style-0004",
+      "level": "A2",
+      "unit": "文法填空",
+      "skill": "文法判斷",
+      "source": "English+ seed from Android PrototypeRepository.kt",
+      "reviewState": "approved",
+      "importBatchId": "ios-round-3-seed",
+      "updatedAt": "2026-06-15T00:00:00Z",
+      "question": {
+        "prompt": "Ms. Lin asked us ___ our reports before Friday.",
+        "type": "fillBlank",
+        "options": ["to finish", "finish", "finished", "finishing"],
+        "answer": "to finish",
+        "acceptedAnswers": ["to finish"],
+        "explanation": "ask + 人 + to V 表示請某人做某事。",
+        "concept": "不定詞：ask someone to V",
+        "repairHint": "看到 asked us，後面通常接 to V。"
+      }
+    },
+    {
+      "id": "cap-style-0005",
+      "level": "A2",
+      "unit": "短文克漏字",
+      "skill": "文意判斷",
+      "source": "English+ seed from Android PrototypeRepository.kt",
+      "reviewState": "approved",
+      "importBatchId": "ios-round-3-seed",
+      "updatedAt": "2026-06-15T00:00:00Z",
+      "question": {
+        "prompt": "短文克漏字：Mia wanted to join the race, ___ she hurt her foot the day before it.",
+        "type": "cloze",
+        "options": ["but", "so", "or", "because"],
+        "answer": "but",
+        "acceptedAnswers": ["but"],
+        "explanation": "前後語意轉折：想參加比賽，但前一天受傷。",
+        "concept": "轉折連接詞",
+        "repairHint": "先判斷前後句關係，是轉折就選 but。"
+      }
+    },
+    {
+      "id": "cap-style-0006",
+      "level": "A2",
+      "unit": "短文閱讀",
+      "skill": "閱讀定位",
+      "source": "English+ seed from Android PrototypeRepository.kt",
+      "reviewState": "approved",
+      "importBatchId": "ios-round-3-seed",
+      "updatedAt": "2026-06-15T00:00:00Z",
+      "question": {
+        "prompt": "閱讀理解：A sign says, 'Please return books on time. If a book is late, you cannot borrow another one until it is returned.' What happens if a student returns a book late?",
+        "type": "reading",
+        "options": [
+          "The student must wait before borrowing again.",
+          "The student can keep all books longer.",
+          "The library gives a free book.",
+          "The library closes for one day."
+        ],
+        "answer": "The student must wait before borrowing again.",
+        "acceptedAnswers": ["The student must wait before borrowing again."],
+        "explanation": "題目問 late 的結果，原文說歸還前不能再借下一本。",
+        "concept": "閱讀細節定位",
+        "repairHint": "找 if a book is late 後面的限制。"
+      }
+    },
+    {
+      "id": "cap-style-0007",
+      "level": "A2",
+      "unit": "句子重組",
+      "skill": "句型轉換",
+      "source": "English+ seed from Android PrototypeRepository.kt",
+      "reviewState": "approved",
+      "importBatchId": "ios-round-3-seed",
+      "updatedAt": "2026-06-15T00:00:00Z",
+      "question": {
+        "prompt": "翻譯/句子重組：我每天放學後練習英文。",
+        "type": "translation",
+        "options": [
+          "I practice English after school every day.",
+          "I after school every day practice English.",
+          "Every day English practice I after school.",
+          "I am practice English after school every day."
+        ],
+        "answer": "I practice English after school every day.",
+        "acceptedAnswers": ["I practice English after school every day."],
+        "explanation": "英文基本語序是主詞 + 動詞 + 受詞 + 時間。",
+        "concept": "句子語序",
+        "repairHint": "先排 I practice English，再放 after school every day。"
+      }
+    },
+    {
+      "id": "cap-style-0008",
+      "level": "B1",
+      "unit": "句子重組",
+      "skill": "句型轉換",
+      "source": "English+ seed from Android PrototypeRepository.kt",
+      "reviewState": "approved",
+      "importBatchId": "ios-round-3-seed",
+      "updatedAt": "2026-06-15T00:00:00Z",
+      "question": {
+        "prompt": "翻譯/句子重組：如果明天下雨，我們會待在家。",
+        "type": "translation",
+        "options": [
+          "If it rains tomorrow, we will stay home.",
+          "If it will rain tomorrow, we stay home.",
+          "Tomorrow rains if we will stay home.",
+          "We will home stay if it rains tomorrow."
+        ],
+        "answer": "If it rains tomorrow, we will stay home.",
+        "acceptedAnswers": ["If it rains tomorrow, we will stay home."],
+        "explanation": "if 子句用現在式 rains，主要子句才用 will。",
+        "concept": "if 條件句與句子重組",
+        "repairHint": "先排 If it rains tomorrow，再接 we will stay home。"
+      }
+    }
+  ]
+}
