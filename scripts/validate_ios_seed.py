@@ -7,7 +7,15 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 SEED_DIR = ROOT / "ios" / "EnglishPlus" / "EnglishPlus" / "Resources" / "SeedData"
 
-ALLOWED_TYPES = {"choice", "fillBlank", "cloze", "reading", "translation"}
+ALLOWED_TYPES = {
+    "vocabulary",
+    "grammar",
+    "fillBlank",
+    "cloze",
+    "reading",
+    "translation",
+    "dialogue",
+}
 ALLOWED_LEVELS = {"A1", "A2", "B1", "B2"}
 ALLOWED_REVIEW_STATES = {"draft", "approved", "archived"}
 MOJIBAKE_MARKERS = ["�", "?"]
@@ -63,12 +71,23 @@ def validate_question_bank(errors):
         require(prompt not in prompts, f"{item_id}: duplicate prompt", errors)
         require(not has_mojibake(item), f"{item_id}: possible mojibake marker found", errors)
 
-        if question_type == "choice":
-            require(len(options) >= 2, f"{item_id}: choice questions need at least 2 options", errors)
+        if question_type in {"vocabulary", "grammar", "dialogue"}:
+            require(len(options) >= 2, f"{item_id}: choice-style questions need at least 2 options", errors)
         if review_state == "approved":
             require(item.get("source"), f"{item_id}: approved item needs source", errors)
 
         prompts.add(prompt)
+
+    approved_types = {
+        item.get("question", {}).get("type")
+        for item in items
+        if item.get("reviewState") == "approved"
+    }
+    require(
+        ALLOWED_TYPES.issubset(approved_types),
+        "approved question bank must cover all handoff question types",
+        errors,
+    )
 
 
 def validate_accounts(errors):

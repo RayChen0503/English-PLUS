@@ -28,7 +28,7 @@ struct DemoLoginView: View {
                 VStack(alignment: .leading, spacing: 12) {
                     Text("內測展示帳號")
                         .font(.headline)
-                    Text("先用展示流程進入，之後會接上正式帳號與同意流程。")
+                    Text("先確認身份與資料使用方式，再進入\(role.title)端。")
                         .foregroundStyle(.secondary)
                 }
                 .padding(16)

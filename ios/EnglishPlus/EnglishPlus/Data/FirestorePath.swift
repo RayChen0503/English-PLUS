@@ -7,6 +7,10 @@ enum FirestorePath {
         "users/\(segment(uid))"
     }
 
+    static func userConsent(uid: String, consentVersion: String) -> String {
+        "\(user(uid: uid))/consents/\(segment(consentVersion))"
+    }
+
     static func classDocument(classId: String) -> String {
         "classes/\(segment(classId))"
     }
@@ -21,6 +25,14 @@ enum FirestorePath {
 
     static func checkIn(classId: String, studentUid: String, dateKey: String) -> String {
         "\(student(classId: classId, studentUid: studentUid))/checkIns/\(segment(dateKey))"
+    }
+
+    static func studentConsent(classId: String, studentUid: String, consentVersion: String) -> String {
+        "\(student(classId: classId, studentUid: studentUid))/consents/\(segment(consentVersion))"
+    }
+
+    static func deletionRequest(classId: String, studentUid: String, requestId: String) -> String {
+        "\(student(classId: classId, studentUid: studentUid))/deletionRequests/\(segment(requestId))"
     }
 
     static func dailyMission(classId: String, studentUid: String, missionId: String) -> String {
@@ -61,6 +73,10 @@ enum FirestorePath {
 
     static func aiEvent(classId: String, eventId: String) -> String {
         "\(classDocument(classId: classId))/aiEvents/\(segment(eventId))"
+    }
+
+    static func privacyAuditLog(classId: String, eventId: String) -> String {
+        "\(classDocument(classId: classId))/privacyAuditLogs/\(segment(eventId))"
     }
 
     static func syncQueueItem(classId: String, syncItemId: String) -> String {

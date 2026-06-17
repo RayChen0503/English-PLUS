@@ -48,6 +48,23 @@ enum MessageVisibility: String, Codable {
     case staffOnly
 }
 
+enum DeletionRequestStatus: String, Codable {
+    case requested
+    case teacherReview
+    case adminReview
+    case completed
+    case denied
+}
+
+enum DeletionRequestScope: String, Codable {
+    case moodCheckIn
+    case supportMessage
+    case supportThread
+    case answerEvent
+    case studentProfile
+    case fullAccount
+}
+
 enum SupportMessageType: String, Codable {
     case studentRequest
     case aiSuggestion
@@ -86,6 +103,19 @@ struct FirestoreStudentDocument: Codable, Equatable {
     let lastActivityAt: Date?
     let riskLevel: RiskLevel
     let legacyAndroidId: String?
+}
+
+struct FirestoreConsentDocument: Codable, Equatable {
+    let version: String
+    let accepted: Bool
+    let acceptedAt: Date
+    let acceptedByUid: String
+    let actorRole: UserRole
+    let consentSource: ConsentSource
+    let schoolApprovalRef: String
+    let guardianConsentStatus: GuardianConsentStatus
+    let policyUrl: String
+    let categoriesAccepted: [PrivacyConsentCategory]
 }
 
 struct FirestoreCheckInDocument: Codable, Equatable {
@@ -215,4 +245,27 @@ struct FirestoreAiEventDocument: Codable, Equatable {
     let totalTokens: Int
     let source: String
     let createdAt: Date
+}
+
+struct FirestoreDeletionRequestDocument: Codable, Equatable {
+    let requestId: String
+    let requestedByUid: String
+    let studentUid: String
+    let scope: DeletionRequestScope
+    let targetPath: String?
+    let reason: String
+    let status: DeletionRequestStatus
+    let createdAt: Date
+    let reviewedByUid: String?
+    let reviewedAt: Date?
+}
+
+struct FirestorePrivacyAuditLogDocument: Codable, Equatable {
+    let eventId: String
+    let actorUid: String
+    let actorRole: UserRole
+    let action: String
+    let targetPath: String
+    let createdAt: Date
+    let summary: String
 }

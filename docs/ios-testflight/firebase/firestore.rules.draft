@@ -81,6 +81,14 @@ service cloud.firestore {
       allow update: if isSelf(uid)
         && !request.resource.data.diff(resource.data).affectedKeys().hasAny(["primaryRole"]);
       allow delete: if false;
+
+      match /consents/{consentVersion} {
+        allow read: if isSelf(uid);
+        allow create: if isSelf(uid)
+          && request.resource.data.acceptedByUid == request.auth.uid
+          && request.resource.data.accepted == true;
+        allow update, delete: if false;
+      }
     }
 
     match /classes/{classId} {
@@ -101,6 +109,24 @@ service cloud.firestore {
           allow read: if canReadStudentRecord(classId, studentUid);
           allow create: if isOwnerStudent(studentUid);
           allow update: if isOwnerStudent(studentUid) || isClassTeacher(classId);
+          allow delete: if false;
+        }
+
+        match /consents/{consentVersion} {
+          allow read: if canReadStudentRecord(classId, studentUid);
+          allow create: if isOwnerStudent(studentUid)
+            && request.resource.data.acceptedByUid == request.auth.uid
+            && request.resource.data.accepted == true;
+          allow update, delete: if false;
+        }
+
+        match /deletionRequests/{requestId} {
+          allow read: if isOwnerStudent(studentUid) || isClassTeacher(classId);
+          allow create: if isOwnerStudent(studentUid)
+            && request.resource.data.requestedByUid == request.auth.uid
+            && request.resource.data.studentUid == studentUid
+            && request.resource.data.status == "requested";
+          allow update: if isClassTeacher(classId);
           allow delete: if false;
         }
 
@@ -186,6 +212,21 @@ service cloud.firestore {
       match /reports/{reportId} {
         allow read, create, update: if isClassTeacher(classId);
         allow delete: if false;
+      }
+
+      match /aiUsage/{usageId} {
+        allow read: if isClassTeacher(classId) || isSelf(resource.data.uid);
+        allow write: if false;
+      }
+
+      match /aiEvents/{eventId} {
+        allow read: if isClassTeacher(classId) || isSelf(resource.data.uid);
+        allow write: if false;
+      }
+
+      match /privacyAuditLogs/{eventId} {
+        allow read: if isClassTeacher(classId);
+        allow write: if false;
       }
 
       match /syncQueue/{syncItemId} {

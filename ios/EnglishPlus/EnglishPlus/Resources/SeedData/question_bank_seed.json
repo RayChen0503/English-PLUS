@@ -13,7 +13,7 @@
       "updatedAt": "2026-06-15T00:00:00Z",
       "question": {
         "prompt": "He ___ a student.",
-        "type": "choice",
+        "type": "grammar",
         "options": ["am", "is", "are", "be"],
         "answer": "is",
         "acceptedAnswers": ["is"],
@@ -33,7 +33,7 @@
       "updatedAt": "2026-06-15T00:00:00Z",
       "question": {
         "prompt": "They ___ my friends.",
-        "type": "choice",
+        "type": "grammar",
         "options": ["is", "are", "am", "be"],
         "answer": "are",
         "acceptedAnswers": ["are"],
@@ -175,6 +175,46 @@
         "explanation": "if 子句用現在式 rains，主要子句才用 will。",
         "concept": "if 條件句與句子重組",
         "repairHint": "先排 If it rains tomorrow，再接 we will stay home。"
+      }
+    },
+    {
+      "id": "cap-style-0009",
+      "level": "A1",
+      "unit": "核心單字",
+      "skill": "校園與日常",
+      "source": "English+ seed expansion for iOS handoff round 5",
+      "reviewState": "approved",
+      "importBatchId": "ios-round-5-seed",
+      "updatedAt": "2026-06-18T00:00:00Z",
+      "question": {
+        "prompt": "Which word means 「圖書館」?",
+        "type": "vocabulary",
+        "options": ["library", "kitchen", "station", "market"],
+        "answer": "library",
+        "acceptedAnswers": ["library"],
+        "explanation": "library 是圖書館，常和 borrow books 一起出現。",
+        "concept": "校園地點單字",
+        "repairHint": "看到 book、borrow、read 時，可以先想到 library。"
+      }
+    },
+    {
+      "id": "cap-style-0010",
+      "level": "A2",
+      "unit": "情境對話",
+      "skill": "回應句選擇",
+      "source": "English+ seed expansion for iOS handoff round 5",
+      "reviewState": "approved",
+      "importBatchId": "ios-round-5-seed",
+      "updatedAt": "2026-06-18T00:00:00Z",
+      "question": {
+        "prompt": "情境對話：A: Could you help me carry these books? B: ___",
+        "type": "dialogue",
+        "options": ["Sure, no problem.", "It is sunny today.", "I am twelve years old.", "The book is red."],
+        "answer": "Sure, no problem.",
+        "acceptedAnswers": ["Sure, no problem.", "sure, no problem"],
+        "explanation": "對方請你幫忙時，Sure, no problem. 是自然的答覆。",
+        "concept": "請求協助的回應",
+        "repairHint": "先看 Could you help me，回覆要表示願不願意幫忙。"
       }
     }
   ]

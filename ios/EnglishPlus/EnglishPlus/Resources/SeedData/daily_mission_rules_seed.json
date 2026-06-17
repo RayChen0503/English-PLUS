@@ -13,5 +13,5 @@
     { "minMinutes": 6, "maxMinutes": 8, "questionGoal": 3 },
     { "minMinutes": 9, "maxMinutes": null, "questionGoal": 4 }
   ],
-  "defaultPreferredQuestionTypes": ["choice", "fillBlank"]
+  "defaultPreferredQuestionTypes": ["grammar", "fillBlank"]
 }

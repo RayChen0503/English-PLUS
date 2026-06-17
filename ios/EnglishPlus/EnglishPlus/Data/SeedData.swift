@@ -79,7 +79,7 @@ enum SeedData {
             updatedAt: fallbackDate,
             question: Question(
                 prompt: "He ___ a student.",
-                type: .choice,
+                type: .grammar,
                 options: ["am", "is", "are", "be"],
                 answer: "is",
                 acceptedAnswers: ["is"],
@@ -99,7 +99,7 @@ enum SeedData {
                 MissionGoalRule(minMinutes: 1, maxMinutes: 3, questionGoal: 1),
                 MissionGoalRule(minMinutes: 4, maxMinutes: 5, questionGoal: 2)
             ],
-            defaultPreferredQuestionTypes: [.choice, .fillBlank]
+            defaultPreferredQuestionTypes: [.grammar, .fillBlank]
         )
 
         return SeedDataSnapshot(

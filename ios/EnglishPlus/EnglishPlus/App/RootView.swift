@@ -10,6 +10,8 @@ struct RootView: View {
                 RoleSelectionView()
             case .demoLogin(let role):
                 DemoLoginView(role: role)
+            case .privacyConsent(let role):
+                ConsentView(role: role)
             case .home(let role):
                 switch role {
                 case .student:

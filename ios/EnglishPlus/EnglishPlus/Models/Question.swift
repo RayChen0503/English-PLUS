@@ -1,18 +1,22 @@
 import Foundation
 
 enum QuestionType: String, CaseIterable, Identifiable, Codable {
-    case choice
+    case vocabulary
+    case grammar
     case fillBlank
     case cloze
     case reading
     case translation
+    case dialogue
 
     var id: String { rawValue }
 
     var title: String {
         switch self {
-        case .choice:
-            return "選擇題"
+        case .vocabulary:
+            return "單字選擇"
+        case .grammar:
+            return "文法選擇"
         case .fillBlank:
             return "填空題"
         case .cloze:
@@ -21,6 +25,8 @@ enum QuestionType: String, CaseIterable, Identifiable, Codable {
             return "閱讀理解"
         case .translation:
             return "翻譯 / 句子重組"
+        case .dialogue:
+            return "情境對話"
         }
     }
 
@@ -28,8 +34,10 @@ enum QuestionType: String, CaseIterable, Identifiable, Codable {
         let container = try decoder.singleValueContainer()
         let value = try container.decode(String.self)
         switch value {
-        case "choice", "選擇題", "vocabulary", "grammar", "dialogue":
-            self = .choice
+        case "vocabulary", "單字選擇":
+            self = .vocabulary
+        case "choice", "grammar", "文法選擇", "選擇題":
+            self = .grammar
         case "fillBlank", "填空題":
             self = .fillBlank
         case "cloze", "克漏字":
@@ -38,6 +46,8 @@ enum QuestionType: String, CaseIterable, Identifiable, Codable {
             self = .reading
         case "translation", "翻譯/句子重組", "翻譯 / 句子重組":
             self = .translation
+        case "dialogue", "情境對話":
+            self = .dialogue
         default:
             throw DecodingError.dataCorruptedError(in: container, debugDescription: "Unknown question type: \(value)")
         }

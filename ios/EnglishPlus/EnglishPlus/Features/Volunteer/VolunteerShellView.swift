@@ -8,14 +8,12 @@ struct VolunteerShellView: View {
                     Label("接力", systemImage: "flag")
                 }
 
-            Text("等待陪伴")
-                .font(.title.bold())
+            VolunteerWaitingView()
                 .tabItem {
                     Label("學生", systemImage: "person.crop.circle.badge.questionmark")
                 }
 
-            Text("回覆紀錄")
-                .font(.title.bold())
+            VolunteerRecordsView()
                 .tabItem {
                     Label("紀錄", systemImage: "clock")
                 }

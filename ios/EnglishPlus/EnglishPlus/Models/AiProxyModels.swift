@@ -102,7 +102,9 @@ struct AiProxyResponse: Codable, Equatable {
 extension QuestionType {
     var aiProxyValue: String {
         switch self {
-        case .choice:
+        case .vocabulary:
+            return "vocabulary"
+        case .grammar:
             return "multipleChoice"
         case .fillBlank:
             return "fillBlank"
@@ -112,6 +114,8 @@ extension QuestionType {
             return "reading"
         case .translation:
             return "translation"
+        case .dialogue:
+            return "dialogue"
         }
     }
 }
