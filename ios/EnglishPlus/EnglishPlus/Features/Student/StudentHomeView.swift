@@ -2,7 +2,7 @@ import SwiftUI
 
 struct StudentHomeView: View {
     @EnvironmentObject private var appState: AppState
-    @EnvironmentObject private var learningRepository: MockLearningRepository
+    @EnvironmentObject private var learningRepository: LearningRepositoryStore
 
     @State private var moodScore = 3
     @State private var timeLevel = 3

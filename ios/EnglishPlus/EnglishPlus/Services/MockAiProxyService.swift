@@ -81,7 +81,7 @@ struct MockAiProxyService: AiProxyService {
             qualityMode: request.qualityMode,
             modelUsed: "local-seed-fallback",
             output: AiProxyOutput(
-                summary: "AI 代理尚未連線，先保留安全的本機支援流程。",
+                summary: "先提供一個安全、簡短的下一步建議。",
                 supportLevel: "humanSupport",
                 recommendedNextAction: "請老師或志工確認下一步。"
             ),

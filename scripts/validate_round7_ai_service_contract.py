@@ -92,6 +92,9 @@ def validate_high_level_ios_service(errors):
         "CallableResponseEnvelope",
         "idTokenProvider",
         "fallbackService",
+        "timeoutInterval",
+        "AI_PROXY_TIMEOUT",
+        "AI_PROXY_INVALID_RESPONSE",
     ]:
         require(token in remote, f"RemoteAIService missing {token}", errors)
 
@@ -107,7 +110,11 @@ def validate_high_level_ios_service(errors):
     ]:
         require(token in app_state, f"AppState missing {token}", errors)
 
-    require("aiService: MockAIService()" in app, "EnglishPlusApp must inject MockAIService by default", errors)
+    require(
+        "EnglishPlusServiceFactory.makeServices()" in app,
+        "EnglishPlusApp must use EnglishPlusServiceFactory for mock/real AI switching",
+        errors,
+    )
     for token in ["AIService.swift", "MockAIService.swift", "RemoteAIService.swift"]:
         require(token in project, f"Xcode project missing {token}", errors)
 

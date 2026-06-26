@@ -2,7 +2,7 @@ import SwiftUI
 
 struct SupportView: View {
     @EnvironmentObject private var appState: AppState
-    @EnvironmentObject private var learningRepository: MockLearningRepository
+    @EnvironmentObject private var learningRepository: LearningRepositoryStore
 
     private let supportOptions = SeedData.supportOptions
 

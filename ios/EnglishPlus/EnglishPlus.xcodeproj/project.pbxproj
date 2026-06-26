@@ -45,9 +45,14 @@
 		100000000000000000000137 /* ConsentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 100000000000000000000039 /* ConsentView.swift */; };
 		100000000000000000000138 /* LearningModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = 100000000000000000000040 /* LearningModels.swift */; };
 		100000000000000000000139 /* MockLearningRepository.swift in Sources */ = {isa = PBXBuildFile; fileRef = 100000000000000000000041 /* MockLearningRepository.swift */; };
-		100000000000000000000140 /* AIService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 100000000000000000000042 /* AIService.swift */; };
-		100000000000000000000141 /* MockAIService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 100000000000000000000043 /* MockAIService.swift */; };
-		100000000000000000000142 /* RemoteAIService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 100000000000000000000044 /* RemoteAIService.swift */; };
+			100000000000000000000140 /* AIService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 100000000000000000000042 /* AIService.swift */; };
+			100000000000000000000141 /* MockAIService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 100000000000000000000043 /* MockAIService.swift */; };
+			100000000000000000000142 /* RemoteAIService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 100000000000000000000044 /* RemoteAIService.swift */; };
+			100000000000000000000143 /* FirebaseAppConfigurator.swift in Sources */ = {isa = PBXBuildFile; fileRef = 100000000000000000000045 /* FirebaseAppConfigurator.swift */; };
+			100000000000000000000144 /* FirebaseAuthService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 100000000000000000000046 /* FirebaseAuthService.swift */; };
+			100000000000000000000145 /* FirebaseFirestoreService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 100000000000000000000047 /* FirebaseFirestoreService.swift */; };
+			100000000000000000000146 /* LearningRepositoryStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 100000000000000000000048 /* LearningRepositoryStore.swift */; };
+			100000000000000000000147 /* FirebaseLearningRepository.swift in Sources */ = {isa = PBXBuildFile; fileRef = 100000000000000000000049 /* FirebaseLearningRepository.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -91,9 +96,14 @@
 		100000000000000000000039 /* ConsentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConsentView.swift; sourceTree = "<group>"; };
 		100000000000000000000040 /* LearningModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LearningModels.swift; sourceTree = "<group>"; };
 		100000000000000000000041 /* MockLearningRepository.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MockLearningRepository.swift; sourceTree = "<group>"; };
-		100000000000000000000042 /* AIService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AIService.swift; sourceTree = "<group>"; };
-		100000000000000000000043 /* MockAIService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MockAIService.swift; sourceTree = "<group>"; };
-		100000000000000000000044 /* RemoteAIService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RemoteAIService.swift; sourceTree = "<group>"; };
+			100000000000000000000042 /* AIService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AIService.swift; sourceTree = "<group>"; };
+			100000000000000000000043 /* MockAIService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MockAIService.swift; sourceTree = "<group>"; };
+			100000000000000000000044 /* RemoteAIService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RemoteAIService.swift; sourceTree = "<group>"; };
+			100000000000000000000045 /* FirebaseAppConfigurator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FirebaseAppConfigurator.swift; sourceTree = "<group>"; };
+			100000000000000000000046 /* FirebaseAuthService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FirebaseAuthService.swift; sourceTree = "<group>"; };
+			100000000000000000000047 /* FirebaseFirestoreService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FirebaseFirestoreService.swift; sourceTree = "<group>"; };
+			100000000000000000000048 /* LearningRepositoryStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LearningRepositoryStore.swift; sourceTree = "<group>"; };
+			100000000000000000000049 /* FirebaseLearningRepository.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FirebaseLearningRepository.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -177,17 +187,22 @@
 		100000000000000000000307 /* Services */ = {
 			isa = PBXGroup;
 			children = (
-				100000000000000000000009 /* AuthService.swift */,
-				100000000000000000000010 /* MockAuthService.swift */,
-				100000000000000000000034 /* AiProxyService.swift */,
-				100000000000000000000035 /* MockAiProxyService.swift */,
-				100000000000000000000042 /* AIService.swift */,
+					100000000000000000000009 /* AuthService.swift */,
+					100000000000000000000010 /* MockAuthService.swift */,
+					100000000000000000000046 /* FirebaseAuthService.swift */,
+					100000000000000000000045 /* FirebaseAppConfigurator.swift */,
+					100000000000000000000034 /* AiProxyService.swift */,
+					100000000000000000000035 /* MockAiProxyService.swift */,
+					100000000000000000000042 /* AIService.swift */,
 				100000000000000000000043 /* MockAIService.swift */,
-				100000000000000000000044 /* RemoteAIService.swift */,
-				100000000000000000000037 /* FirestoreService.swift */,
-				100000000000000000000038 /* MockFirestoreService.swift */,
-				100000000000000000000041 /* MockLearningRepository.swift */,
-			);
+					100000000000000000000044 /* RemoteAIService.swift */,
+					100000000000000000000037 /* FirestoreService.swift */,
+					100000000000000000000038 /* MockFirestoreService.swift */,
+					100000000000000000000047 /* FirebaseFirestoreService.swift */,
+					100000000000000000000048 /* LearningRepositoryStore.swift */,
+					100000000000000000000041 /* MockLearningRepository.swift */,
+					100000000000000000000049 /* FirebaseLearningRepository.swift */,
+				);
 			path = Services;
 			sourceTree = "<group>";
 		};
@@ -374,14 +389,19 @@
 				100000000000000000000131 /* AiProxyModels.swift in Sources */,
 				100000000000000000000132 /* AiProxyService.swift in Sources */,
 				100000000000000000000133 /* MockAiProxyService.swift in Sources */,
-				100000000000000000000140 /* AIService.swift in Sources */,
-				100000000000000000000141 /* MockAIService.swift in Sources */,
-				100000000000000000000142 /* RemoteAIService.swift in Sources */,
-				100000000000000000000134 /* PrivacyConsent.swift in Sources */,
-				100000000000000000000138 /* LearningModels.swift in Sources */,
-				100000000000000000000135 /* FirestoreService.swift in Sources */,
-				100000000000000000000136 /* MockFirestoreService.swift in Sources */,
-				100000000000000000000139 /* MockLearningRepository.swift in Sources */,
+					100000000000000000000140 /* AIService.swift in Sources */,
+					100000000000000000000141 /* MockAIService.swift in Sources */,
+					100000000000000000000142 /* RemoteAIService.swift in Sources */,
+					100000000000000000000143 /* FirebaseAppConfigurator.swift in Sources */,
+					100000000000000000000144 /* FirebaseAuthService.swift in Sources */,
+					100000000000000000000134 /* PrivacyConsent.swift in Sources */,
+					100000000000000000000138 /* LearningModels.swift in Sources */,
+					100000000000000000000135 /* FirestoreService.swift in Sources */,
+					100000000000000000000136 /* MockFirestoreService.swift in Sources */,
+					100000000000000000000145 /* FirebaseFirestoreService.swift in Sources */,
+					100000000000000000000146 /* LearningRepositoryStore.swift in Sources */,
+					100000000000000000000139 /* MockLearningRepository.swift in Sources */,
+					100000000000000000000147 /* FirebaseLearningRepository.swift in Sources */,
 				100000000000000000000112 /* RoleSelectionView.swift in Sources */,
 				100000000000000000000113 /* DemoLoginView.swift in Sources */,
 				100000000000000000000137 /* ConsentView.swift in Sources */,

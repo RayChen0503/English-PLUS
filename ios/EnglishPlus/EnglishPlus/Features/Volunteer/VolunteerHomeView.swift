@@ -1,7 +1,7 @@
 import SwiftUI
 
 struct VolunteerHomeView: View {
-    @EnvironmentObject private var learningRepository: MockLearningRepository
+    @EnvironmentObject private var learningRepository: LearningRepositoryStore
 
     var body: some View {
         NavigationStack {
@@ -38,7 +38,7 @@ struct VolunteerHomeView: View {
 }
 
 struct VolunteerWaitingView: View {
-    @EnvironmentObject private var learningRepository: MockLearningRepository
+    @EnvironmentObject private var learningRepository: LearningRepositoryStore
 
     var body: some View {
         NavigationStack {
@@ -62,7 +62,7 @@ struct VolunteerWaitingView: View {
 }
 
 struct VolunteerRecordsView: View {
-    @EnvironmentObject private var learningRepository: MockLearningRepository
+    @EnvironmentObject private var learningRepository: LearningRepositoryStore
 
     var body: some View {
         NavigationStack {
@@ -91,7 +91,7 @@ struct VolunteerRecordsView: View {
 }
 
 struct VolunteerTaskCard: View {
-    @EnvironmentObject private var learningRepository: MockLearningRepository
+    @EnvironmentObject private var learningRepository: LearningRepositoryStore
     let request: StudentSupportRequest
 
     @State private var replyDraft = ""

@@ -1,7 +1,7 @@
 import SwiftUI
 
 struct PracticeCenterView: View {
-    @EnvironmentObject private var learningRepository: MockLearningRepository
+    @EnvironmentObject private var learningRepository: LearningRepositoryStore
 
     private let questionBankItems = SeedData.approvedQuestionBankItems
 

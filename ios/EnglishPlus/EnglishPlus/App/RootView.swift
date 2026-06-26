@@ -2,6 +2,7 @@ import SwiftUI
 
 struct RootView: View {
     @EnvironmentObject private var appState: AppState
+    @EnvironmentObject private var learningRepository: LearningRepositoryStore
 
     var body: some View {
         Group {
@@ -23,5 +24,22 @@ struct RootView: View {
                 }
             }
         }
+        .onAppear(perform: startRealtimeSyncIfNeeded)
+        .onChange(of: appState.route) { _, _ in
+            startRealtimeSyncIfNeeded()
+        }
+    }
+
+    private func startRealtimeSyncIfNeeded() {
+        guard case .home = appState.route,
+              let currentProfile = appState.currentProfile
+        else {
+            return
+        }
+
+        learningRepository.startRealtimeSync(
+            classId: currentProfile.classId,
+            user: appState.currentUser
+        )
     }
 }

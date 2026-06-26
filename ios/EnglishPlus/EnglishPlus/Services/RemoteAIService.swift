@@ -4,6 +4,23 @@ enum RemoteAIServiceError: Error {
     case missingAuthenticatedIdToken
     case invalidFunctionResponse
     case functionReturnedStatus(Int)
+    case taskTypeMismatch
+    case timedOut
+
+    var fallbackCode: String {
+        switch self {
+        case .missingAuthenticatedIdToken:
+            return "AI_PROXY_MISSING_AUTH"
+        case .invalidFunctionResponse:
+            return "AI_PROXY_INVALID_RESPONSE"
+        case .functionReturnedStatus(let status):
+            return "AI_PROXY_HTTP_\(status)"
+        case .taskTypeMismatch:
+            return "AI_PROXY_TASK_MISMATCH"
+        case .timedOut:
+            return "AI_PROXY_TIMEOUT"
+        }
+    }
 }
 
 protocol AiProxyTransport {
@@ -84,8 +101,22 @@ struct RemoteAIService: AIService {
         do {
             return try await transport.call(request, currentUser: currentUser)
         } catch {
-            return await fallback()
+            var fallbackResponse = await fallback()
+            fallbackResponse.ok = false
+            fallbackResponse.fallbackUsed = true
+            fallbackResponse.errorCode = fallbackCode(for: error)
+            return fallbackResponse
         }
+    }
+
+    private func fallbackCode(for error: Error) -> String {
+        if let remoteError = error as? RemoteAIServiceError {
+            return remoteError.fallbackCode
+        }
+        if let urlError = error as? URLError, urlError.code == .timedOut {
+            return RemoteAIServiceError.timedOut.fallbackCode
+        }
+        return "AI_PROXY_UNAVAILABLE"
     }
 }
 
@@ -97,6 +128,7 @@ struct FirebaseCallableAiProxyTransport: AiProxyTransport {
     private let session: URLSession
     private let encoder: JSONEncoder
     private let decoder: JSONDecoder
+    private let timeoutInterval: TimeInterval
 
     init(
         projectId: String = FirebaseBackendConfig.projectId,
@@ -105,13 +137,15 @@ struct FirebaseCallableAiProxyTransport: AiProxyTransport {
         idTokenProvider: @escaping IdTokenProvider = { nil },
         session: URLSession = .shared,
         encoder: JSONEncoder = JSONEncoder(),
-        decoder: JSONDecoder = JSONDecoder()
+        decoder: JSONDecoder = JSONDecoder(),
+        timeoutInterval: TimeInterval = 15
     ) {
         endpoint = URL(string: "https://\(region)-\(projectId).cloudfunctions.net/\(callableName)")!
         self.idTokenProvider = idTokenProvider
         self.session = session
         self.encoder = encoder
         self.decoder = decoder
+        self.timeoutInterval = timeoutInterval
     }
 
     func call(_ request: AiProxyRequest, currentUser: DemoUser?) async throws -> AiProxyResponse {
@@ -121,11 +155,20 @@ struct FirebaseCallableAiProxyTransport: AiProxyTransport {
 
         var urlRequest = URLRequest(url: endpoint)
         urlRequest.httpMethod = "POST"
+        urlRequest.timeoutInterval = timeoutInterval
         urlRequest.setValue("application/json", forHTTPHeaderField: "Content-Type")
         urlRequest.setValue("Bearer \(idToken)", forHTTPHeaderField: "Authorization")
         urlRequest.httpBody = try encoder.encode(CallableRequestEnvelope(data: request))
 
-        let (data, response) = try await session.data(for: urlRequest)
+        let (data, response): (Data, URLResponse)
+        do {
+            (data, response) = try await session.data(for: urlRequest)
+        } catch {
+            if let urlError = error as? URLError, urlError.code == .timedOut {
+                throw RemoteAIServiceError.timedOut
+            }
+            throw error
+        }
         guard let httpResponse = response as? HTTPURLResponse else {
             throw RemoteAIServiceError.invalidFunctionResponse
         }
@@ -133,9 +176,17 @@ struct FirebaseCallableAiProxyTransport: AiProxyTransport {
             throw RemoteAIServiceError.functionReturnedStatus(httpResponse.statusCode)
         }
 
-        let envelope = try decoder.decode(CallableResponseEnvelope.self, from: data)
+        let envelope: CallableResponseEnvelope
+        do {
+            envelope = try decoder.decode(CallableResponseEnvelope.self, from: data)
+        } catch {
+            throw RemoteAIServiceError.invalidFunctionResponse
+        }
         guard let result = envelope.result ?? envelope.data else {
             throw RemoteAIServiceError.invalidFunctionResponse
+        }
+        guard result.taskType == request.taskType else {
+            throw RemoteAIServiceError.taskTypeMismatch
         }
         return result
     }

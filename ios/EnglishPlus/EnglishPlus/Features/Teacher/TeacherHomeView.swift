@@ -1,7 +1,7 @@
 import SwiftUI
 
 struct TeacherHomeView: View {
-    @EnvironmentObject private var learningRepository: MockLearningRepository
+    @EnvironmentObject private var learningRepository: LearningRepositoryStore
 
     var body: some View {
         NavigationStack {
@@ -34,7 +34,7 @@ struct TeacherHomeView: View {
 }
 
 struct TeacherStudentsView: View {
-    @EnvironmentObject private var learningRepository: MockLearningRepository
+    @EnvironmentObject private var learningRepository: LearningRepositoryStore
 
     var body: some View {
         NavigationStack {
@@ -69,7 +69,7 @@ struct TeacherStudentsView: View {
 }
 
 struct TeacherRequestsView: View {
-    @EnvironmentObject private var learningRepository: MockLearningRepository
+    @EnvironmentObject private var learningRepository: LearningRepositoryStore
 
     var body: some View {
         NavigationStack {
@@ -93,7 +93,7 @@ struct TeacherRequestsView: View {
 }
 
 private struct TeacherStatusStrip: View {
-    @EnvironmentObject private var learningRepository: MockLearningRepository
+    @EnvironmentObject private var learningRepository: LearningRepositoryStore
 
     var body: some View {
         HStack(spacing: 10) {
@@ -138,7 +138,7 @@ private struct TeacherStatusTile: View {
 }
 
 struct TeacherRequestCard: View {
-    @EnvironmentObject private var learningRepository: MockLearningRepository
+    @EnvironmentObject private var learningRepository: LearningRepositoryStore
     let request: StudentSupportRequest
 
     @State private var replyDraft = ""
@@ -195,7 +195,7 @@ struct TeacherRequestCard: View {
 }
 
 private struct TeacherClassSummary: View {
-    @EnvironmentObject private var learningRepository: MockLearningRepository
+    @EnvironmentObject private var learningRepository: LearningRepositoryStore
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {

@@ -54,29 +54,31 @@ The Android app remains the working classroom prototype. The iOS work should sta
    Implementation check for TestFlight signing/team/bundle preparation, archive/upload boundary, tester information, tester email flow, and internal beta notes.
 19. `windows-handoff-rounds-1-8-final-audit.md`
    Final audit against the Windows handoff log's Round 1-8 definitions, including known external Apple account blockers.
-20. `privacy/consent-copy-draft.md`
+20. `firebase-sync-ai-readiness-check.md`
+   Post-Round-8 readiness check for Firebase service switching, Firestore sync repository boundaries, AI proxy fallback behavior, and remaining manual inputs before real backend connection.
+21. `privacy/consent-copy-draft.md`
    Student, teacher, and volunteer consent copy drafts for the future iOS app.
-21. `privacy/data-retention-deletion-playbook.md`
+22. `privacy/data-retention-deletion-playbook.md`
    Retention, deletion, de-identification, and privacy audit workflow draft.
-22. `privacy/app-privacy-label-draft.md`
+23. `privacy/app-privacy-label-draft.md`
    App Store Connect / TestFlight privacy label preparation draft.
-23. `round-8-xcode-development-handoff.md`
+24. `round-8-xcode-development-handoff.md`
    Detailed Mac/Xcode handoff guide for the teammate building the SwiftUI iOS prototype with GitHub Desktop, main branch workflow, Firebase setup path, and first local prototype scope.
-24. `testflight/app-store-connect-test-info.md`
+25. `testflight/app-store-connect-test-info.md`
    App Store Connect setup notes, internal test groups, tester email collection fields, and beta review notes.
-25. `testflight/tester-email-template.md`
+26. `testflight/tester-email-template.md`
    Traditional Chinese email template for inviting internal TestFlight testers and collecting useful feedback.
-26. `testflight/internal-build-release-notes.md`
+27. `testflight/internal-build-release-notes.md`
    Internal beta build notes for `1.0 (1)`, including test focus and known mock/backend boundaries.
-27. `xcode-handoff/github-desktop-main-workflow.md`
+28. `xcode-handoff/github-desktop-main-workflow.md`
    Step-by-step GitHub Desktop workflow for cloning, committing, pushing, and avoiding fork/conflict mistakes on `main`.
-28. `xcode-handoff/firebase-ios-setup-for-teammate.md`
+29. `xcode-handoff/firebase-ios-setup-for-teammate.md`
    Firebase iOS setup guide for `tw.edu.englishplus`, including `GoogleService-Info.plist` and Swift Package Manager steps.
-29. `xcode-handoff/swiftui-starter-map.md`
+30. `xcode-handoff/swiftui-starter-map.md`
    Compact SwiftUI file/screen/component map for the first iOS build.
-30. `handoff/EnglishPlus_iOS_Mac_Teammate_Handoff.pdf`
+31. `handoff/EnglishPlus_iOS_Mac_Teammate_Handoff.pdf`
    Polished PDF handoff manual for the Mac teammate, covering current status, how to read the migration docs, Xcode steps, GitHub Desktop workflow, Firebase setup path, and TestFlight timing.
-31. `handoff/EnglishPlus_iOS_Mac_Teammate_Handoff.docx`
+32. `handoff/EnglishPlus_iOS_Mac_Teammate_Handoff.docx`
    Editable source version of the teammate handoff manual.
 
 The Windows handoff log's eight rounds are now represented in this repo.

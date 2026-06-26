@@ -2,12 +2,22 @@ import SwiftUI
 
 @main
 struct EnglishPlusApp: App {
-    @StateObject private var appState = AppState(
-        authService: MockAuthService(),
-        firestoreService: MockFirestoreService(),
-        aiService: MockAIService()
-    )
-    @StateObject private var learningRepository = MockLearningRepository()
+    @StateObject private var appState: AppState
+    @StateObject private var learningRepository: LearningRepositoryStore
+
+    init() {
+        let services = EnglishPlusServiceFactory.makeServices()
+        _appState = StateObject(
+            wrappedValue: AppState(
+                authService: services.authService,
+                firestoreService: services.firestoreService,
+                aiService: services.aiService
+            )
+        )
+        _learningRepository = StateObject(
+            wrappedValue: LearningRepositoryStore(backend: services.learningBackend)
+        )
+    }
 
     var body: some Scene {
         WindowGroup {
