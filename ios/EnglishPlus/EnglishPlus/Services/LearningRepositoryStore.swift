@@ -189,6 +189,63 @@ final class LearningRepositoryStore: ObservableObject {
         }
     }
 
+    var classroomReportExport: ClassroomReportExport {
+        let metrics = staffDashboardMetrics
+        let priorityRows = teacherQueue.prefix(5).map { request in
+            ClassroomReportStudentRow(
+                id: request.id,
+                studentName: request.studentName,
+                classCode: request.classCode,
+                priorityText: request.priority.uiTitle,
+                statusText: request.status.uiTitle,
+                summary: request.studentMessage
+            )
+        }
+        let questionRows = questionBankOverview.map { overview in
+            ClassroomReportQuestionBankRow(
+                id: overview.id,
+                typeTitle: overview.type.title,
+                totalCount: overview.totalCount,
+                levelSummary: overview.levelSummary
+            )
+        }
+
+        return ClassroomReportExport(
+            title: "English+ 班級週報",
+            classCode: priorityRows.first?.classCode ?? FirebaseBackendConfig.firstClassId,
+            generatedAtText: Self.teacherReportDateFormatter.string(from: Date()),
+            metrics: [
+                ClassroomReportMetric(
+                    id: "students",
+                    label: "追蹤學生",
+                    value: "\(metrics.studentCount)",
+                    detail: "位"
+                ),
+                ClassroomReportMetric(
+                    id: "high-risk",
+                    label: "優先關懷",
+                    value: "\(metrics.highRiskCount)",
+                    detail: "位"
+                ),
+                ClassroomReportMetric(
+                    id: "waiting-help",
+                    label: "待回應求助",
+                    value: "\(metrics.waitingHelpCount)",
+                    detail: "件"
+                ),
+                ClassroomReportMetric(
+                    id: "average-mood",
+                    label: "平均心情",
+                    value: metrics.averageMoodText,
+                    detail: ""
+                ),
+            ],
+            priorityStudents: priorityRows,
+            questionBankRows: questionRows,
+            recommendedActions: recommendedReportActions
+        )
+    }
+
     var visibleVolunteerReplies: [SupportReply] {
         supportRequests
             .flatMap(\.replies)
@@ -295,6 +352,31 @@ final class LearningRepositoryStore: ObservableObject {
             return 3
         }
     }
+
+    private var recommendedReportActions: [String] {
+        var actions: [String] = []
+        if staffDashboardMetrics.waitingHelpCount > 0 {
+            actions.append("先回應待處理求助，讓學生知道有人接住。")
+        }
+        if staffDashboardMetrics.highRiskCount > 0 {
+            actions.append("高風險學生先安排短回覆或志工接力，不急著增加題量。")
+        }
+        if visibleVolunteerReplies.isEmpty {
+            actions.append("可請志工先使用陪伴腳本，補上學生看得到的鼓勵。")
+        } else {
+            actions.append("檢查志工回覆是否能被學生理解，必要時補一則老師總結。")
+        }
+        actions.append("下次任務優先從錯題題型與閱讀卡點挑選，不用用排名壓力推進。")
+        return actions
+    }
+
+    private static let teacherReportDateFormatter: DateFormatter = {
+        let formatter = DateFormatter()
+        formatter.calendar = Calendar(identifier: .gregorian)
+        formatter.locale = Locale(identifier: "zh_Hant_TW")
+        formatter.dateFormat = "yyyy/MM/dd HH:mm"
+        return formatter
+    }()
 }
 
 extension MockLearningRepository: LearningRepositoryBackend {

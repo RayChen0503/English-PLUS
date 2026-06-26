@@ -128,6 +128,94 @@ struct QuestionBankTypeOverview: Identifiable, Equatable {
     }
 }
 
+struct ClassroomReportExport: Equatable {
+    let title: String
+    let classCode: String
+    let generatedAtText: String
+    let metrics: [ClassroomReportMetric]
+    let priorityStudents: [ClassroomReportStudentRow]
+    let questionBankRows: [ClassroomReportQuestionBankRow]
+    let recommendedActions: [String]
+
+    var shareText: String {
+        let metricLines = metrics.map { "- \($0.label): \($0.value) \($0.detail)" }
+        let studentLines = priorityStudents.isEmpty
+            ? ["- 目前沒有待回應學生。"]
+            : priorityStudents.map { "- \($0.studentName): \($0.priorityText)｜\($0.summary)" }
+        let questionLines = questionBankRows.map { "- \($0.typeTitle): \($0.totalCount) 題｜\($0.levelSummary)" }
+        let actionLines = recommendedActions.map { "- \($0)" }
+
+        return ([
+            "# \(title)",
+            "班級: \(classCode)",
+            "產生時間: \(generatedAtText)",
+            "",
+            "## 班級狀態",
+        ] + metricLines + [
+            "",
+            "## 優先學生",
+        ] + studentLines + [
+            "",
+            "## 題庫狀態",
+        ] + questionLines + [
+            "",
+            "## 建議下一步",
+        ] + actionLines).joined(separator: "\n")
+    }
+
+    var htmlBody: String {
+        """
+        <html>
+        <head>
+          <meta charset="utf-8">
+          <title>\(title)</title>
+          <style>
+            body { font-family: -apple-system, BlinkMacSystemFont, sans-serif; line-height: 1.6; color: #183047; padding: 24px; }
+            h1 { color: #143B5B; }
+            h2 { margin-top: 28px; color: #1D7D7A; }
+            li { margin-bottom: 8px; }
+          </style>
+        </head>
+        <body>
+          <h1>\(title)</h1>
+          <p>班級：\(classCode)<br>產生時間：\(generatedAtText)</p>
+          <h2>班級狀態</h2>
+          <ul>\(metrics.map { "<li>\($0.label): \($0.value) \($0.detail)</li>" }.joined())</ul>
+          <h2>優先學生</h2>
+          <ul>\(priorityStudents.isEmpty ? "<li>目前沒有待回應學生。</li>" : priorityStudents.map { "<li>\($0.studentName): \($0.priorityText)｜\($0.summary)</li>" }.joined())</ul>
+          <h2>題庫狀態</h2>
+          <ul>\(questionBankRows.map { "<li>\($0.typeTitle): \($0.totalCount) 題｜\($0.levelSummary)</li>" }.joined())</ul>
+          <h2>建議下一步</h2>
+          <ul>\(recommendedActions.map { "<li>\($0)</li>" }.joined())</ul>
+        </body>
+        </html>
+        """
+    }
+}
+
+struct ClassroomReportMetric: Identifiable, Equatable {
+    let id: String
+    let label: String
+    let value: String
+    let detail: String
+}
+
+struct ClassroomReportStudentRow: Identifiable, Equatable {
+    let id: String
+    let studentName: String
+    let classCode: String
+    let priorityText: String
+    let statusText: String
+    let summary: String
+}
+
+struct ClassroomReportQuestionBankRow: Identifiable, Equatable {
+    let id: String
+    let typeTitle: String
+    let totalCount: Int
+    let levelSummary: String
+}
+
 struct LocalLearningSnapshot: Codable, Equatable {
     let currentCheckIn: MoodCheckIn?
     let currentMission: DailyMission?

@@ -104,6 +104,8 @@ struct TeacherReportView: View {
     @EnvironmentObject private var learningRepository: LearningRepositoryStore
 
     var body: some View {
+        let report = learningRepository.classroomReportExport
+
         NavigationStack {
             ZStack {
                 EPTheme.background.ignoresSafeArea()
@@ -117,37 +119,195 @@ struct TeacherReportView: View {
                             .font(.subheadline)
                             .foregroundStyle(.secondary)
 
-                        TeacherReportSignalCard(
-                            title: "本週支持重點",
-                            message: "先處理 \(learningRepository.staffDashboardMetrics.waitingHelpCount) 件待回應求助，再看高風險學生是否需要志工接力。",
-                            systemImage: "person.crop.circle.badge.exclamationmark",
-                            tint: EPTheme.warning
-                        )
+                        TeacherReportMetricGrid(report: report)
+                        TeacherReportPrioritySection(report: report)
+                        TeacherReportQuestionBankSection(report: report)
+                        TeacherReportActionList(report: report)
 
-                        TeacherReportSignalCard(
-                            title: "題庫與任務",
-                            message: "目前可用 \(learningRepository.staffDashboardMetrics.questionCount) 題，題型已分成選擇、填空、克漏字、閱讀、翻譯與對話。",
-                            systemImage: "books.vertical",
-                            tint: EPTheme.primary
-                        )
-
-                        TeacherReportSignalCard(
-                            title: "給學生看的回饋",
-                            message: "你不是沒有進步，而是正在把問題縮小。今天能完成一個小關卡，就是英文斷點被修復的一步。",
-                            systemImage: "sparkles",
-                            tint: EPTheme.support
-                        )
-
-                        Button("分享摘要") {}
+                        ShareLink(item: report.shareText) {
+                            Label("分享週報", systemImage: "square.and.arrow.up")
+                        }
                             .buttonStyle(PrimaryActionButtonStyle())
-                            .disabled(true)
-                            .opacity(0.55)
+
+                        TeacherReportPreviewCard(report: report)
                     }
                     .padding(EPTheme.pagePadding)
                 }
             }
             .navigationTitle("報告")
         }
+    }
+}
+
+private struct TeacherReportMetricGrid: View {
+    let report: ClassroomReportExport
+
+    private let columns = [
+        GridItem(.flexible(), spacing: 10),
+        GridItem(.flexible(), spacing: 10),
+    ]
+
+    var body: some View {
+        LazyVGrid(columns: columns, spacing: 10) {
+            ForEach(report.metrics) { metric in
+                TeacherReportMetricTile(metric: metric)
+            }
+        }
+    }
+}
+
+private struct TeacherReportMetricTile: View {
+    let metric: ClassroomReportMetric
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text(metric.label)
+                .font(.caption)
+                .foregroundStyle(.secondary)
+            HStack(alignment: .firstTextBaseline, spacing: 4) {
+                Text(metric.value)
+                    .font(.title2.bold())
+                    .foregroundStyle(EPTheme.ink)
+                    .monospacedDigit()
+                Text(metric.detail)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+        }
+        .padding(14)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(.white)
+        .clipShape(RoundedRectangle(cornerRadius: EPTheme.cardRadius))
+    }
+}
+
+private struct TeacherReportPrioritySection: View {
+    let report: ClassroomReportExport
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text("優先學生")
+                .font(.headline)
+                .foregroundStyle(EPTheme.ink)
+
+            if report.priorityStudents.isEmpty {
+                Text("目前沒有待回應學生，可以先回顧本週已完成的支持紀錄。")
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+            } else {
+                ForEach(report.priorityStudents) { row in
+                    VStack(alignment: .leading, spacing: 6) {
+                        HStack {
+                            Text(row.studentName)
+                                .font(.subheadline.bold())
+                            Spacer()
+                            Text(row.priorityText)
+                                .font(.caption.bold())
+                                .foregroundStyle(row.priorityText == RiskLevel.high.uiTitle ? EPTheme.warning : EPTheme.support)
+                        }
+                        Text(row.summary)
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                    .padding(12)
+                    .background(Color(.systemGray6))
+                    .clipShape(RoundedRectangle(cornerRadius: EPTheme.cardRadius))
+                }
+            }
+        }
+        .padding(16)
+        .background(.white)
+        .clipShape(RoundedRectangle(cornerRadius: EPTheme.cardRadius))
+    }
+}
+
+private struct TeacherReportQuestionBankSection: View {
+    let report: ClassroomReportExport
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text("題庫狀態")
+                .font(.headline)
+                .foregroundStyle(EPTheme.ink)
+
+            ForEach(report.questionBankRows.prefix(4)) { row in
+                HStack(alignment: .top) {
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text(row.typeTitle)
+                            .font(.subheadline.bold())
+                        Text(row.levelSummary)
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                    Spacer()
+                    Text("\(row.totalCount) 題")
+                        .font(.caption.bold())
+                        .foregroundStyle(EPTheme.primary)
+                        .padding(.horizontal, 10)
+                        .padding(.vertical, 6)
+                        .background(EPTheme.primary.opacity(0.08))
+                        .clipShape(Capsule())
+                }
+            }
+        }
+        .padding(16)
+        .background(.white)
+        .clipShape(RoundedRectangle(cornerRadius: EPTheme.cardRadius))
+    }
+}
+
+private struct TeacherReportActionList: View {
+    let report: ClassroomReportExport
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text("建議下一步")
+                .font(.headline)
+                .foregroundStyle(EPTheme.ink)
+
+            ForEach(Array(report.recommendedActions.enumerated()), id: \.offset) { index, action in
+                HStack(alignment: .top, spacing: 10) {
+                    Text("\(index + 1)")
+                        .font(.caption.bold())
+                        .foregroundStyle(.white)
+                        .frame(width: 24, height: 24)
+                        .background(EPTheme.primary)
+                        .clipShape(Circle())
+                    Text(action)
+                        .font(.subheadline)
+                        .foregroundStyle(EPTheme.ink)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+            }
+        }
+        .padding(16)
+        .background(.white)
+        .clipShape(RoundedRectangle(cornerRadius: EPTheme.cardRadius))
+    }
+}
+
+private struct TeacherReportPreviewCard: View {
+    let report: ClassroomReportExport
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Label("報告預覽", systemImage: "doc.plaintext")
+                .font(.headline)
+                .foregroundStyle(EPTheme.ink)
+
+            Text(report.shareText)
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .lineLimit(10)
+                .textSelection(.enabled)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        .padding(16)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(.white)
+        .clipShape(RoundedRectangle(cornerRadius: EPTheme.cardRadius))
     }
 }
 
