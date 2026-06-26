@@ -143,6 +143,59 @@ final class LearningRepositoryStore: ObservableObject {
         .uniqued(by: \.studentUid)
     }
 
+    var staffDashboardMetrics: StaffDashboardMetrics {
+        let moodScores = supportRequests.compactMap(\.moodScore)
+        let averageMood = moodScores.isEmpty
+            ? "尚無"
+            : String(format: "%.1f/5", Double(moodScores.reduce(0, +)) / Double(moodScores.count))
+
+        return StaffDashboardMetrics(
+            studentCount: max(staffStudentSummaries.count, 1),
+            highRiskCount: supportRequests.filter { $0.priority == .high }.count,
+            waitingHelpCount: teacherQueue.count,
+            repliedCount: supportRequests.filter { $0.status == .replied || $0.status == .readByStudent }.count,
+            questionCount: SeedData.approvedQuestionBankItems.count,
+            averageMoodText: averageMood
+        )
+    }
+
+    var volunteerDashboardMetrics: VolunteerDashboardMetrics {
+        VolunteerDashboardMetrics(
+            waitingCount: volunteerQueue.count,
+            highPriorityCount: volunteerQueue.filter { $0.priority == .high }.count,
+            repliedByVolunteerCount: visibleVolunteerReplies.count,
+            syncRecordCount: supportRequests.reduce(0) { count, request in
+                count + request.replies.count
+            }
+        )
+    }
+
+    var questionBankOverview: [QuestionBankTypeOverview] {
+        let groupedByType = Dictionary(grouping: SeedData.approvedQuestionBankItems) { item in
+            item.question.type
+        }
+
+        return QuestionType.allCases.compactMap { type in
+            guard let items = groupedByType[type], !items.isEmpty else { return nil }
+            let levelCounts = Dictionary(grouping: items) { item in
+                item.level
+            }.mapValues(\.count)
+
+            return QuestionBankTypeOverview(
+                type: type,
+                totalCount: items.count,
+                levelCounts: levelCounts
+            )
+        }
+    }
+
+    var visibleVolunteerReplies: [SupportReply] {
+        supportRequests
+            .flatMap(\.replies)
+            .filter { $0.authorRole == .volunteer && $0.visibleToStudent }
+            .sorted { $0.createdAt > $1.createdAt }
+    }
+
     func startRealtimeSync(classId: String, user: DemoUser?) {
         listener?.cancel()
         listener = backend.startRealtimeListener(

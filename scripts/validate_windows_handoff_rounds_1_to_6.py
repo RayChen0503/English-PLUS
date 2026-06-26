@@ -119,9 +119,17 @@ def validate_round_4_staff_support(errors):
         require(token in support, f"support flow missing {token}", errors)
     for token in ["TeacherStatusStrip", "TeacherRequestCard", "TeacherClassSummary", "addTeacherReply", "輸入老師回饋"]:
         require(token in teacher, f"teacher workbench missing {token}", errors)
-    for token in ["TeacherStudentsView", "TeacherRequestsView"]:
+    for token in ["TeacherStudentsView", "TeacherHandoffView", "TeacherReportView", "TeacherQuestionBankView"]:
         require(token in teacher_shell, f"teacher shell missing {token}", errors)
-    for token in ["VolunteerTaskCard", "VolunteerWaitingView", "VolunteerRecordsView", "addVolunteerReply", "陪伴回覆"]:
+    for token in [
+        "VolunteerTaskCard",
+        "VolunteerHandoffView",
+        "VolunteerStudentBriefsView",
+        "VolunteerSyncView",
+        "VolunteerScriptView",
+        "addVolunteerReply",
+        "陪伴回覆",
+    ]:
         require(token in volunteer + volunteer_shell, f"volunteer flow missing {token}", errors)
     for token in ["StudentSupportRequest", "SupportReply", "StaffStudentSummary"]:
         require(token in models, f"shared support model missing {token}", errors)

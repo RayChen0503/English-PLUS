@@ -96,6 +96,38 @@ struct StaffStudentSummary: Identifiable, Equatable {
     let nextAction: String
 }
 
+struct StaffDashboardMetrics: Equatable {
+    let studentCount: Int
+    let highRiskCount: Int
+    let waitingHelpCount: Int
+    let repliedCount: Int
+    let questionCount: Int
+    let averageMoodText: String
+}
+
+struct VolunteerDashboardMetrics: Equatable {
+    let waitingCount: Int
+    let highPriorityCount: Int
+    let repliedByVolunteerCount: Int
+    let syncRecordCount: Int
+}
+
+struct QuestionBankTypeOverview: Identifiable, Equatable {
+    let type: QuestionType
+    let totalCount: Int
+    let levelCounts: [QuestionLevel: Int]
+
+    var id: String {
+        type.id
+    }
+
+    var levelSummary: String {
+        QuestionLevel.allCases
+            .map { "\($0.uiTitle) \(levelCounts[$0, default: 0])" }
+            .joined(separator: " · ")
+    }
+}
+
 extension QuestionType {
     var checkInLabel: String {
         title

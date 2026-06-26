@@ -1,0 +1,176 @@
+#!/usr/bin/env python3
+import sys
+from pathlib import Path
+
+
+ROOT = Path(__file__).resolve().parents[1]
+IOS_ROOT = ROOT / "ios" / "EnglishPlus" / "EnglishPlus"
+DOC_ROOT = ROOT / "docs" / "ios-parity"
+
+TEACHER_SHELL = IOS_ROOT / "Features" / "Teacher" / "TeacherShellView.swift"
+TEACHER_HOME = IOS_ROOT / "Features" / "Teacher" / "TeacherHomeView.swift"
+VOLUNTEER_SHELL = IOS_ROOT / "Features" / "Volunteer" / "VolunteerShellView.swift"
+VOLUNTEER_HOME = IOS_ROOT / "Features" / "Volunteer" / "VolunteerHomeView.swift"
+LEARNING_STORE = IOS_ROOT / "Services" / "LearningRepositoryStore.swift"
+
+
+def read_text(path: Path) -> str:
+    return path.read_text(encoding="utf-8")
+
+
+def fail(errors: list[str], message: str) -> None:
+    errors.append(message)
+
+
+def require_markers(errors: list[str], label: str, text: str, markers: list[str]) -> None:
+    for marker in markers:
+        if marker not in text:
+            fail(errors, f"{label} missing marker: {marker}")
+
+
+def validate_docs(errors: list[str]) -> None:
+    docs = {
+        "round-3-teacher-parity.md": [
+            "Teacher parity",
+            "今日",
+            "學生",
+            "接力",
+            "報告",
+            "題庫",
+        ],
+        "round-4-volunteer-parity.md": [
+            "Volunteer parity",
+            "今日",
+            "接力",
+            "學生",
+            "同步",
+            "腳本",
+        ],
+    }
+    for filename, markers in docs.items():
+        path = DOC_ROOT / filename
+        if not path.exists():
+            fail(errors, f"missing parity document: {filename}")
+            continue
+        require_markers(errors, filename, read_text(path), markers)
+
+
+def validate_teacher_parity(errors: list[str]) -> None:
+    shell = read_text(TEACHER_SHELL)
+    home = read_text(TEACHER_HOME)
+    store = read_text(LEARNING_STORE)
+
+    require_markers(
+        errors,
+        "TeacherShellView",
+        shell,
+        [
+            'Label("今日"',
+            'Label("學生"',
+            'Label("接力"',
+            'Label("報告"',
+            'Label("題庫"',
+            "TeacherHomeView()",
+            "TeacherStudentsView()",
+            "TeacherHandoffView()",
+            "TeacherReportView()",
+            "TeacherQuestionBankView()",
+        ],
+    )
+    require_markers(
+        errors,
+        "TeacherHomeView",
+        home,
+        [
+            "TeacherHandoffView",
+            "TeacherReportView",
+            "TeacherQuestionBankView",
+            "TeacherQuestionBankRow",
+            "TeacherReportSignalCard",
+            "班級週報",
+            "題庫中心",
+            "接力優先序",
+            "學生資料",
+            "送出回饋",
+        ],
+    )
+    require_markers(
+        errors,
+        "LearningRepositoryStore teacher support",
+        store,
+        [
+            "questionBankOverview",
+            "staffDashboardMetrics",
+            "StaffDashboardMetrics",
+            "QuestionBankTypeOverview",
+        ],
+    )
+
+
+def validate_volunteer_parity(errors: list[str]) -> None:
+    shell = read_text(VOLUNTEER_SHELL)
+    home = read_text(VOLUNTEER_HOME)
+    store = read_text(LEARNING_STORE)
+
+    require_markers(
+        errors,
+        "VolunteerShellView",
+        shell,
+        [
+            'Label("今日"',
+            'Label("接力"',
+            'Label("學生"',
+            'Label("同步"',
+            'Label("腳本"',
+            "VolunteerHomeView()",
+            "VolunteerHandoffView()",
+            "VolunteerStudentBriefsView()",
+            "VolunteerSyncView()",
+            "VolunteerScriptView()",
+        ],
+    )
+    require_markers(
+        errors,
+        "VolunteerHomeView",
+        home,
+        [
+            "VolunteerHandoffView",
+            "VolunteerStudentBriefsView",
+            "VolunteerSyncView",
+            "VolunteerScriptView",
+            "VolunteerScriptTemplate",
+            "只做下一小步",
+            "陪伴腳本",
+            "同步紀錄",
+            "送出陪伴回覆",
+        ],
+    )
+    require_markers(
+        errors,
+        "LearningRepositoryStore volunteer support",
+        store,
+        [
+            "volunteerDashboardMetrics",
+            "VolunteerDashboardMetrics",
+            "visibleVolunteerReplies",
+        ],
+    )
+
+
+def main() -> int:
+    errors: list[str] = []
+    validate_docs(errors)
+    validate_teacher_parity(errors)
+    validate_volunteer_parity(errors)
+
+    if errors:
+        for error in errors:
+            print(f"ERROR: {error}", file=sys.stderr)
+        return 1
+
+    print("iOS parity rounds 3-4 validation passed")
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

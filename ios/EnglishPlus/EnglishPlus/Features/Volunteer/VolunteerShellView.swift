@@ -5,17 +5,27 @@ struct VolunteerShellView: View {
         TabView {
             VolunteerHomeView()
                 .tabItem {
+                    Label("今日", systemImage: "heart.text.square")
+                }
+
+            VolunteerHandoffView()
+                .tabItem {
                     Label("接力", systemImage: "flag")
                 }
 
-            VolunteerWaitingView()
+            VolunteerStudentBriefsView()
                 .tabItem {
                     Label("學生", systemImage: "person.crop.circle.badge.questionmark")
                 }
 
-            VolunteerRecordsView()
+            VolunteerSyncView()
                 .tabItem {
-                    Label("紀錄", systemImage: "clock")
+                    Label("同步", systemImage: "arrow.clockwise")
+                }
+
+            VolunteerScriptView()
+                .tabItem {
+                    Label("腳本", systemImage: "text.bubble")
                 }
         }
     }
