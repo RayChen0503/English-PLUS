@@ -8,9 +8,9 @@ ROOT = Path(__file__).resolve().parents[1]
 
 
 CHECKS = [
-    ("rounds 1-6", ["python3", "scripts/validate_windows_handoff_rounds_1_to_6.py"]),
-    ("round 7 AI", ["python3", "scripts/validate_round7_ai_service_contract.py"]),
-    ("round 8 TestFlight", ["python3", "scripts/validate_round8_testflight_preparation.py"]),
+    ("rounds 1-6", [sys.executable, "scripts/validate_windows_handoff_rounds_1_to_6.py"]),
+    ("round 7 AI", [sys.executable, "scripts/validate_round7_ai_service_contract.py"]),
+    ("round 8 TestFlight", [sys.executable, "scripts/validate_round8_testflight_preparation.py"]),
 ]
 
 

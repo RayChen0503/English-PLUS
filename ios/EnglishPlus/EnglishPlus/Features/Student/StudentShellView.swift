@@ -18,12 +18,7 @@ struct StudentShellView: View {
                     Label("支持", systemImage: "heart")
                 }
 
-            NavigationStack {
-                Text("學習地圖")
-                    .font(.title.bold())
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
-                    .background(EPTheme.background)
-            }
+            StudentLearningMapView()
             .tabItem {
                 Label("地圖", systemImage: "map")
             }
