@@ -9,14 +9,25 @@ final class MockLearningRepository: ObservableObject {
 
     private let seedSnapshot: SeedDataSnapshot
     private let now: () -> Date
+    private let localPersistence: any LocalLearningPersistence
 
     init(
         seedSnapshot: SeedDataSnapshot = SeedData.current,
-        now: @escaping () -> Date = Date.init
+        now: @escaping () -> Date = Date.init,
+        localPersistence: any LocalLearningPersistence = UserDefaultsLearningPersistence()
     ) {
         self.seedSnapshot = seedSnapshot
         self.now = now
-        supportRequests = Self.seedSupportRequests(now: now())
+        self.localPersistence = localPersistence
+
+        if let restoredSnapshot = localPersistence.loadSnapshot()?.repositorySnapshot {
+            currentCheckIn = restoredSnapshot.currentCheckIn
+            currentMission = restoredSnapshot.currentMission
+            missionAttempts = restoredSnapshot.missionAttempts
+            supportRequests = restoredSnapshot.supportRequests
+        } else {
+            supportRequests = Self.seedSupportRequests(now: now())
+        }
     }
 
     var supportedQuestionTypes: [QuestionType] {
@@ -122,6 +133,7 @@ final class MockLearningRepository: ObservableObject {
             completedAt: nil
         )
         missionAttempts = []
+        persistSnapshot()
 
         if let profile, moodScore <= 2 {
             sendSupportRequest(
@@ -159,6 +171,7 @@ final class MockLearningRepository: ObservableObject {
             mission.completedAt = now()
             currentMission = mission
         }
+        persistSnapshot()
         return attempt
     }
 
@@ -197,6 +210,7 @@ final class MockLearningRepository: ObservableObject {
             replies: automaticReplies(for: option, at: date)
         )
         supportRequests.insert(request, at: 0)
+        persistSnapshot()
     }
 
     func addTeacherReply(to requestId: String, body: String) {
@@ -255,6 +269,11 @@ final class MockLearningRepository: ObservableObject {
         supportRequests[index].replies.append(reply)
         supportRequests[index].status = .replied
         supportRequests[index].updatedAt = date
+        persistSnapshot()
+    }
+
+    private func persistSnapshot() {
+        localPersistence.saveSnapshot(LocalLearningSnapshot(snapshot: snapshot))
     }
 
     private func selectMissionQuestions(
@@ -436,6 +455,43 @@ final class MockLearningRepository: ObservableObject {
                 replies: []
             )
         ]
+    }
+}
+
+protocol LocalLearningPersistence {
+    func loadSnapshot() -> LocalLearningSnapshot?
+    func saveSnapshot(_ snapshot: LocalLearningSnapshot)
+    func clearSnapshot()
+}
+
+struct UserDefaultsLearningPersistence: LocalLearningPersistence {
+    private let defaults: UserDefaults
+    private let key: String
+
+    init(
+        defaults: UserDefaults = .standard,
+        key: String = "englishplus.learning.snapshot.v1"
+    ) {
+        self.defaults = defaults
+        self.key = key
+    }
+
+    func loadSnapshot() -> LocalLearningSnapshot? {
+        guard let data = defaults.data(forKey: key) else { return nil }
+        let decoder = JSONDecoder()
+        decoder.dateDecodingStrategy = .iso8601
+        return try? decoder.decode(LocalLearningSnapshot.self, from: data)
+    }
+
+    func saveSnapshot(_ snapshot: LocalLearningSnapshot) {
+        let encoder = JSONEncoder()
+        encoder.dateEncodingStrategy = .iso8601
+        guard let data = try? encoder.encode(snapshot) else { return }
+        defaults.set(data, forKey: key)
+    }
+
+    func clearSnapshot() {
+        defaults.removeObject(forKey: key)
     }
 }
 

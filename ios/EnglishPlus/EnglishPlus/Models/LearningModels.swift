@@ -1,6 +1,6 @@
 import Foundation
 
-struct MoodCheckIn: Identifiable, Equatable {
+struct MoodCheckIn: Identifiable, Codable, Equatable {
     let id: String
     let studentUid: String
     let dateKey: String
@@ -12,7 +12,7 @@ struct MoodCheckIn: Identifiable, Equatable {
     let createdAt: Date
 }
 
-struct DailyMission: Identifiable, Equatable {
+struct DailyMission: Identifiable, Codable, Equatable {
     let id: String
     let studentUid: String
     let dateKey: String
@@ -29,7 +29,7 @@ struct DailyMission: Identifiable, Equatable {
     }
 }
 
-struct MissionAttempt: Identifiable, Equatable {
+struct MissionAttempt: Identifiable, Codable, Equatable {
     let id: String
     let missionId: String
     let questionId: String
@@ -58,7 +58,7 @@ struct StudentProgressSnapshot: Equatable {
     }
 }
 
-struct StudentSupportRequest: Identifiable, Equatable {
+struct StudentSupportRequest: Identifiable, Codable, Equatable {
     let id: String
     let studentUid: String
     let studentName: String
@@ -75,7 +75,7 @@ struct StudentSupportRequest: Identifiable, Equatable {
     var replies: [SupportReply]
 }
 
-struct SupportReply: Identifiable, Equatable {
+struct SupportReply: Identifiable, Codable, Equatable {
     let id: String
     let authorUid: String
     let authorName: String
@@ -125,6 +125,47 @@ struct QuestionBankTypeOverview: Identifiable, Equatable {
         QuestionLevel.allCases
             .map { "\($0.uiTitle) \(levelCounts[$0, default: 0])" }
             .joined(separator: " · ")
+    }
+}
+
+struct LocalLearningSnapshot: Codable, Equatable {
+    let currentCheckIn: MoodCheckIn?
+    let currentMission: DailyMission?
+    let missionAttempts: [MissionAttempt]
+    let supportRequests: [StudentSupportRequest]
+    let savedAt: Date
+
+    init(
+        currentCheckIn: MoodCheckIn?,
+        currentMission: DailyMission?,
+        missionAttempts: [MissionAttempt],
+        supportRequests: [StudentSupportRequest],
+        savedAt: Date
+    ) {
+        self.currentCheckIn = currentCheckIn
+        self.currentMission = currentMission
+        self.missionAttempts = missionAttempts
+        self.supportRequests = supportRequests
+        self.savedAt = savedAt
+    }
+
+    init(snapshot: LearningRepositorySnapshot, savedAt: Date = Date()) {
+        self.init(
+            currentCheckIn: snapshot.currentCheckIn,
+            currentMission: snapshot.currentMission,
+            missionAttempts: snapshot.missionAttempts,
+            supportRequests: snapshot.supportRequests,
+            savedAt: savedAt
+        )
+    }
+
+    var repositorySnapshot: LearningRepositorySnapshot {
+        LearningRepositorySnapshot(
+            currentCheckIn: currentCheckIn,
+            currentMission: currentMission,
+            missionAttempts: missionAttempts,
+            supportRequests: supportRequests
+        )
     }
 }
 
