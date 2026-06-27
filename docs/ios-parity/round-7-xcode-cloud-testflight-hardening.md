@@ -1,4 +1,4 @@
-# Round 7 - Xcode Cloud and TestFlight hardening
+﻿# Round 7 - Xcode Cloud and TestFlight hardening
 
 ## Purpose
 
@@ -16,7 +16,7 @@ committed shared scheme.
 - The shared scheme points to:
   - target: `EnglishPlus`
   - product: `EnglishPlus.app`
-  - bundle id: `tw.edu.englishplus`
+  - bundle id: `com.englishplus`
   - team: `SMKVWY55QH` through project build settings
 - The scheme supports:
   - BuildAction
@@ -48,7 +48,7 @@ Holder or authorized Apple Developer / App Store Connect access:
 - Apple Developer agreements and membership state
 - Xcode Cloud enablement for the app
 - Apple Distribution certificate / provisioning availability
-- App Store Connect app record for `tw.edu.englishplus`
+- App Store Connect app record for `com.englishplus`
 - TestFlight internal group setup
 - `GoogleService-Info.plist` for real Firebase runtime
 - Cloud Functions secret `OPENROUTER_API_KEY`

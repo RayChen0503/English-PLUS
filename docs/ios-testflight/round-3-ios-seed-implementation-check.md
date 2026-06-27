@@ -1,4 +1,4 @@
-# Round 3 - iOS Seed Data Implementation Check
+﻿# Round 3 - iOS Seed Data Implementation Check
 
 Date: 2026-06-15
 Branch: `main`
@@ -90,7 +90,7 @@ Simulator run verification:
 - Signed simulator build for `EnglishPlus Test iPhone`: passed, `BUILD SUCCEEDED`.
 - The built `.app` contains the bundled `SeedData` JSON folder.
 - The third-round build installed successfully on `EnglishPlus Test iPhone`.
-- The third-round build launched successfully as `tw.edu.englishplus`.
+- The third-round build launched successfully as `com.englishplus`.
 - Simulator screenshot confirmed the app still opens to the English+ role-selection screen.
 
 ## Round 3 Self-Check

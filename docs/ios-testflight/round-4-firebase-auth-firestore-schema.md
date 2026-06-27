@@ -1,4 +1,4 @@
-# Round 4 - Firebase Auth And Firestore Schema
+﻿# Round 4 - Firebase Auth And Firestore Schema
 
 This round turns the iOS/TestFlight backend direction into a concrete Firebase handoff spec. It is written for the future Mac/Xcode build, but it can already live in this repository so the Android prototype, iOS migration, and Firebase setup stay aligned.
 
@@ -11,12 +11,12 @@ Use these values when creating the Firebase project and the iOS app entry:
 | Firebase display name | `English+` |
 | Fallback display name | `Englishplus` |
 | Firebase project ID | `englishplus-testflight` |
-| iOS Bundle ID | `tw.edu.englishplus` |
+| iOS Bundle ID | `com.englishplus` |
 | iOS Firebase config file | `GoogleService-Info.plist` |
 
 Important notes:
 
-- The iOS bundle ID must be `tw.edu.englishplus`. Do not use the Android package name or any previous course-package wording for the iOS target.
+- The iOS bundle ID must be `com.englishplus`. Do not use the Android package name or any previous course-package wording for the iOS target.
 - If Firebase does not allow `English+` as a display name, use `Englishplus` for the display name only. Do not change the project ID unless Firebase says the ID is unavailable.
 - `GoogleService-Info.plist` will be downloaded later after the Firebase iOS app is registered. It should be added to the Xcode project on the Mac.
 - Do not commit the real `GoogleService-Info.plist` to a public repository unless the repository access model is intentionally private and reviewed. Firebase config values are not secret like an API key, but they identify the Firebase project and should still be handled carefully.
@@ -26,7 +26,7 @@ Important notes:
 `GoogleService-Info.plist` is the Firebase configuration file for an Apple app. After the Firebase project exists, Firebase asks for the iOS app bundle ID. For this app, enter:
 
 ```text
-tw.edu.englishplus
+com.englishplus
 ```
 
 Firebase then generates `GoogleService-Info.plist`. The file tells the iOS app which Firebase project to connect to. On the Mac, this file should be dragged into the Xcode app target, usually near the root of the app target.
@@ -381,9 +381,9 @@ Current Windows verification status:
 
 1. Create Firebase project with display name `English+`, fallback `Englishplus`.
 2. Use project ID `englishplus-testflight` if available.
-3. Register an iOS app with bundle ID `tw.edu.englishplus`.
+3. Register an iOS app with bundle ID `com.englishplus`.
 4. Download `GoogleService-Info.plist`.
-5. Create the SwiftUI project in Xcode with bundle ID `tw.edu.englishplus`.
+5. Create the SwiftUI project in Xcode with bundle ID `com.englishplus`.
 6. Add `GoogleService-Info.plist` to the Xcode app target.
 7. Add Firebase Auth and Firestore SDKs.
 8. Create initial Auth test users.

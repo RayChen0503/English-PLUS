@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 import sys
 from pathlib import Path
 
@@ -32,7 +32,7 @@ REQUIRED_MARKERS = [
     "manual boundary",
     "234c6a6",
     "f8d4d13",
-    "tw.edu.englishplus",
+    "com.englishplus",
     "SMKVWY55QH",
     "EnglishPlus.xcscheme",
     "ExportOptions.TestFlight.plist",

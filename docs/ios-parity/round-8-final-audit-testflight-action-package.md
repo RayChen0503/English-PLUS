@@ -1,4 +1,4 @@
-# Round 8 final audit and TestFlight action package
+﻿# Round 8 final audit and TestFlight action package
 
 Date: 2026-06-27
 
@@ -11,7 +11,7 @@ This is the final audit for the Windows-side iOS parity work after the GitHub/Xc
 - iOS project: `ios/EnglishPlus/EnglishPlus.xcodeproj`
 - Shared scheme: `ios/EnglishPlus/EnglishPlus.xcodeproj/xcshareddata/xcschemes/EnglishPlus.xcscheme`
 - TestFlight export options: `ios/EnglishPlus/Config/ExportOptions.TestFlight.plist`
-- Bundle ID: `tw.edu.englishplus`
+- Bundle ID: `com.englishplus`
 - Apple Team ID: `SMKVWY55QH`
 - Important prior repo states:
   - `f8d4d13` prepared Firebase sync and AI readiness boundaries.
@@ -63,7 +63,7 @@ Use this order to prevent confusion:
 1. Confirm GitHub `main` is the source of truth.
 2. Confirm Xcode or Xcode Cloud opens `ios/EnglishPlus/EnglishPlus.xcodeproj`.
 3. Confirm the shared scheme is `EnglishPlus`.
-4. Confirm the Bundle ID remains `tw.edu.englishplus`.
+4. Confirm the Bundle ID remains `com.englishplus`.
 5. Confirm the Team remains `SMKVWY55QH`.
 6. Run a simulator build first.
 7. Run a Release device build without signing to separate code issues from signing issues.

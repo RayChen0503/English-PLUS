@@ -1,4 +1,4 @@
-# Firebase iOS Setup For Teammate
+﻿# Firebase iOS Setup For Teammate
 
 This file explains what the Mac teammate should do when Firebase is ready.
 
@@ -8,7 +8,7 @@ This file explains what the Mac teammate should do when Firebase is ready.
 | --- | --- |
 | Firebase project ID | `englishplus-testflight` |
 | Firebase display name | `English+` |
-| iOS Bundle ID | `tw.edu.englishplus` |
+| iOS Bundle ID | `com.englishplus` |
 | Xcode project | `EnglishPlus` |
 | App display name | `English+` |
 | Config file | `GoogleService-Info.plist` |
@@ -27,7 +27,7 @@ Do not block UI work on Firebase.
 4. Bundle ID:
 
 ```text
-tw.edu.englishplus
+com.englishplus
 ```
 
 5. Download:

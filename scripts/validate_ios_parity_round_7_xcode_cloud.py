@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 import plistlib
 import sys
 import xml.etree.ElementTree as ET
@@ -64,7 +64,7 @@ def validate_shared_scheme(errors: list[str]) -> None:
 
 def validate_xcode_project_settings(errors: list[str]) -> None:
     project = read_text(PROJECT_FILE)
-    require("PRODUCT_BUNDLE_IDENTIFIER = tw.edu.englishplus;" in project, "Bundle ID must stay tw.edu.englishplus", errors)
+    require("PRODUCT_BUNDLE_IDENTIFIER = com.englishplus;" in project, "Bundle ID must stay com.englishplus", errors)
     require(project.count(f"DEVELOPMENT_TEAM = {TEAM_ID};") >= 2, f"Debug and Release must set DEVELOPMENT_TEAM {TEAM_ID}", errors)
     require(project.count("CODE_SIGN_STYLE = Automatic;") >= 2, "Debug and Release must use automatic signing", errors)
     require("CURRENT_PROJECT_VERSION = 1;" in project, "build number must stay 1 for first TestFlight build", errors)
@@ -102,7 +102,7 @@ def validate_docs(errors: list[str]) -> None:
             "EnglishPlus.xcscheme",
             "shared scheme",
             "ArchiveAction",
-            "tw.edu.englishplus",
+            "com.englishplus",
             "SMKVWY55QH",
             "GoogleService-Info.plist",
             "OPENROUTER_API_KEY",

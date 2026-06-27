@@ -1,4 +1,4 @@
-# Firebase and AI real connection checklist
+﻿# Firebase and AI real connection checklist
 
 This checklist is for turning the current Firebase-ready and AI-ready app into real runtime behavior.
 
@@ -34,7 +34,7 @@ The following cannot be done safely without account authorization:
 ## Manual action order
 
 1. Create or confirm Firebase project.
-2. Register iOS app with Bundle ID `tw.edu.englishplus`.
+2. Register iOS app with Bundle ID `com.englishplus`.
 3. Download `GoogleService-Info.plist`.
 4. Add `GoogleService-Info.plist` to the Xcode target without committing it.
 5. Add Firebase SDK products to the Xcode project.

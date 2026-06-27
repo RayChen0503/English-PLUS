@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 import json
 import sys
 from pathlib import Path
@@ -74,7 +74,7 @@ def validate_round_1_and_2(errors):
 
     project = read(FILES["project"])
     info = read(FILES["info"])
-    require("PRODUCT_BUNDLE_IDENTIFIER = tw.edu.englishplus;" in project, "Bundle ID must be tw.edu.englishplus", errors)
+    require("PRODUCT_BUNDLE_IDENTIFIER = com.englishplus;" in project, "Bundle ID must be com.englishplus", errors)
     require("<string>English+</string>" in info, "Display name must be English+", errors)
 
 
@@ -95,7 +95,7 @@ def validate_round_3_student_flow(errors):
     ]:
         require(token in student, f"student flow missing {token}", errors)
 
-    require('Button("開始心情檢測") { }' not in student, "student check-in button must not be empty", errors)
+    require('Button("??敹?瑼Ｘ葫") { }' not in student, "student check-in button must not be empty", errors)
     for token in [
         "uniqueCorrectQuestionIds",
         "nextMissionQuestion",
@@ -115,9 +115,9 @@ def validate_round_4_staff_support(errors):
     models = read(FILES["learning_models"])
     repo = read(FILES["learning_repo"])
 
-    for token in ["sendSupportRequest", "StudentRequestCard", "我的求助"]:
+    for token in ["sendSupportRequest", "StudentRequestCard", "supportRequests(forStudentUid:"]:
         require(token in support, f"support flow missing {token}", errors)
-    for token in ["TeacherStatusStrip", "TeacherRequestCard", "TeacherClassSummary", "addTeacherReply", "輸入老師回饋"]:
+    for token in ["TeacherStatusStrip", "TeacherRequestCard", "TeacherClassSummary", "addTeacherReply", "teacherQueue"]:
         require(token in teacher, f"teacher workbench missing {token}", errors)
     for token in ["TeacherStudentsView", "TeacherHandoffView", "TeacherReportView", "TeacherQuestionBankView"]:
         require(token in teacher_shell, f"teacher shell missing {token}", errors)
@@ -128,7 +128,7 @@ def validate_round_4_staff_support(errors):
         "VolunteerSyncView",
         "VolunteerScriptView",
         "addVolunteerReply",
-        "陪伴回覆",
+        "volunteerQueue",
     ]:
         require(token in volunteer + volunteer_shell, f"volunteer flow missing {token}", errors)
     for token in ["StudentSupportRequest", "SupportReply", "StaffStudentSummary"]:

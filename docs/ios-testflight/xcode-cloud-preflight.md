@@ -1,4 +1,4 @@
-# English+ Xcode Cloud preflight
+﻿# English+ Xcode Cloud preflight
 
 This checklist is for running English+ through Xcode Cloud or a fresh Mac clone.
 
@@ -8,7 +8,7 @@ This checklist is for running English+ through Xcode Cloud or a fresh Mac clone.
 - Xcode project: `ios/EnglishPlus/EnglishPlus.xcodeproj`
 - Shared scheme: `EnglishPlus.xcscheme`
 - Scheme location: `ios/EnglishPlus/EnglishPlus.xcodeproj/xcshareddata/xcschemes/EnglishPlus.xcscheme`
-- Bundle identifier: `tw.edu.englishplus`
+- Bundle identifier: `com.englishplus`
 - Development team: `SMKVWY55QH`
 - Signing style: Automatic
 - Export options: `ios/EnglishPlus/Config/ExportOptions.TestFlight.plist`
@@ -76,7 +76,7 @@ These items cannot be solved by committing code alone:
 - Account Holder must keep Apple Developer membership active.
 - Account Holder or Admin must accept pending Apple agreements.
 - Apple ID two-factor authentication must be completed when Xcode Cloud or Xcode asks.
-- App Store Connect app record must exist for `tw.edu.englishplus`.
+- App Store Connect app record must exist for `com.englishplus`.
 - Apple Distribution signing and provisioning must be available to Xcode Cloud or the Mac.
 - `GoogleService-Info.plist` must be downloaded from Firebase and added to the Xcode target when real Firebase runtime is enabled.
 - `OPENROUTER_API_KEY` must be stored only as a Firebase Cloud Functions secret, not inside the iOS app.

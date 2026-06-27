@@ -1,4 +1,4 @@
-# Round 5 - AI Proxy Implementation Check
+﻿# Round 5 - AI Proxy Implementation Check
 
 Date: 2026-06-17
 Branch: `main`
@@ -146,7 +146,7 @@ Simulator verification:
 ```text
 Signed simulator build: BUILD SUCCEEDED
 Install to EnglishPlus Test iPhone: succeeded
-Launch bundle tw.edu.englishplus: succeeded
+Launch bundle com.englishplus: succeeded
 Launch process ID: 39309
 Visual check: English+ role-selection screen rendered normally
 ```

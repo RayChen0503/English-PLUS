@@ -1,4 +1,4 @@
-# Round 8 - TestFlight Preparation Check
+﻿# Round 8 - TestFlight Preparation Check
 
 Date: 2026-06-18  
 Branch: `main`  
@@ -25,7 +25,7 @@ Build/run check, commit/push
 
 | Item | Status |
 | --- | --- |
-| Bundle ID | `tw.edu.englishplus` confirmed in Xcode project |
+| Bundle ID | `com.englishplus` confirmed in Xcode project |
 | App display name | `English+` confirmed in `Info.plist` |
 | Version/build | `1.0 (1)` confirmed |
 | Target device | iPhone-only target confirmed |
@@ -68,7 +68,7 @@ Result:
 ```text
 ARCHIVE FAILED
 No Account for Team "SMKVWY55QH".
-No profiles for 'tw.edu.englishplus' were found.
+No profiles for 'com.englishplus' were found.
 ```
 
 App Store Connect upload was not attempted because there is no signed archive to export/upload.
@@ -132,7 +132,7 @@ Result:
 ```text
 BUILD SUCCEEDED
 Installed and launched on simulator 4935AFC4-E765-4863-BB3A-A8616B31CDFC.
-Bundle id: tw.edu.englishplus
+Bundle id: com.englishplus
 Launch pid: 88027
 Screenshot: work/round8-simulator-launch.png
 ```

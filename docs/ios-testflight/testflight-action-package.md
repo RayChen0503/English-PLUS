@@ -1,4 +1,4 @@
-# TestFlight action package
+﻿# TestFlight action package
 
 This package is the practical checklist for moving English+ from GitHub `main` to TestFlight.
 
@@ -7,7 +7,7 @@ This package is the practical checklist for moving English+ from GitHub `main` t
 - Xcode project path: `ios/EnglishPlus/EnglishPlus.xcodeproj`
 - Scheme: `EnglishPlus`
 - Shared scheme file: `EnglishPlus.xcscheme`
-- Bundle ID: `tw.edu.englishplus`
+- Bundle ID: `com.englishplus`
 - Team ID: `SMKVWY55QH`
 - App name: `English+`
 - Export file: `ExportOptions.TestFlight.plist`
@@ -47,12 +47,12 @@ Required manual abilities:
 4. Select target `EnglishPlus`.
 5. Open Signing & Capabilities.
 6. Set Team to the real Developer Team for `SMKVWY55QH`, not Personal Team.
-7. Confirm Bundle Identifier is exactly `tw.edu.englishplus`.
+7. Confirm Bundle Identifier is exactly `com.englishplus`.
 8. Keep Automatically manage signing enabled.
 9. Confirm `EnglishPlus.xcscheme` appears in the scheme selector.
 10. Build for iOS Simulator.
 11. Build Release for generic iOS with signing disabled.
-12. Create or confirm the App Store Connect app record for `tw.edu.englishplus`.
+12. Create or confirm the App Store Connect app record for `com.englishplus`.
 13. Archive with automatic signing.
 14. Distribute through App Store Connect / TestFlight.
 15. Add internal tester email groups.
@@ -60,7 +60,7 @@ Required manual abilities:
 ## Failure interpretation
 
 - If Xcode only shows Personal Team, the Apple ID is not seeing the paid Developer Team in Xcode.
-- If Xcode says no profiles for `tw.edu.englishplus`, the Bundle ID or provisioning profile is missing or not accessible.
+- If Xcode says no profiles for `com.englishplus`, the Bundle ID or provisioning profile is missing or not accessible.
 - If Xcode says communication with Apple failed, retry after network, Apple account, or two-factor state is clean.
 - If Archive fails but no-sign Release build passes, it is probably signing or provisioning.
 - If Upload fails after Archive, check App Store Connect role, app record, agreements, and export options.

@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 import plistlib
 import sys
 from pathlib import Path
@@ -42,7 +42,7 @@ def validate_xcode_settings(errors):
     project = read(IOS_PROJECT)
     info = read(INFO_PLIST)
 
-    require("PRODUCT_BUNDLE_IDENTIFIER = tw.edu.englishplus;" in project, "Bundle ID must be tw.edu.englishplus", errors)
+    require("PRODUCT_BUNDLE_IDENTIFIER = com.englishplus;" in project, "Bundle ID must be com.englishplus", errors)
     require(project.count(f"DEVELOPMENT_TEAM = {TEAM_ID};") >= 2, f"Debug and Release must set DEVELOPMENT_TEAM {TEAM_ID}", errors)
     require(project.count("CODE_SIGN_STYLE = Automatic;") >= 2, "Debug and Release must use automatic signing", errors)
     require("CURRENT_PROJECT_VERSION = 1;" in project, "build number must be 1 for first TestFlight build", errors)
@@ -72,13 +72,15 @@ def validate_testflight_docs(errors):
 
     for token in [
         "English+",
-        "tw.edu.englishplus",
+        "com.englishplus",
         "1.0",
         "Build",
         "Student Flow Testers",
         "Teacher Flow Testers",
         "Volunteer Flow Testers",
+        "TestFlight Tester Email Template",
         "測試角色",
+        "使用裝置",
         "Role tested",
         "Apple ID two-factor",
         "Apple Distribution",

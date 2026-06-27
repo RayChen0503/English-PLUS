@@ -1,4 +1,4 @@
-# App Store Connect TestFlight Test Information
+﻿# App Store Connect TestFlight Test Information
 
 ## App Information
 
@@ -6,7 +6,7 @@
 | --- | --- |
 | App name | English+ |
 | SKU suggestion | `englishplus-ios-testflight` |
-| Bundle ID | `tw.edu.englishplus` |
+| Bundle ID | `com.englishplus` |
 | Version | `1.0` |
 | Build | `1` |
 | Primary language | Traditional Chinese |
@@ -56,7 +56,7 @@ Please test with the in-app demo role flows:
 ## Upload Preconditions
 
 - Apple Developer Program membership active.
-- App Store Connect app exists for `tw.edu.englishplus`.
+- App Store Connect app exists for `com.englishplus`.
 - Account Holder has accepted all agreements, tax, banking, and compliance prompts if required.
 - Xcode can use an Apple Distribution signing certificate or automatically create one.
 - App Store Connect upload permission is available to the signed-in Xcode account.

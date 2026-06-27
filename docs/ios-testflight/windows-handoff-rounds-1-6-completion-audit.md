@@ -1,4 +1,4 @@
-# Windows Handoff Rounds 1-6 Completion Audit
+﻿# Windows Handoff Rounds 1-6 Completion Audit
 
 Date: 2026-06-18
 Branch: `main`
@@ -13,7 +13,7 @@ The project is now aligned to the Windows handoff log through Round 6. The earli
 | Round | Windows handoff requirement | Status |
 | --- | --- | --- |
 | 1 | Take over Mac repo, confirm GitHub/main/Xcode location, preserve Android, commit/push | Complete from prior repo takeover; Android `app/src` remains present and iOS lives under `ios/EnglishPlus`. |
-| 2 | SwiftUI iOS skeleton, `tw.edu.englishplus`, English+ display name, required folders, simulator build/run | Complete; Xcode project and folders exist, bundle/display name are set, generic simulator build passes. |
+| 2 | SwiftUI iOS skeleton, `com.englishplus`, English+ display name, required folders, simulator build/run | Complete; Xcode project and folders exist, bundle/display name are set, generic simulator build passes. |
 | 3 | Student core flow: role/login, four-question mood check-in, daily mission, progress, answer feedback, completion, free practice | Backfilled in this pass; student home now generates a mission from four check-in inputs and only advances mission progress on correct answers. |
 | 4 | Teacher/volunteer workbench, support list, state summaries, feedback/replies, shared support model | Backfilled in this pass; student support requests, teacher replies, volunteer replies, and shared records now use one local repository. |
 | 5 | Seed question bank, multi-level/multi-type support, no repeated daily mission questions, progress/attempt/support/feedback models, local repository | Backfilled in this pass; the seed bank covers seven handoff question types and the local repository selects unique mission questions. |
@@ -70,7 +70,7 @@ Result so far:
 - Firebase Functions TypeScript build: passed
 - Simulator device build: passed
 - Simulator install: passed
-- Simulator launch: passed (`tw.edu.englishplus`, process id `67121`)
+- Simulator launch: passed (`com.englishplus`, process id `67121`)
 - Simulator screenshot: passed, English+ role selection page rendered
 
 ## Remaining Known Boundary

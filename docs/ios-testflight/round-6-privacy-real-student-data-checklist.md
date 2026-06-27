@@ -1,4 +1,4 @@
-# Round 6 - Privacy And Real Student Data Checklist
+﻿# Round 6 - Privacy And Real Student Data Checklist
 
 This round documents how English+ should handle real student data for the future iOS/TestFlight version. It is not legal advice. It is a product and engineering checklist that should be reviewed by the school, project owner, and a qualified legal/privacy reviewer before real students use the app.
 
@@ -12,7 +12,7 @@ This round documents how English+ should handle real student data for the future
 | Retention preference | No fixed expiry requested, but deletion must be available |
 | Consent preference | In-app checkbox agreement if possible |
 | Platform direction | iOS/TestFlight first |
-| Bundle ID | `tw.edu.englishplus` |
+| Bundle ID | `com.englishplus` |
 
 ## Privacy Position
 
@@ -162,19 +162,19 @@ At first login, show:
 3. Required checkbox:
 
 ```text
-我已了解 English+ 會使用我的姓名、班級/學校/年級、學習紀錄、心情檢測與求助紀錄，提供英文練習、老師/志工協助與 AI 學習建議。
+?歇鈭圾 English+ ?蝙?冽????蝝?摮豢/撟渡??飛蝧????炎皜祈?瘙蝝?????望?蝺渡??葦/敹極???AI 摮貊?撱箄降??
 ```
 
 4. Separate checkbox for mood/AI:
 
 ```text
-我同意 English+ 使用我的心情檢測結果與作答狀況，幫我安排今日任務，並讓老師、志工與後台系統在需要時協助我。
+????English+ 雿輻??敹?瑼Ｘ葫蝯???蝑?瘜?撟急?摰?隞隞餃?嚗蒂霈葦??撌亥?敺蝟餌絞?券?閬????
 ```
 
 5. Clear refusal path:
 
 ```text
-如果不同意，請告訴老師或專案負責人；你仍可以詢問是否有不記名或紙本練習方式。
+憒?銝???隢?閮渲葦??獢?鞎砌犖嚗?隞隞亥岷??行?銝???蝝蝺渡??孵???
 ```
 
 ## Deletion And Correction Rights

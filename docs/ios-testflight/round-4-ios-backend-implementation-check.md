@@ -1,4 +1,4 @@
-# Round 4 - iOS Backend Boundary Implementation Check
+﻿# Round 4 - iOS Backend Boundary Implementation Check
 
 Date: 2026-06-17
 Branch: `main`
@@ -10,7 +10,7 @@ The Round 4 Firebase/Auth/Firestore specification now has an iOS-side implementa
 
 This round does not add the Firebase SDK yet and does not commit a real `GoogleService-Info.plist`. Instead, it adds the app-side contracts that the future Firebase implementation should plug into:
 
-- Firebase project constants for `englishplus-testflight` and bundle ID `tw.edu.englishplus`.
+- Firebase project constants for `englishplus-testflight` and bundle ID `com.englishplus`.
 - Firestore path builders for every collection path in the Round 4 schema.
 - Swift `Codable` document shapes for users, class members, students, check-ins, daily missions, answer events, support threads/messages, staff assignments, and question-bank documents.
 - A seed-to-Firestore mapper that converts Round 3 demo accounts and question-bank seed into future Firestore write plans.
@@ -83,7 +83,7 @@ Simulator verification:
 ```text
 Signed simulator build: BUILD SUCCEEDED
 Install to EnglishPlus Test iPhone: succeeded
-Launch bundle tw.edu.englishplus: succeeded
+Launch bundle com.englishplus: succeeded
 Launch process ID: 23638
 Visual check: English+ role-selection screen rendered normally
 ```

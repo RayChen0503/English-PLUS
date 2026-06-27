@@ -1,4 +1,4 @@
-# Round 5 - OpenRouter AI Proxy With Firebase Cloud Functions
+﻿# Round 5 - OpenRouter AI Proxy With Firebase Cloud Functions
 
 This round defines the real AI path for the future English+ iOS/TestFlight app. The chosen architecture is:
 
@@ -14,7 +14,7 @@ The iOS app must not store the OpenRouter production API key. All OpenRouter cal
 | --- | --- |
 | AI proxy backend | Firebase Cloud Functions |
 | Firebase project ID | `englishplus-testflight` |
-| iOS Bundle ID | `tw.edu.englishplus` |
+| iOS Bundle ID | `com.englishplus` |
 | OpenRouter key location | Cloud Functions Secret Manager only |
 | Default free model route | `openrouter/free` |
 | Optional quality route | `openrouter/auto` |
@@ -232,7 +232,7 @@ Recommended escalation output:
 ```json
 {
   "supportLevel": "teacherReview",
-  "studentMessage": "先暫停練習，請找老師或可信任的大人一起看這件事。",
+  "studentMessage": "??毀蝧?隢?葦?靽∩遙?之鈭箔?韏瑞??辣鈭?,
   "staffAlert": "Student response needs adult review before continuing."
 }
 ```

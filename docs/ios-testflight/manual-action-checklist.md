@@ -1,4 +1,4 @@
-# Manual action checklist
+﻿# Manual action checklist
 
 This file separates what Codex can do from what a human account owner must do.
 
@@ -26,7 +26,7 @@ The following actions require a real account session, payment state, or secret:
 
 - Complete Apple ID two-factor when prompted.
 - Confirm Account Holder agreements, payment, tax, and membership are active.
-- Confirm App Store Connect has an app record for `tw.edu.englishplus`.
+- Confirm App Store Connect has an app record for `com.englishplus`.
 - Confirm the teammate or Xcode Cloud has enough role access.
 - Confirm Apple Distribution signing and provisioning can be created.
 - Provide tester email list.
@@ -36,7 +36,7 @@ The following actions require a real account session, payment state, or secret:
 ### Firebase
 
 - Create or confirm Firebase project.
-- Register iOS app with Bundle ID `tw.edu.englishplus`.
+- Register iOS app with Bundle ID `com.englishplus`.
 - Download `GoogleService-Info.plist`.
 - Add Firebase SDK products in Xcode.
 - Enable Firebase Auth providers.

@@ -1,4 +1,4 @@
-# English+ iOS / TestFlight Migration
+﻿# English+ iOS / TestFlight Migration
 
 This folder is the handoff bridge from the current Android prototype to the future native iOS / TestFlight prototype.
 
@@ -73,7 +73,7 @@ The Android app remains the working classroom prototype. The iOS work should sta
 28. `xcode-handoff/github-desktop-main-workflow.md`
    Step-by-step GitHub Desktop workflow for cloning, committing, pushing, and avoiding fork/conflict mistakes on `main`.
 29. `xcode-handoff/firebase-ios-setup-for-teammate.md`
-   Firebase iOS setup guide for `tw.edu.englishplus`, including `GoogleService-Info.plist` and Swift Package Manager steps.
+   Firebase iOS setup guide for `com.englishplus`, including `GoogleService-Info.plist` and Swift Package Manager steps.
 30. `xcode-handoff/swiftui-starter-map.md`
    Compact SwiftUI file/screen/component map for the first iOS build.
 31. `handoff/EnglishPlus_iOS_Mac_Teammate_Handoff.pdf`

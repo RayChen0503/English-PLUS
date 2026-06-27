@@ -1,4 +1,4 @@
-# Round 2 - iOS Project Skeleton Check
+﻿# Round 2 - iOS Project Skeleton Check
 
 Date: 2026-06-15
 Branch: `main`
@@ -15,7 +15,7 @@ The native SwiftUI iOS project skeleton now exists under `ios/EnglishPlus`.
 - Scheme: `EnglishPlus`
 - Product name: `EnglishPlus`
 - App display name: `English+`
-- Bundle identifier: `tw.edu.englishplus`
+- Bundle identifier: `com.englishplus`
 - Organization identifier target: `tw.edu`
 - Interface: SwiftUI
 - Language: Swift
@@ -83,7 +83,7 @@ Result:
 - Generic iOS Simulator build: passed, `BUILD SUCCEEDED`.
 - Signed iOS Simulator device build: passed, `BUILD SUCCEEDED`.
 - Built app display name: `English+`.
-- Built app bundle identifier: `tw.edu.englishplus`.
+- Built app bundle identifier: `com.englishplus`.
 
 ## Simulator Run Status
 
@@ -112,7 +112,7 @@ Note: `simctl launch` did not return promptly even though the app process starte
 ## Round 2 Self-Check
 
 - Xcode project exists in repo: yes
-- Bundle ID is `tw.edu.englishplus`: yes
+- Bundle ID is `com.englishplus`: yes
 - Display name is `English+`: yes
 - Required starter folders exist: yes
 - Student/teacher/volunteer role shells exist: yes

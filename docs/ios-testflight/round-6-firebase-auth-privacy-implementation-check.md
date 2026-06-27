@@ -1,4 +1,4 @@
-# Round 6 - Firebase Auth, Firestore, And Privacy Consent Implementation Check
+﻿# Round 6 - Firebase Auth, Firestore, And Privacy Consent Implementation Check
 
 Date: 2026-06-18
 Branch: `main`
@@ -126,7 +126,7 @@ xcodebuild \
   build
 ```
 
-Result: passed on 2026-06-18 with simulator install and launch succeeding for bundle `tw.edu.englishplus`.
+Result: passed on 2026-06-18 with simulator install and launch succeeding for bundle `com.englishplus`.
 
 ## Round 6 Self-Check
 

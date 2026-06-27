@@ -1,4 +1,4 @@
-# EnglishPlus iOS Project
+﻿# EnglishPlus iOS Project
 
 This folder contains the native SwiftUI iOS project for English+.
 
@@ -22,7 +22,7 @@ Confirmed project settings:
 
 - Product name: `EnglishPlus`
 - App display name: `English+`
-- Bundle identifier: `tw.edu.englishplus`
+- Bundle identifier: `com.englishplus`
 - Organization identifier: `tw.edu`
 - Interface: SwiftUI
 - Language: Swift

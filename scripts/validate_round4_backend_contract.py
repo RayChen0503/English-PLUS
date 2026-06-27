@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 import json
 import sys
 from pathlib import Path
@@ -76,7 +76,7 @@ def validate_ios_contract(errors):
         require(builder in path_swift, f"FirestorePath missing {builder}", errors)
     for token in [
         "projectId = \"englishplus-testflight\"",
-        "bundleId = \"tw.edu.englishplus\"",
+        "bundleId = \"com.englishplus\"",
         "configFileName = \"GoogleService-Info.plist\"",
         "FirestoreUserDocument",
         "FirestoreMemberDocument",

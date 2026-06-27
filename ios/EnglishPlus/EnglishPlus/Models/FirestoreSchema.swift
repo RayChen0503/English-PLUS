@@ -1,10 +1,10 @@
-import Foundation
+﻿import Foundation
 
 enum FirebaseBackendConfig {
     static let displayName = "English+"
     static let fallbackDisplayName = "Englishplus"
     static let projectId = "englishplus-testflight"
-    static let bundleId = "tw.edu.englishplus"
+    static let bundleId = "com.englishplus"
     static let configFileName = "GoogleService-Info.plist"
     static let firstClassId = "YILAN-CHENGZHI-8A"
 }

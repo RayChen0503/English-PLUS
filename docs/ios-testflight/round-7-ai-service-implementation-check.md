@@ -1,4 +1,4 @@
-# Round 7 - AI Backend Proxy Architecture Implementation Check
+﻿# Round 7 - AI Backend Proxy Architecture Implementation Check
 
 Date: 2026-06-18
 Branch: `main`
@@ -130,7 +130,7 @@ Simulator install/launch validation:
 
 ```text
 Installed and launched on simulator 4935AFC4-E765-4863-BB3A-A8616B31CDFC.
-Bundle id: tw.edu.englishplus
+Bundle id: com.englishplus
 Launch pid: 75090
 Screenshot: work/round7-simulator-launch.png
 ```

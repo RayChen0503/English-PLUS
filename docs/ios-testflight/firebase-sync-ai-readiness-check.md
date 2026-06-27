@@ -1,4 +1,4 @@
-# Firebase / Firestore Sync / AI Proxy Readiness Check
+﻿# Firebase / Firestore Sync / AI Proxy Readiness Check
 
 Date: 2026-06-26  
 Branch: `main`  
@@ -77,5 +77,5 @@ git diff --check
 - Generic iOS simulator build succeeded with code signing disabled.
 - Specific iPhone simulator build succeeded.
 - First install attempt found the simulator shut down; after booting the simulator, install succeeded.
-- App launch succeeded on simulator with bundle id `tw.edu.englishplus`.
+- App launch succeeded on simulator with bundle id `com.englishplus`.
 - Launch screenshot was checked at `work/firebase-ready-final-launch.png`; it shows the English+ role selection screen without user-facing Firebase, OpenRouter, mock, or debug text.

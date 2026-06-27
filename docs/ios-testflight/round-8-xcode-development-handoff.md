@@ -1,4 +1,4 @@
-# Round 8 - Xcode Development Handoff
+﻿# Round 8 - Xcode Development Handoff
 
 This round is the Mac handoff guide for the teammate who will build the iOS version of English+. It assumes the teammate knows a little SwiftUI but still needs detailed steps.
 
@@ -8,7 +8,7 @@ This round is the Mac handoff guide for the teammate who will build the iOS vers
 | --- | --- |
 | iOS Xcode project name | `EnglishPlus` |
 | App display name | `English+` |
-| Bundle ID | `tw.edu.englishplus` |
+| Bundle ID | `com.englishplus` |
 | Git branch | `main` only |
 | GitHub workflow | Teammate is added as repository collaborator |
 | Git tool | GitHub Desktop first, Terminal optional |
@@ -135,7 +135,7 @@ In Xcode:
 | Product Name | `EnglishPlus` |
 | Team | leave blank until Apple Developer access is active, or select the Account Holder team if available |
 | Organization Identifier | `tw.edu` |
-| Bundle Identifier | `tw.edu.englishplus` |
+| Bundle Identifier | `com.englishplus` |
 | Interface | `SwiftUI` |
 | Language | `Swift` |
 | Storage | `None` for first local prototype |
@@ -145,7 +145,7 @@ Important:
 
 - The Xcode product/project name should be `EnglishPlus`, without `+`.
 - The app display name can still be `English+`.
-- Bundle ID must be exactly `tw.edu.englishplus`.
+- Bundle ID must be exactly `com.englishplus`.
 - Do not use any other bundle ID.
 - Do not use the Android package name for the iOS target.
 
@@ -281,7 +281,7 @@ Firebase can be added as soon as the Firebase project and iOS app are ready.
 | Firebase display name | `English+` |
 | Fallback display name | `Englishplus` |
 | Firebase project ID | `englishplus-testflight` |
-| iOS Bundle ID | `tw.edu.englishplus` |
+| iOS Bundle ID | `com.englishplus` |
 | Config file | `GoogleService-Info.plist` |
 
 ### Add Firebase App In Firebase Console
@@ -292,7 +292,7 @@ Firebase can be added as soon as the Firebase project and iOS app are ready.
 4. Bundle ID:
 
 ```text
-tw.edu.englishplus
+com.englishplus
 ```
 
 5. Download:
@@ -587,7 +587,7 @@ Before saying the iOS prototype is ready for handoff back:
 - Volunteer view shows only assigned items.
 - No debug/internal backend text is visible.
 - App display name is `English+`.
-- Bundle ID is `tw.edu.englishplus`.
+- Bundle ID is `com.englishplus`.
 - GitHub Desktop has pushed latest commit to `main`.
 
 ## Common Mistakes To Avoid
