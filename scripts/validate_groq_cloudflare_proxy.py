@@ -11,6 +11,7 @@ REMOTE_AI = IOS_ROOT / "Services" / "RemoteAIService.swift"
 FACTORY = IOS_ROOT / "Services" / "FirebaseAppConfigurator.swift"
 INFO_PLIST = IOS_ROOT / "Info.plist"
 GITIGNORE = ROOT / ".gitignore"
+EXPECTED_AI_PROXY_URL = "https://englishplus-ai-proxy.englishplus-ray.workers.dev/ai"
 
 TASKS = [
     "dailyMission",
@@ -118,6 +119,11 @@ def validate_ios(errors):
         errors,
     )
     require("ENGLISHPLUS_AI_PROXY_URL" in info, "Info.plist must define ENGLISHPLUS_AI_PROXY_URL", errors)
+    require(
+        EXPECTED_AI_PROXY_URL in info,
+        f"Info.plist must point ENGLISHPLUS_AI_PROXY_URL to {EXPECTED_AI_PROXY_URL}",
+        errors,
+    )
 
     for forbidden in [
         "GROQ_API_KEY",
