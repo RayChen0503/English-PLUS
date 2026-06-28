@@ -54,6 +54,9 @@
 			100000000000000000000146 /* LearningRepositoryStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 100000000000000000000048 /* LearningRepositoryStore.swift */; };
 			100000000000000000000147 /* FirebaseLearningRepository.swift in Sources */ = {isa = PBXBuildFile; fileRef = 100000000000000000000049 /* FirebaseLearningRepository.swift */; };
 			100000000000000000000148 /* StudentLearningMapView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 100000000000000000000050 /* StudentLearningMapView.swift */; };
+		100000000000000000000149 /* FirebaseCore in Frameworks */ = {isa = PBXBuildFile; productRef = 100000000000000000000702 /* FirebaseCore */; };
+		100000000000000000000150 /* FirebaseAuth in Frameworks */ = {isa = PBXBuildFile; productRef = 100000000000000000000703 /* FirebaseAuth */; };
+		100000000000000000000151 /* FirebaseFirestore in Frameworks */ = {isa = PBXBuildFile; productRef = 100000000000000000000704 /* FirebaseFirestore */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -113,6 +116,9 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				100000000000000000000149 /* FirebaseCore in Frameworks */,
+				100000000000000000000150 /* FirebaseAuth in Frameworks */,
+				100000000000000000000151 /* FirebaseFirestore in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -318,6 +324,11 @@
 			dependencies = (
 			);
 			name = EnglishPlus;
+			packageProductDependencies = (
+				100000000000000000000702 /* FirebaseCore */,
+				100000000000000000000703 /* FirebaseAuth */,
+				100000000000000000000704 /* FirebaseFirestore */,
+			);
 			productName = EnglishPlus;
 			productReference = 100000000000000000000024 /* EnglishPlus.app */;
 			productType = "com.apple.product-type.application";
@@ -346,6 +357,9 @@
 				Base,
 			);
 			mainGroup = 100000000000000000000301;
+			packageReferences = (
+				100000000000000000000701 /* XCRemoteSwiftPackageReference "firebase-ios-sdk" */,
+			);
 			productRefGroup = 100000000000000000000303 /* Products */;
 			projectDirPath = "";
 			projectRoot = "";
@@ -606,6 +620,35 @@
 			defaultConfigurationName = Release;
 		};
 /* End XCConfigurationList section */
+
+/* Begin XCRemoteSwiftPackageReference section */
+		100000000000000000000701 /* XCRemoteSwiftPackageReference "firebase-ios-sdk" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/firebase/firebase-ios-sdk";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 12.0.0;
+			};
+		};
+/* End XCRemoteSwiftPackageReference section */
+
+/* Begin XCSwiftPackageProductDependency section */
+		100000000000000000000702 /* FirebaseCore */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 100000000000000000000701 /* XCRemoteSwiftPackageReference "firebase-ios-sdk" */;
+			productName = FirebaseCore;
+		};
+		100000000000000000000703 /* FirebaseAuth */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 100000000000000000000701 /* XCRemoteSwiftPackageReference "firebase-ios-sdk" */;
+			productName = FirebaseAuth;
+		};
+		100000000000000000000704 /* FirebaseFirestore */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 100000000000000000000701 /* XCRemoteSwiftPackageReference "firebase-ios-sdk" */;
+			productName = FirebaseFirestore;
+		};
+/* End XCSwiftPackageProductDependency section */
 	};
 	rootObject = 100000000000000000000402 /* Project object */;
 }

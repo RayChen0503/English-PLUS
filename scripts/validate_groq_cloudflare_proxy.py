@@ -131,6 +131,8 @@ def validate_ios(errors):
         "gsk_",
         "OPENROUTER_API_KEY",
         "https://openrouter.ai",
+        "cloudfunctions.net",
+        "englishPlusAiProxy",
     ]:
         require(forbidden not in all_swift, f"iOS Swift must not contain {forbidden}", errors)
 

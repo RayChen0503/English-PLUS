@@ -1,7 +1,6 @@
 import Foundation
 
 enum RemoteAIServiceError: Error {
-    case missingAuthenticatedIdToken
     case workerEndpointNotConfigured
     case invalidFunctionResponse
     case functionReturnedStatus(Int)
@@ -10,8 +9,6 @@ enum RemoteAIServiceError: Error {
 
     var fallbackCode: String {
         switch self {
-        case .missingAuthenticatedIdToken:
-            return "AI_PROXY_MISSING_AUTH"
         case .workerEndpointNotConfigured:
             return "AI_PROXY_WORKER_NOT_CONFIGURED"
         case .invalidFunctionResponse:
@@ -214,78 +211,6 @@ struct CloudflareWorkerAiProxyTransport: AiProxyTransport {
             throw RemoteAIServiceError.invalidFunctionResponse
         }
 
-        guard result.taskType == request.taskType else {
-            throw RemoteAIServiceError.taskTypeMismatch
-        }
-        return result
-    }
-}
-
-struct FirebaseCallableAiProxyTransport: AiProxyTransport {
-    typealias IdTokenProvider = () async throws -> String?
-
-    private let endpoint: URL
-    private let idTokenProvider: IdTokenProvider
-    private let session: URLSession
-    private let encoder: JSONEncoder
-    private let decoder: JSONDecoder
-    private let timeoutInterval: TimeInterval
-
-    init(
-        projectId: String = FirebaseBackendConfig.projectId,
-        region: String = "asia-east1",
-        callableName: String = "englishPlusAiProxy",
-        idTokenProvider: @escaping IdTokenProvider = { nil },
-        session: URLSession = .shared,
-        encoder: JSONEncoder = JSONEncoder(),
-        decoder: JSONDecoder = JSONDecoder(),
-        timeoutInterval: TimeInterval = 15
-    ) {
-        endpoint = URL(string: "https://\(region)-\(projectId).cloudfunctions.net/\(callableName)")!
-        self.idTokenProvider = idTokenProvider
-        self.session = session
-        self.encoder = encoder
-        self.decoder = decoder
-        self.timeoutInterval = timeoutInterval
-    }
-
-    func call(_ request: AiProxyRequest, currentUser: DemoUser?) async throws -> AiProxyResponse {
-        guard let idToken = try await idTokenProvider(), !idToken.isEmpty else {
-            throw RemoteAIServiceError.missingAuthenticatedIdToken
-        }
-
-        var urlRequest = URLRequest(url: endpoint)
-        urlRequest.httpMethod = "POST"
-        urlRequest.timeoutInterval = timeoutInterval
-        urlRequest.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        urlRequest.setValue("Bearer \(idToken)", forHTTPHeaderField: "Authorization")
-        urlRequest.httpBody = try encoder.encode(CallableRequestEnvelope(data: request))
-
-        let (data, response): (Data, URLResponse)
-        do {
-            (data, response) = try await session.data(for: urlRequest)
-        } catch {
-            if let urlError = error as? URLError, urlError.code == .timedOut {
-                throw RemoteAIServiceError.timedOut
-            }
-            throw error
-        }
-        guard let httpResponse = response as? HTTPURLResponse else {
-            throw RemoteAIServiceError.invalidFunctionResponse
-        }
-        guard (200..<300).contains(httpResponse.statusCode) else {
-            throw RemoteAIServiceError.functionReturnedStatus(httpResponse.statusCode)
-        }
-
-        let envelope: CallableResponseEnvelope
-        do {
-            envelope = try decoder.decode(CallableResponseEnvelope.self, from: data)
-        } catch {
-            throw RemoteAIServiceError.invalidFunctionResponse
-        }
-        guard let result = envelope.result ?? envelope.data else {
-            throw RemoteAIServiceError.invalidFunctionResponse
-        }
         guard result.taskType == request.taskType else {
             throw RemoteAIServiceError.taskTypeMismatch
         }
