@@ -58,6 +58,7 @@
 		100000000000000000000149 /* FirebaseCore in Frameworks */ = {isa = PBXBuildFile; productRef = 100000000000000000000702 /* FirebaseCore */; };
 		100000000000000000000150 /* FirebaseAuth in Frameworks */ = {isa = PBXBuildFile; productRef = 100000000000000000000703 /* FirebaseAuth */; };
 		100000000000000000000151 /* FirebaseFirestore in Frameworks */ = {isa = PBXBuildFile; productRef = 100000000000000000000704 /* FirebaseFirestore */; };
+		100000000000000000000152 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 100000000000000000000051 /* Assets.xcassets */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -111,6 +112,7 @@
 		100000000000000000000048 /* LearningRepositoryStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LearningRepositoryStore.swift; sourceTree = "<group>"; };
 		100000000000000000000049 /* FirebaseLearningRepository.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FirebaseLearningRepository.swift; sourceTree = "<group>"; };
 		100000000000000000000050 /* StudentLearningMapView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StudentLearningMapView.swift; sourceTree = "<group>"; };
+		100000000000000000000051 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -140,6 +142,7 @@
 			children = (
 				0AE2ED742FF14DA700F77676 /* GoogleService-Info.plist */,
 				100000000000000000000023 /* Info.plist */,
+				100000000000000000000051 /* Assets.xcassets */,
 				100000000000000000000304 /* App */,
 				100000000000000000000305 /* Core */,
 				100000000000000000000306 /* Models */,
@@ -378,6 +381,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				100000000000000000000127 /* SeedData in Resources */,
+				100000000000000000000152 /* Assets.xcassets in Resources */,
 				0AE2ED752FF14DA700F77676 /* GoogleService-Info.plist in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
@@ -444,6 +448,7 @@
 		100000000000000000000601 /* Debug */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
@@ -469,6 +474,7 @@
 		100000000000000000000602 /* Release */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
