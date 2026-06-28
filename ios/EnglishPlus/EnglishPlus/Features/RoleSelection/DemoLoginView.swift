@@ -39,8 +39,11 @@ struct DemoLoginView: View {
                 Spacer()
 
                 Button("進入\(role.title)端") {
-                    appState.signInForSelectedRole()
+                    Task {
+                        await appState.signInForSelectedRole()
+                    }
                 }
+                .disabled(appState.signingInRole != nil)
                 .buttonStyle(PrimaryActionButtonStyle())
             }
             .padding(EPTheme.pagePadding)

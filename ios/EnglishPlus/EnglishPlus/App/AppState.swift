@@ -7,6 +7,8 @@ final class AppState: ObservableObject {
     @Published var currentUser: DemoUser?
     @Published var currentProfile: AppUserProfile?
     @Published var hasAcceptedConsent = false
+    @Published private(set) var signingInRole: UserRole?
+    @Published private(set) var signInErrorMessage: String?
     @Published private(set) var latestAIResponse: AiProxyResponse?
 
     private let authService: AuthService
@@ -28,13 +30,31 @@ final class AppState: ObservableObject {
         route = .demoLogin(role)
     }
 
-    func signInForSelectedRole() {
+    func signIn(role: UserRole) async {
+        guard signingInRole == nil else { return }
+        selectedRole = role
+        signingInRole = role
+        signInErrorMessage = nil
+
+        do {
+            let session = try await authService.signInDemoAccount(for: role)
+            currentUser = session.user
+            currentProfile = session.profile
+            hasAcceptedConsent = firestoreService.hasAcceptedRequiredConsent(uid: session.user.id)
+            signingInRole = nil
+            route = hasAcceptedConsent ? .home(role) : .privacyConsent(role)
+        } catch {
+            currentUser = nil
+            currentProfile = nil
+            hasAcceptedConsent = false
+            signingInRole = nil
+            signInErrorMessage = "登入失敗，請確認測試帳號、Firebase 設定與班級成員資料已建立。"
+        }
+    }
+
+    func signInForSelectedRole() async {
         guard let selectedRole else { return }
-        let session = authService.demoSession(for: selectedRole)
-        currentUser = session.user
-        currentProfile = session.profile
-        hasAcceptedConsent = firestoreService.hasAcceptedRequiredConsent(uid: session.user.id)
-        route = hasAcceptedConsent ? .home(selectedRole) : .privacyConsent(selectedRole)
+        await signIn(role: selectedRole)
     }
 
     func acceptPrivacyConsent(categories: [PrivacyConsentCategory]) {
@@ -51,10 +71,13 @@ final class AppState: ObservableObject {
     }
 
     func signOut() {
+        authService.signOut()
         selectedRole = nil
         currentUser = nil
         currentProfile = nil
         hasAcceptedConsent = false
+        signingInRole = nil
+        signInErrorMessage = nil
         latestAIResponse = nil
         route = .roleSelection
     }

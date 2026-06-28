@@ -5,7 +5,7 @@ build/
 local.properties
 *.iml
 app/build/
-ios/**/GoogleService-Info.plist
+ios/**/GoogleService-Info*.plist
 ios/**/xcuserdata/
 ios/**/*.xcuserstate
 functions/node_modules/

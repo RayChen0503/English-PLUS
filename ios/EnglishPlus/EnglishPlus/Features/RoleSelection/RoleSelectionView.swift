@@ -20,7 +20,9 @@ struct RoleSelectionView: View {
                     VStack(spacing: 12) {
                         ForEach(UserRole.allCases) { role in
                             Button {
-                                appState.chooseRole(role)
+                                Task {
+                                    await appState.signIn(role: role)
+                                }
                             } label: {
                                 HStack(spacing: 14) {
                                     Image(systemName: iconName(for: role))
@@ -34,18 +36,31 @@ struct RoleSelectionView: View {
                                         Text(role.shortPurpose)
                                             .font(.subheadline)
                                             .foregroundStyle(.secondary)
-                                            .multilineTextAlignment(.leading)
+                                        .multilineTextAlignment(.leading)
                                     }
                                     Spacer()
-                                    Image(systemName: "chevron.right")
-                                        .foregroundStyle(.secondary)
+                                    if appState.signingInRole == role {
+                                        ProgressView()
+                                            .controlSize(.small)
+                                    } else {
+                                        Image(systemName: "chevron.right")
+                                            .foregroundStyle(.secondary)
+                                    }
                                 }
                                 .padding(16)
                                 .background(.white)
                                 .clipShape(RoundedRectangle(cornerRadius: EPTheme.cardRadius))
                             }
+                            .disabled(appState.signingInRole != nil)
                             .buttonStyle(.plain)
                         }
+                    }
+
+                    if let message = appState.signInErrorMessage {
+                        Text(message)
+                            .font(.footnote.weight(.semibold))
+                            .foregroundStyle(.red)
+                            .fixedSize(horizontal: false, vertical: true)
                     }
 
                     Spacer()

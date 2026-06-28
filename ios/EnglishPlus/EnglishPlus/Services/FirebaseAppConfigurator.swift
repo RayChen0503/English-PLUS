@@ -18,21 +18,28 @@ struct EnglishPlusServiceBundle {
 }
 
 enum FirebaseAppConfigurator {
-    static var hasBundledConfig: Bool {
+    static var bundledConfigPath: String? {
         Bundle.main.path(
             forResource: "GoogleService-Info",
             ofType: "plist"
-        ) != nil
+        )
+    }
+
+    static var hasBundledConfig: Bool {
+        bundledConfigPath != nil
     }
 
     static func configureIfPossible() -> EnglishPlusBackendMode {
-        guard hasBundledConfig else {
+        guard let configPath = bundledConfigPath else {
             return .mock
         }
 
         #if canImport(FirebaseCore)
         if FirebaseApp.app() == nil {
-            FirebaseApp.configure()
+            guard let options = FirebaseOptions(contentsOfFile: configPath) else {
+                return .mock
+            }
+            FirebaseApp.configure(options: options)
         }
         return FirebaseApp.app() == nil ? .mock : .firebase
         #else
