@@ -20,6 +20,8 @@
 	<string>$(MARKETING_VERSION)</string>
 	<key>CFBundleVersion</key>
 	<string>$(CURRENT_PROJECT_VERSION)</string>
+	<key>ENGLISHPLUS_AI_PROXY_URL</key>
+	<string>https://englishplus-ai-proxy.YOUR_WORKERS_SUBDOMAIN.workers.dev/ai</string>
 	<key>LSRequiresIPhoneOS</key>
 	<true/>
 	<key>UILaunchScreen</key>

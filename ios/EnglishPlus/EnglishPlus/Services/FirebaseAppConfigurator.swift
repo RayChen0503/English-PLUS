@@ -54,7 +54,7 @@ enum EnglishPlusServiceFactory {
                 authService: authService,
                 firestoreService: FirebaseFirestoreService(),
                 aiService: RemoteAIService(
-                    transport: FirebaseCallableAiProxyTransport(
+                    transport: CloudflareWorkerAiProxyTransport(
                         idTokenProvider: authService.currentIdToken
                     )
                 ),

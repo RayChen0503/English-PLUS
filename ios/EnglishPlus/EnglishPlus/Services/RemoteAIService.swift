@@ -2,6 +2,7 @@ import Foundation
 
 enum RemoteAIServiceError: Error {
     case missingAuthenticatedIdToken
+    case workerEndpointNotConfigured
     case invalidFunctionResponse
     case functionReturnedStatus(Int)
     case taskTypeMismatch
@@ -11,6 +12,8 @@ enum RemoteAIServiceError: Error {
         switch self {
         case .missingAuthenticatedIdToken:
             return "AI_PROXY_MISSING_AUTH"
+        case .workerEndpointNotConfigured:
+            return "AI_PROXY_WORKER_NOT_CONFIGURED"
         case .invalidFunctionResponse:
             return "AI_PROXY_INVALID_RESPONSE"
         case .functionReturnedStatus(let status):
@@ -32,7 +35,7 @@ struct RemoteAIService: AIService {
     private let fallbackService: AIService
 
     init(
-        transport: AiProxyTransport = FirebaseCallableAiProxyTransport(),
+        transport: AiProxyTransport = CloudflareWorkerAiProxyTransport(),
         fallbackService: AIService = MockAIService()
     ) {
         self.transport = transport
@@ -117,6 +120,104 @@ struct RemoteAIService: AIService {
             return RemoteAIServiceError.timedOut.fallbackCode
         }
         return "AI_PROXY_UNAVAILABLE"
+    }
+}
+
+enum EnglishPlusAIProxyConfig {
+    static let infoPlistKey = "ENGLISHPLUS_AI_PROXY_URL"
+
+    static var workerEndpoint: URL? {
+        guard
+            let rawValue = Bundle.main.object(forInfoDictionaryKey: infoPlistKey) as? String
+        else {
+            return nil
+        }
+
+        let trimmed = rawValue.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard
+            trimmed.hasPrefix("https://"),
+            !trimmed.contains("YOUR_WORKERS_SUBDOMAIN"),
+            let url = URL(string: trimmed)
+        else {
+            return nil
+        }
+        return url
+    }
+}
+
+struct CloudflareWorkerAiProxyTransport: AiProxyTransport {
+    typealias IdTokenProvider = () async throws -> String?
+
+    private let endpoint: URL?
+    private let idTokenProvider: IdTokenProvider
+    private let session: URLSession
+    private let encoder: JSONEncoder
+    private let decoder: JSONDecoder
+    private let timeoutInterval: TimeInterval
+
+    init(
+        endpoint: URL? = EnglishPlusAIProxyConfig.workerEndpoint,
+        idTokenProvider: @escaping IdTokenProvider = { nil },
+        session: URLSession = .shared,
+        encoder: JSONEncoder = JSONEncoder(),
+        decoder: JSONDecoder = JSONDecoder(),
+        timeoutInterval: TimeInterval = 15
+    ) {
+        self.endpoint = endpoint
+        self.idTokenProvider = idTokenProvider
+        self.session = session
+        self.encoder = encoder
+        self.decoder = decoder
+        self.timeoutInterval = timeoutInterval
+    }
+
+    func call(_ request: AiProxyRequest, currentUser: DemoUser?) async throws -> AiProxyResponse {
+        guard let endpoint else {
+            throw RemoteAIServiceError.workerEndpointNotConfigured
+        }
+
+        var urlRequest = URLRequest(url: endpoint)
+        urlRequest.httpMethod = "POST"
+        urlRequest.timeoutInterval = timeoutInterval
+        urlRequest.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        if let idToken = try await idTokenProvider(), !idToken.isEmpty {
+            urlRequest.setValue("Bearer \(idToken)", forHTTPHeaderField: "Authorization")
+        }
+        urlRequest.httpBody = try encoder.encode(CallableRequestEnvelope(data: request))
+
+        let (data, response): (Data, URLResponse)
+        do {
+            (data, response) = try await session.data(for: urlRequest)
+        } catch {
+            if let urlError = error as? URLError, urlError.code == .timedOut {
+                throw RemoteAIServiceError.timedOut
+            }
+            throw error
+        }
+
+        guard let httpResponse = response as? HTTPURLResponse else {
+            throw RemoteAIServiceError.invalidFunctionResponse
+        }
+        guard (200..<300).contains(httpResponse.statusCode) else {
+            throw RemoteAIServiceError.functionReturnedStatus(httpResponse.statusCode)
+        }
+
+        let result: AiProxyResponse
+        if
+            let envelope = try? decoder.decode(CallableResponseEnvelope.self, from: data),
+            let envelopeResult = envelope.result ?? envelope.data
+        {
+            result = envelopeResult
+        } else if let directResult = try? decoder.decode(AiProxyResponse.self, from: data) {
+            result = directResult
+        } else {
+            throw RemoteAIServiceError.invalidFunctionResponse
+        }
+
+        guard result.taskType == request.taskType else {
+            throw RemoteAIServiceError.taskTypeMismatch
+        }
+        return result
     }
 }
 

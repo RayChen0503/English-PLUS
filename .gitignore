@@ -11,3 +11,5 @@ functions/lib/
 functions/.secret.local
 functions/.env.local
 firebase-debug.log
+workers/**/.dev.vars
+workers/**/.wrangler/
