@@ -1,0 +1,14 @@
+{
+  "functions": [
+    {
+      "source": "functions",
+      "runtime": "nodejs20",
+      "predeploy": [
+        "npm --prefix \"$RESOURCE_DIR\" run build"
+      ]
+    }
+  ],
+  "firestore": {
+    "rules": "docs/ios-testflight/firebase/firestore.rules.draft"
+  }
+}
