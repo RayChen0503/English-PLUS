@@ -12,7 +12,7 @@ struct RoleSelectionView: View {
                         Text("English+")
                             .font(.largeTitle.bold())
                             .foregroundStyle(EPTheme.ink)
-                        Text("今天你要用哪一端？")
+                        Text("偏鄉學生雙軌學習平台")
                             .font(.title3.weight(.semibold))
                             .foregroundStyle(.secondary)
                     }
@@ -36,7 +36,7 @@ struct RoleSelectionView: View {
                                         Text(role.shortPurpose)
                                             .font(.subheadline)
                                             .foregroundStyle(.secondary)
-                                        .multilineTextAlignment(.leading)
+                                            .multilineTextAlignment(.leading)
                                     }
                                     Spacer()
                                     if appState.signingInRole == role {
