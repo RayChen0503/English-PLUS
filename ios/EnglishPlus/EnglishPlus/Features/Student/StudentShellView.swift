@@ -19,9 +19,9 @@ struct StudentShellView: View {
                 }
 
             StudentLearningMapView()
-            .tabItem {
-                Label("地圖", systemImage: "map")
-            }
+                .tabItem {
+                    Label("地圖", systemImage: "map")
+                }
         }
     }
 }

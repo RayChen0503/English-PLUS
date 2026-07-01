@@ -49,12 +49,24 @@ def main() -> int:
     ]:
         require(token in auth_service, f"AuthService missing demo credential token: {token}", errors)
 
+    demo_login = read(IOS_ROOT / "Features" / "RoleSelection" / "DemoLoginView.swift")
+
     require("func signInDemoAccount(for role: UserRole) async throws -> AuthSession" in auth_service,
-            "AuthService must expose async demo account sign-in", errors)
-    require("await appState.signIn(role: role)" in role_selection,
-            "RoleSelection buttons must call AppState.signIn(role:) directly", errors)
-    require("authService.signInDemoAccount(for: role)" in app_state,
-            "AppState.signIn(role:) must call AuthService.signInDemoAccount", errors)
+            "AuthService must keep async demo credential helper for seeded accounts", errors)
+    require("appState.chooseRole(role)" in role_selection,
+            "RoleSelection buttons must route to the credential login screen", errors)
+    require("await appState.signIn(role: role)" not in role_selection,
+            "RoleSelection must not skip the credential login screen", errors)
+    require("route = .demoLogin(role)" in app_state,
+            "AppState.chooseRole must open DemoLoginView instead of signing in directly", errors)
+    require("authService.signIn(" in app_state and "email:" in app_state and "password:" in app_state,
+            "AppState.signIn(email:password:role:) must call AuthService credential sign-in", errors)
+    require("TextField(\"email\"" in demo_login and "SecureField(\"password\"" in demo_login,
+            "DemoLoginView must render visible email and password fields", errors)
+    require("await appState.signIn(email: email, password: password, role: role)" in demo_login,
+            "DemoLoginView must submit typed credentials through AppState", errors)
+    require("Firebase 帳號登入" in demo_login and "退回本機展示帳號" not in demo_login,
+            "DemoLoginView copy must describe real Firebase login, not local fallback", errors)
     require("Auth.auth().signIn(withEmail: email, password: password)" in firebase_auth,
             "FirebaseAuthService must call Firebase Auth signIn(withEmail:password:)", errors)
     require("FirestorePath.member(classId: classId, uid: uid)" in firebase_auth,

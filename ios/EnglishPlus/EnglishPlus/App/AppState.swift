@@ -35,13 +35,22 @@ final class AppState: ObservableObject {
     }
 
     func signIn(role: UserRole) async {
+        let credential = DemoAccountCredential.credential(for: role)
+        await signIn(email: credential.email, password: credential.password, role: role)
+    }
+
+    func signIn(email: String, password: String, role: UserRole) async {
         guard signingInRole == nil else { return }
         selectedRole = role
         signingInRole = role
         signInErrorMessage = nil
 
         do {
-            let session = try await authService.signInDemoAccount(for: role)
+            let session = try await authService.signIn(
+                email: email.trimmingCharacters(in: .whitespacesAndNewlines),
+                password: password,
+                expectedRole: role
+            )
             currentUser = session.user
             currentProfile = session.profile
             runtimeDiagnostics = runtimeDiagnostics.withSession(user: session.user, profile: session.profile)
@@ -53,7 +62,7 @@ final class AppState: ObservableObject {
             currentProfile = nil
             hasAcceptedConsent = false
             signingInRole = nil
-            signInErrorMessage = "登入失敗，請確認測試帳號、Firebase 設定與班級成員資料已建立。"
+            signInErrorMessage = "登入失敗。請確認帳號密碼、Firebase 設定檔，以及 Firestore 班級成員資料是否正確。"
         }
     }
 

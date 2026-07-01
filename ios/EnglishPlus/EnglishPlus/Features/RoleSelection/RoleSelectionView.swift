@@ -16,22 +16,24 @@ struct RoleSelectionView: View {
                             .onTapGesture(count: 5) {
                                 showingRuntimeDiagnostics = true
                             }
-                        Text("偏鄉學生雙軌學習平台")
-                            .font(.title3.weight(.semibold))
+                        Text("你今天要用哪一端？")
+                            .font(.title2.bold())
+                            .foregroundStyle(EPTheme.ink)
+                        Text("學生先完成心情檢測，再進入每日任務；老師與志工則先看需要接力的學生。")
+                            .font(.body)
                             .foregroundStyle(.secondary)
+                            .fixedSize(horizontal: false, vertical: true)
                     }
 
                     VStack(spacing: 12) {
                         ForEach(UserRole.allCases) { role in
                             Button {
-                                Task {
-                                    await appState.signIn(role: role)
-                                }
+                                appState.chooseRole(role)
                             } label: {
                                 HStack(spacing: 14) {
                                     Image(systemName: iconName(for: role))
                                         .font(.title2)
-                                        .frame(width: 36, height: 36)
+                                        .frame(width: 38, height: 38)
                                         .foregroundStyle(EPTheme.primary)
                                     VStack(alignment: .leading, spacing: 4) {
                                         Text(role.title)
@@ -43,19 +45,13 @@ struct RoleSelectionView: View {
                                             .multilineTextAlignment(.leading)
                                     }
                                     Spacer()
-                                    if appState.signingInRole == role {
-                                        ProgressView()
-                                            .controlSize(.small)
-                                    } else {
-                                        Image(systemName: "chevron.right")
-                                            .foregroundStyle(.secondary)
-                                    }
+                                    Image(systemName: "chevron.right")
+                                        .foregroundStyle(.secondary)
                                 }
                                 .padding(16)
                                 .background(.white)
                                 .clipShape(RoundedRectangle(cornerRadius: EPTheme.cardRadius))
                             }
-                            .disabled(appState.signingInRole != nil)
                             .buttonStyle(.plain)
                         }
                     }

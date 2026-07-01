@@ -14,9 +14,15 @@ struct SupportView: View {
                 EPTheme.background.ignoresSafeArea()
                 ScrollView {
                     VStack(alignment: .leading, spacing: 16) {
-                        Text("需要一點幫忙嗎？")
-                            .font(.title.bold())
-                            .foregroundStyle(EPTheme.ink)
+                        VStack(alignment: .leading, spacing: 6) {
+                            Text("支持")
+                                .font(.title.bold())
+                                .foregroundStyle(EPTheme.ink)
+                            Text("如果題目卡住、心情低落，或想要人陪你看一題，可以從這裡求助。")
+                                .font(.subheadline)
+                                .foregroundStyle(.secondary)
+                                .fixedSize(horizontal: false, vertical: true)
+                        }
 
                         VStack(spacing: 10) {
                             ForEach(supportOptions) { option in
@@ -25,7 +31,7 @@ struct SupportView: View {
                         }
 
                         if isLoadingSupportAI {
-                            Label("正在整理一段可以先做的支持建議", systemImage: "sparkles")
+                            Label("AI 正在先給一段可以立刻使用的支持建議...", systemImage: "sparkles")
                                 .font(.footnote)
                                 .foregroundStyle(EPTheme.primary)
                                 .padding(12)
@@ -51,11 +57,11 @@ struct SupportView: View {
         let requests = learningRepository.supportRequests(forStudentUid: appState.currentUser?.id)
 
         return VStack(alignment: .leading, spacing: 10) {
-            Text("我的求助")
+            Text("我的求助紀錄")
                 .font(.headline)
 
             if requests.isEmpty {
-                Text("需要時可以從上方送出，老師或志工回覆後會出現在這裡。")
+                Text("目前還沒有求助紀錄。需要時可以先看 AI 建議，也可以交給老師或志工接力。")
                     .font(.subheadline)
                     .foregroundStyle(.secondary)
                     .padding(16)
@@ -77,11 +83,12 @@ struct SupportView: View {
                     .frame(width: 32, height: 32)
                     .foregroundStyle(EPTheme.support)
                 VStack(alignment: .leading, spacing: 4) {
-                    Text(option.reason)
+                    Text(displayReason(for: option))
                         .font(.headline)
-                    Text(option.platformAction)
+                    Text(displayAction(for: option))
                         .font(.subheadline)
                         .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
                 }
                 Spacer()
             }
@@ -96,16 +103,42 @@ struct SupportView: View {
         .clipShape(RoundedRectangle(cornerRadius: EPTheme.cardRadius))
     }
 
+    private func displayReason(for option: SupportOption) -> String {
+        switch option.route {
+        case .aiCoach:
+            return "請 AI 先提示我"
+        case .humanHandoff:
+            return "請老師或志工陪我"
+        case .readingBreakdown:
+            return "閱讀題卡住了"
+        case .recovery:
+            return "我需要先穩一下"
+        }
+    }
+
+    private func displayAction(for option: SupportOption) -> String {
+        switch option.route {
+        case .aiCoach:
+            return "適合想先自己再試一次的時候。"
+        case .humanHandoff:
+            return "適合已經試過提示，但仍需要真人陪伴。"
+        case .readingBreakdown:
+            return "適合文章或長句看不懂的時候。"
+        case .recovery:
+            return "適合今天壓力太大，需要先降低任務量。"
+        }
+    }
+
     private func actionTitle(for route: SupportRoute) -> String {
         switch route {
         case .aiCoach:
-            return "取得提示"
+            return "請 AI 陪我看"
         case .humanHandoff:
             return "送給老師或志工"
         case .readingBreakdown:
             return "拆解閱讀題"
         case .recovery:
-            return "切換成小任務"
+            return "取得低壓建議"
         }
     }
 
@@ -126,7 +159,8 @@ struct SupportView: View {
         learningRepository.sendSupportRequest(
             from: appState.currentUser,
             profile: appState.currentProfile,
-            option: option
+            option: option,
+            message: studentMessage(for: option)
         )
         guard let request = learningRepository.supportRequests(forStudentUid: appState.currentUser?.id).first else {
             return
@@ -140,6 +174,19 @@ struct SupportView: View {
             isLoadingSupportAI = false
         }
     }
+
+    private func studentMessage(for option: SupportOption) -> String {
+        switch option.route {
+        case .aiCoach:
+            return "我想先看一個提示，再自己試一次。"
+        case .humanHandoff:
+            return "我已經試過提示了，想請老師或志工陪我看。"
+        case .readingBreakdown:
+            return "我卡在閱讀題或長句，想先拆解句子。"
+        case .recovery:
+            return "我今天狀態比較低，想先做低壓任務。"
+        }
+    }
 }
 
 private struct SupportAIResponseCard: View {
@@ -147,9 +194,15 @@ private struct SupportAIResponseCard: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
-            Label("先照這一步做", systemImage: "sparkles")
+            Label(response.fallbackUsed ? "內建支持提示" : "AI 支持回覆", systemImage: response.fallbackUsed ? "exclamationmark.triangle.fill" : "sparkles")
                 .font(.headline)
-                .foregroundStyle(EPTheme.support)
+                .foregroundStyle(response.fallbackUsed ? EPTheme.warning : EPTheme.support)
+
+            Text(response.fallbackUsed
+                ? "目前沒有連到線上 AI。"
+                : "線上 AI 已回應")
+                .font(.caption)
+                .foregroundStyle(.secondary)
 
             if let summary = response.output.summary {
                 Text(summary)
@@ -166,7 +219,7 @@ private struct SupportAIResponseCard: View {
             }
 
             if response.output.staffEscalationNeeded == true {
-                Text("這件事也會保留給老師或志工接續查看。")
+                Text("系統也會把這次求助留給老師或志工接力。")
                     .font(.footnote)
                     .foregroundStyle(.secondary)
             }
@@ -206,7 +259,7 @@ private struct StudentRequestCard: View {
                 .fixedSize(horizontal: false, vertical: true)
 
             if request.replies.isEmpty {
-                Text("已排入待回應清單。")
+                Text("目前還沒有真人回覆。你可以先看上方 AI 支持建議。")
                     .font(.footnote)
                     .foregroundStyle(.secondary)
             } else {

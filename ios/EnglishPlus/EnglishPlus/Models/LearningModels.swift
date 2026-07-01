@@ -53,6 +53,10 @@ struct StudentProgressSnapshot: Equatable {
         return min(Double(correctCount) / Double(targetCorrectCount), 1)
     }
 
+    var remainingCount: Int {
+        max(targetCorrectCount - correctCount, 0)
+    }
+
     var progressText: String {
         return "已完成 \(correctCount) / \(targetCorrectCount)"
     }
@@ -124,7 +128,7 @@ struct QuestionBankTypeOverview: Identifiable, Equatable {
     var levelSummary: String {
         QuestionLevel.allCases
             .map { "\($0.uiTitle) \(levelCounts[$0, default: 0])" }
-            .joined(separator: " · ")
+            .joined(separator: "、")
     }
 }
 
@@ -140,26 +144,26 @@ struct ClassroomReportExport: Equatable {
     var shareText: String {
         let metricLines = metrics.map { "- \($0.label): \($0.value) \($0.detail)" }
         let studentLines = priorityStudents.isEmpty
-            ? ["- 目前沒有待回應學生。"]
-            : priorityStudents.map { "- \($0.studentName): \($0.priorityText)｜\($0.summary)" }
-        let questionLines = questionBankRows.map { "- \($0.typeTitle): \($0.totalCount) 題｜\($0.levelSummary)" }
+            ? ["- 目前沒有需要優先接力的學生。"]
+            : priorityStudents.map { "- \($0.studentName): \($0.priorityText)，\($0.summary)" }
+        let questionLines = questionBankRows.map { "- \($0.typeTitle): \($0.totalCount) 題，\($0.levelSummary)" }
         let actionLines = recommendedActions.map { "- \($0)" }
 
         return ([
             "# \(title)",
-            "班級: \(classCode)",
-            "產生時間: \(generatedAtText)",
+            "班級：\(classCode)",
+            "產生時間：\(generatedAtText)",
             "",
-            "## 班級狀態",
+            "## 班級摘要",
         ] + metricLines + [
             "",
             "## 優先學生",
         ] + studentLines + [
             "",
-            "## 題庫狀態",
+            "## 題庫摘要",
         ] + questionLines + [
             "",
-            "## 建議下一步",
+            "## 建議行動",
         ] + actionLines).joined(separator: "\n")
     }
 
@@ -179,13 +183,13 @@ struct ClassroomReportExport: Equatable {
         <body>
           <h1>\(title)</h1>
           <p>班級：\(classCode)<br>產生時間：\(generatedAtText)</p>
-          <h2>班級狀態</h2>
+          <h2>班級摘要</h2>
           <ul>\(metrics.map { "<li>\($0.label): \($0.value) \($0.detail)</li>" }.joined())</ul>
           <h2>優先學生</h2>
-          <ul>\(priorityStudents.isEmpty ? "<li>目前沒有待回應學生。</li>" : priorityStudents.map { "<li>\($0.studentName): \($0.priorityText)｜\($0.summary)</li>" }.joined())</ul>
-          <h2>題庫狀態</h2>
-          <ul>\(questionBankRows.map { "<li>\($0.typeTitle): \($0.totalCount) 題｜\($0.levelSummary)</li>" }.joined())</ul>
-          <h2>建議下一步</h2>
+          <ul>\(priorityStudents.isEmpty ? "<li>目前沒有需要優先接力的學生。</li>" : priorityStudents.map { "<li>\($0.studentName): \($0.priorityText)，\($0.summary)</li>" }.joined())</ul>
+          <h2>題庫摘要</h2>
+          <ul>\(questionBankRows.map { "<li>\($0.typeTitle): \($0.totalCount) 題，\($0.levelSummary)</li>" }.joined())</ul>
+          <h2>建議行動</h2>
           <ul>\(recommendedActions.map { "<li>\($0)</li>" }.joined())</ul>
         </body>
         </html>
@@ -267,11 +271,11 @@ extension RiskLevel {
     var uiTitle: String {
         switch self {
         case .low:
-            return "穩定"
+            return "低風險"
         case .medium:
-            return "留意"
+            return "中風險"
         case .high:
-            return "優先"
+            return "高風險"
         }
     }
 }
@@ -282,13 +286,13 @@ extension SupportThreadStatus {
         case .open:
             return "已送出"
         case .waitingForStaff:
-            return "待回應"
+            return "等待接力"
         case .replied:
             return "已有回覆"
         case .readByStudent:
             return "學生已讀"
         case .closed:
-            return "已完成"
+            return "已結案"
         }
     }
 }
@@ -297,11 +301,11 @@ extension MissionTrack {
     var uiTitle: String {
         switch self {
         case .repair:
-            return "修復任務"
+            return "低壓修復"
         case .steady:
-            return "穩定任務"
+            return "穩定練習"
         case .challenge:
-            return "挑戰任務"
+            return "挑戰關卡"
         }
     }
 }

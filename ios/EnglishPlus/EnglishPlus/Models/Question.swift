@@ -14,11 +14,11 @@ enum QuestionType: String, CaseIterable, Identifiable, Codable {
     var title: String {
         switch self {
         case .vocabulary:
-            return "單字選擇"
+            return "單字"
         case .grammar:
             return "文法選擇"
         case .fillBlank:
-            return "填空題"
+            return "填空"
         case .cloze:
             return "克漏字"
         case .reading:
@@ -34,22 +34,25 @@ enum QuestionType: String, CaseIterable, Identifiable, Codable {
         let container = try decoder.singleValueContainer()
         let value = try container.decode(String.self)
         switch value {
-        case "vocabulary", "單字選擇":
+        case "vocabulary", "單字":
             self = .vocabulary
-        case "choice", "grammar", "文法選擇", "選擇題":
+        case "choice", "grammar", "multipleChoice", "文法", "文法選擇", "選擇":
             self = .grammar
-        case "fillBlank", "填空題":
+        case "fillBlank", "fill_blank", "填空":
             self = .fillBlank
         case "cloze", "克漏字":
             self = .cloze
-        case "reading", "閱讀理解":
+        case "reading", "閱讀", "閱讀理解":
             self = .reading
-        case "translation", "翻譯/句子重組", "翻譯 / 句子重組":
+        case "translation", "翻譯", "翻譯/句子重組", "翻譯 / 句子重組":
             self = .translation
-        case "dialogue", "情境對話":
+        case "dialogue", "對話", "情境對話":
             self = .dialogue
         default:
-            throw DecodingError.dataCorruptedError(in: container, debugDescription: "Unknown question type: \(value)")
+            throw DecodingError.dataCorruptedError(
+                in: container,
+                debugDescription: "Unknown question type: \(value)"
+            )
         }
     }
 
@@ -70,13 +73,13 @@ enum QuestionLevel: String, CaseIterable, Identifiable, Codable {
     var uiTitle: String {
         switch self {
         case .a1:
-            return "入門"
-        case .a2:
             return "基礎"
+        case .a2:
+            return "穩定"
         case .b1:
-            return "會考核心"
+            return "會考挑戰"
         case .b2:
-            return "挑戰"
+            return "進階挑戰"
         }
     }
 }

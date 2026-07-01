@@ -8,13 +8,30 @@ struct AuthSession: Equatable {
 protocol AuthService {
     func demoSession(for role: UserRole) -> AuthSession
     func signInDemoAccount(for role: UserRole) async throws -> AuthSession
+    func signIn(email: String, password: String, expectedRole: UserRole) async throws -> AuthSession
     func restorePreviousSession() async throws -> AuthSession?
     func signOut()
 }
 
 extension AuthService {
     func signInDemoAccount(for role: UserRole) async throws -> AuthSession {
-        demoSession(for: role)
+        let credential = DemoAccountCredential.credential(for: role)
+        return try await signIn(
+            email: credential.email,
+            password: credential.password,
+            expectedRole: role
+        )
+    }
+
+    func signIn(email: String, password: String, expectedRole: UserRole) async throws -> AuthSession {
+        let credential = DemoAccountCredential.credential(for: expectedRole)
+        guard
+            email.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() == credential.email,
+            password == credential.password
+        else {
+            throw DemoAuthError.invalidCredential
+        }
+        return demoSession(for: expectedRole)
     }
 
     func restorePreviousSession() async throws -> AuthSession? {
@@ -22,6 +39,10 @@ extension AuthService {
     }
 
     func signOut() {}
+}
+
+enum DemoAuthError: Error, Equatable {
+    case invalidCredential
 }
 
 struct DemoAccountCredential: Equatable {

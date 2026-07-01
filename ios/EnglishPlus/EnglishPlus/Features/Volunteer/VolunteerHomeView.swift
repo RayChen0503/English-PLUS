@@ -1,6 +1,7 @@
 import SwiftUI
 
 struct VolunteerHomeView: View {
+    @EnvironmentObject private var appState: AppState
     @EnvironmentObject private var learningRepository: LearningRepositoryStore
 
     var body: some View {
@@ -37,6 +38,15 @@ struct VolunteerHomeView: View {
                 }
             }
             .navigationTitle("志工工作台")
+            .toolbar {
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button {
+                        appState.signOut()
+                    } label: {
+                        Label("登出", systemImage: "rectangle.portrait.and.arrow.right")
+                    }
+                }
+            }
         }
     }
 }

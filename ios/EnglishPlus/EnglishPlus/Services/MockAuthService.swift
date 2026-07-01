@@ -14,9 +14,9 @@ struct MockAuthService: AuthService {
         case .student:
             fallbackProfile = Self.profile(id: "student-demo", displayName: "小安", role: .student)
         case .teacher:
-            fallbackProfile = Self.profile(id: "teacher-demo", displayName: "林老師", role: .teacher)
+            fallbackProfile = Self.profile(id: "teacher-demo", displayName: "老師", role: .teacher)
         case .volunteer:
-            fallbackProfile = Self.profile(id: "volunteer-demo", displayName: "陪伴志工", role: .volunteer)
+            fallbackProfile = Self.profile(id: "volunteer-demo", displayName: "志工", role: .volunteer)
         }
 
         return AuthSession(

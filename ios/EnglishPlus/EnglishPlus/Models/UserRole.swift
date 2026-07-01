@@ -21,11 +21,11 @@ enum UserRole: String, CaseIterable, Identifiable, Codable {
     var shortPurpose: String {
         switch self {
         case .student:
-            return "完成今日任務，慢慢修復英文斷點"
+            return "先完成心情檢測，再進入今日任務與自由練習。"
         case .teacher:
-            return "查看需要先接住的學生與待回應求助"
+            return "查看需要接力的學生，整理回饋與班級狀態。"
         case .volunteer:
-            return "接力陪伴，給學生清楚鼓勵與支持"
+            return "陪伴卡住的學生，提供鼓勵與練習建議。"
         }
     }
 }

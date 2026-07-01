@@ -31,16 +31,24 @@ struct FirebaseAuthService: AuthService {
     }
 
     func signInDemoAccount(for role: UserRole) async throws -> AuthSession {
+        let credential = DemoAccountCredential.credential(for: role)
+        return try await signIn(
+            email: credential.email,
+            password: credential.password,
+            expectedRole: credential.role
+        )
+    }
+
+    func signIn(email: String, password: String, expectedRole: UserRole) async throws -> AuthSession {
         #if canImport(FirebaseAuth) && canImport(FirebaseFirestore)
         guard FirebaseAppConfigurator.hasBundledConfig else {
             throw FirebaseAuthServiceError.notConfigured
         }
 
-        let credential = DemoAccountCredential.credential(for: role)
-        let result = try await signIn(email: credential.email, password: credential.password)
+        let result = try await signInWithFirebase(email: email, password: password)
         return try await membershipSession(
             uid: result.user.uid,
-            expectedRole: credential.role
+            expectedRole: expectedRole
         )
         #else
         throw FirebaseAuthServiceError.firebaseSDKUnavailable
@@ -80,7 +88,7 @@ struct FirebaseAuthService: AuthService {
     }
 
     #if canImport(FirebaseAuth)
-    private func signIn(email: String, password: String) async throws -> AuthDataResult {
+    private func signInWithFirebase(email: String, password: String) async throws -> AuthDataResult {
         try await withCheckedThrowingContinuation { continuation in
             Auth.auth().signIn(withEmail: email, password: password) { result, error in
                 if let error {

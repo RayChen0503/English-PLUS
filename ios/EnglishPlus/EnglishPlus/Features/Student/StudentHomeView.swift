@@ -19,9 +19,7 @@ struct StudentHomeView: View {
                 EPTheme.background.ignoresSafeArea()
                 ScrollView {
                     VStack(alignment: .leading, spacing: 16) {
-                        Text("早安，\(appState.currentUser?.displayName ?? "同學")")
-                            .font(.title.bold())
-                            .foregroundStyle(EPTheme.ink)
+                        header
 
                         if learningRepository.currentMission == nil {
                             checkInCard
@@ -34,30 +32,57 @@ struct StudentHomeView: View {
                     .padding(EPTheme.pagePadding)
                 }
             }
+            .navigationTitle("首頁")
+            .toolbar {
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button {
+                        appState.signOut()
+                    } label: {
+                        Label("登出", systemImage: "rectangle.portrait.and.arrow.right")
+                    }
+                }
+            }
             .onAppear(perform: initializePreferredTypes)
+        }
+    }
+
+    private var header: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text("嗨，\(appState.currentUser?.displayName ?? "同學")")
+                .font(.title.bold())
+                .foregroundStyle(EPTheme.ink)
+            Text(learningRepository.currentMission == nil
+                ? "先做一個短短的心情檢測，English+ 會用 AI 幫你排今天最適合的任務。"
+                : "照著今日任務前進。答對才會增加進度，完成後可以自由練習。")
+                .font(.subheadline)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
         }
     }
 
     private var checkInCard: some View {
         VStack(alignment: .leading, spacing: 16) {
             VStack(alignment: .leading, spacing: 6) {
-                Text("今日任務")
+                Text("開始心情檢測")
                     .font(.headline)
-                Text("先用四題確認今天的狀態，再產生適合你的英文練習。")
+                    .foregroundStyle(EPTheme.ink)
+                Text("這裡只問四題。系統會依照你的狀態、時間與想練的題型，產生今日任務。")
+                    .font(.subheadline)
                     .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
             }
 
             ScaleSelector(
                 title: "1. 今天的心情量表",
-                lowLabel: "需要陪伴",
-                highLabel: "很有精神",
+                lowLabel: "1 很低落",
+                highLabel: "5 很不錯",
                 value: $moodScore
             )
 
             ScaleSelector(
-                title: "2. 今天有足夠的時間練習英文嗎",
-                lowLabel: "很少",
-                highLabel: "很充足",
+                title: "2. 今天有足夠的時間練習英文嗎？",
+                lowLabel: "1 很少",
+                highLabel: "5 很充足",
                 value: $timeLevel
             )
 
@@ -68,7 +93,7 @@ struct StudentHomeView: View {
                 selectedTypes: $selectedTypes
             )
 
-            Button("產生今日任務") {
+            Button(isGeneratingMissionWithAI ? "AI 正在安排任務..." : "產生今日任務") {
                 Task {
                     await generateMissionAfterAI()
                 }
@@ -78,9 +103,10 @@ struct StudentHomeView: View {
             .opacity(preferredTypesInDisplayOrder.isEmpty || isGeneratingMissionWithAI ? 0.45 : 1)
 
             if isGeneratingMissionWithAI {
-                Label("正在安排今天的練習", systemImage: "sparkles")
+                Label("正在請 AI 判斷今天適合先修復、穩定練習，還是挑戰更難題。", systemImage: "sparkles")
                     .font(.footnote)
                     .foregroundStyle(EPTheme.primary)
+                    .fixedSize(horizontal: false, vertical: true)
             }
         }
         .padding(16)
@@ -93,18 +119,40 @@ struct StudentHomeView: View {
             if let mission = learningRepository.currentMission,
                let progress = learningRepository.progressSnapshot {
                 VStack(alignment: .leading, spacing: 6) {
-                    Text("今日任務")
-                        .font(.headline)
-                    Text("\(mission.track.uiTitle) · 約 \(mission.recommendedMinutes) 分鐘")
-                        .font(.subheadline)
+                    HStack {
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text("今日任務")
+                                .font(.headline)
+                                .foregroundStyle(EPTheme.ink)
+                            Text("\(mission.track.uiTitle) · 約 \(mission.recommendedMinutes) 分鐘")
+                                .font(.subheadline)
+                                .foregroundStyle(.secondary)
+                        }
+                        Spacer()
+                        Text("\(progress.correctCount)/\(progress.targetCorrectCount)")
+                            .font(.headline.bold())
+                            .foregroundStyle(EPTheme.primary)
+                            .padding(.horizontal, 12)
+                            .padding(.vertical, 7)
+                            .background(EPTheme.primary.opacity(0.10))
+                            .clipShape(Capsule())
+                    }
+
+                    ProgressView(value: progress.progressFraction)
+                        .tint(EPTheme.primary)
+                    Text(progress.progressText)
+                        .font(.caption)
                         .foregroundStyle(.secondary)
                 }
 
-                ProgressView(value: progress.progressFraction)
-                    .tint(EPTheme.primary)
-                Text(progress.progressText)
-                    .font(.caption)
+                if let response = appState.latestAIResponse, response.taskType == .dailyMission {
+                    AIStatusCard(response: response, title: "AI 任務安排")
+                }
+
+                Text("答對才會增加進度。答錯時會保留這題，先看提示再重試。")
+                    .font(.footnote)
                     .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
 
                 if progress.status == .completed {
                     CompletionCard()
@@ -130,8 +178,11 @@ struct StudentHomeView: View {
         VStack(alignment: .leading, spacing: 10) {
             Text("自由練習")
                 .font(.headline)
-            Text("練習中心可以隨時進入，不會影響今日任務進度。")
+                .foregroundStyle(EPTheme.ink)
+            Text("完成今日任務後，可以到練習中心自由挑題。自由練習不會影響今日任務進度。")
+                .font(.subheadline)
                 .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
         }
         .padding(16)
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -148,6 +199,7 @@ struct StudentHomeView: View {
                 Text(item.level.uiTitle)
                     .font(.caption)
                     .foregroundStyle(.secondary)
+                Spacer()
             }
 
             Text(item.question.prompt)
@@ -156,7 +208,7 @@ struct StudentHomeView: View {
                 .fixedSize(horizontal: false, vertical: true)
 
             if item.question.options.isEmpty {
-                TextField("輸入你的答案", text: $selectedAnswer, axis: .vertical)
+                TextField("輸入答案", text: $selectedAnswer, axis: .vertical)
                     .textFieldStyle(.roundedBorder)
             } else {
                 VStack(spacing: 8) {
@@ -224,11 +276,9 @@ struct StudentHomeView: View {
     private func submitMissionAnswerWithAI(for item: QuestionBankItem) {
         guard let attempt = learningRepository.submitMissionAnswer(selectedAnswer) else { return }
         selectedAnswer = ""
-        guard !attempt.isCorrect else {
-            latestWrongAnswerAIResponse = nil
-            return
-        }
+        latestWrongAnswerAIResponse = nil
 
+        guard !attempt.isCorrect else { return }
         isExplainingWrongAnswer = true
         Task {
             let aiContext = WrongAnswerAIContext(
@@ -250,24 +300,28 @@ private struct ScaleSelector: View {
     @Binding var value: Int
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
+        VStack(alignment: .leading, spacing: 10) {
             Text(title)
                 .font(.subheadline.bold())
+                .foregroundStyle(EPTheme.ink)
+
             HStack(spacing: 8) {
-                ForEach(1...5, id: \.self) { item in
+                ForEach(1...5, id: \.self) { score in
                     Button {
-                        value = item
+                        value = score
                     } label: {
-                        Text("\(item)")
+                        Text("\(score)")
                             .font(.headline)
-                            .frame(maxWidth: .infinity, minHeight: 42)
-                            .foregroundStyle(value == item ? .white : EPTheme.ink)
-                            .background(value == item ? EPTheme.primary : Color(.systemGray6))
-                            .clipShape(RoundedRectangle(cornerRadius: EPTheme.cardRadius))
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 10)
+                            .foregroundStyle(value == score ? .white : EPTheme.primary)
+                            .background(value == score ? EPTheme.primary : EPTheme.primary.opacity(0.08))
+                            .clipShape(RoundedRectangle(cornerRadius: 8))
                     }
                     .buttonStyle(.plain)
                 }
             }
+
             HStack {
                 Text(lowLabel)
                 Spacer()
@@ -283,34 +337,28 @@ private struct ChallengeSelector: View {
     @Binding var wantsChallenge: Bool
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Text("3. 今天會想要挑戰更難的題目嗎")
+        VStack(alignment: .leading, spacing: 10) {
+            Text("3. 今天會想要挑戰更難的題目嗎？")
                 .font(.subheadline.bold())
-            HStack(spacing: 8) {
-                ChallengeButton(title: "先穩定", isSelected: !wantsChallenge) {
-                    wantsChallenge = false
-                }
-                ChallengeButton(title: "想挑戰", isSelected: wantsChallenge) {
-                    wantsChallenge = true
-                }
+                .foregroundStyle(EPTheme.ink)
+            HStack(spacing: 10) {
+                challengeButton(title: "想挑戰", value: true)
+                challengeButton(title: "先穩定練", value: false)
             }
         }
     }
-}
 
-private struct ChallengeButton: View {
-    let title: String
-    let isSelected: Bool
-    let action: () -> Void
-
-    var body: some View {
-        Button(action: action) {
+    private func challengeButton(title: String, value: Bool) -> some View {
+        Button {
+            wantsChallenge = value
+        } label: {
             Text(title)
                 .font(.headline)
-                .frame(maxWidth: .infinity, minHeight: 44)
-                .foregroundStyle(isSelected ? .white : EPTheme.ink)
-                .background(isSelected ? EPTheme.support : Color(.systemGray6))
-                .clipShape(RoundedRectangle(cornerRadius: EPTheme.cardRadius))
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 12)
+                .foregroundStyle(wantsChallenge == value ? .white : EPTheme.primary)
+                .background(wantsChallenge == value ? EPTheme.primary : EPTheme.primary.opacity(0.08))
+                .clipShape(RoundedRectangle(cornerRadius: 8))
         }
         .buttonStyle(.plain)
     }
@@ -321,33 +369,37 @@ private struct QuestionTypePicker: View {
     @Binding var selectedTypes: Set<QuestionType>
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Text("4. 想要多練習哪幾種題型")
+        VStack(alignment: .leading, spacing: 10) {
+            Text("4. 想要多練習哪幾種題型？")
                 .font(.subheadline.bold())
-            LazyVGrid(columns: [GridItem(.adaptive(minimum: 118), spacing: 8)], spacing: 8) {
+                .foregroundStyle(EPTheme.ink)
+            LazyVGrid(columns: [GridItem(.adaptive(minimum: 124), spacing: 8)], spacing: 8) {
                 ForEach(types) { type in
                     Button {
-                        if selectedTypes.contains(type) {
-                            selectedTypes.remove(type)
-                        } else {
-                            selectedTypes.insert(type)
-                        }
+                        toggle(type)
                     } label: {
                         HStack(spacing: 6) {
                             Image(systemName: selectedTypes.contains(type) ? "checkmark.circle.fill" : "circle")
                             Text(type.checkInLabel)
-                                .lineLimit(1)
-                                .minimumScaleFactor(0.82)
                         }
                         .font(.caption.bold())
-                        .frame(maxWidth: .infinity, minHeight: 38)
-                        .foregroundStyle(selectedTypes.contains(type) ? .white : EPTheme.ink)
-                        .background(selectedTypes.contains(type) ? EPTheme.primary : Color(.systemGray6))
-                        .clipShape(RoundedRectangle(cornerRadius: EPTheme.cardRadius))
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 10)
+                        .foregroundStyle(selectedTypes.contains(type) ? .white : EPTheme.primary)
+                        .background(selectedTypes.contains(type) ? EPTheme.primary : EPTheme.primary.opacity(0.08))
+                        .clipShape(RoundedRectangle(cornerRadius: 8))
                     }
                     .buttonStyle(.plain)
                 }
             }
+        }
+    }
+
+    private func toggle(_ type: QuestionType) {
+        if selectedTypes.contains(type) {
+            selectedTypes.remove(type)
+        } else {
+            selectedTypes.insert(type)
         }
     }
 }
@@ -359,17 +411,13 @@ private struct AnswerOptionButton: View {
 
     var body: some View {
         Button(action: action) {
-            HStack(spacing: 10) {
-                Image(systemName: isSelected ? "checkmark.circle.fill" : "circle")
-                    .foregroundStyle(isSelected ? EPTheme.primary : .secondary)
-                Text(option)
-                    .foregroundStyle(EPTheme.ink)
-                    .fixedSize(horizontal: false, vertical: true)
-                Spacer()
-            }
-            .padding(12)
-            .background(isSelected ? EPTheme.primary.opacity(0.12) : Color(.systemGray6))
-            .clipShape(RoundedRectangle(cornerRadius: EPTheme.cardRadius))
+            Text(option)
+                .font(.subheadline.bold())
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(12)
+                .foregroundStyle(isSelected ? .white : EPTheme.ink)
+                .background(isSelected ? EPTheme.primary : EPTheme.primary.opacity(0.08))
+                .clipShape(RoundedRectangle(cornerRadius: 8))
         }
         .buttonStyle(.plain)
     }
@@ -381,43 +429,39 @@ private struct FeedbackCard: View {
     let isLoadingAI: Bool
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
+        VStack(alignment: .leading, spacing: 10) {
             Label(
-                attempt.isCorrect ? "答對了" : "再試一次",
-                systemImage: attempt.isCorrect ? "checkmark.circle.fill" : "lightbulb"
+                attempt.isCorrect ? "答對了" : "這題還可以再修一次",
+                systemImage: attempt.isCorrect ? "checkmark.circle.fill" : "lightbulb.fill"
             )
             .font(.headline)
             .foregroundStyle(attempt.isCorrect ? EPTheme.support : EPTheme.warning)
 
-            if !attempt.isCorrect {
-                Text("正確答案：\(attempt.acceptedAnswer)")
-                    .font(.subheadline.bold())
-                    .foregroundStyle(EPTheme.ink)
-            }
-
-            Text(attempt.explanation)
+            Text(attempt.isCorrect ? "進度已增加。繼續完成今天的小任務。" : "進度不會增加。先看提示，再重試這題。")
                 .font(.subheadline)
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
 
-            Text(attempt.repairHint)
-                .font(.footnote)
+            Text(attempt.explanation)
+                .font(.subheadline)
                 .foregroundStyle(EPTheme.ink)
                 .fixedSize(horizontal: false, vertical: true)
 
             if isLoadingAI {
-                Label("正在整理更清楚的提示", systemImage: "sparkles")
+                Label("AI 正在產生更像老師的補充說明...", systemImage: "sparkles")
                     .font(.footnote)
                     .foregroundStyle(EPTheme.primary)
-            }
-
-            if let aiResponse, !attempt.isCorrect {
+            } else if let aiResponse {
                 AIExplanationCard(response: aiResponse)
+            } else if !attempt.isCorrect {
+                Text("提示：\(attempt.repairHint)")
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
             }
         }
-        .padding(12)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background(Color(.systemGray6))
+        .padding(14)
+        .background((attempt.isCorrect ? EPTheme.support : EPTheme.warning).opacity(0.10))
         .clipShape(RoundedRectangle(cornerRadius: EPTheme.cardRadius))
     }
 }
@@ -426,40 +470,51 @@ private struct AIExplanationCard: View {
     let response: AiProxyResponse
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            Label("AI 補充說明", systemImage: "sparkles")
-                .font(.caption.bold())
-                .foregroundStyle(EPTheme.primary)
+        VStack(alignment: .leading, spacing: 8) {
+            AIStatusCard(response: response, title: "AI 錯題詳解")
 
-            if let shortFeedback = response.output.shortFeedback {
-                Text(shortFeedback)
-                    .font(.footnote)
+            if let whyWrong = response.output.whyWrong, !whyWrong.isEmpty {
+                Text(whyWrong)
+                    .font(.subheadline)
                     .foregroundStyle(EPTheme.ink)
                     .fixedSize(horizontal: false, vertical: true)
-            } else if let summary = response.output.summary {
+            }
+
+            if let hint = response.output.nextHint, !hint.isEmpty {
+                Text("下一步：\(hint)")
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        }
+    }
+}
+
+private struct AIStatusCard: View {
+    let response: AiProxyResponse
+    let title: String
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Label(title, systemImage: response.fallbackUsed ? "exclamationmark.triangle.fill" : "sparkles")
+                .font(.subheadline.bold())
+                .foregroundStyle(response.fallbackUsed ? EPTheme.warning : EPTheme.primary)
+
+            Text(response.fallbackUsed
+                ? "目前使用內建提示，沒有連到線上 AI。"
+                : "線上 AI 已回應")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+
+            if let summary = response.output.summary, !summary.isEmpty {
                 Text(summary)
                     .font(.footnote)
                     .foregroundStyle(EPTheme.ink)
                     .fixedSize(horizontal: false, vertical: true)
             }
-
-            if let whyWrong = response.output.whyWrong {
-                Text(whyWrong)
-                    .font(.footnote)
-                    .foregroundStyle(.secondary)
-                    .fixedSize(horizontal: false, vertical: true)
-            }
-
-            if let nextHint = response.output.nextHint {
-                Text(nextHint)
-                    .font(.footnote.bold())
-                    .foregroundStyle(EPTheme.support)
-                    .fixedSize(horizontal: false, vertical: true)
-            }
         }
-        .padding(10)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background(EPTheme.primary.opacity(0.08))
+        .padding(12)
+        .background(EPTheme.primary.opacity(0.07))
         .clipShape(RoundedRectangle(cornerRadius: EPTheme.cardRadius))
     }
 }
@@ -470,13 +525,13 @@ private struct CompletionCard: View {
             Label("今日任務完成", systemImage: "star.circle.fill")
                 .font(.headline)
                 .foregroundStyle(EPTheme.support)
-            Text("你已經完成今天的正確題數，可以去自由練習，或先休息一下。")
+            Text("做得很好。今天的必要任務已經完成，接下來可以休息，或到練習中心自由挑戰。")
                 .font(.subheadline)
                 .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
         }
-        .padding(12)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background(EPTheme.support.opacity(0.12))
+        .padding(14)
+        .background(EPTheme.support.opacity(0.10))
         .clipShape(RoundedRectangle(cornerRadius: EPTheme.cardRadius))
     }
 }

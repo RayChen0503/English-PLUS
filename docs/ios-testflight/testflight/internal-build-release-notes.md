@@ -1,6 +1,6 @@
 ﻿# English+ TestFlight Internal Build Notes
 
-Build: `1.0 (1)`  
+Build: `1.0 (3)`
 Bundle ID: `com.englishplus`
 Audience: internal student, teacher, and volunteer testers  
 Language: Traditional Chinese first

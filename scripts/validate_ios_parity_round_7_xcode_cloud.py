@@ -67,7 +67,7 @@ def validate_xcode_project_settings(errors: list[str]) -> None:
     require("PRODUCT_BUNDLE_IDENTIFIER = com.englishplus;" in project, "Bundle ID must stay com.englishplus", errors)
     require(project.count(f"DEVELOPMENT_TEAM = {TEAM_ID};") >= 2, f"Debug and Release must set DEVELOPMENT_TEAM {TEAM_ID}", errors)
     require(project.count("CODE_SIGN_STYLE = Automatic;") >= 2, "Debug and Release must use automatic signing", errors)
-    require("CURRENT_PROJECT_VERSION = 1;" in project, "build number must stay 1 for first TestFlight build", errors)
+    require("CURRENT_PROJECT_VERSION = 3;" in project, "build number must be 3 for the next TestFlight build", errors)
     require("MARKETING_VERSION = 1.0;" in project, "marketing version must stay 1.0", errors)
     require("TARGETED_DEVICE_FAMILY = 1;" in project, "target must stay iPhone-first", errors)
 

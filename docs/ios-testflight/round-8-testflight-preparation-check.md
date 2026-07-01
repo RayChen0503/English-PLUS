@@ -27,7 +27,7 @@ Build/run check, commit/push
 | --- | --- |
 | Bundle ID | `com.englishplus` confirmed in Xcode project |
 | App display name | `English+` confirmed in `Info.plist` |
-| Version/build | `1.0 (1)` confirmed |
+| Version/build | `1.0 (3)` confirmed |
 | Target device | iPhone-only target confirmed |
 | Signing style | Automatic signing confirmed |
 | Team | `X7Y2V4D87G` set in Debug and Release build settings |

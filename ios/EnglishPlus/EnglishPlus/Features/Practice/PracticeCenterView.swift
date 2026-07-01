@@ -10,7 +10,9 @@ struct PracticeCenterView: View {
     @State private var practiceAnswer = ""
     @State private var practiceResult: PracticeResult?
     @State private var practiceAIResponse: AiProxyResponse?
+    @State private var wrongAnswerAIResponse: AiProxyResponse?
     @State private var isLoadingPracticeAI = false
+    @State private var isLoadingWrongAnswerAI = false
 
     private let questionBankItems = SeedData.approvedQuestionBankItems
 
@@ -42,15 +44,16 @@ struct PracticeCenterView: View {
                     Text("自由練習")
                         .font(.title3.bold())
                         .foregroundStyle(EPTheme.ink)
-                    Text("這裡可以自由挑題，不會改變今日任務進度。")
+                    Text("這裡可以自行選題型與難度。自由練習不影響今日任務進度，但答錯時仍可請 AI 解釋。")
                         .font(.subheadline)
                         .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
                 }
             }
 
             HStack(spacing: 8) {
                 PracticeStatPill(title: "題庫", value: "\(questionBankItems.count) 題")
-                PracticeStatPill(title: "目前", value: filteredCountText)
+                PracticeStatPill(title: "目前篩選", value: filteredCountText)
             }
         }
         .padding(16)
@@ -61,7 +64,7 @@ struct PracticeCenterView: View {
 
     private var filterCard: some View {
         VStack(alignment: .leading, spacing: 14) {
-            Text("選擇你想練的方向")
+            Text("選擇想練的題型與難度")
                 .font(.headline)
                 .foregroundStyle(EPTheme.ink)
 
@@ -108,7 +111,7 @@ struct PracticeCenterView: View {
     private var currentPracticeCard: some View {
         VStack(alignment: .leading, spacing: 14) {
             HStack {
-                Text("開始作答")
+                Text("目前題目")
                     .font(.headline)
                     .foregroundStyle(EPTheme.ink)
                 Spacer()
@@ -128,9 +131,6 @@ struct PracticeCenterView: View {
                 if item.question.options.isEmpty {
                     TextField("輸入你的答案", text: $practiceAnswer, axis: .vertical)
                         .textFieldStyle(.roundedBorder)
-                        .onChange(of: practiceAnswer) { _ in
-                            practiceResult = nil
-                        }
                 } else {
                     VStack(spacing: 8) {
                         ForEach(item.question.options, id: \.self) { option in
@@ -140,13 +140,18 @@ struct PracticeCenterView: View {
                             ) {
                                 practiceAnswer = option
                                 practiceResult = nil
+                                wrongAnswerAIResponse = nil
                             }
                         }
                     }
                 }
 
                 if let practiceResult {
-                    PracticeResultCard(result: practiceResult)
+                    PracticeResultCard(
+                        result: practiceResult,
+                        aiResponse: wrongAnswerAIResponse,
+                        isLoadingAI: isLoadingWrongAnswerAI
+                    )
                 }
 
                 HStack(spacing: 10) {
@@ -182,12 +187,13 @@ struct PracticeCenterView: View {
                 Image(systemName: "sparkles")
                     .foregroundStyle(EPTheme.support)
                 VStack(alignment: .leading, spacing: 4) {
-                    Text("下一步練什麼")
+                    Text("不知道要練什麼？")
                         .font(.headline)
                         .foregroundStyle(EPTheme.ink)
-                    Text("可以根據近期答題狀況，請 AI 給你一個簡短練習方向。")
+                    Text("可以依照最近表現請 AI 推薦下一步。這是驗證 AI 是否連線的另一個入口。")
                         .font(.subheadline)
                         .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
                 }
             }
 
@@ -196,7 +202,7 @@ struct PracticeCenterView: View {
                     await requestPracticeRecommendation()
                 }
             } label: {
-                Label(isLoadingPracticeAI ? "正在整理建議" : "取得練習建議", systemImage: "wand.and.stars")
+                Label(isLoadingPracticeAI ? "AI 正在推薦..." : "請 AI 推薦練習", systemImage: "wand.and.stars")
                     .font(.subheadline.bold())
                     .frame(maxWidth: .infinity, minHeight: 44)
             }
@@ -295,6 +301,7 @@ struct PracticeCenterView: View {
         practiceIndex = 0
         practiceAnswer = ""
         practiceResult = nil
+        wrongAnswerAIResponse = nil
     }
 
     private func submitPracticeAnswer(for item: QuestionBankItem) {
@@ -303,12 +310,40 @@ struct PracticeCenterView: View {
             .map(normalizedPracticeAnswer)
         let isCorrect = acceptedAnswers.contains(normalizedAnswer)
 
-        practiceResult = PracticeResult(
+        let result = PracticeResult(
             isCorrect: isCorrect,
             acceptedAnswer: item.question.answer,
             explanation: item.question.explanation,
             repairHint: item.question.repairHint
         )
+        practiceResult = result
+        wrongAnswerAIResponse = nil
+
+        guard !isCorrect else { return }
+        let attempt = MissionAttempt(
+            id: "practice-\(UUID().uuidString)",
+            missionId: "free-practice",
+            questionId: item.id,
+            prompt: item.question.prompt,
+            selectedAnswer: practiceAnswer,
+            acceptedAnswer: item.question.answer,
+            isCorrect: false,
+            attemptNumber: 1,
+            explanation: item.question.explanation,
+            repairHint: item.question.repairHint,
+            createdAt: Date()
+        )
+        isLoadingWrongAnswerAI = true
+        Task {
+            let context = WrongAnswerAIContext(
+                classId: currentClassId,
+                studentUid: appState.currentUser?.id,
+                attempt: attempt,
+                questionItem: item
+            )
+            wrongAnswerAIResponse = await appState.explainWrongAnswerWithAI(context: context)
+            isLoadingWrongAnswerAI = false
+        }
     }
 
     private func nextPracticeQuestion() {
@@ -316,6 +351,7 @@ struct PracticeCenterView: View {
         practiceIndex = (practiceIndex + 1) % filteredPracticeItems.count
         practiceAnswer = ""
         practiceResult = nil
+        wrongAnswerAIResponse = nil
     }
 
     private func normalizedPracticeAnswer(_ answer: String) -> String {
@@ -439,11 +475,13 @@ private struct PracticeAnswerOptionButton: View {
 
 private struct PracticeResultCard: View {
     let result: PracticeResult
+    let aiResponse: AiProxyResponse?
+    let isLoadingAI: Bool
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
             Label(
-                result.isCorrect ? "答對了" : "再修正一下",
+                result.isCorrect ? "答對了" : "先修一下這題",
                 systemImage: result.isCorrect ? "checkmark.circle.fill" : "lightbulb"
             )
             .font(.headline)
@@ -460,10 +498,18 @@ private struct PracticeResultCard: View {
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
 
-            Text(result.repairHint)
-                .font(.footnote.bold())
-                .foregroundStyle(EPTheme.ink)
-                .fixedSize(horizontal: false, vertical: true)
+            if isLoadingAI {
+                Label("AI 正在補充解釋...", systemImage: "sparkles")
+                    .font(.footnote)
+                    .foregroundStyle(EPTheme.primary)
+            } else if let aiResponse {
+                PracticeAIStatusCard(response: aiResponse, title: "AI 錯題詳解")
+            } else if !result.isCorrect {
+                Text("提示：\(result.repairHint)")
+                    .font(.footnote.bold())
+                    .foregroundStyle(EPTheme.ink)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
         }
         .padding(12)
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -477,12 +523,9 @@ private struct PracticeAIRecommendationView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
-            Text(response.output.summary ?? "先選一個想練的題型，完成三題後再回來看建議。")
-                .font(.subheadline)
-                .foregroundStyle(EPTheme.ink)
-                .fixedSize(horizontal: false, vertical: true)
+            PracticeAIStatusCard(response: response, title: "AI 練習建議")
 
-            if let action = response.output.recommendedNextAction {
+            if let action = response.output.recommendedNextAction, !action.isEmpty {
                 Text(action)
                     .font(.footnote.bold())
                     .foregroundStyle(EPTheme.support)
@@ -496,13 +539,49 @@ private struct PracticeAIRecommendationView: View {
     }
 }
 
+private struct PracticeAIStatusCard: View {
+    let response: AiProxyResponse
+    let title: String
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Label(title, systemImage: response.fallbackUsed ? "exclamationmark.triangle.fill" : "sparkles")
+                .font(.subheadline.bold())
+                .foregroundStyle(response.fallbackUsed ? EPTheme.warning : EPTheme.primary)
+            Text(response.fallbackUsed
+                ? "目前使用內建提示，沒有連到線上 AI。"
+                : "線上 AI 已回應")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+            if let summary = response.output.summary, !summary.isEmpty {
+                Text(summary)
+                    .font(.footnote)
+                    .foregroundStyle(EPTheme.ink)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            if let whyWrong = response.output.whyWrong, !whyWrong.isEmpty {
+                Text(whyWrong)
+                    .font(.footnote)
+                    .foregroundStyle(EPTheme.ink)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            if let hint = response.output.nextHint, !hint.isEmpty {
+                Text("下一步：\(hint)")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        }
+    }
+}
+
 private struct PracticeEmptyState: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
-            Label("這個組合暫時沒有題目", systemImage: "tray")
+            Label("目前沒有符合條件的題目", systemImage: "tray")
                 .font(.headline)
                 .foregroundStyle(EPTheme.ink)
-            Text("換一個題型或難度，就可以繼續練習。")
+            Text("可以放寬題型或難度，再回來選題。")
                 .font(.subheadline)
                 .foregroundStyle(.secondary)
         }
