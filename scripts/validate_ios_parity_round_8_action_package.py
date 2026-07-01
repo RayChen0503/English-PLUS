@@ -33,7 +33,7 @@ REQUIRED_MARKERS = [
     "234c6a6",
     "f8d4d13",
     "com.englishplus",
-    "SMKVWY55QH",
+    "X7Y2V4D87G",
     "EnglishPlus.xcscheme",
     "ExportOptions.TestFlight.plist",
     "GoogleService-Info.plist",

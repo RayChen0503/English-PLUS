@@ -19,7 +19,7 @@ The repository has completed the implementation and preparation work requested b
 | 5 | Seed question bank, multi-level/multi-type support, no repeated daily mission questions, progress/attempt/support/feedback models, local repository | Complete. Seed bank covers the required question types and mission selection avoids repeats. |
 | 6 | Firebase Auth/Firestore architecture, GoogleService config boundary, AuthService, FirestoreService, schema mapping, privacy consent, mock fallback | Complete. Firebase boundaries and privacy consent are implemented with mock fallback and config safety. |
 | 7 | AIService, MockAIService, RemoteAIService to Cloud Functions proxy, no OpenRouter key in iOS, AI use cases | Complete. AI service boundary exists and iOS does not hold or call the OpenRouter key directly. |
-| 8 | TestFlight signing/team/bundle/archive/upload preparation, tester info, email flow, internal release notes | Complete for repo/Xcode preparation. Archive was attempted and blocked by Apple account/provisioning availability: `No Account for Team "SMKVWY55QH"` and no profiles for `com.englishplus`. Upload was not attempted because no signed archive was produced. |
+| 8 | TestFlight signing/team/bundle/archive/upload preparation, tester info, email flow, internal release notes | Complete for repo/Xcode preparation. Early archive attempts were blocked by Apple account/provisioning availability before the active team was corrected to `X7Y2V4D87G`. |
 
 ## Final Validation Set
 

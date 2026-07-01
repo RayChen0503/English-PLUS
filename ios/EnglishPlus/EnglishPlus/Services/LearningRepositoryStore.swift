@@ -39,7 +39,8 @@ protocol LearningRepositoryBackend: AnyObject {
     func startRealtimeListener(
         classId: String,
         user: DemoUser?,
-        onChange: @escaping @MainActor (LearningRepositorySnapshot) -> Void
+        onChange: @escaping @MainActor (LearningRepositorySnapshot) -> Void,
+        onError: @escaping @MainActor (Error) -> Void
     ) -> LearningRepositoryListenerToken
 
     func generateMission(
@@ -48,7 +49,8 @@ protocol LearningRepositoryBackend: AnyObject {
         moodScore: Int,
         availableTimeLevel: Int,
         wantsChallenge: Bool,
-        preferredQuestionTypes: [QuestionType]
+        preferredQuestionTypes: [QuestionType],
+        aiMission: AiMissionOutput?
     )
 
     func submitMissionAnswer(_ answer: String) -> MissionAttempt?
@@ -61,6 +63,7 @@ protocol LearningRepositoryBackend: AnyObject {
     )
     func addTeacherReply(to requestId: String, body: String)
     func addVolunteerReply(to requestId: String, body: String)
+    func markSupportThreadReadByStudent(_ requestId: String)
 }
 
 @MainActor
@@ -97,6 +100,21 @@ final class LearningRepositoryStore: ObservableObject {
 
     var latestMissionAttempt: MissionAttempt? {
         missionAttempts.last
+    }
+
+    var recentAccuracy: Double? {
+        guard !missionAttempts.isEmpty else { return nil }
+        let correctCount = missionAttempts.filter(\.isCorrect).count
+        return Double(correctCount) / Double(missionAttempts.count)
+    }
+
+    var recentWeakSkills: [String] {
+        guard let currentMission else { return [] }
+        let questionsById = Dictionary(uniqueKeysWithValues: currentMission.questions.map { ($0.id, $0) })
+        let missedSkills = missionAttempts
+            .filter { !$0.isCorrect }
+            .compactMap { questionsById[$0.questionId]?.question.concept }
+        return Array(missedSkills.uniqued().prefix(3))
     }
 
     var progressSnapshot: StudentProgressSnapshot? {
@@ -260,8 +278,16 @@ final class LearningRepositoryStore: ObservableObject {
             user: user
         ) { [weak self] snapshot in
             self?.apply(snapshot)
+        } onError: { [weak self] error in
+            self?.updateSyncStatus(.offlineFallback(reason: String(describing: error)))
         }
-        syncStatus = .listening(classId: classId)
+        updateSyncStatus(.listening(classId: classId))
+    }
+
+    func stopRealtimeSync() {
+        listener?.cancel()
+        listener = nil
+        updateSyncStatus(.idle)
     }
 
     func refresh() async {
@@ -269,7 +295,7 @@ final class LearningRepositoryStore: ObservableObject {
             try await backend.refresh()
             apply(backend.snapshot)
         } catch {
-            syncStatus = .offlineFallback(reason: String(describing: error))
+            updateSyncStatus(.offlineFallback(reason: String(describing: error)))
             apply(backend.snapshot)
         }
     }
@@ -280,7 +306,8 @@ final class LearningRepositoryStore: ObservableObject {
         moodScore: Int,
         availableTimeLevel: Int,
         wantsChallenge: Bool,
-        preferredQuestionTypes: [QuestionType]
+        preferredQuestionTypes: [QuestionType],
+        aiMission: AiMissionOutput? = nil
     ) {
         backend.generateMission(
             for: user,
@@ -288,7 +315,8 @@ final class LearningRepositoryStore: ObservableObject {
             moodScore: moodScore,
             availableTimeLevel: availableTimeLevel,
             wantsChallenge: wantsChallenge,
-            preferredQuestionTypes: preferredQuestionTypes
+            preferredQuestionTypes: preferredQuestionTypes,
+            aiMission: aiMission
         )
         apply(backend.snapshot)
     }
@@ -331,11 +359,20 @@ final class LearningRepositoryStore: ObservableObject {
         apply(backend.snapshot)
     }
 
+    func markSupportThreadReadByStudent(_ requestId: String) {
+        backend.markSupportThreadReadByStudent(requestId)
+        apply(backend.snapshot)
+    }
+
     private func apply(_ snapshot: LearningRepositorySnapshot) {
         currentCheckIn = snapshot.currentCheckIn
         currentMission = snapshot.currentMission
         missionAttempts = snapshot.missionAttempts
         supportRequests = snapshot.supportRequests
+    }
+
+    private func updateSyncStatus(_ status: LearningRepositorySyncStatus) {
+        syncStatus = status
     }
 
     private var uniqueCorrectQuestionIds: Set<String> {
@@ -394,7 +431,8 @@ extension MockLearningRepository: LearningRepositoryBackend {
     func startRealtimeListener(
         classId: String,
         user: DemoUser?,
-        onChange: @escaping @MainActor (LearningRepositorySnapshot) -> Void
+        onChange: @escaping @MainActor (LearningRepositorySnapshot) -> Void,
+        onError: @escaping @MainActor (Error) -> Void
     ) -> LearningRepositoryListenerToken {
         onChange(snapshot)
         return AnyLearningRepositoryListenerToken {}

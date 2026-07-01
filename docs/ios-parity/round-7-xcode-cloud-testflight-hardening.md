@@ -17,7 +17,7 @@ committed shared scheme.
   - target: `EnglishPlus`
   - product: `EnglishPlus.app`
   - bundle id: `com.englishplus`
-  - team: `SMKVWY55QH` through project build settings
+  - team: `X7Y2V4D87G` through project build settings
 - The scheme supports:
   - BuildAction
   - TestAction

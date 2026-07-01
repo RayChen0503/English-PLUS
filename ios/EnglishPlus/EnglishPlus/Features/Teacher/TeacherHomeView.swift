@@ -179,6 +179,17 @@ private struct TeacherReportMetricTile: View {
         .background(.white)
         .clipShape(RoundedRectangle(cornerRadius: EPTheme.cardRadius))
     }
+
+    private func fillTeacherDraftWithAI() async {
+        isDraftingWithAI = true
+        let response = await appState.draftTeacherFeedbackWithAI(context: SupportAIContext(request: request))
+        replyDraft = response.output.studentFacingFeedback
+            ?? response.output.recommendedNextAction
+            ?? response.output.teacherSummary
+            ?? response.output.summary
+            ?? replyDraft
+        isDraftingWithAI = false
+    }
 }
 
 private struct TeacherReportPrioritySection: View {
@@ -387,10 +398,12 @@ private struct TeacherStatusTile: View {
 }
 
 struct TeacherRequestCard: View {
+    @EnvironmentObject private var appState: AppState
     @EnvironmentObject private var learningRepository: LearningRepositoryStore
     let request: StudentSupportRequest
 
     @State private var replyDraft = ""
+    @State private var isDraftingWithAI = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
@@ -429,6 +442,14 @@ struct TeacherRequestCard: View {
             TextField("輸入老師回饋", text: $replyDraft, axis: .vertical)
                 .textFieldStyle(.roundedBorder)
 
+            Button(isDraftingWithAI ? "正在產生草稿" : "AI 產生建議草稿") {
+                Task {
+                    await fillTeacherDraftWithAI()
+                }
+            }
+            .buttonStyle(.bordered)
+            .disabled(isDraftingWithAI)
+
             Button("送出回饋") {
                 learningRepository.addTeacherReply(to: request.id, body: replyDraft)
                 replyDraft = ""
@@ -440,6 +461,17 @@ struct TeacherRequestCard: View {
         .padding(16)
         .background(.white)
         .clipShape(RoundedRectangle(cornerRadius: EPTheme.cardRadius))
+    }
+
+    private func fillTeacherDraftWithAI() async {
+        isDraftingWithAI = true
+        let response = await appState.draftTeacherFeedbackWithAI(context: SupportAIContext(request: request))
+        replyDraft = response.output.studentFacingFeedback
+            ?? response.output.recommendedNextAction
+            ?? response.output.teacherSummary
+            ?? response.output.summary
+            ?? replyDraft
+        isDraftingWithAI = false
     }
 }
 
@@ -474,6 +506,7 @@ private struct TeacherClassSummary: View {
         .background(.white)
         .clipShape(RoundedRectangle(cornerRadius: EPTheme.cardRadius))
     }
+
 }
 
 private struct TeacherHandoffSummaryCard: View {

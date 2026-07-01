@@ -94,13 +94,17 @@ final class MockLearningRepository: ObservableObject {
         moodScore: Int,
         availableTimeLevel: Int,
         wantsChallenge: Bool,
-        preferredQuestionTypes: [QuestionType]
+        preferredQuestionTypes: [QuestionType],
+        aiMission: AiMissionOutput? = nil
     ) {
         let date = now()
-        let minutes = recommendedMinutes(for: availableTimeLevel)
-        let targetCorrectCount = questionGoal(for: minutes)
-        let selectedTypes = preferredQuestionTypes.isEmpty ? defaultPreferredQuestionTypes : preferredQuestionTypes
-        let track = missionTrack(moodScore: moodScore, wantsChallenge: wantsChallenge)
+        let minutes = aiMission?.recommendedMinutes ?? recommendedMinutes(for: availableTimeLevel)
+        let targetCorrectCount = aiMission?.targetCorrectCount ?? questionGoal(for: minutes)
+        let aiSelectedTypes = questionTypes(from: aiMission?.questionPlan)
+        let selectedTypes = aiSelectedTypes.isEmpty
+            ? (preferredQuestionTypes.isEmpty ? defaultPreferredQuestionTypes : preferredQuestionTypes)
+            : aiSelectedTypes
+        let track = missionTrack(from: aiMission?.track) ?? missionTrack(moodScore: moodScore, wantsChallenge: wantsChallenge)
         let studentUid = user?.id ?? "demo-student"
         let checkIn = MoodCheckIn(
             id: "checkin-\(todayKey(from: date))-\(studentUid)",
@@ -233,6 +237,14 @@ final class MockLearningRepository: ObservableObject {
         )
     }
 
+    func markSupportThreadReadByStudent(_ requestId: String) {
+        guard let index = supportRequests.firstIndex(where: { $0.id == requestId }) else { return }
+        guard supportRequests[index].status == .replied else { return }
+        supportRequests[index].status = .readByStudent
+        supportRequests[index].updatedAt = now()
+        persistSnapshot()
+    }
+
     private var uniqueCorrectQuestionIds: Set<String> {
         Set(missionAttempts.filter(\.isCorrect).map(\.questionId))
     }
@@ -347,6 +359,46 @@ final class MockLearningRepository: ObservableObject {
             return .repair
         }
         return .steady
+    }
+
+    private func missionTrack(from aiTrack: AiMissionTrack?) -> MissionTrack? {
+        switch aiTrack {
+        case .repair:
+            return .repair
+        case .steady:
+            return .steady
+        case .challenge:
+            return .challenge
+        case nil:
+            return nil
+        }
+    }
+
+    private func questionTypes(from plan: [AiQuestionPlanItem]?) -> [QuestionType] {
+        guard let plan else { return [] }
+        let types = plan.compactMap { questionType(from: $0.type) }
+        return types.uniqued(by: \.self)
+    }
+
+    private func questionType(from aiValue: String) -> QuestionType? {
+        switch aiValue {
+        case "vocabulary":
+            return .vocabulary
+        case "multipleChoice", "grammar", "choice":
+            return .grammar
+        case "fillBlank":
+            return .fillBlank
+        case "cloze":
+            return .cloze
+        case "reading":
+            return .reading
+        case "translation", "sentenceReorder":
+            return .translation
+        case "dialogue":
+            return .dialogue
+        default:
+            return nil
+        }
     }
 
     private func supportReason(for option: SupportOption) -> SupportReason {

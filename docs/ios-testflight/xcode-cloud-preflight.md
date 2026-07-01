@@ -9,7 +9,7 @@ This checklist is for running English+ through Xcode Cloud or a fresh Mac clone.
 - Shared scheme: `EnglishPlus.xcscheme`
 - Scheme location: `ios/EnglishPlus/EnglishPlus.xcodeproj/xcshareddata/xcschemes/EnglishPlus.xcscheme`
 - Bundle identifier: `com.englishplus`
-- Development team: `SMKVWY55QH`
+- Development team: `X7Y2V4D87G`
 - Signing style: Automatic
 - Export options: `ios/EnglishPlus/Config/ExportOptions.TestFlight.plist`
 

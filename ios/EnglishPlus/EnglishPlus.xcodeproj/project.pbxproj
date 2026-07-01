@@ -59,6 +59,8 @@
 		100000000000000000000150 /* FirebaseAuth in Frameworks */ = {isa = PBXBuildFile; productRef = 100000000000000000000703 /* FirebaseAuth */; };
 		100000000000000000000151 /* FirebaseFirestore in Frameworks */ = {isa = PBXBuildFile; productRef = 100000000000000000000704 /* FirebaseFirestore */; };
 		100000000000000000000152 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 100000000000000000000051 /* Assets.xcassets */; };
+		100000000000000000000153 /* RuntimeDiagnostics.swift in Sources */ = {isa = PBXBuildFile; fileRef = 100000000000000000000052 /* RuntimeDiagnostics.swift */; };
+		100000000000000000000154 /* RuntimeDiagnosticsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 100000000000000000000053 /* RuntimeDiagnosticsView.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -113,6 +115,8 @@
 		100000000000000000000049 /* FirebaseLearningRepository.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FirebaseLearningRepository.swift; sourceTree = "<group>"; };
 		100000000000000000000050 /* StudentLearningMapView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StudentLearningMapView.swift; sourceTree = "<group>"; };
 		100000000000000000000051 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
+		100000000000000000000052 /* RuntimeDiagnostics.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RuntimeDiagnostics.swift; sourceTree = "<group>"; };
+		100000000000000000000053 /* RuntimeDiagnosticsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RuntimeDiagnosticsView.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -194,6 +198,7 @@
 				100000000000000000000033 /* AiProxyModels.swift */,
 				100000000000000000000036 /* PrivacyConsent.swift */,
 				100000000000000000000040 /* LearningModels.swift */,
+				100000000000000000000052 /* RuntimeDiagnostics.swift */,
 			);
 			path = Models;
 			sourceTree = "<group>";
@@ -241,6 +246,7 @@
 				100000000000000000000315 /* Practice */,
 				100000000000000000000316 /* Support */,
 				100000000000000000000317 /* Consent */,
+				100000000000000000000318 /* Diagnostics */,
 			);
 			path = Features;
 			sourceTree = "<group>";
@@ -304,6 +310,14 @@
 				100000000000000000000017 /* SupportView.swift */,
 			);
 			path = Support;
+			sourceTree = "<group>";
+		};
+		100000000000000000000318 /* Diagnostics */ = {
+			isa = PBXGroup;
+			children = (
+				100000000000000000000053 /* RuntimeDiagnosticsView.swift */,
+			);
+			path = Diagnostics;
 			sourceTree = "<group>";
 		};
 		100000000000000000000317 /* Consent */ = {
@@ -421,6 +435,7 @@
 				100000000000000000000144 /* FirebaseAuthService.swift in Sources */,
 				100000000000000000000134 /* PrivacyConsent.swift in Sources */,
 				100000000000000000000138 /* LearningModels.swift in Sources */,
+				100000000000000000000153 /* RuntimeDiagnostics.swift in Sources */,
 				100000000000000000000135 /* FirestoreService.swift in Sources */,
 				100000000000000000000136 /* MockFirestoreService.swift in Sources */,
 				100000000000000000000145 /* FirebaseFirestoreService.swift in Sources */,
@@ -435,6 +450,7 @@
 				100000000000000000000148 /* StudentLearningMapView.swift in Sources */,
 				100000000000000000000116 /* PracticeCenterView.swift in Sources */,
 				100000000000000000000117 /* SupportView.swift in Sources */,
+				100000000000000000000154 /* RuntimeDiagnosticsView.swift in Sources */,
 				100000000000000000000118 /* TeacherShellView.swift in Sources */,
 				100000000000000000000119 /* TeacherHomeView.swift in Sources */,
 				100000000000000000000120 /* VolunteerShellView.swift in Sources */,

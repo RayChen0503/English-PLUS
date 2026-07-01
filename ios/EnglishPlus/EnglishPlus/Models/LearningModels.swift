@@ -54,7 +54,7 @@ struct StudentProgressSnapshot: Equatable {
     }
 
     var progressText: String {
-        "答對 \(correctCount) / \(targetCorrectCount)"
+        return "已完成 \(correctCount) / \(targetCorrectCount)"
     }
 }
 

@@ -11,7 +11,7 @@ EXPORT_OPTIONS = ROOT / "ios" / "EnglishPlus" / "Config" / "ExportOptions.TestFl
 TESTFLIGHT_DIR = ROOT / "docs" / "ios-testflight" / "testflight"
 ROUND8_DOC = ROOT / "docs" / "ios-testflight" / "round-8-testflight-preparation-check.md"
 
-TEAM_ID = "SMKVWY55QH"
+TEAM_ID = "X7Y2V4D87G"
 
 FILES = {
     "project": IOS_PROJECT,

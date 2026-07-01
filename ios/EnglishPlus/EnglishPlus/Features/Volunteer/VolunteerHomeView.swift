@@ -101,8 +101,14 @@ struct VolunteerStudentBriefsView: View {
     }
 }
 
-struct VolunteerSyncView: View {
+struct VolunteerRecordView: View {
     @EnvironmentObject private var learningRepository: LearningRepositoryStore
+
+    private var repliedRequests: [StudentSupportRequest] {
+        learningRepository.supportRequests.filter { request in
+            request.replies.contains { $0.authorRole == .volunteer }
+        }
+    }
 
     var body: some View {
         NavigationStack {
@@ -110,18 +116,22 @@ struct VolunteerSyncView: View {
                 EPTheme.background.ignoresSafeArea()
                 ScrollView {
                     VStack(alignment: .leading, spacing: 12) {
-                        Text("同步紀錄")
+                        Text("接力紀錄")
                             .font(.title.bold())
                             .foregroundStyle(EPTheme.ink)
 
-                        Text("目前先顯示這台裝置已保存的接力紀錄；接上 Firestore 後會成為跨裝置同步。")
+                        Text("回顧已送出的陪伴回覆，確認哪些學生已經有人接住。")
                             .font(.subheadline)
                             .foregroundStyle(.secondary)
                             .fixedSize(horizontal: false, vertical: true)
 
-                        VolunteerSyncStatusCard()
+                        VolunteerRecordStatusCard()
 
-                        ForEach(learningRepository.supportRequests.filter { !$0.replies.isEmpty }) { request in
+                        if repliedRequests.isEmpty {
+                            EmptyRecordCard()
+                        }
+
+                        ForEach(repliedRequests) { request in
                             VStack(alignment: .leading, spacing: 8) {
                                 Text(request.studentName)
                                     .font(.headline)
@@ -140,7 +150,7 @@ struct VolunteerSyncView: View {
                     .padding(EPTheme.pagePadding)
                 }
             }
-            .navigationTitle("同步")
+            .navigationTitle("紀錄")
         }
     }
 }
@@ -187,10 +197,12 @@ struct VolunteerScriptView: View {
 }
 
 struct VolunteerTaskCard: View {
+    @EnvironmentObject private var appState: AppState
     @EnvironmentObject private var learningRepository: LearningRepositoryStore
     let request: StudentSupportRequest
 
     @State private var replyDraft = ""
+    @State private var isDraftingWithAI = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
@@ -221,6 +233,14 @@ struct VolunteerTaskCard: View {
             TextField("留下鼓勵或陪伴回覆", text: $replyDraft, axis: .vertical)
                 .textFieldStyle(.roundedBorder)
 
+            Button(isDraftingWithAI ? "正在產生陪伴草稿" : "AI 產生陪伴草稿") {
+                Task {
+                    await fillVolunteerDraftWithAI()
+                }
+            }
+            .buttonStyle(.bordered)
+            .disabled(isDraftingWithAI)
+
             Button("送出陪伴回覆") {
                 learningRepository.addVolunteerReply(to: request.id, body: replyDraft)
                 replyDraft = ""
@@ -232,6 +252,16 @@ struct VolunteerTaskCard: View {
         .padding(16)
         .background(.white)
         .clipShape(RoundedRectangle(cornerRadius: EPTheme.cardRadius))
+    }
+
+    private func fillVolunteerDraftWithAI() async {
+        isDraftingWithAI = true
+        let response = await appState.coachVolunteerReplyWithAI(context: SupportAIContext(request: request))
+        replyDraft = response.output.studentFacingFeedback
+            ?? response.output.recommendedNextAction
+            ?? response.output.summary
+            ?? replyDraft
+        isDraftingWithAI = false
     }
 
     private var statusSummary: String {
@@ -345,7 +375,7 @@ private struct VolunteerStudentBriefCard: View {
     }
 }
 
-private struct VolunteerSyncStatusCard: View {
+private struct VolunteerRecordStatusCard: View {
     @EnvironmentObject private var learningRepository: LearningRepositoryStore
 
     var body: some View {
@@ -353,11 +383,29 @@ private struct VolunteerSyncStatusCard: View {
             Label("接力紀錄已保存", systemImage: "checkmark.circle")
                 .font(.headline)
                 .foregroundStyle(EPTheme.support)
-            Text("目前有 \(learningRepository.volunteerDashboardMetrics.syncRecordCount) 筆回覆或紀錄可同步。")
+            Text("已累積 \(learningRepository.volunteerDashboardMetrics.syncRecordCount) 筆陪伴回覆與追蹤紀錄。")
                 .font(.subheadline)
                 .foregroundStyle(.secondary)
         }
         .padding(16)
+        .background(.white)
+        .clipShape(RoundedRectangle(cornerRadius: EPTheme.cardRadius))
+    }
+}
+
+private struct EmptyRecordCard: View {
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Label("目前沒有志工回覆紀錄", systemImage: "tray")
+                .font(.headline)
+                .foregroundStyle(EPTheme.ink)
+            Text("接力學生後，回覆內容會留在這裡，方便下一位老師或志工接續。")
+                .font(.subheadline)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        .padding(16)
+        .frame(maxWidth: .infinity, alignment: .leading)
         .background(.white)
         .clipShape(RoundedRectangle(cornerRadius: EPTheme.cardRadius))
     }

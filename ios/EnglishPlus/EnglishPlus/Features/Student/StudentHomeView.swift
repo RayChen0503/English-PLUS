@@ -9,6 +9,9 @@ struct StudentHomeView: View {
     @State private var wantsChallenge = false
     @State private var selectedTypes = Set<QuestionType>()
     @State private var selectedAnswer = ""
+    @State private var isGeneratingMissionWithAI = false
+    @State private var isExplainingWrongAnswer = false
+    @State private var latestWrongAnswerAIResponse: AiProxyResponse?
 
     var body: some View {
         NavigationStack {
@@ -66,19 +69,19 @@ struct StudentHomeView: View {
             )
 
             Button("產生今日任務") {
-                learningRepository.generateMission(
-                    for: appState.currentUser,
-                    profile: appState.currentProfile,
-                    moodScore: moodScore,
-                    availableTimeLevel: timeLevel,
-                    wantsChallenge: wantsChallenge,
-                    preferredQuestionTypes: preferredTypesInDisplayOrder
-                )
-                selectedAnswer = ""
+                Task {
+                    await generateMissionAfterAI()
+                }
             }
             .buttonStyle(PrimaryActionButtonStyle())
-            .disabled(preferredTypesInDisplayOrder.isEmpty)
-            .opacity(preferredTypesInDisplayOrder.isEmpty ? 0.45 : 1)
+            .disabled(preferredTypesInDisplayOrder.isEmpty || isGeneratingMissionWithAI)
+            .opacity(preferredTypesInDisplayOrder.isEmpty || isGeneratingMissionWithAI ? 0.45 : 1)
+
+            if isGeneratingMissionWithAI {
+                Label("正在安排今天的練習", systemImage: "sparkles")
+                    .font(.footnote)
+                    .foregroundStyle(EPTheme.primary)
+            }
         }
         .padding(16)
         .background(.white)
@@ -110,7 +113,11 @@ struct StudentHomeView: View {
                 }
 
                 if let attempt = learningRepository.latestMissionAttempt {
-                    FeedbackCard(attempt: attempt)
+                    FeedbackCard(
+                        attempt: attempt,
+                        aiResponse: latestWrongAnswerAIResponse,
+                        isLoadingAI: isExplainingWrongAnswer
+                    )
                 }
             }
         }
@@ -165,8 +172,7 @@ struct StudentHomeView: View {
             }
 
             Button("送出答案") {
-                _ = learningRepository.submitMissionAnswer(selectedAnswer)
-                selectedAnswer = ""
+                submitMissionAnswerWithAI(for: item)
             }
             .buttonStyle(PrimaryActionButtonStyle())
             .disabled(selectedAnswer.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
@@ -178,9 +184,62 @@ struct StudentHomeView: View {
         QuestionType.allCases.filter { selectedTypes.contains($0) }
     }
 
+    private var currentClassId: String {
+        appState.currentProfile?.classId ?? "YILAN-CHENGZHI-8A"
+    }
+
     private func initializePreferredTypes() {
         guard selectedTypes.isEmpty else { return }
         selectedTypes = Set(learningRepository.defaultPreferredQuestionTypes)
+    }
+
+    private func generateMissionAfterAI() async {
+        guard !preferredTypesInDisplayOrder.isEmpty else { return }
+        isGeneratingMissionWithAI = true
+        let aiContext = DailyMissionAIContext(
+            classId: currentClassId,
+            studentUid: appState.currentUser?.id,
+            moodScore: moodScore,
+            availableTimeLevel: timeLevel,
+            wantsChallenge: wantsChallenge,
+            preferredQuestionTypes: preferredTypesInDisplayOrder,
+            recentAccuracy: learningRepository.recentAccuracy,
+            recentWeakSkills: learningRepository.recentWeakSkills
+        )
+        let aiResponse = await appState.generateDailyMissionWithAI(context: aiContext)
+        learningRepository.generateMission(
+            for: appState.currentUser,
+            profile: appState.currentProfile,
+            moodScore: moodScore,
+            availableTimeLevel: timeLevel,
+            wantsChallenge: wantsChallenge,
+            preferredQuestionTypes: preferredTypesInDisplayOrder,
+            aiMission: aiResponse.output.mission
+        )
+        selectedAnswer = ""
+        latestWrongAnswerAIResponse = nil
+        isGeneratingMissionWithAI = false
+    }
+
+    private func submitMissionAnswerWithAI(for item: QuestionBankItem) {
+        guard let attempt = learningRepository.submitMissionAnswer(selectedAnswer) else { return }
+        selectedAnswer = ""
+        guard !attempt.isCorrect else {
+            latestWrongAnswerAIResponse = nil
+            return
+        }
+
+        isExplainingWrongAnswer = true
+        Task {
+            let aiContext = WrongAnswerAIContext(
+                classId: currentClassId,
+                studentUid: appState.currentUser?.id,
+                attempt: attempt,
+                questionItem: item
+            )
+            latestWrongAnswerAIResponse = await appState.explainWrongAnswerWithAI(context: aiContext)
+            isExplainingWrongAnswer = false
+        }
     }
 }
 
@@ -318,6 +377,8 @@ private struct AnswerOptionButton: View {
 
 private struct FeedbackCard: View {
     let attempt: MissionAttempt
+    let aiResponse: AiProxyResponse?
+    let isLoadingAI: Bool
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
@@ -343,10 +404,62 @@ private struct FeedbackCard: View {
                 .font(.footnote)
                 .foregroundStyle(EPTheme.ink)
                 .fixedSize(horizontal: false, vertical: true)
+
+            if isLoadingAI {
+                Label("正在整理更清楚的提示", systemImage: "sparkles")
+                    .font(.footnote)
+                    .foregroundStyle(EPTheme.primary)
+            }
+
+            if let aiResponse, !attempt.isCorrect {
+                AIExplanationCard(response: aiResponse)
+            }
         }
         .padding(12)
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(Color(.systemGray6))
+        .clipShape(RoundedRectangle(cornerRadius: EPTheme.cardRadius))
+    }
+}
+
+private struct AIExplanationCard: View {
+    let response: AiProxyResponse
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Label("AI 補充說明", systemImage: "sparkles")
+                .font(.caption.bold())
+                .foregroundStyle(EPTheme.primary)
+
+            if let shortFeedback = response.output.shortFeedback {
+                Text(shortFeedback)
+                    .font(.footnote)
+                    .foregroundStyle(EPTheme.ink)
+                    .fixedSize(horizontal: false, vertical: true)
+            } else if let summary = response.output.summary {
+                Text(summary)
+                    .font(.footnote)
+                    .foregroundStyle(EPTheme.ink)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+
+            if let whyWrong = response.output.whyWrong {
+                Text(whyWrong)
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+
+            if let nextHint = response.output.nextHint {
+                Text(nextHint)
+                    .font(.footnote.bold())
+                    .foregroundStyle(EPTheme.support)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        }
+        .padding(10)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(EPTheme.primary.opacity(0.08))
         .clipShape(RoundedRectangle(cornerRadius: EPTheme.cardRadius))
     }
 }

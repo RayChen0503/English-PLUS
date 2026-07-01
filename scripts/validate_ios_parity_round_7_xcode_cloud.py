@@ -13,7 +13,7 @@ EXPORT_OPTIONS = ROOT / "ios" / "EnglishPlus" / "Config" / "ExportOptions.TestFl
 ROUND_DOC = ROOT / "docs" / "ios-parity" / "round-7-xcode-cloud-testflight-hardening.md"
 PREFLIGHT_DOC = ROOT / "docs" / "ios-testflight" / "xcode-cloud-preflight.md"
 
-TEAM_ID = "SMKVWY55QH"
+TEAM_ID = "X7Y2V4D87G"
 TARGET_ID = "100000000000000000000401"
 
 
@@ -103,7 +103,7 @@ def validate_docs(errors: list[str]) -> None:
             "shared scheme",
             "ArchiveAction",
             "com.englishplus",
-            "SMKVWY55QH",
+            "X7Y2V4D87G",
             "GoogleService-Info.plist",
             "OPENROUTER_API_KEY",
             "Account Holder",

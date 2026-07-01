@@ -2,6 +2,7 @@ import SwiftUI
 
 struct RoleSelectionView: View {
     @EnvironmentObject private var appState: AppState
+    @State private var showingRuntimeDiagnostics = false
 
     var body: some View {
         NavigationStack {
@@ -12,6 +13,9 @@ struct RoleSelectionView: View {
                         Text("English+")
                             .font(.largeTitle.bold())
                             .foregroundStyle(EPTheme.ink)
+                            .onTapGesture(count: 5) {
+                                showingRuntimeDiagnostics = true
+                            }
                         Text("偏鄉學生雙軌學習平台")
                             .font(.title3.weight(.semibold))
                             .foregroundStyle(.secondary)
@@ -66,6 +70,9 @@ struct RoleSelectionView: View {
                     Spacer()
                 }
                 .padding(EPTheme.pagePadding)
+            }
+            .sheet(isPresented: $showingRuntimeDiagnostics) {
+                RuntimeDiagnosticsView()
             }
         }
     }

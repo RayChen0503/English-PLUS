@@ -47,6 +47,10 @@ struct FirebaseAuthService: AuthService {
         #endif
     }
 
+    func restorePreviousSession() async throws -> AuthSession? {
+        try await currentSession()
+    }
+
     func signOut() {
         #if canImport(FirebaseAuth)
         try? Auth.auth().signOut()

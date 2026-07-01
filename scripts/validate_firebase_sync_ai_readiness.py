@@ -94,7 +94,12 @@ def validate_firebase_ready(errors):
         "FirebaseLearningRepository.swift",
     ]:
         require(token in project, f"Xcode project missing {token}", errors)
-    require("ios/**/GoogleService-Info.plist" in gitignore, "GoogleService-Info.plist must stay ignored", errors)
+    require(
+        "ios/**/GoogleService-Info.plist" in gitignore
+        or "ios/**/GoogleService-Info*.plist" in gitignore,
+        "GoogleService-Info.plist must stay ignored",
+        errors,
+    )
     require(not list(ROOT.glob("**/GoogleService-Info.plist")), "GoogleService-Info.plist must not be committed", errors)
 
 
@@ -175,7 +180,12 @@ def validate_rules(errors):
 
 
 def validate_no_user_technical_text(errors):
-    view_text = "\n".join(path.read_text(encoding="utf-8") for path in FEATURES.rglob("*.swift"))
+    user_facing_feature_files = [
+        path
+        for path in FEATURES.rglob("*.swift")
+        if "Diagnostics" not in path.relative_to(FEATURES).parts
+    ]
+    view_text = "\n".join(path.read_text(encoding="utf-8") for path in user_facing_feature_files)
     for token in ["OpenRouter", "Firebase", "Mock", "mock", "debug", "AI 代理", "Cloud Functions"]:
         require(token not in view_text, f"user-facing view code should not contain technical token {token}", errors)
 

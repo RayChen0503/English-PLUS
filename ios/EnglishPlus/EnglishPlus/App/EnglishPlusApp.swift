@@ -11,7 +11,8 @@ struct EnglishPlusApp: App {
             wrappedValue: AppState(
                 authService: services.authService,
                 firestoreService: services.firestoreService,
-                aiService: services.aiService
+                aiService: services.aiService,
+                runtimeDiagnostics: services.runtimeDiagnostics
             )
         )
         _learningRepository = StateObject(

@@ -12,7 +12,7 @@ This is the final audit for the Windows-side iOS parity work after the GitHub/Xc
 - Shared scheme: `ios/EnglishPlus/EnglishPlus.xcodeproj/xcshareddata/xcschemes/EnglishPlus.xcscheme`
 - TestFlight export options: `ios/EnglishPlus/Config/ExportOptions.TestFlight.plist`
 - Bundle ID: `com.englishplus`
-- Apple Team ID: `SMKVWY55QH`
+- Apple Team ID: `X7Y2V4D87G`
 - Important prior repo states:
   - `f8d4d13` prepared Firebase sync and AI readiness boundaries.
   - `234c6a6` added shared Xcode Cloud and TestFlight hardening.
@@ -64,7 +64,7 @@ Use this order to prevent confusion:
 2. Confirm Xcode or Xcode Cloud opens `ios/EnglishPlus/EnglishPlus.xcodeproj`.
 3. Confirm the shared scheme is `EnglishPlus`.
 4. Confirm the Bundle ID remains `com.englishplus`.
-5. Confirm the Team remains `SMKVWY55QH`.
+5. Confirm the Team remains `X7Y2V4D87G`.
 6. Run a simulator build first.
 7. Run a Release device build without signing to separate code issues from signing issues.
 8. Create or confirm the App Store Connect app record.

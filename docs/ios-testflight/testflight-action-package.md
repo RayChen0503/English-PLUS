@@ -8,7 +8,7 @@ This package is the practical checklist for moving English+ from GitHub `main` t
 - Scheme: `EnglishPlus`
 - Shared scheme file: `EnglishPlus.xcscheme`
 - Bundle ID: `com.englishplus`
-- Team ID: `SMKVWY55QH`
+- Team ID: `X7Y2V4D87G`
 - App name: `English+`
 - Export file: `ExportOptions.TestFlight.plist`
 - Existing TestFlight docs:
@@ -37,7 +37,7 @@ Required manual abilities:
 - App Store Connect access to the app record.
 - Apple Developer agreement acceptance.
 - Apple Distribution certificate and provisioning access.
-- Xcode Cloud or local Xcode permission to use Team `SMKVWY55QH`.
+- Xcode Cloud or local Xcode permission to use Team `X7Y2V4D87G`.
 
 ## Manual action order
 
@@ -46,7 +46,7 @@ Required manual abilities:
 3. Open `ios/EnglishPlus/EnglishPlus.xcodeproj`.
 4. Select target `EnglishPlus`.
 5. Open Signing & Capabilities.
-6. Set Team to the real Developer Team for `SMKVWY55QH`, not Personal Team.
+6. Set Team to the real Developer Team for `X7Y2V4D87G`, not Personal Team.
 7. Confirm Bundle Identifier is exactly `com.englishplus`.
 8. Keep Automatically manage signing enabled.
 9. Confirm `EnglishPlus.xcscheme` appears in the scheme selector.
@@ -105,4 +105,4 @@ Send one of these exact states:
 - "Upload failed" plus App Store Connect or Organizer error.
 - "TestFlight processing failed" plus App Store Connect status.
 
-Also send whether the Team shown in Xcode is `SMKVWY55QH`, Personal Team, or missing.
+Also send whether the Team shown in Xcode is `X7Y2V4D87G`, Personal Team, or missing.

@@ -15,6 +15,7 @@ struct EnglishPlusServiceBundle {
     let firestoreService: FirestoreService
     let aiService: AIService
     let learningBackend: any LearningRepositoryBackend
+    let runtimeDiagnostics: RuntimeDiagnosticsSnapshot
 }
 
 enum FirebaseAppConfigurator {
@@ -65,7 +66,16 @@ enum EnglishPlusServiceFactory {
                         idTokenProvider: authService.currentIdToken
                     )
                 ),
-                learningBackend: FirebaseLearningRepository()
+                learningBackend: FirebaseLearningRepository(),
+                runtimeDiagnostics: RuntimeDiagnosticsSnapshot(
+                    backendMode: .firebase,
+                    hasFirebaseConfig: FirebaseAppConfigurator.hasBundledConfig,
+                    authProvider: "FirebaseAuthService",
+                    firestoreProvider: "FirebaseFirestoreService",
+                    learningProvider: "FirebaseLearningRepository",
+                    aiProvider: "RemoteAIService",
+                    aiProxyEndpoint: EnglishPlusAIProxyConfig.workerEndpoint?.absoluteString
+                )
             )
         case .mock:
             return EnglishPlusServiceBundle(
@@ -73,7 +83,16 @@ enum EnglishPlusServiceFactory {
                 authService: MockAuthService(),
                 firestoreService: MockFirestoreService(),
                 aiService: MockAIService(),
-                learningBackend: MockLearningRepository()
+                learningBackend: MockLearningRepository(),
+                runtimeDiagnostics: RuntimeDiagnosticsSnapshot(
+                    backendMode: .mock,
+                    hasFirebaseConfig: FirebaseAppConfigurator.hasBundledConfig,
+                    authProvider: "MockAuthService",
+                    firestoreProvider: "MockFirestoreService",
+                    learningProvider: "MockLearningRepository",
+                    aiProvider: "MockAIService",
+                    aiProxyEndpoint: EnglishPlusAIProxyConfig.workerEndpoint?.absoluteString
+                )
             )
         }
     }

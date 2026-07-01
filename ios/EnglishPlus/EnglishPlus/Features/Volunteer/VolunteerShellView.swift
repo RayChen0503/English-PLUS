@@ -18,9 +18,9 @@ struct VolunteerShellView: View {
                     Label("學生", systemImage: "person.crop.circle.badge.questionmark")
                 }
 
-            VolunteerSyncView()
+            VolunteerRecordView()
                 .tabItem {
-                    Label("同步", systemImage: "arrow.clockwise")
+                    Label("紀錄", systemImage: "list.bullet.rectangle")
                 }
 
             VolunteerScriptView()

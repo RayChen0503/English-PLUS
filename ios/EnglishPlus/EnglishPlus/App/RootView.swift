@@ -24,6 +24,10 @@ struct RootView: View {
                 }
             }
         }
+        .task {
+            await appState.restoreSessionIfPossible()
+            startRealtimeSyncIfNeeded()
+        }
         .onAppear(perform: startRealtimeSyncIfNeeded)
         .onChange(of: appState.route) { _, _ in
             startRealtimeSyncIfNeeded()
@@ -34,6 +38,7 @@ struct RootView: View {
         guard case .home = appState.route,
               let currentProfile = appState.currentProfile
         else {
+            learningRepository.stopRealtimeSync()
             return
         }
 

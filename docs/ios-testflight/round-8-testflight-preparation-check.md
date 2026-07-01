@@ -30,7 +30,7 @@ Build/run check, commit/push
 | Version/build | `1.0 (1)` confirmed |
 | Target device | iPhone-only target confirmed |
 | Signing style | Automatic signing confirmed |
-| Team | `SMKVWY55QH` set in Debug and Release build settings |
+| Team | `X7Y2V4D87G` set in Debug and Release build settings |
 | Export options | `ios/EnglishPlus/Config/ExportOptions.TestFlight.plist` added |
 | TestFlight test info | `docs/ios-testflight/testflight/app-store-connect-test-info.md` added |
 | Tester email flow | `docs/ios-testflight/testflight/tester-email-template.md` added |
@@ -41,7 +41,7 @@ Build/run check, commit/push
 The local keychain contains an Apple Development signing identity:
 
 ```text
-Apple Development: e104012@smail.ilc.edu.tw (SMKVWY55QH)
+Apple Development: Yuju Tang (X7Y2V4D87G)
 ```
 
 No local provisioning profiles were present before the archive attempt. No Apple Distribution signing identity was present in the local keychain during this round.
@@ -67,7 +67,7 @@ Result:
 
 ```text
 ARCHIVE FAILED
-No Account for Team "SMKVWY55QH".
+No Account for Team "X7Y2V4D87G".
 No profiles for 'com.englishplus' were found.
 ```
 

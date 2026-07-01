@@ -8,12 +8,17 @@ struct AuthSession: Equatable {
 protocol AuthService {
     func demoSession(for role: UserRole) -> AuthSession
     func signInDemoAccount(for role: UserRole) async throws -> AuthSession
+    func restorePreviousSession() async throws -> AuthSession?
     func signOut()
 }
 
 extension AuthService {
     func signInDemoAccount(for role: UserRole) async throws -> AuthSession {
         demoSession(for: role)
+    }
+
+    func restorePreviousSession() async throws -> AuthSession? {
+        nil
     }
 
     func signOut() {}

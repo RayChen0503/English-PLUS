@@ -13,6 +13,8 @@ final class FirebaseLearningRepository: LearningRepositoryBackend {
     #if canImport(FirebaseFirestore)
     private let db: Firestore?
     private var registrations: [ListenerRegistration] = []
+    private var supportMessageRegistrations: [String: ListenerRegistration] = [:]
+    private var studentAttemptRegistration: ListenerRegistration?
     #endif
 
     convenience init() {
@@ -46,7 +48,8 @@ final class FirebaseLearningRepository: LearningRepositoryBackend {
     func startRealtimeListener(
         classId: String,
         user: DemoUser?,
-        onChange: @escaping @MainActor (LearningRepositorySnapshot) -> Void
+        onChange: @escaping @MainActor (LearningRepositorySnapshot) -> Void,
+        onError: @escaping @MainActor (Error) -> Void
     ) -> LearningRepositoryListenerToken {
         activeClassId = classId
         onChange(currentSnapshot)
@@ -56,39 +59,12 @@ final class FirebaseLearningRepository: LearningRepositoryBackend {
             return AnyLearningRepositoryListenerToken {}
         }
 
-        registrations.forEach { $0.remove() }
-        registrations = []
-
-        let supportQuery: Query
-        switch user?.role {
-        case .student:
-            supportQuery = db.collection("\(FirestorePath.classDocument(classId: classId))/supportThreads")
-                .whereField("studentUid", isEqualTo: user?.id ?? "")
-        case .volunteer:
-            supportQuery = db.collection("\(FirestorePath.classDocument(classId: classId))/supportThreads")
-                .whereField("assignedToUid", isEqualTo: user?.id ?? "")
-        case .teacher, nil:
-            supportQuery = db.collection("\(FirestorePath.classDocument(classId: classId))/supportThreads")
-        }
-
-        let registration = supportQuery.addSnapshotListener { [weak self] snapshot, error in
-            guard error == nil, let documents = snapshot?.documents else { return }
-            Task { @MainActor in
-                guard let self else { return }
-                let syncedRequests = documents.compactMap { document in
-                    self.supportRequest(from: document)
-                }
-                if !syncedRequests.isEmpty {
-                    self.currentSnapshot.supportRequests = syncedRequests.sorted { $0.updatedAt > $1.updatedAt }
-                    onChange(self.currentSnapshot)
-                }
-            }
-        }
-        registrations.append(registration)
+        removeRealtimeRegistrations()
+        listenSupportThreads(classId: classId, user: user, onChange: onChange, onError: onError)
+        listenStudentMissions(classId: classId, user: user, onChange: onChange, onError: onError)
 
         return AnyLearningRepositoryListenerToken { [weak self] in
-            self?.registrations.forEach { $0.remove() }
-            self?.registrations = []
+            self?.removeRealtimeRegistrations()
         }
         #else
         return AnyLearningRepositoryListenerToken {}
@@ -101,7 +77,8 @@ final class FirebaseLearningRepository: LearningRepositoryBackend {
         moodScore: Int,
         availableTimeLevel: Int,
         wantsChallenge: Bool,
-        preferredQuestionTypes: [QuestionType]
+        preferredQuestionTypes: [QuestionType],
+        aiMission: AiMissionOutput?
     ) {
         fallback.generateMission(
             for: user,
@@ -109,7 +86,8 @@ final class FirebaseLearningRepository: LearningRepositoryBackend {
             moodScore: moodScore,
             availableTimeLevel: availableTimeLevel,
             wantsChallenge: wantsChallenge,
-            preferredQuestionTypes: preferredQuestionTypes
+            preferredQuestionTypes: preferredQuestionTypes,
+            aiMission: aiMission
         )
         currentSnapshot = fallback.snapshot
         mirrorCheckInAndMissionIfPossible(profile: profile)
@@ -147,19 +125,38 @@ final class FirebaseLearningRepository: LearningRepositoryBackend {
         currentSnapshot = fallback.snapshot
         if let request = currentSnapshot.supportRequests.first {
             mirrorSupportRequestIfPossible(request)
+            mirrorStudentSupportMessageIfPossible(request)
         }
     }
 
     func addTeacherReply(to requestId: String, body: String) {
-        fallback.addTeacherReply(to: requestId, body: body)
-        currentSnapshot = fallback.snapshot
-        mirrorUpdatedSupportRequestIfPossible(requestId: requestId)
+        appendSupportReply(
+            to: requestId,
+            authorUid: "demo-teacher-1",
+            authorName: "老師",
+            authorRole: .teacher,
+            body: body
+        )
     }
 
     func addVolunteerReply(to requestId: String, body: String) {
-        fallback.addVolunteerReply(to: requestId, body: body)
-        currentSnapshot = fallback.snapshot
-        mirrorUpdatedSupportRequestIfPossible(requestId: requestId)
+        appendSupportReply(
+            to: requestId,
+            authorUid: "demo-volunteer-1",
+            authorName: "志工",
+            authorRole: .volunteer,
+            body: body
+        )
+    }
+
+    func markSupportThreadReadByStudent(_ requestId: String) {
+        guard let index = currentSnapshot.supportRequests.firstIndex(where: { $0.id == requestId }) else {
+            return
+        }
+        guard currentSnapshot.supportRequests[index].status == .replied else { return }
+        currentSnapshot.supportRequests[index].status = .readByStudent
+        currentSnapshot.supportRequests[index].updatedAt = Date()
+        mirrorSupportRequestIfPossible(currentSnapshot.supportRequests[index])
     }
 
     private func mirrorCheckInAndMissionIfPossible(profile: AppUserProfile?) {
@@ -229,15 +226,220 @@ final class FirebaseLearningRepository: LearningRepositoryBackend {
         )
     }
 
+    private func mirrorStudentSupportMessageIfPossible(_ request: StudentSupportRequest) {
+        setDocumentIfPossible(
+            path: FirestorePath.supportMessage(
+                classId: request.classCode,
+                threadId: request.id,
+                messageId: "\(request.id)-student-request"
+            ),
+            data: firestoreData(fromStudentRequest: request)
+        )
+    }
+
+    private func appendSupportReply(
+        to requestId: String,
+        authorUid: String,
+        authorName: String,
+        authorRole: UserRole,
+        body: String
+    ) {
+        let trimmedBody = body.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmedBody.isEmpty else { return }
+        guard let index = currentSnapshot.supportRequests.firstIndex(where: { $0.id == requestId }) else {
+            return
+        }
+        let date = Date()
+        let reply = SupportReply(
+            id: "reply-\(date.timeIntervalSince1970)-\(requestId)",
+            authorUid: authorUid,
+            authorName: authorName,
+            authorRole: authorRole,
+            body: trimmedBody,
+            visibleToStudent: true,
+            createdAt: date
+        )
+        currentSnapshot.supportRequests[index].replies.append(reply)
+        currentSnapshot.supportRequests[index].status = .replied
+        currentSnapshot.supportRequests[index].updatedAt = date
+        mirrorUpdatedSupportRequestIfPossible(requestId: requestId)
+    }
+
     private func setDocumentIfPossible(path: String, data: [String: Any]) {
         #if canImport(FirebaseFirestore)
         db?.document(path).setData(data, merge: true)
         #endif
     }
 
+    #if canImport(FirebaseFirestore)
+    private func removeRealtimeRegistrations() {
+        registrations.forEach { $0.remove() }
+        registrations = []
+        supportMessageRegistrations.values.forEach { $0.remove() }
+        supportMessageRegistrations = [:]
+        studentAttemptRegistration?.remove()
+        studentAttemptRegistration = nil
+    }
+
+    private func listenSupportThreads(
+        classId: String,
+        user: DemoUser?,
+        onChange: @escaping @MainActor (LearningRepositorySnapshot) -> Void,
+        onError: @escaping @MainActor (Error) -> Void
+    ) {
+        guard let db else { return }
+
+        let supportQuery: Query
+        switch user?.role {
+        case .student:
+            supportQuery = db.collection("\(FirestorePath.classDocument(classId: classId))/supportThreads")
+                .whereField("studentUid", isEqualTo: user?.id ?? "")
+        case .volunteer:
+            supportQuery = db.collection("\(FirestorePath.classDocument(classId: classId))/supportThreads")
+        case .teacher, nil:
+            supportQuery = db.collection("\(FirestorePath.classDocument(classId: classId))/supportThreads")
+        }
+
+        let registration = supportQuery.addSnapshotListener { [weak self] snapshot, error in
+            if let error {
+                Task { @MainActor in onError(error) }
+                return
+            }
+            guard let documents = snapshot?.documents else { return }
+
+            Task { @MainActor in
+                guard let self else { return }
+                let syncedRequests = documents.compactMap { self.supportRequest(from: $0) }
+                self.mergeSupportRequests(syncedRequests)
+                self.listenSupportMessages(
+                    classId: classId,
+                    requests: syncedRequests,
+                    onChange: onChange,
+                    onError: onError
+                )
+                onChange(self.currentSnapshot)
+            }
+        }
+        registrations.append(registration)
+    }
+
+    private func listenSupportMessages(
+        classId: String,
+        requests: [StudentSupportRequest],
+        onChange: @escaping @MainActor (LearningRepositorySnapshot) -> Void,
+        onError: @escaping @MainActor (Error) -> Void
+    ) {
+        guard let db else { return }
+
+        let requestIds = Set(requests.map(\.id))
+        supportMessageRegistrations
+            .filter { !requestIds.contains($0.key) }
+            .forEach { entry in
+                entry.value.remove()
+                supportMessageRegistrations[entry.key] = nil
+            }
+
+        for request in requests where supportMessageRegistrations[request.id] == nil {
+            let path = "\(FirestorePath.supportThread(classId: classId, threadId: request.id))/messages"
+            let registration = db.collection(path).addSnapshotListener { [weak self] snapshot, error in
+                if let error {
+                    Task { @MainActor in onError(error) }
+                    return
+                }
+                guard let documents = snapshot?.documents else { return }
+
+                Task { @MainActor in
+                    guard let self,
+                          let index = self.currentSnapshot.supportRequests.firstIndex(where: { $0.id == request.id })
+                    else { return }
+                    let replies = documents
+                        .compactMap { self.supportReply(from: $0) }
+                        .filter(\.visibleToStudent)
+                        .sorted { $0.createdAt < $1.createdAt }
+                    self.currentSnapshot.supportRequests[index].replies = replies
+                    if let latestReplyDate = replies.last?.createdAt {
+                        self.currentSnapshot.supportRequests[index].updatedAt = latestReplyDate
+                    }
+                    onChange(self.currentSnapshot)
+                }
+            }
+            supportMessageRegistrations[request.id] = registration
+        }
+    }
+
+    private func listenStudentMissions(
+        classId: String,
+        user: DemoUser?,
+        onChange: @escaping @MainActor (LearningRepositorySnapshot) -> Void,
+        onError: @escaping @MainActor (Error) -> Void
+    ) {
+        guard let db, let user, user.role == .student else { return }
+
+        let path = "\(FirestorePath.student(classId: classId, studentUid: user.id))/dailyMissions"
+        let registration = db.collection(path).addSnapshotListener { [weak self] snapshot, error in
+            if let error {
+                Task { @MainActor in onError(error) }
+                return
+            }
+            guard let documents = snapshot?.documents else { return }
+
+            Task { @MainActor in
+                guard let self else { return }
+                let missions = documents.compactMap { self.mission(from: $0, studentUid: user.id) }
+                    .sorted { $0.createdAt > $1.createdAt }
+                self.replaceMission(missions.first)
+                self.listenStudentAttempts(
+                    classId: classId,
+                    studentUid: user.id,
+                    missionId: missions.first?.id,
+                    onChange: onChange,
+                    onError: onError
+                )
+                onChange(self.currentSnapshot)
+            }
+        }
+        registrations.append(registration)
+    }
+
+    private func listenStudentAttempts(
+        classId: String,
+        studentUid: String,
+        missionId: String?,
+        onChange: @escaping @MainActor (LearningRepositorySnapshot) -> Void,
+        onError: @escaping @MainActor (Error) -> Void
+    ) {
+        guard let db, let missionId else {
+            replaceAttempts([])
+            return
+        }
+
+        studentAttemptRegistration?.remove()
+        let path = "\(FirestorePath.student(classId: classId, studentUid: studentUid))/answerEvents"
+        studentAttemptRegistration = db.collection(path)
+            .whereField("missionId", isEqualTo: missionId)
+            .addSnapshotListener { [weak self] snapshot, error in
+                if let error {
+                    Task { @MainActor in onError(error) }
+                    return
+                }
+                guard let documents = snapshot?.documents else { return }
+
+                Task { @MainActor in
+                    guard let self else { return }
+                    let attempts = documents
+                        .compactMap { self.attempt(from: $0, missionId: missionId) }
+                        .sorted { $0.createdAt < $1.createdAt }
+                    self.replaceAttempts(attempts)
+                    onChange(self.currentSnapshot)
+                }
+            }
+    }
+    #endif
+
     private func firestoreData(from checkIn: MoodCheckIn) -> [String: Any] {
         [
             "dateKey": checkIn.dateKey,
+            "classId": activeClassId,
             "studentUid": checkIn.studentUid,
             "moodScore": checkIn.moodScore,
             "availableTimeLevel": checkIn.availableTimeLevel,
@@ -257,6 +459,7 @@ final class FirebaseLearningRepository: LearningRepositoryBackend {
         return [
             "missionId": mission.id,
             "dateKey": mission.dateKey,
+            "classId": activeClassId,
             "studentUid": mission.studentUid,
             "sourceCheckInId": mission.sourceCheckInId,
             "status": mission.status.rawValue,
@@ -276,7 +479,9 @@ final class FirebaseLearningRepository: LearningRepositoryBackend {
             "eventId": attempt.id,
             "questionId": attempt.questionId,
             "missionId": attempt.missionId,
+            "prompt": attempt.prompt,
             "studentAnswer": attempt.selectedAnswer,
+            "acceptedAnswer": attempt.acceptedAnswer,
             "isCorrect": attempt.isCorrect,
             "attemptNumber": attempt.attemptNumber,
             "aiExplanation": attempt.explanation,
@@ -325,7 +530,131 @@ final class FirebaseLearningRepository: LearningRepositoryBackend {
         ]
     }
 
+    private func firestoreData(fromStudentRequest request: StudentSupportRequest) -> [String: Any] {
+        [
+            "messageId": "\(request.id)-student-request",
+            "authorUid": request.studentUid,
+            "authorName": request.studentName,
+            "authorRole": UserRole.student.rawValue,
+            "body": request.studentMessage,
+            "visibility": MessageVisibility.studentVisible.rawValue,
+            "messageType": SupportMessageType.studentRequest.rawValue,
+            "createdAt": request.createdAt,
+        ]
+    }
+
     #if canImport(FirebaseFirestore)
+    private func mission(from document: QueryDocumentSnapshot, studentUid: String) -> DailyMission? {
+        let data = document.data()
+        let questionIds = data["questionIds"] as? [String] ?? []
+        let questions = questionBankItems(for: questionIds)
+        let trackRaw = data["track"] as? String
+        let statusRaw = data["status"] as? String
+        let completedAt = firestoreDate(data["completedAt"])
+        let status = statusRaw.flatMap(MissionStatus.init(rawValue:)) ?? .active
+
+        return DailyMission(
+            id: data["missionId"] as? String ?? document.documentID,
+            studentUid: data["studentUid"] as? String ?? studentUid,
+            dateKey: data["dateKey"] as? String ?? Self.dateKeyFormatter.string(from: Date()),
+            sourceCheckInId: data["sourceCheckInId"] as? String ?? "",
+            track: trackRaw.flatMap(MissionTrack.init(rawValue:)) ?? .steady,
+            targetCorrectCount: data["targetCorrectCount"] as? Int ?? max(questions.count, 1),
+            recommendedMinutes: data["recommendedMinutes"] as? Int ?? 5,
+            questions: questions,
+            createdAt: firestoreDate(data["createdAt"]) ?? Date(),
+            completedAt: status == .completed ? completedAt ?? Date() : completedAt
+        )
+    }
+
+    private func attempt(from document: QueryDocumentSnapshot, missionId: String) -> MissionAttempt? {
+        let data = document.data()
+        guard
+            let questionId = data["questionId"] as? String,
+            let selectedAnswer = data["studentAnswer"] as? String,
+            let isCorrect = data["isCorrect"] as? Bool
+        else {
+            return nil
+        }
+
+        let question = SeedData.approvedQuestionBankItems
+            .first { $0.id == questionId }?
+            .question
+
+        return MissionAttempt(
+            id: data["eventId"] as? String ?? document.documentID,
+            missionId: data["missionId"] as? String ?? missionId,
+            questionId: questionId,
+            prompt: data["prompt"] as? String ?? question?.prompt ?? "",
+            selectedAnswer: selectedAnswer,
+            acceptedAnswer: data["acceptedAnswer"] as? String ?? question?.answer ?? "",
+            isCorrect: isCorrect,
+            attemptNumber: data["attemptNumber"] as? Int ?? 1,
+            explanation: data["aiExplanation"] as? String ?? question?.explanation ?? "",
+            repairHint: data["repairHint"] as? String ?? question?.repairHint ?? "",
+            createdAt: firestoreDate(data["createdAt"]) ?? Date()
+        )
+    }
+
+    private func supportReply(from document: QueryDocumentSnapshot) -> SupportReply? {
+        let data = document.data()
+        guard
+            let authorUid = data["authorUid"] as? String,
+            let roleRaw = data["authorRole"] as? String,
+            let authorRole = UserRole(rawValue: roleRaw),
+            let body = data["body"] as? String
+        else {
+            return nil
+        }
+
+        let visibilityRaw = data["visibility"] as? String
+        let visibility = visibilityRaw.flatMap(MessageVisibility.init(rawValue:)) ?? .studentVisible
+        return SupportReply(
+            id: data["messageId"] as? String ?? document.documentID,
+            authorUid: authorUid,
+            authorName: data["authorName"] as? String ?? authorRole.title,
+            authorRole: authorRole,
+            body: body,
+            visibleToStudent: visibility == .studentVisible,
+            createdAt: firestoreDate(data["createdAt"]) ?? Date()
+        )
+    }
+
+    private func mergeSupportRequests(_ syncedRequests: [StudentSupportRequest]) {
+        let existingById = Dictionary(uniqueKeysWithValues: currentSnapshot.supportRequests.map { ($0.id, $0) })
+        currentSnapshot.supportRequests = syncedRequests.map { request in
+            var merged = request
+            if let existing = existingById[request.id] {
+                merged.replies = existing.replies
+            }
+            return merged
+        }
+        .sorted { $0.updatedAt > $1.updatedAt }
+    }
+
+    private func replaceMission(_ mission: DailyMission?) {
+        currentSnapshot.currentMission = mission
+    }
+
+    private func replaceAttempts(_ attempts: [MissionAttempt]) {
+        currentSnapshot.missionAttempts = attempts
+    }
+
+    private func questionBankItems(for ids: [String]) -> [QuestionBankItem] {
+        let itemsById = Dictionary(uniqueKeysWithValues: SeedData.approvedQuestionBankItems.map { ($0.id, $0) })
+        return ids.compactMap { itemsById[$0] }
+    }
+
+    private func firestoreDate(_ value: Any?) -> Date? {
+        if let date = value as? Date {
+            return date
+        }
+        if let timestamp = value as? Timestamp {
+            return timestamp.dateValue()
+        }
+        return nil
+    }
+
     private func supportRequest(from document: QueryDocumentSnapshot) -> StudentSupportRequest? {
         let data = document.data()
         guard
@@ -355,12 +684,20 @@ final class FirebaseLearningRepository: LearningRepositoryBackend {
             studentMessage: data["studentMessage"] as? String ?? data["latestMessagePreview"] as? String ?? "",
             moodScore: data["moodScore"] as? Int,
             latestQuestionId: data["latestQuestionId"] as? String,
-            createdAt: (data["createdAt"] as? Timestamp)?.dateValue() ?? Date(),
-            updatedAt: (data["updatedAt"] as? Timestamp)?.dateValue() ?? Date(),
+            createdAt: firestoreDate(data["createdAt"]) ?? Date(),
+            updatedAt: firestoreDate(data["updatedAt"]) ?? Date(),
             replies: []
         )
     }
     #endif
+
+    private static let dateKeyFormatter: DateFormatter = {
+        let formatter = DateFormatter()
+        formatter.calendar = Calendar(identifier: .gregorian)
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.dateFormat = "yyyy-MM-dd"
+        return formatter
+    }()
 }
 
 private extension Array where Element: Hashable {
