@@ -12,9 +12,9 @@ struct RuntimeAIStatus: Equatable {
     init(response: AiProxyResponse, checkedAt: Date = Date()) {
         ok = response.ok
         fallbackUsed = response.fallbackUsed
-        taskType = response.taskType
-        provider = response.provider
-        modelUsed = response.modelUsed
+        taskType = response.taskType.rawValue
+        provider = "groq"
+        modelUsed = response.modelUsed ?? "unknown"
         errorCode = response.errorCode
         self.checkedAt = checkedAt
     }

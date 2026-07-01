@@ -447,3 +447,12 @@ private extension Array {
         }
     }
 }
+
+private extension Array where Element: Hashable {
+    func uniqued() -> [Element] {
+        var seen = Set<Element>()
+        return filter { element in
+            seen.insert(element).inserted
+        }
+    }
+}

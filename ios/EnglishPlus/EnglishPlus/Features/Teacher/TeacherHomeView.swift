@@ -179,17 +179,6 @@ private struct TeacherReportMetricTile: View {
         .background(.white)
         .clipShape(RoundedRectangle(cornerRadius: EPTheme.cardRadius))
     }
-
-    private func fillTeacherDraftWithAI() async {
-        isDraftingWithAI = true
-        let response = await appState.draftTeacherFeedbackWithAI(context: SupportAIContext(request: request))
-        replyDraft = response.output.studentFacingFeedback
-            ?? response.output.recommendedNextAction
-            ?? response.output.teacherSummary
-            ?? response.output.summary
-            ?? replyDraft
-        isDraftingWithAI = false
-    }
 }
 
 private struct TeacherReportPrioritySection: View {
