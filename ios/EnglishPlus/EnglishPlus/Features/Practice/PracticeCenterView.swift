@@ -11,9 +11,19 @@ struct PracticeCenterView: View {
     @State private var practiceAnswer = ""
     @State private var practiceResult: PracticeResult?
     @State private var practiceAIResponse: AiProxyResponse?
+    @State private var practiceQuestionAIResponse: AiProxyResponse?
     @State private var wrongAnswerAIResponse: AiProxyResponse?
+    @State private var practiceSupportConfirmation: String?
+    @State private var freePracticeSessionItems: [QuestionBankItem] = []
+    @State private var freePracticeAnsweredCount = 0
+    @State private var freePracticeCorrectCount = 0
+    @State private var didCountCurrentPracticeAnswer = false
+    @State private var isFreePracticeSessionComplete = false
     @State private var isLoadingPracticeAI = false
+    @State private var isLoadingPracticeQuestionAI = false
     @State private var isLoadingWrongAnswerAI = false
+
+    private let freePracticeSessionLimit = 10
 
     var body: some View {
         NavigationStack {
@@ -24,7 +34,7 @@ struct PracticeCenterView: View {
                         headerCard
                         filterCard
                         practiceSetSelectionCard
-                        currentPracticeCard
+                        finitePracticeCard
                         aiRecommendationCard
                     }
                     .padding(EPTheme.pagePadding)
@@ -118,6 +128,126 @@ struct PracticeCenterView: View {
         .clipShape(RoundedRectangle(cornerRadius: EPTheme.cardRadius))
     }
 
+    private var finitePracticeCard: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            HStack {
+                Text("這一組練習")
+                    .font(.headline)
+                    .foregroundStyle(EPTheme.ink)
+                Spacer()
+                Text(positionText)
+                    .font(.caption.bold())
+                    .foregroundStyle(.secondary)
+            }
+
+            if isFreePracticeSessionComplete {
+                FreePracticeSessionSummaryCard(
+                    answeredCount: freePracticeAnsweredCount,
+                    correctCount: freePracticeCorrectCount,
+                    totalCount: freePracticeSessionItems.count,
+                    onPracticeAgain: startFreePracticeSession,
+                    onReturnToMission: {
+                        learningRepository.returnToMissionFlow()
+                    }
+                )
+            } else if freePracticeSessionItems.isEmpty {
+                PracticeSessionStartCard(
+                    availableCount: filteredPracticeItems.count,
+                    sessionLimit: min(freePracticeSessionLimit, filteredPracticeItems.count),
+                    selectedSetTitle: selectedPracticeSet?.title ?? "全部題庫",
+                    onStart: startFreePracticeSession
+                )
+            } else if let item = currentPracticeItem {
+                VStack(alignment: .leading, spacing: 8) {
+                    ProgressView(value: freePracticeProgressFraction)
+                        .tint(EPTheme.primary)
+                    Text("答完 \(freePracticeSessionItems.count) 題就會結算，自由練習不會影響今日任務進度。")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+
+                questionMetaRow(item)
+
+                Text(item.question.prompt)
+                    .font(.title3.bold())
+                    .foregroundStyle(EPTheme.ink)
+                    .fixedSize(horizontal: false, vertical: true)
+
+                if item.question.options.isEmpty {
+                    TextField("輸入你的答案", text: $practiceAnswer, axis: .vertical)
+                        .textFieldStyle(.roundedBorder)
+                } else {
+                    VStack(spacing: 8) {
+                        ForEach(item.question.options, id: \.self) { option in
+                            PracticeAnswerOptionButton(
+                                option: option,
+                                isSelected: option == practiceAnswer
+                            ) {
+                                practiceAnswer = option
+                                practiceResult = nil
+                                wrongAnswerAIResponse = nil
+                                practiceQuestionAIResponse = nil
+                                practiceSupportConfirmation = nil
+                                didCountCurrentPracticeAnswer = false
+                            }
+                        }
+                    }
+                }
+
+                if let practiceResult {
+                    PracticeResultCard(
+                        result: practiceResult,
+                        aiResponse: wrongAnswerAIResponse,
+                        isLoadingAI: isLoadingWrongAnswerAI
+                    )
+                }
+
+                PracticeInlineSupportPanel(
+                    aiResponse: practiceQuestionAIResponse,
+                    supportConfirmation: practiceSupportConfirmation,
+                    isLoadingAI: isLoadingPracticeQuestionAI,
+                    onAskAI: {
+                        Task {
+                            await askPracticeAI(for: item)
+                        }
+                    },
+                    onSendTeacher: {
+                        sendPracticeSupportRequest(for: item, target: .teacher)
+                    },
+                    onSendVolunteer: {
+                        sendPracticeSupportRequest(for: item, target: .volunteer)
+                    }
+                )
+
+                HStack(spacing: 10) {
+                    Button("送出答案") {
+                        submitPracticeAnswer(for: item)
+                    }
+                    .buttonStyle(PrimaryActionButtonStyle())
+                    .disabled(normalizedPracticeAnswer(practiceAnswer).isEmpty || practiceResult != nil)
+                    .opacity((normalizedPracticeAnswer(practiceAnswer).isEmpty || practiceResult != nil) ? 0.45 : 1)
+
+                    Button {
+                        nextPracticeQuestion()
+                    } label: {
+                        Label(isLastFreePracticeQuestion ? "完成這組練習" : "下一題", systemImage: isLastFreePracticeQuestion ? "party.popper.fill" : "arrow.right.circle")
+                            .font(.subheadline.bold())
+                            .frame(minHeight: 44)
+                    }
+                    .buttonStyle(.bordered)
+                    .disabled(practiceResult == nil)
+                    .opacity(practiceResult == nil ? 0.45 : 1)
+                }
+            } else {
+                PracticeEmptyState()
+            }
+        }
+        .padding(16)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(.white)
+        .clipShape(RoundedRectangle(cornerRadius: EPTheme.cardRadius))
+    }
+
     private var currentPracticeCard: some View {
         VStack(alignment: .leading, spacing: 14) {
             HStack {
@@ -151,6 +281,8 @@ struct PracticeCenterView: View {
                                 practiceAnswer = option
                                 practiceResult = nil
                                 wrongAnswerAIResponse = nil
+                                practiceQuestionAIResponse = nil
+                                practiceSupportConfirmation = nil
                             }
                         }
                     }
@@ -287,9 +419,9 @@ struct PracticeCenterView: View {
     }
 
     private var currentPracticeItem: QuestionBankItem? {
-        guard !filteredPracticeItems.isEmpty else { return nil }
-        let index = min(practiceIndex, filteredPracticeItems.count - 1)
-        return filteredPracticeItems[index]
+        guard !freePracticeSessionItems.isEmpty else { return nil }
+        let index = min(practiceIndex, freePracticeSessionItems.count - 1)
+        return freePracticeSessionItems[index]
     }
 
     private var filteredCountText: String {
@@ -297,8 +429,17 @@ struct PracticeCenterView: View {
     }
 
     private var positionText: String {
-        guard !filteredPracticeItems.isEmpty else { return "0 / 0" }
-        return "\(min(practiceIndex + 1, filteredPracticeItems.count)) / \(filteredPracticeItems.count)"
+        guard !freePracticeSessionItems.isEmpty else { return "尚未開始" }
+        return "\(min(practiceIndex + 1, freePracticeSessionItems.count)) / \(freePracticeSessionItems.count)"
+    }
+
+    private var freePracticeProgressFraction: Double {
+        guard !freePracticeSessionItems.isEmpty else { return 0 }
+        return Double(freePracticeAnsweredCount) / Double(freePracticeSessionItems.count)
+    }
+
+    private var isLastFreePracticeQuestion: Bool {
+        !freePracticeSessionItems.isEmpty && practiceIndex >= freePracticeSessionItems.count - 1
     }
 
     private var preferredQuestionTypesForAI: [QuestionType] {
@@ -347,6 +488,38 @@ struct PracticeCenterView: View {
         practiceAnswer = ""
         practiceResult = nil
         wrongAnswerAIResponse = nil
+        practiceQuestionAIResponse = nil
+        practiceSupportConfirmation = nil
+        freePracticeSessionItems = []
+        freePracticeAnsweredCount = 0
+        freePracticeCorrectCount = 0
+        didCountCurrentPracticeAnswer = false
+        isFreePracticeSessionComplete = false
+    }
+
+    private func startFreePracticeSession() {
+        let sessionItems = Array(filteredPracticeItems.prefix(freePracticeSessionLimit))
+        freePracticeSessionItems = sessionItems
+        practiceIndex = 0
+        practiceAnswer = ""
+        practiceResult = nil
+        wrongAnswerAIResponse = nil
+        practiceQuestionAIResponse = nil
+        practiceSupportConfirmation = nil
+        freePracticeAnsweredCount = 0
+        freePracticeCorrectCount = 0
+        didCountCurrentPracticeAnswer = false
+        isFreePracticeSessionComplete = sessionItems.isEmpty
+    }
+
+    private func finishFreePracticeSession() {
+        practiceAnswer = ""
+        practiceResult = nil
+        wrongAnswerAIResponse = nil
+        practiceQuestionAIResponse = nil
+        practiceSupportConfirmation = nil
+        didCountCurrentPracticeAnswer = false
+        isFreePracticeSessionComplete = true
     }
 
     private func setMatchesAIRecommendation(_ set: QuestionPracticeSet) -> Bool {
@@ -398,6 +571,13 @@ struct PracticeCenterView: View {
         )
         practiceResult = result
         wrongAnswerAIResponse = nil
+        if !didCountCurrentPracticeAnswer {
+            freePracticeAnsweredCount = min(freePracticeAnsweredCount + 1, freePracticeSessionItems.count)
+            if isCorrect {
+                freePracticeCorrectCount = min(freePracticeCorrectCount + 1, freePracticeSessionItems.count)
+            }
+            didCountCurrentPracticeAnswer = true
+        }
 
         guard !isCorrect else { return }
         let attempt = MissionAttempt(
@@ -426,12 +606,95 @@ struct PracticeCenterView: View {
         }
     }
 
+    private func askPracticeAI(for item: QuestionBankItem) async {
+        isLoadingPracticeQuestionAI = true
+        let answerText = normalizedPracticeAnswer(practiceAnswer).isEmpty ? "尚未作答" : practiceAnswer
+        let attempt = MissionAttempt(
+            id: "practice-ai-\(UUID().uuidString)",
+            missionId: "free-practice",
+            questionId: item.id,
+            prompt: item.question.prompt,
+            selectedAnswer: answerText,
+            acceptedAnswer: item.question.answer,
+            isCorrect: false,
+            attemptNumber: 1,
+            explanation: item.question.explanation,
+            repairHint: item.question.repairHint,
+            createdAt: Date()
+        )
+        let context = WrongAnswerAIContext(
+            classId: currentClassId,
+            studentUid: appState.currentUser?.id,
+            attempt: attempt,
+            questionItem: item
+        )
+        practiceQuestionAIResponse = await appState.explainWrongAnswerWithAI(context: context)
+        isLoadingPracticeQuestionAI = false
+    }
+
+    private func sendPracticeSupportRequest(for item: QuestionBankItem, target: PracticeSupportTarget) {
+        let selectedAnswer = normalizedPracticeAnswer(practiceAnswer).isEmpty ? nil : practiceAnswer
+        let option = practiceSupportOption(for: target)
+        learningRepository.sendQuestionSupportRequest(
+            from: appState.currentUser,
+            profile: appState.currentProfile,
+            option: option,
+            questionItem: item,
+            selectedAnswer: selectedAnswer,
+            message: practiceSupportMessage(for: item, target: target)
+        )
+        practiceSupportConfirmation = target.confirmationText
+    }
+
+    private func practiceSupportOption(for target: PracticeSupportTarget) -> SupportOption {
+        switch target {
+        case .teacher:
+            return SeedData.supportOptions.first { $0.id == "human-company" }
+                ?? SupportOption(
+                    id: "practice-teacher-help",
+                    reason: "請老師協助",
+                    studentText: "我想請老師看這題。",
+                    platformAction: "請老師查看學生題目與答案。",
+                    route: .humanHandoff
+                )
+        case .volunteer:
+            return SeedData.supportOptions.first { $0.id == "reading-too-long" }
+                ?? SupportOption(
+                    id: "practice-volunteer-help",
+                    reason: "請志工陪伴",
+                    studentText: "我想請志工陪我看這題。",
+                    platformAction: "請志工陪學生拆解題目。",
+                    route: .readingBreakdown
+                )
+        }
+    }
+
+    private func practiceSupportMessage(for item: QuestionBankItem, target: PracticeSupportTarget) -> String {
+        let answerText = normalizedPracticeAnswer(practiceAnswer).isEmpty ? "尚未作答" : practiceAnswer
+        return """
+        我在自由練習這題卡住，想請\(target.displayName)看一下。
+        題型：\(item.question.type.title)
+        難度：\(item.level.uiTitle)
+        題目：\(item.question.prompt)
+        我的答案：\(answerText)
+        正確答案：\(item.question.answer)
+        解析：\(item.question.explanation)
+        """
+    }
+
     private func nextPracticeQuestion() {
-        guard !filteredPracticeItems.isEmpty else { return }
-        practiceIndex = (practiceIndex + 1) % filteredPracticeItems.count
+        guard !freePracticeSessionItems.isEmpty else { return }
+        if isLastFreePracticeQuestion {
+            finishFreePracticeSession()
+            return
+        }
+        practiceIndex = min(practiceIndex + 1, freePracticeSessionItems.count - 1)
         practiceAnswer = ""
         practiceResult = nil
         wrongAnswerAIResponse = nil
+        practiceQuestionAIResponse = nil
+        practiceSupportConfirmation = nil
+        didCountCurrentPracticeAnswer = false
     }
 
     private func normalizedPracticeAnswer(_ answer: String) -> String {
@@ -477,6 +740,29 @@ private struct PracticeResult: Equatable {
     let acceptedAnswer: String
     let explanation: String
     let repairHint: String
+}
+
+private enum PracticeSupportTarget {
+    case teacher
+    case volunteer
+
+    var displayName: String {
+        switch self {
+        case .teacher:
+            return "老師"
+        case .volunteer:
+            return "志工"
+        }
+    }
+
+    var confirmationText: String {
+        switch self {
+        case .teacher:
+            return "已送給老師，老師端會看到這一題與你的答案。"
+        case .volunteer:
+            return "已送給志工，志工端會看到這一題與你的答案。"
+        }
+    }
 }
 
 private struct PracticeStatPill: View {
@@ -618,6 +904,180 @@ private struct PracticeAnswerOptionButton: View {
             .clipShape(RoundedRectangle(cornerRadius: EPTheme.cardRadius))
         }
         .buttonStyle(.plain)
+    }
+}
+
+private struct PracticeSessionStartCard: View {
+    let availableCount: Int
+    let sessionLimit: Int
+    let selectedSetTitle: String
+    let onStart: () -> Void
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Label("先完成一小組", systemImage: "flag.checkered")
+                .font(.headline)
+                .foregroundStyle(EPTheme.ink)
+
+            Text(selectedSetTitle)
+                .font(.title3.bold())
+                .foregroundStyle(EPTheme.ink)
+                .fixedSize(horizontal: false, vertical: true)
+
+            Text(availableCount > 0
+                ? "這一輪會從目前條件中安排 \(sessionLimit) 題。做完就會看到結算，再決定要不要繼續。"
+                : "目前條件下沒有可練習的題目，換一個題型或難度試試。")
+                .font(.subheadline)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+
+            Button(action: onStart) {
+                Label("開始這組練習", systemImage: "play.fill")
+                    .font(.subheadline.bold())
+                    .frame(maxWidth: .infinity, minHeight: 44)
+            }
+            .buttonStyle(PrimaryActionButtonStyle())
+            .disabled(availableCount == 0)
+            .opacity(availableCount == 0 ? 0.45 : 1)
+        }
+        .padding(12)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(EPTheme.primary.opacity(0.08))
+        .clipShape(RoundedRectangle(cornerRadius: EPTheme.cardRadius))
+    }
+}
+
+private struct FreePracticeSessionSummaryCard: View {
+    let answeredCount: Int
+    let correctCount: Int
+    let totalCount: Int
+    let onPracticeAgain: () -> Void
+    let onReturnToMission: () -> Void
+
+    private var accuracyText: String {
+        guard answeredCount > 0 else { return "0%" }
+        return "\(Int((Double(correctCount) / Double(answeredCount) * 100).rounded()))%"
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            Label("這組練習完成了", systemImage: "checkmark.seal.fill")
+                .font(.title3.bold())
+                .foregroundStyle(EPTheme.support)
+
+            Text("你已經完成一個可結束的小回合。可以再練一組，也可以回今日任務看下一步。")
+                .font(.subheadline)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+
+            HStack(spacing: 10) {
+                summaryMetric(title: "完成", value: "\(answeredCount)/\(max(totalCount, answeredCount))")
+                summaryMetric(title: "答對", value: "\(correctCount)")
+                summaryMetric(title: "正確率", value: accuracyText)
+            }
+
+            HStack(spacing: 10) {
+                Button(action: onPracticeAgain) {
+                    Label("再練一組", systemImage: "arrow.triangle.2.circlepath")
+                        .font(.subheadline.bold())
+                        .frame(maxWidth: .infinity, minHeight: 44)
+                }
+                .buttonStyle(PrimaryActionButtonStyle())
+
+                Button(action: onReturnToMission) {
+                    Label("回今日任務", systemImage: "target")
+                        .font(.subheadline.bold())
+                        .frame(maxWidth: .infinity, minHeight: 44)
+                }
+                .buttonStyle(.bordered)
+            }
+        }
+        .padding(12)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(EPTheme.support.opacity(0.10))
+        .clipShape(RoundedRectangle(cornerRadius: EPTheme.cardRadius))
+    }
+
+    private func summaryMetric(title: String, value: String) -> some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Text(title)
+                .font(.caption.bold())
+                .foregroundStyle(.secondary)
+            Text(value)
+                .font(.title3.bold())
+                .foregroundStyle(EPTheme.ink)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(10)
+        .background(.white)
+        .clipShape(RoundedRectangle(cornerRadius: EPTheme.cardRadius))
+    }
+}
+
+private struct PracticeInlineSupportPanel: View {
+    let aiResponse: AiProxyResponse?
+    let supportConfirmation: String?
+    let isLoadingAI: Bool
+    let onAskAI: () -> Void
+    let onSendTeacher: () -> Void
+    let onSendVolunteer: () -> Void
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Label("卡住時可以直接求助", systemImage: "lifepreserver")
+                .font(.headline)
+                .foregroundStyle(EPTheme.ink)
+
+            Text("AI 會立刻解題；老師或志工會收到這一題、你的答案與解析。")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+
+            HStack(spacing: 8) {
+                Button(action: onAskAI) {
+                    Label("問 AI 解題", systemImage: "sparkles")
+                        .font(.caption.bold())
+                        .frame(maxWidth: .infinity, minHeight: 44)
+                }
+                .buttonStyle(.borderedProminent)
+                .disabled(isLoadingAI)
+
+                Button(action: onSendTeacher) {
+                    Label("送給老師", systemImage: "person.text.rectangle")
+                        .font(.caption.bold())
+                        .frame(maxWidth: .infinity, minHeight: 44)
+                }
+                .buttonStyle(.bordered)
+
+                Button(action: onSendVolunteer) {
+                    Label("送給志工", systemImage: "hands.sparkles")
+                        .font(.caption.bold())
+                        .frame(maxWidth: .infinity, minHeight: 44)
+                }
+                .buttonStyle(.bordered)
+            }
+
+            if isLoadingAI {
+                Label("AI 正在看這一題...", systemImage: "sparkles")
+                    .font(.footnote)
+                    .foregroundStyle(EPTheme.primary)
+            }
+
+            if let aiResponse {
+                PracticeAIStatusCard(response: aiResponse, title: "AI 解題提示")
+            }
+
+            if let supportConfirmation {
+                Label(supportConfirmation, systemImage: "paperplane.fill")
+                    .font(.footnote.bold())
+                    .foregroundStyle(EPTheme.support)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        }
+        .padding(12)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(EPTheme.primary.opacity(0.06))
+        .clipShape(RoundedRectangle(cornerRadius: EPTheme.cardRadius))
     }
 }
 

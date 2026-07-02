@@ -19,9 +19,9 @@ struct RuntimeDiagnosticsView: View {
                             title: "Runtime",
                             rows: [
                                 ("Backend", diagnostics.backendMode.label),
-                                ("Firebase config", diagnostics.hasFirebaseConfig ? "present" : "missing"),
+                                ("App config", diagnostics.hasFirebaseConfig ? "present" : "missing"),
                                 ("Auth", diagnostics.authProvider),
-                                ("Firestore", diagnostics.firestoreProvider),
+                                ("Cloud data", diagnostics.firestoreProvider),
                                 ("Learning", diagnostics.learningProvider),
                                 ("AI", diagnostics.aiProvider),
                                 ("AI endpoint", diagnostics.aiProxyEndpoint ?? "missing"),

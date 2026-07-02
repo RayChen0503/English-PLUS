@@ -68,6 +68,14 @@ protocol LearningRepositoryBackend: AnyObject {
         option: SupportOption,
         message: String?
     )
+    func sendQuestionSupportRequest(
+        from user: DemoUser?,
+        profile: AppUserProfile?,
+        option: SupportOption,
+        questionItem: QuestionBankItem,
+        selectedAnswer: String?,
+        message: String
+    )
     func addTeacherReply(to requestId: String, body: String)
     func addVolunteerReply(to requestId: String, body: String)
     func markSupportThreadReadByStudent(_ requestId: String)
@@ -163,7 +171,8 @@ final class LearningRepositoryStore: ObservableObject {
     var volunteerQueue: [StudentSupportRequest] {
         supportRequests
             .filter { request in
-                request.route == .humanHandoff || request.reason == .emotionalSupport || request.reason == .readingHelp
+                (request.status == .waitingForStaff || request.status == .open)
+                    && (request.route == .humanHandoff || request.reason == .emotionalSupport || request.reason == .readingHelp)
             }
             .sorted { priorityScore($0.priority) > priorityScore($1.priority) }
     }
@@ -392,6 +401,25 @@ final class LearningRepositoryStore: ObservableObject {
         apply(backend.snapshot)
     }
 
+    func sendQuestionSupportRequest(
+        from user: DemoUser?,
+        profile: AppUserProfile?,
+        option: SupportOption,
+        questionItem: QuestionBankItem,
+        selectedAnswer: String?,
+        message: String
+    ) {
+        backend.sendQuestionSupportRequest(
+            from: user,
+            profile: profile,
+            option: option,
+            questionItem: questionItem,
+            selectedAnswer: selectedAnswer,
+            message: message
+        )
+        apply(backend.snapshot)
+    }
+
     func addTeacherReply(to requestId: String, body: String) {
         backend.addTeacherReply(to: requestId, body: body)
         apply(backend.snapshot)
@@ -410,7 +438,14 @@ final class LearningRepositoryStore: ObservableObject {
     func pendingAssignments(forStudentUid studentUid: String?) -> [TeacherAssignedPracticeTask] {
         guard let studentUid else { return [] }
         return assignedPracticeTasks
-            .filter { $0.studentUid == studentUid && $0.status != .completed }
+            .filter { $0.studentUid == studentUid && $0.status == .pending }
+            .sorted { $0.createdAt > $1.createdAt }
+    }
+
+    func assignments(forStudentUid studentUid: String?) -> [TeacherAssignedPracticeTask] {
+        guard let studentUid else { return [] }
+        return assignedPracticeTasks
+            .filter { $0.studentUid == studentUid }
             .sorted { $0.createdAt > $1.createdAt }
     }
 

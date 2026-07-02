@@ -407,6 +407,38 @@ final class MockLearningRepository: ObservableObject {
         persistSnapshot()
     }
 
+    func sendQuestionSupportRequest(
+        from user: DemoUser?,
+        profile: AppUserProfile?,
+        option: SupportOption,
+        questionItem: QuestionBankItem,
+        selectedAnswer: String?,
+        message: String
+    ) {
+        let date = now()
+        let studentUid = user?.id ?? profile?.id ?? "demo-student"
+        let studentName = user?.displayName ?? profile?.displayName ?? "學生"
+        let moodScore = currentCheckIn?.moodScore
+        let request = StudentSupportRequest(
+            id: "support-question-\(date.timeIntervalSince1970)-\(studentUid)-\(questionItem.id)",
+            studentUid: studentUid,
+            studentName: studentName,
+            classCode: profile?.classId ?? FirebaseBackendConfig.firstClassId,
+            reason: supportReason(for: option),
+            route: option.route,
+            priority: priority(for: option, moodScore: moodScore),
+            status: .waitingForStaff,
+            studentMessage: message,
+            moodScore: moodScore,
+            latestQuestionId: questionItem.id,
+            createdAt: date,
+            updatedAt: date,
+            replies: []
+        )
+        supportRequests.insert(request, at: 0)
+        persistSnapshot()
+    }
+
     func addTeacherReply(to requestId: String, body: String) {
         addReply(
             to: requestId,

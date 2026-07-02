@@ -41,7 +41,7 @@ struct DemoLoginView: View {
                         Text("使用帳號登入")
                             .font(.headline)
                             .foregroundStyle(EPTheme.ink)
-                        Text("請使用 Firebase 帳號登入。系統會檢查帳號、密碼、角色與班級資料；未通過就不會進入 App。")
+                        Text("請使用測試帳號登入。系統會檢查帳號、密碼、角色與班級資料；未通過就不會進入 App。")
                             .font(.subheadline)
                             .foregroundStyle(.secondary)
                             .fixedSize(horizontal: false, vertical: true)

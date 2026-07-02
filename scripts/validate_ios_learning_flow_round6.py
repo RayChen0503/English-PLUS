@@ -48,12 +48,13 @@ require(
 )
 
 require(
-    "teacher question bank groups small practice sets by type",
+    "teacher class assignment catalog groups small practice sets by type",
     teacher_home,
     [
-        "groupedSetsByType",
-        "TeacherPracticeSetGroupSection",
-        "ForEach(groupedSetsByType",
+        "groupedPracticeSets",
+        "TeacherPracticeSetCatalogSection",
+        "ForEach(groupedPracticeSets",
+        "每組最多 12 題",
     ],
 )
 

@@ -58,6 +58,7 @@ require_markers(
         "var questionPracticeSets: [QuestionPracticeSet]",
         "@Published private(set) var assignedPracticeTasks",
         "func pendingAssignments(forStudentUid",
+        "$0.status == .pending",
         "func assignPracticeSet(",
         "func startAssignedPracticeTask(",
     ],
@@ -111,7 +112,9 @@ require_markers(
     "teacher assignment UI",
     teacher_home,
     [
-        "TeacherQuestionSetAssignmentCard",
+        "TeacherClassAssignmentView",
+        "TeacherStudentPickerCard",
+        "TeacherPracticeSetCatalog",
         "assignPracticeSet(",
         "selectedStudentUid",
     ],

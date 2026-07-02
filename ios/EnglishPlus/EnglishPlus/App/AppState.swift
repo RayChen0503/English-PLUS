@@ -62,7 +62,7 @@ final class AppState: ObservableObject {
             currentProfile = nil
             hasAcceptedConsent = false
             signingInRole = nil
-            signInErrorMessage = "登入失敗。請確認帳號密碼、Firebase 設定檔，以及 Firestore 班級成員資料是否正確。"
+            signInErrorMessage = "登入失敗。請確認帳號密碼、連線設定，以及班級成員資料是否正確。"
         }
     }
 

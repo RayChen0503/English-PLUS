@@ -229,6 +229,34 @@ final class FirebaseLearningRepository: LearningRepositoryBackend {
         }
     }
 
+    func sendQuestionSupportRequest(
+        from user: DemoUser?,
+        profile: AppUserProfile?,
+        option: SupportOption,
+        questionItem: QuestionBankItem,
+        selectedAnswer: String?,
+        message: String
+    ) {
+        let preservingSupportRequests = currentSnapshot.supportRequests
+        let preservingAssignedPracticeTasks = currentSnapshot.assignedPracticeTasks
+        fallback.sendQuestionSupportRequest(
+            from: user,
+            profile: profile,
+            option: option,
+            questionItem: questionItem,
+            selectedAnswer: selectedAnswer,
+            message: message
+        )
+        currentSnapshot = fallbackSnapshot(
+            preservingSupportRequests: preservingSupportRequests,
+            preservingAssignedPracticeTasks: preservingAssignedPracticeTasks
+        )
+        if let request = currentSnapshot.supportRequests.first {
+            mirrorSupportRequestIfPossible(request)
+            mirrorStudentSupportMessageIfPossible(request)
+        }
+    }
+
     func addTeacherReply(to requestId: String, body: String) {
         appendSupportReply(
             to: requestId,

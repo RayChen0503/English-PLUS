@@ -48,13 +48,17 @@ require_markers(
 )
 
 require_markers(
-    "teacher assignment surface prioritizes recommended sets",
+    "teacher assignment surface routes recommendations into filtered class assignments",
     teacher_home,
     [
-        "recommendedAssignmentSets",
-        "recommendedStudentForAssignment",
-        "TeacherRecommendedAssignmentCard",
-        "assignRecommendedPracticeSet",
+        "TeacherClassAssignmentView",
+        "TeacherSelectedStudentPanel",
+        "TeacherPracticeSetCatalog",
+        "recommendationText(for: selectedStudent)",
+        "filteredPracticeSets",
+        "selectedQuestionType",
+        "selectedLevel",
+        "learningRepository.assignPracticeSet(set, to: selectedStudent, by: appState.currentUser)",
     ],
 )
 

@@ -23,9 +23,9 @@ struct TeacherShellView: View {
                     Label("報告", systemImage: "doc.text.magnifyingglass")
                 }
 
-            TeacherQuestionBankView()
+            TeacherClassAssignmentView()
                 .tabItem {
-                    Label("題庫", systemImage: "books.vertical")
+                    Label("班級", systemImage: "person.3.sequence")
                 }
         }
     }
