@@ -115,22 +115,25 @@ def validate_round_4_staff_support(errors):
     models = read(FILES["learning_models"])
     repo = read(FILES["learning_repo"])
 
-    for token in ["sendSupportRequest", "StudentRequestCard", "supportRequests(forStudentUid:"]:
+    for token in ["sendSupportRequest", "SupportRequestInboxCard", "supportRequests(forStudentUid:", "SupportQuestionSnapshotCard"]:
         require(token in support, f"support flow missing {token}", errors)
     for token in ["TeacherStatusStrip", "TeacherRequestCard", "TeacherClassSummary", "addTeacherReply", "teacherQueue"]:
         require(token in teacher, f"teacher workbench missing {token}", errors)
-    for token in ["TeacherStudentsView", "TeacherHandoffView", "TeacherReportView", "TeacherQuestionBankView"]:
+    for token in ["TeacherStudentsView", "TeacherHandoffView", "TeacherReportView", "TeacherClassAssignmentView"]:
         require(token in teacher_shell, f"teacher shell missing {token}", errors)
+    require('Label("題庫"' not in teacher_shell, "teacher shell must not expose old standalone question bank tab", errors)
     for token in [
-        "VolunteerTaskCard",
-        "VolunteerHandoffView",
-        "VolunteerStudentBriefsView",
-        "VolunteerSyncView",
-        "VolunteerScriptView",
+        "VolunteerTodayPriorityCard",
+        "VolunteerHandoffWorkspaceView",
+        "VolunteerQueuePickerCard",
+        "VolunteerQuestionContextCard",
+        "VolunteerRecordView",
         "addVolunteerReply",
         "volunteerQueue",
     ]:
         require(token in volunteer + volunteer_shell, f"volunteer flow missing {token}", errors)
+    for token in ['Label("學生"', 'Label("同步"', 'Label("腳本"']:
+        require(token not in volunteer_shell, f"volunteer shell must not expose old separated tab {token}", errors)
     for token in ["StudentSupportRequest", "SupportReply", "StaffStudentSummary"]:
         require(token in models, f"shared support model missing {token}", errors)
     for token in ["teacherQueue", "volunteerQueue", "supportRequests", "replies.append"]:

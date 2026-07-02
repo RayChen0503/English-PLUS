@@ -1,25 +1,27 @@
 # Round 3 Teacher parity
 
-This round ports the Android teacher workspace shape into the iOS SwiftUI prototype.
+This round keeps the teacher workspace aligned with the current English+ product flow.
 
-## Android reference
+## Product reference
 
-Android teacher flow exposes five primary work areas:
+The teacher side should not feel like a raw question-bank browser. It should help a teacher answer three questions quickly:
 
-- 今日: class risk, priority student, and next action.
-- 學生: student records, current breakpoint, mood, and mission status.
-- 接力: handoff priority and student help queue.
-- 報告: weekly class support summary and evidence.
-- 題庫: question bank level/type overview.
+- 今日: who needs help first?
+- 學生: what is each student's current breakpoint, mood, and mission state?
+- 接力: which help requests need a human response?
+- 報告: what happened this week and what evidence can be shared?
+- 班級: which student should receive a small, targeted practice set?
 
 ## iOS changes
 
-- `TeacherShellView` now has five tabs: 今日, 學生, 接力, 報告, 題庫.
-- `TeacherHandoffView` replaces the narrower request-only view with a handoff-priority screen.
-- `TeacherReportView` adds a class weekly report surface with support evidence and teacher-facing summary.
-- `TeacherQuestionBankView` adds a question-bank center grouped by type and level.
-- `LearningRepositoryStore` now exposes `staffDashboardMetrics` and `questionBankOverview`, so teacher UI uses repository state instead of hard-coded display counts.
+- `TeacherShellView` uses five tabs: 今日, 學生, 接力, 報告, 班級.
+- The old standalone `題庫` tab is intentionally removed.
+- `TeacherClassAssignmentView` replaces the raw question-bank center with a class assignment workspace.
+- Teachers first choose a student, review risk/progress context, then assign a small practice set.
+- Practice sets are grouped by type, level, and skill, with each set capped to a short task size.
+- `TeacherRequestCard` shows the exact question snapshot when a student asks for help, so teacher replies are tied to the student's answer and the correct explanation.
+- `LearningRepositoryStore` exposes dashboard metrics, class report data, question-bank summaries, and assignment lookup APIs.
 
 ## Current boundary
 
-This is parity for the in-app product prototype. Runtime Firebase and cross-device sync remain behind the existing Firebase-ready service boundary until `GoogleService-Info.plist`, Firebase SDK products, deployed rules/functions, and real class membership data are added.
+This is product-flow parity inside the prototype. Runtime Firebase and cross-device sync remain behind the existing Firebase-ready service boundary until `GoogleService-Info.plist`, Firebase SDK products, deployed rules/functions, and real class membership data are active.

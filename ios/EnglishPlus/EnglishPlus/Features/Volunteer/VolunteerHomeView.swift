@@ -395,10 +395,20 @@ private struct VolunteerQuestionContextCard: View {
                 .font(.headline)
                 .foregroundStyle(EPTheme.ink)
 
-            if let questionId = request.latestQuestionId, !questionId.isEmpty {
-                Label("相關題目：\(questionId)", systemImage: "doc.text.magnifyingglass")
+            if let snapshot = request.questionSnapshot {
+                Text("先看學生答案與正解，再回一個能讓學生重試的小提示。")
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+                SupportQuestionSnapshotCard(
+                    snapshot: snapshot,
+                    title: "學生答案與正解",
+                    showsExplanation: true
+                )
+            } else if let questionId = request.latestQuestionId, !questionId.isEmpty {
+                Label("這筆求助來自題目 \(questionId)，但目前沒有完整題目快照。", systemImage: "doc.text.magnifyingglass")
                     .font(.subheadline.bold())
-                    .foregroundStyle(EPTheme.primary)
+                    .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
             } else {
                 Label("這次求助沒有綁定單一題目", systemImage: "text.bubble")

@@ -15,7 +15,8 @@ def main() -> None:
     practice_source = PRACTICE_VIEW.read_text(encoding="utf-8")
     shell_source = STUDENT_SHELL.read_text(encoding="utf-8")
 
-    require("PracticeCenterView()" in shell_source, "Student shell must expose the practice center as a first-class tab.")
+    require("PracticeCenterView(" in shell_source, "Student shell must expose the practice center as a first-class tab.")
+    require("onOpenSupport" in shell_source, "Practice center tab must be able to route students to support after sending a question.")
     require("struct PracticeCenterView" in practice_source, "Practice center view is missing.")
 
     required_tokens = [

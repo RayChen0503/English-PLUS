@@ -399,6 +399,7 @@ final class MockLearningRepository: ObservableObject {
             studentMessage: message ?? option.studentText,
             moodScore: moodScore,
             latestQuestionId: nextMissionQuestion?.id ?? latestMissionAttempt?.questionId,
+            questionSnapshot: nil,
             createdAt: date,
             updatedAt: date,
             replies: automaticReplies(for: option, at: date)
@@ -431,6 +432,7 @@ final class MockLearningRepository: ObservableObject {
             studentMessage: message,
             moodScore: moodScore,
             latestQuestionId: questionItem.id,
+            questionSnapshot: SupportQuestionSnapshot(questionItem: questionItem, selectedAnswer: selectedAnswer),
             createdAt: date,
             updatedAt: date,
             replies: []
@@ -745,6 +747,7 @@ final class MockLearningRepository: ObservableObject {
                 studentMessage: "我連續卡在 if 條件句，想請老師看一下。",
                 moodScore: 2,
                 latestQuestionId: "cap-style-0003",
+                questionSnapshot: nil,
                 createdAt: now.addingTimeInterval(-3_600),
                 updatedAt: now.addingTimeInterval(-3_600),
                 replies: []
@@ -761,6 +764,7 @@ final class MockLearningRepository: ObservableObject {
                 studentMessage: "今天想有人陪我把短任務做完。",
                 moodScore: 3,
                 latestQuestionId: "cap-style-0006",
+                questionSnapshot: nil,
                 createdAt: now.addingTimeInterval(-1_800),
                 updatedAt: now.addingTimeInterval(-1_800),
                 replies: []

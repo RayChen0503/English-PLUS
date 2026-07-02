@@ -67,7 +67,8 @@ def main() -> int:
         "appState.coachVolunteerReplyWithAI(context: SupportAIContext(request: request))",
         "送出後學生會在支援紀錄看到",
         "先接住，再陪一題",
-        "相關題目",
+        "SupportQuestionSnapshotCard",
+        "學生答案與正解",
     ]
     for token in required_volunteer_tokens:
         require(token in volunteer_home, f"Volunteer handoff flow missing token: {token}", errors)

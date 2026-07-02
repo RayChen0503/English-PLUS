@@ -61,6 +61,7 @@
 		100000000000000000000152 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 100000000000000000000051 /* Assets.xcassets */; };
 		100000000000000000000153 /* RuntimeDiagnostics.swift in Sources */ = {isa = PBXBuildFile; fileRef = 100000000000000000000052 /* RuntimeDiagnostics.swift */; };
 		100000000000000000000154 /* RuntimeDiagnosticsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 100000000000000000000053 /* RuntimeDiagnosticsView.swift */; };
+		100000000000000000000155 /* SupportQuestionSnapshotCard.swift in Sources */ = {isa = PBXBuildFile; fileRef = 100000000000000000000054 /* SupportQuestionSnapshotCard.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -117,6 +118,7 @@
 		100000000000000000000051 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		100000000000000000000052 /* RuntimeDiagnostics.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RuntimeDiagnostics.swift; sourceTree = "<group>"; };
 		100000000000000000000053 /* RuntimeDiagnosticsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RuntimeDiagnosticsView.swift; sourceTree = "<group>"; };
+		100000000000000000000054 /* SupportQuestionSnapshotCard.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SupportQuestionSnapshotCard.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -247,6 +249,7 @@
 				100000000000000000000316 /* Support */,
 				100000000000000000000317 /* Consent */,
 				100000000000000000000318 /* Diagnostics */,
+				100000000000000000000319 /* Shared */,
 			);
 			path = Features;
 			sourceTree = "<group>";
@@ -318,6 +321,14 @@
 				100000000000000000000053 /* RuntimeDiagnosticsView.swift */,
 			);
 			path = Diagnostics;
+			sourceTree = "<group>";
+		};
+		100000000000000000000319 /* Shared */ = {
+			isa = PBXGroup;
+			children = (
+				100000000000000000000054 /* SupportQuestionSnapshotCard.swift */,
+			);
+			path = Shared;
 			sourceTree = "<group>";
 		};
 		100000000000000000000317 /* Consent */ = {
@@ -450,6 +461,7 @@
 				100000000000000000000148 /* StudentLearningMapView.swift in Sources */,
 				100000000000000000000116 /* PracticeCenterView.swift in Sources */,
 				100000000000000000000117 /* SupportView.swift in Sources */,
+				100000000000000000000155 /* SupportQuestionSnapshotCard.swift in Sources */,
 				100000000000000000000154 /* RuntimeDiagnosticsView.swift in Sources */,
 				100000000000000000000118 /* TeacherShellView.swift in Sources */,
 				100000000000000000000119 /* TeacherHomeView.swift in Sources */,

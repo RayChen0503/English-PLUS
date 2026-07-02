@@ -63,7 +63,10 @@ struct SupportView: View {
                 SupportEmptyStateCard(onOpenPractice: openPracticeFromSupport)
             } else {
                 ForEach(studentRequests) { request in
-                    SupportRequestInboxCard(request: request)
+                    SupportRequestInboxCard(
+                        request: request,
+                        onOpenPractice: openPracticeFromSupport
+                    )
                 }
             }
         }
@@ -268,7 +271,7 @@ private struct SupportAIResponseCard: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
-            Label(response.fallbackUsed ? "先用本機建議" : "線上 AI 已回應", systemImage: response.fallbackUsed ? "exclamationmark.triangle.fill" : "sparkles")
+            Label(response.fallbackUsed ? "先用內建建議" : "AI 已整理", systemImage: response.fallbackUsed ? "exclamationmark.triangle.fill" : "sparkles")
                 .font(.subheadline.bold())
                 .foregroundStyle(response.fallbackUsed ? EPTheme.warning : EPTheme.support)
 
@@ -282,7 +285,7 @@ private struct SupportAIResponseCard: View {
             if let nextAction = response.output.recommendedNextAction, !nextAction.isEmpty {
                 Text(nextAction)
                     .font(.footnote.bold())
-                    .foregroundStyle(EPTheme.primary)
+                    .foregroundStyle(EPTheme.ink)
                     .fixedSize(horizontal: false, vertical: true)
             }
         }
@@ -325,6 +328,7 @@ private struct SupportRequestInboxCard: View {
     @EnvironmentObject private var learningRepository: LearningRepositoryStore
 
     let request: StudentSupportRequest
+    let onOpenPractice: () -> Void
 
     private var visibleReplies: [SupportReply] {
         request.replies.filter(\.visibleToStudent)
@@ -354,13 +358,19 @@ private struct SupportRequestInboxCard: View {
                     .clipShape(RoundedRectangle(cornerRadius: 8))
             }
 
-            if let questionId = request.latestQuestionId, !questionId.isEmpty {
-                Text("相關題目：\(questionId)")
+            if let snapshot = request.questionSnapshot {
+                SupportQuestionSnapshotCard(
+                    snapshot: snapshot,
+                    title: "你送出的題目",
+                    showsExplanation: true
+                )
+            } else if let questionId = request.latestQuestionId, !questionId.isEmpty {
+                Label("這筆求助來自題目 \(questionId)，但目前沒有完整題目快照。", systemImage: "doc.text")
                     .font(.caption.bold())
-                    .foregroundStyle(EPTheme.primary)
-                    .padding(.horizontal, 10)
-                    .padding(.vertical, 6)
-                    .background(EPTheme.primary.opacity(0.08))
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .padding(10)
+                    .background(Color(.systemGray6))
                     .clipShape(RoundedRectangle(cornerRadius: 8))
             }
 
@@ -373,6 +383,7 @@ private struct SupportRequestInboxCard: View {
                 SupportWaitingReplyCard(route: request.route)
             } else {
                 SupportReplyTimeline(replies: visibleReplies)
+                SupportFollowUpActionCard(onOpenPractice: onOpenPractice)
             }
         }
         .padding(16)
@@ -423,6 +434,34 @@ private struct SupportRequestInboxCard: View {
         case .closed:
             return .secondary
         }
+    }
+}
+
+private struct SupportFollowUpActionCard: View {
+    let onOpenPractice: () -> Void
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Label("看回覆後再練一題", systemImage: "arrow.clockwise.circle.fill")
+                .font(.subheadline.bold())
+                .foregroundStyle(EPTheme.support)
+
+            Text("先讀老師或志工的回覆，再回練習中心挑同題型的小題組。這樣支援才會接回學習，不會只停在聊天。")
+                .font(.footnote)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+
+            Button(action: onOpenPractice) {
+                Label("回練習中心", systemImage: "target")
+                    .font(.subheadline.bold())
+                    .frame(maxWidth: .infinity, minHeight: 44)
+            }
+            .buttonStyle(PrimaryActionButtonStyle())
+        }
+        .padding(12)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(EPTheme.support.opacity(0.10))
+        .clipShape(RoundedRectangle(cornerRadius: EPTheme.cardRadius))
     }
 }
 

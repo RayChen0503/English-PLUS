@@ -4,6 +4,8 @@ struct PracticeCenterView: View {
     @EnvironmentObject private var appState: AppState
     @EnvironmentObject private var learningRepository: LearningRepositoryStore
 
+    let onOpenSupport: () -> Void
+
     @State private var selectedPracticeType: QuestionType?
     @State private var selectedPracticeLevel: QuestionLevel?
     @State private var selectedPracticeSetId: String?
@@ -24,6 +26,10 @@ struct PracticeCenterView: View {
     @State private var isLoadingWrongAnswerAI = false
 
     private let freePracticeSessionLimit = 10
+
+    init(onOpenSupport: @escaping () -> Void = {}) {
+        self.onOpenSupport = onOpenSupport
+    }
 
     var body: some View {
         NavigationStack {
@@ -206,6 +212,7 @@ struct PracticeCenterView: View {
                     aiResponse: practiceQuestionAIResponse,
                     supportConfirmation: practiceSupportConfirmation,
                     isLoadingAI: isLoadingPracticeQuestionAI,
+                    onOpenSupport: onOpenSupport,
                     onAskAI: {
                         Task {
                             await askPracticeAI(for: item)
@@ -1018,6 +1025,7 @@ private struct PracticeInlineSupportPanel: View {
     let aiResponse: AiProxyResponse?
     let supportConfirmation: String?
     let isLoadingAI: Bool
+    let onOpenSupport: () -> Void
     let onAskAI: () -> Void
     let onSendTeacher: () -> Void
     let onSendVolunteer: () -> Void
@@ -1028,7 +1036,7 @@ private struct PracticeInlineSupportPanel: View {
                 .font(.headline)
                 .foregroundStyle(EPTheme.ink)
 
-            Text("AI 會立刻解題；老師或志工會收到這一題、你的答案與解析。")
+            Text("AI 會立刻解題；老師或志工會收到這一題、你的答案與解析。送出後到「支持」查看回覆。")
                 .font(.caption)
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
@@ -1068,10 +1076,19 @@ private struct PracticeInlineSupportPanel: View {
             }
 
             if let supportConfirmation {
-                Label(supportConfirmation, systemImage: "paperplane.fill")
-                    .font(.footnote.bold())
-                    .foregroundStyle(EPTheme.support)
-                    .fixedSize(horizontal: false, vertical: true)
+                VStack(alignment: .leading, spacing: 8) {
+                    Label("\(supportConfirmation) 已送出。", systemImage: "paperplane.fill")
+                        .font(.footnote.bold())
+                        .foregroundStyle(EPTheme.support)
+                        .fixedSize(horizontal: false, vertical: true)
+
+                    Button(action: onOpenSupport) {
+                        Label("前往支持查看回覆", systemImage: "heart.text.square")
+                            .font(.caption.bold())
+                            .frame(maxWidth: .infinity, minHeight: 40)
+                    }
+                    .buttonStyle(.borderedProminent)
+                }
             }
         }
         .padding(12)
@@ -1200,12 +1217,12 @@ private struct PracticeAIStatusCard: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
-            Label(title, systemImage: response.fallbackUsed ? "exclamationmark.triangle.fill" : "sparkles")
+            Label(response.fallbackUsed ? "內建提示" : "AI 建議", systemImage: response.fallbackUsed ? "exclamationmark.triangle.fill" : "sparkles")
                 .font(.subheadline.bold())
-                .foregroundStyle(response.fallbackUsed ? EPTheme.warning : EPTheme.primary)
+                .foregroundStyle(response.fallbackUsed ? EPTheme.warning : EPTheme.support)
             Text(response.fallbackUsed
-                ? "目前使用內建提示，沒有連到線上 AI。"
-                : "線上 AI 已回應")
+                ? "先用內建提示陪你修這一題。"
+                : "已整理成下一個可執行的小步驟。")
                 .font(.caption)
                 .foregroundStyle(.secondary)
             if let summary = response.output.summary, !summary.isEmpty {

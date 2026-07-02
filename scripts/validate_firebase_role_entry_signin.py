@@ -19,14 +19,24 @@ def require(condition: bool, message: str, errors: list[str]) -> None:
 
 
 def git_ls_files() -> str:
-    result = subprocess.run(
-        ["git", "ls-files"],
-        cwd=ROOT,
-        check=True,
-        capture_output=True,
-        text=True,
-    )
-    return result.stdout
+    candidates = [
+        "git",
+        r"C:\Program Files\Git\cmd\git.exe",
+        r"C:\Program Files\Git\bin\git.exe",
+    ]
+    for candidate in candidates:
+        try:
+            result = subprocess.run(
+                [candidate, "ls-files"],
+                cwd=ROOT,
+                check=True,
+                capture_output=True,
+                text=True,
+            )
+            return result.stdout
+        except (FileNotFoundError, PermissionError, subprocess.CalledProcessError):
+            continue
+    return ""
 
 
 def main() -> int:
@@ -65,8 +75,8 @@ def main() -> int:
             "DemoLoginView must render visible email and password fields", errors)
     require("await appState.signIn(email: email, password: password, role: role)" in demo_login,
             "DemoLoginView must submit typed credentials through AppState", errors)
-    require("Firebase 帳號登入" in demo_login and "退回本機展示帳號" not in demo_login,
-            "DemoLoginView copy must describe real Firebase login, not local fallback", errors)
+    require("使用帳號登入" in demo_login and "退回本機展示帳號" not in demo_login,
+            "DemoLoginView copy must describe real account login, not local fallback", errors)
     require("Auth.auth().signIn(withEmail: email, password: password)" in firebase_auth,
             "FirebaseAuthService must call Firebase Auth signIn(withEmail:password:)", errors)
     require("FirestorePath.member(classId: classId, uid: uid)" in firebase_auth,

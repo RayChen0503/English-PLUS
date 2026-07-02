@@ -12,7 +12,11 @@ struct StudentShellView: View {
                 }
                 .tag(StudentTab.home)
 
-            PracticeCenterView()
+            PracticeCenterView(
+                onOpenSupport: {
+                    selectedTab = .support
+                }
+            )
                 .tabItem {
                     Label("練習", systemImage: "pencil.and.list.clipboard")
                 }

@@ -20,15 +20,25 @@ def require(condition: bool, message: str, errors: list[str]) -> None:
 
 
 def git_ls_files() -> str:
-    result = subprocess.run(
-        ["git", "ls-files"],
-        cwd=ROOT,
-        check=True,
-        capture_output=True,
-        text=True,
-        encoding="utf-8",
-    )
-    return result.stdout
+    candidates = [
+        "git",
+        r"C:\Program Files\Git\cmd\git.exe",
+        r"C:\Program Files\Git\bin\git.exe",
+    ]
+    for candidate in candidates:
+        try:
+            result = subprocess.run(
+                [candidate, "ls-files"],
+                cwd=ROOT,
+                check=True,
+                capture_output=True,
+                text=True,
+                encoding="utf-8",
+            )
+            return result.stdout
+        except (FileNotFoundError, PermissionError, subprocess.CalledProcessError):
+            continue
+    return ""
 
 
 def main() -> int:
@@ -109,17 +119,17 @@ def main() -> int:
         "答對才會增加進度",
         "explainWrongAnswerWithAI",
         "今日任務完成",
-        "線上 AI 已回應",
+        "已整理成下一個可執行的小步驟",
         "appState.signOut()",
     ]:
         require(token in text["student_home"], f"StudentHomeView missing Windows parity token: {token}", errors)
 
     require("recommendPracticeWithAI" in text["practice"], "Practice center must expose AI practice recommendation", errors)
     require("explainWrongAnswerWithAI" in text["practice"], "Practice center must provide AI wrong-answer explanation", errors)
-    require("線上 AI 已回應" in text["practice"], "Practice center must visibly show remote AI status", errors)
+    require("AI 建議" in text["practice"], "Practice center must visibly show AI recommendation status", errors)
     require("provideEmotionalSupportWithAI" in text["support"], "Support page must call AI support", errors)
     require("SupportAIResponseCard" in text["support"], "Support page must render AI response card", errors)
-    require("線上 AI 已回應" in text["support"], "Support page must visibly show remote AI status", errors)
+    require("AI 已整理" in text["support"], "Support page must visibly show student-friendly AI status", errors)
     require("draftTeacherFeedbackWithAI" in text["teacher"], "Teacher request cards must support AI draft feedback", errors)
     require("coachVolunteerReplyWithAI" in text["volunteer"], "Volunteer task cards must support AI reply coaching", errors)
     require("appState.signOut()" in text["teacher"], "Teacher home must expose sign out for login verification", errors)

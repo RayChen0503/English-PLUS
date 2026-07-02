@@ -912,6 +912,18 @@ struct TeacherRequestCard: View {
                 .foregroundStyle(EPTheme.ink)
                 .fixedSize(horizontal: false, vertical: true)
 
+            if let snapshot = request.questionSnapshot {
+                SupportQuestionSnapshotCard(
+                    snapshot: snapshot,
+                    title: "針對這一題回覆",
+                    showsExplanation: true
+                )
+            } else if let questionId = request.latestQuestionId {
+                Label("學生求助題目：\(questionId)", systemImage: "doc.text")
+                    .font(.caption.bold())
+                    .foregroundStyle(.secondary)
+            }
+
             if let moodScore = request.moodScore {
                 Label("心情 \(moodScore)/5", systemImage: "heart.text.square")
                     .font(.caption)
@@ -925,7 +937,7 @@ struct TeacherRequestCard: View {
                     .fixedSize(horizontal: false, vertical: true)
             }
 
-            TextField("輸入老師回饋", text: $replyDraft, axis: .vertical)
+            TextField("針對這一題回覆學生下一步", text: $replyDraft, axis: .vertical)
                 .textFieldStyle(.roundedBorder)
 
             Button(isDraftingWithAI ? "正在產生草稿" : "AI 產生建議草稿") {

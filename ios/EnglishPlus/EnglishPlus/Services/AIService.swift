@@ -173,6 +173,7 @@ extension AiProxyRequest {
         request: StudentSupportRequest,
         sessionPrefix: String
     ) -> AiProxyRequest {
+        let snapshot = request.questionSnapshot
         AiProxyRequest(
             taskType: taskType,
             classId: request.classCode,
@@ -187,11 +188,11 @@ extension AiProxyRequest {
                 preferredQuestionTypes: nil,
                 recentAccuracy: nil,
                 recentWeakSkills: nil,
-                questionType: nil,
-                questionPrompt: nil,
-                studentAnswer: request.studentMessage,
-                correctAnswer: nil,
-                explanation: request.replies.last?.body,
+                questionType: snapshot?.questionTypeTitle,
+                questionPrompt: snapshot?.prompt,
+                studentAnswer: snapshot?.selectedAnswerText ?? request.studentMessage,
+                correctAnswer: snapshot?.correctAnswer,
+                explanation: snapshot?.explanation ?? request.replies.last?.body,
                 supportReason: request.reason.rawValue,
                 supportThreadId: request.id,
                 attemptCount: request.replies.count

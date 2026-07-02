@@ -229,9 +229,71 @@ struct StudentSupportRequest: Identifiable, Codable, Equatable {
     var studentMessage: String
     var moodScore: Int?
     var latestQuestionId: String?
+    var questionSnapshot: SupportQuestionSnapshot?
     let createdAt: Date
     var updatedAt: Date
     var replies: [SupportReply]
+}
+
+struct SupportQuestionSnapshot: Codable, Equatable {
+    let questionId: String
+    let prompt: String
+    let options: [String]
+    let questionTypeTitle: String
+    let levelTitle: String
+    let skill: String
+    let selectedAnswer: String?
+    let correctAnswer: String
+    let explanation: String
+    let repairHint: String
+
+    init(
+        questionId: String,
+        prompt: String,
+        options: [String],
+        questionTypeTitle: String,
+        levelTitle: String,
+        skill: String,
+        selectedAnswer: String?,
+        correctAnswer: String,
+        explanation: String,
+        repairHint: String
+    ) {
+        self.questionId = questionId
+        self.prompt = prompt
+        self.options = options
+        self.questionTypeTitle = questionTypeTitle
+        self.levelTitle = levelTitle
+        self.skill = skill
+        self.selectedAnswer = selectedAnswer
+        self.correctAnswer = correctAnswer
+        self.explanation = explanation
+        self.repairHint = repairHint
+    }
+
+    init(questionItem: QuestionBankItem, selectedAnswer: String?) {
+        self.init(
+            questionId: questionItem.id,
+            prompt: questionItem.question.prompt,
+            options: questionItem.question.options,
+            questionTypeTitle: questionItem.question.type.title,
+            levelTitle: questionItem.level.uiTitle,
+            skill: questionItem.skill,
+            selectedAnswer: selectedAnswer,
+            correctAnswer: questionItem.question.answer,
+            explanation: questionItem.question.explanation,
+            repairHint: questionItem.question.repairHint
+        )
+    }
+
+    var selectedAnswerText: String {
+        guard let selectedAnswer,
+              !selectedAnswer.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        else {
+            return "尚未作答"
+        }
+        return selectedAnswer
+    }
 }
 
 enum PracticeAssignmentStatus: String, Codable, Equatable {

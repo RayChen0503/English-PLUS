@@ -1,5 +1,4 @@
 #!/usr/bin/env python3
-import json
 import sys
 from pathlib import Path
 
@@ -7,19 +6,20 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 IOS_ROOT = ROOT / "ios" / "EnglishPlus" / "EnglishPlus"
 SERVICES = IOS_ROOT / "Services"
-FUNCTIONS_INDEX = ROOT / "functions" / "src" / "index.ts"
-SCHEMA = ROOT / "docs" / "ios-testflight" / "firebase" / "openrouter-ai-proxy.schema.json"
+WORKER_ROOT = ROOT / "workers" / "englishplus-ai-proxy"
 
 FILES = {
     "ai_models": IOS_ROOT / "Models" / "AiProxyModels.swift",
-    "ai_proxy_service": SERVICES / "AiProxyService.swift",
-    "mock_ai_proxy": SERVICES / "MockAiProxyService.swift",
     "ai_service": SERVICES / "AIService.swift",
     "mock_ai_service": SERVICES / "MockAIService.swift",
     "remote_ai_service": SERVICES / "RemoteAIService.swift",
     "app_state": IOS_ROOT / "App" / "AppState.swift",
     "app": IOS_ROOT / "App" / "EnglishPlusApp.swift",
+    "factory": SERVICES / "FirebaseAppConfigurator.swift",
+    "info": IOS_ROOT / "Info.plist",
     "project": ROOT / "ios" / "EnglishPlus" / "EnglishPlus.xcodeproj" / "project.pbxproj",
+    "worker": WORKER_ROOT / "src" / "index.js",
+    "wrangler": WORKER_ROOT / "wrangler.toml",
 }
 
 TASKS = [
@@ -32,27 +32,29 @@ TASKS = [
 ]
 
 
-def read(path):
-    return path.read_text(encoding="utf-8")
+def read(key: str) -> str:
+    return FILES[key].read_text(encoding="utf-8")
 
 
-def require(condition, message, errors):
+def require(condition: bool, message: str, errors: list[str]) -> None:
     if not condition:
         errors.append(message)
 
 
-def validate_files(errors):
+def validate_files(errors: list[str]) -> None:
     for name, path in FILES.items():
         require(path.exists(), f"missing {name}: {path.relative_to(ROOT)}", errors)
 
 
-def validate_high_level_ios_service(errors):
-    ai_service = read(FILES["ai_service"])
-    mock = read(FILES["mock_ai_service"])
-    remote = read(FILES["remote_ai_service"])
-    app_state = read(FILES["app_state"])
-    app = read(FILES["app"])
-    project = read(FILES["project"])
+def validate_ios_service_contract(errors: list[str]) -> None:
+    ai_service = read("ai_service")
+    mock = read("mock_ai_service")
+    remote = read("remote_ai_service")
+    app_state = read("app_state")
+    app = read("app")
+    factory = read("factory")
+    info = read("info")
+    project = read("project")
 
     for token in [
         "protocol AIService",
@@ -66,6 +68,9 @@ def validate_high_level_ios_service(errors):
         "draftTeacherFeedback",
         "coachVolunteerReply",
         "recommendPractice",
+        "questionPrompt: snapshot?.prompt",
+        "studentAnswer: snapshot?.selectedAnswerText",
+        "correctAnswer: snapshot?.correctAnswer",
     ]:
         require(token in ai_service, f"AIService missing {token}", errors)
 
@@ -84,9 +89,9 @@ def validate_high_level_ios_service(errors):
     for token in [
         "struct RemoteAIService",
         "protocol AiProxyTransport",
-        "FirebaseCallableAiProxyTransport",
-        "englishPlusAiProxy",
-        "cloudfunctions.net",
+        "CloudflareWorkerAiProxyTransport",
+        "EnglishPlusAIProxyConfig",
+        "ENGLISHPLUS_AI_PROXY_URL",
         "Authorization",
         "CallableRequestEnvelope",
         "CallableResponseEnvelope",
@@ -110,51 +115,64 @@ def validate_high_level_ios_service(errors):
     ]:
         require(token in app_state, f"AppState missing {token}", errors)
 
-    require(
-        "EnglishPlusServiceFactory.makeServices()" in app,
-        "EnglishPlusApp must use EnglishPlusServiceFactory for mock/real AI switching",
-        errors,
-    )
+    require("EnglishPlusServiceFactory.makeServices()" in app, "EnglishPlusApp must use EnglishPlusServiceFactory", errors)
+    require("CloudflareWorkerAiProxyTransport(" in factory, "Service factory must wire Cloudflare Worker AI transport", errors)
+    require("idTokenProvider: authService.currentIdToken" in factory, "Cloudflare Worker transport must receive Firebase ID token provider", errors)
+    require("ENGLISHPLUS_AI_PROXY_URL" in info, "Info.plist must define ENGLISHPLUS_AI_PROXY_URL", errors)
+    require("https://englishplus-ai-proxy.englishplus-ray.workers.dev/ai" in info, "Info.plist must point to the live Cloudflare Worker endpoint", errors)
+
     for token in ["AIService.swift", "MockAIService.swift", "RemoteAIService.swift"]:
         require(token in project, f"Xcode project missing {token}", errors)
 
 
-def validate_proxy_task_contract(errors):
-    models = read(FILES["ai_models"])
-    functions = read(FUNCTIONS_INDEX)
-    schema = json.loads(read(SCHEMA))
-    task_enum = schema.get("properties", {}).get("taskType", {}).get("enum", [])
-    preferred_enum = (
-        schema.get("properties", {})
-        .get("context", {})
-        .get("properties", {})
-        .get("preferredQuestionTypes", {})
-        .get("items", {})
-        .get("enum", [])
-    )
+def validate_worker_contract(errors: list[str]) -> None:
+    worker = read("worker")
+    wrangler = read("wrangler")
 
     for task in TASKS:
-        require(task in models, f"AiProxyModels missing task {task}", errors)
-        require(task in functions, f"Cloud Function missing task {task}", errors)
-        require(task in task_enum, f"AI proxy schema missing task {task}", errors)
+        require(task in worker, f"Cloudflare Worker missing task {task}", errors)
 
-    for question_type in ["multipleChoice", "vocabulary", "grammar", "fillBlank", "cloze", "translation", "reading", "dialogue"]:
-        require(question_type in preferred_enum, f"AI proxy schema missing preferred type {question_type}", errors)
+    for token in [
+        "GROQ_CHAT_COMPLETIONS_URL",
+        "https://api.groq.com/openai/v1/chat/completions",
+        "env.GROQ_API_KEY",
+        "Authorization: `Bearer ${env.GROQ_API_KEY}`",
+        "buildFallbackResponse",
+        "normalizeGroqResponse",
+        'url.pathname === "/health"',
+        'url.pathname === "/ai"',
+    ]:
+        require(token in worker, f"Cloudflare Worker missing {token}", errors)
+
+    for token in [
+        'name = "englishplus-ai-proxy"',
+        "GROQ_DEFAULT_MODEL",
+        "GROQ_QUALITY_MODEL",
+    ]:
+        require(token in wrangler, f"wrangler.toml missing {token}", errors)
 
 
-def validate_secret_safety(errors):
+def validate_secret_safety(errors: list[str]) -> None:
     ios_text = "\n".join(path.read_text(encoding="utf-8") for path in IOS_ROOT.rglob("*.swift"))
-    require("OPENROUTER_API_KEY" not in ios_text, "iOS Swift code must not reference OPENROUTER_API_KEY", errors)
-    require("https://openrouter.ai" not in ios_text, "iOS Swift code must not call OpenRouter directly", errors)
-    require("sk-or-" not in ios_text, "iOS Swift code must not contain OpenRouter-looking keys", errors)
+    for forbidden in [
+        "OPENROUTER_API_KEY",
+        "https://openrouter.ai",
+        "sk-or-",
+        "GROQ_API_KEY",
+        "https://api.groq.com",
+        "gsk_",
+        "cloudfunctions.net",
+        "englishPlusAiProxy",
+    ]:
+        require(forbidden not in ios_text, f"iOS Swift code must not contain {forbidden}", errors)
 
 
-def main():
-    errors = []
+def main() -> int:
+    errors: list[str] = []
     validate_files(errors)
     if not errors:
-        validate_high_level_ios_service(errors)
-        validate_proxy_task_contract(errors)
+        validate_ios_service_contract(errors)
+        validate_worker_contract(errors)
         validate_secret_safety(errors)
 
     if errors:
@@ -162,7 +180,7 @@ def main():
             print(f"ERROR: {error}", file=sys.stderr)
         return 1
 
-    print("Round 7 AI service contract validation passed")
+    print("Round 7 Groq Cloudflare AI service contract validation passed")
     return 0
 
 

@@ -28,6 +28,12 @@ def require_markers(errors: list[str], label: str, text: str, markers: list[str]
             fail(errors, f"{label} missing marker: {marker}")
 
 
+def reject_markers(errors: list[str], label: str, text: str, markers: list[str]) -> None:
+    for marker in markers:
+        if marker in text:
+            fail(errors, f"{label} still exposes removed marker: {marker}")
+
+
 def validate_docs(errors: list[str]) -> None:
     docs = {
         "round-3-teacher-parity.md": [
@@ -36,15 +42,17 @@ def validate_docs(errors: list[str]) -> None:
             "學生",
             "接力",
             "報告",
-            "題庫",
+            "班級",
+            "TeacherClassAssignmentView",
+            "standalone `題庫` tab is intentionally removed",
         ],
         "round-4-volunteer-parity.md": [
             "Volunteer parity",
             "今日",
             "接力",
-            "學生",
-            "同步",
-            "腳本",
+            "紀錄",
+            "VolunteerHandoffWorkspaceView",
+            "SupportQuestionSnapshotCard",
         ],
     }
     for filename, markers in docs.items():
@@ -69,14 +77,24 @@ def validate_teacher_parity(errors: list[str]) -> None:
             'Label("學生"',
             'Label("接力"',
             'Label("報告"',
-            'Label("題庫"',
+            'Label("班級"',
             "TeacherHomeView()",
             "TeacherStudentsView()",
             "TeacherHandoffView()",
             "TeacherReportView()",
+            "TeacherClassAssignmentView()",
+        ],
+    )
+    reject_markers(
+        errors,
+        "TeacherShellView",
+        shell,
+        [
+            'Label("題庫"',
             "TeacherQuestionBankView()",
         ],
     )
+
     require_markers(
         errors,
         "TeacherHomeView",
@@ -84,11 +102,15 @@ def validate_teacher_parity(errors: list[str]) -> None:
         [
             "TeacherHandoffView",
             "TeacherReportView",
-            "TeacherQuestionBankView",
-            "TeacherQuestionBankRow",
-            "TeacherReportSignalCard",
+            "TeacherClassAssignmentView",
+            "TeacherStudentPickerCard",
+            "TeacherSelectedStudentPanel",
+            "TeacherPracticeSetCatalog",
+            "TeacherPracticeSetCatalogSection",
+            "SupportQuestionSnapshotCard",
             "班級週報",
-            "題庫中心",
+            "班級派題",
+            "每組最多 12 題",
             "接力優先序",
             "學生資料",
             "送出回饋",
@@ -103,6 +125,8 @@ def validate_teacher_parity(errors: list[str]) -> None:
             "staffDashboardMetrics",
             "StaffDashboardMetrics",
             "QuestionBankTypeOverview",
+            "assignments(forStudentUid",
+            "assignPracticeSet",
         ],
     )
 
@@ -117,32 +141,45 @@ def validate_volunteer_parity(errors: list[str]) -> None:
         "VolunteerShellView",
         shell,
         [
-            'Label("今日"',
-            'Label("接力"',
+            'Label("今日", systemImage: "heart.text.square")',
+            'Label("接力", systemImage: "flag")',
+            'Label("紀錄", systemImage: "list.bullet.rectangle")',
+            "VolunteerHomeView()",
+            "VolunteerHandoffWorkspaceView()",
+            "VolunteerRecordView()",
+        ],
+    )
+    reject_markers(
+        errors,
+        "VolunteerShellView",
+        shell,
+        [
             'Label("學生"',
             'Label("同步"',
             'Label("腳本"',
-            "VolunteerHomeView()",
-            "VolunteerHandoffView()",
             "VolunteerStudentBriefsView()",
             "VolunteerSyncView()",
             "VolunteerScriptView()",
         ],
     )
+
     require_markers(
         errors,
         "VolunteerHomeView",
         home,
         [
-            "VolunteerHandoffView",
-            "VolunteerStudentBriefsView",
-            "VolunteerSyncView",
-            "VolunteerScriptView",
+            "VolunteerHandoffWorkspaceView",
+            "VolunteerQueuePickerCard",
+            "VolunteerSelectedSupportPanel",
+            "VolunteerQuestionContextCard",
+            "VolunteerReplyComposerCard",
+            "VolunteerRecordView",
             "VolunteerScriptTemplate",
-            "只做下一小步",
-            "陪伴腳本",
-            "同步紀錄",
+            "先接住，再陪一題",
+            "接力紀錄",
             "送出陪伴回覆",
+            "SupportQuestionSnapshotCard",
+            "學生答案與正解",
         ],
     )
     require_markers(

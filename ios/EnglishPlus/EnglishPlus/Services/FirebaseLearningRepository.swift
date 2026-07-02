@@ -728,9 +728,25 @@ final class FirebaseLearningRepository: LearningRepositoryBackend {
             "studentMessage": request.studentMessage,
             "moodScore": nullable(request.moodScore),
             "latestQuestionId": nullable(request.latestQuestionId),
+            "questionSnapshot": request.questionSnapshot.map(firestoreData(from:)) ?? NSNull(),
             "latestMessagePreview": request.replies.last?.body ?? request.studentMessage,
             "createdAt": request.createdAt,
             "updatedAt": request.updatedAt,
+        ]
+    }
+
+    private func firestoreData(from snapshot: SupportQuestionSnapshot) -> [String: Any] {
+        [
+            "questionId": snapshot.questionId,
+            "prompt": snapshot.prompt,
+            "options": snapshot.options,
+            "questionTypeTitle": snapshot.questionTypeTitle,
+            "levelTitle": snapshot.levelTitle,
+            "skill": snapshot.skill,
+            "selectedAnswer": nullable(snapshot.selectedAnswer),
+            "correctAnswer": snapshot.correctAnswer,
+            "explanation": snapshot.explanation,
+            "repairHint": snapshot.repairHint,
         ]
     }
 
@@ -925,9 +941,38 @@ final class FirebaseLearningRepository: LearningRepositoryBackend {
             studentMessage: data["studentMessage"] as? String ?? data["latestMessagePreview"] as? String ?? "",
             moodScore: data["moodScore"] as? Int,
             latestQuestionId: data["latestQuestionId"] as? String,
+            questionSnapshot: supportQuestionSnapshot(from: data),
             createdAt: firestoreDate(data["createdAt"]) ?? Date(),
             updatedAt: firestoreDate(data["updatedAt"]) ?? Date(),
             replies: []
+        )
+    }
+
+    private func supportQuestionSnapshot(from data: [String: Any]) -> SupportQuestionSnapshot? {
+        guard let rawSnapshot = data["questionSnapshot"] as? [String: Any] else {
+            return nil
+        }
+        guard
+            let questionId = rawSnapshot["questionId"] as? String,
+            let prompt = rawSnapshot["prompt"] as? String,
+            let correctAnswer = rawSnapshot["correctAnswer"] as? String,
+            let explanation = rawSnapshot["explanation"] as? String,
+            let repairHint = rawSnapshot["repairHint"] as? String
+        else {
+            return nil
+        }
+
+        return SupportQuestionSnapshot(
+            questionId: questionId,
+            prompt: prompt,
+            options: rawSnapshot["options"] as? [String] ?? [],
+            questionTypeTitle: rawSnapshot["questionTypeTitle"] as? String ?? "題目",
+            levelTitle: rawSnapshot["levelTitle"] as? String ?? "練習",
+            skill: rawSnapshot["skill"] as? String ?? "",
+            selectedAnswer: rawSnapshot["selectedAnswer"] as? String,
+            correctAnswer: correctAnswer,
+            explanation: explanation,
+            repairHint: repairHint
         )
     }
     #endif

@@ -788,8 +788,8 @@ private struct AIStatusCard: View {
                 .foregroundStyle(response.fallbackUsed ? EPTheme.warning : EPTheme.primary)
 
             Text(response.fallbackUsed
-                ? "目前使用內建提示，沒有連到線上 AI。"
-                : "線上 AI 已回應")
+                ? "先用內建提示幫你整理下一步。"
+                : "已整理成下一個可執行的小步驟。")
                 .font(.caption)
                 .foregroundStyle(.secondary)
 
