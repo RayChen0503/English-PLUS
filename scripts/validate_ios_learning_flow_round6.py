@@ -79,6 +79,14 @@ require(
 )
 
 require_absent(
+    "unsupported SwiftUI frame overloads that fail archive builds",
+    practice_center,
+    [
+        ".frame(width: 160, minHeight:",
+    ],
+)
+
+require_absent(
     "technical backend/debug terms in normal user-facing flow files",
     support_view + teacher_home + volunteer_home + practice_center,
     [

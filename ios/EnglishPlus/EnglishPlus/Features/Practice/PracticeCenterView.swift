@@ -588,7 +588,8 @@ private struct PracticeSetSelectionCard: View {
                     .lineLimit(2)
             }
             .foregroundStyle(isSelected ? .white : EPTheme.ink)
-            .frame(width: 160, minHeight: 74, alignment: .leading)
+            .frame(width: 160, alignment: .leading)
+            .frame(minHeight: 74, alignment: .leading)
             .padding(12)
             .background(isSelected ? EPTheme.primary : Color(.systemGray6))
             .clipShape(RoundedRectangle(cornerRadius: EPTheme.cardRadius))
