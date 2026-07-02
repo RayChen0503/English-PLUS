@@ -28,6 +28,7 @@ def main() -> None:
     volunteer = read("ios/EnglishPlus/EnglishPlus/Features/Volunteer/VolunteerHomeView.swift")
     mock_repo = read("ios/EnglishPlus/EnglishPlus/Services/MockLearningRepository.swift")
     firebase_repo = read("ios/EnglishPlus/EnglishPlus/Services/FirebaseLearningRepository.swift")
+    ai_service = read("ios/EnglishPlus/EnglishPlus/Services/AIService.swift")
 
     require(models, "struct SupportQuestionSnapshot", "question snapshot model")
     require(models, "var questionSnapshot: SupportQuestionSnapshot?", "support request snapshot field")
@@ -63,9 +64,10 @@ def main() -> None:
     require(mock_repo, "questionSnapshot: SupportQuestionSnapshot(questionItem: questionItem, selectedAnswer: selectedAnswer)", "mock repository stores snapshot")
     require(firebase_repo, "questionSnapshot", "firebase repository mirrors snapshot")
     require(firebase_repo, "supportQuestionSnapshot(from:", "firebase repository reads snapshot")
-    require(read("ios/EnglishPlus/EnglishPlus/Services/AIService.swift"), "questionPrompt: snapshot?.prompt", "AI support request carries question prompt")
-    require(read("ios/EnglishPlus/EnglishPlus/Services/AIService.swift"), "studentAnswer: snapshot?.selectedAnswerText", "AI support request carries student answer")
-    require(read("ios/EnglishPlus/EnglishPlus/Services/AIService.swift"), "correctAnswer: snapshot?.correctAnswer", "AI support request carries correct answer")
+    require(ai_service, "return AiProxyRequest(", "explicit support request return for Swift archive")
+    require(ai_service, "questionPrompt: snapshot?.prompt", "AI support request carries question prompt")
+    require(ai_service, "studentAnswer: snapshot?.selectedAnswerText", "AI support request carries student answer")
+    require(ai_service, "correctAnswer: snapshot?.correctAnswer", "AI support request carries correct answer")
 
     print("support thread closed loop contract passed")
 

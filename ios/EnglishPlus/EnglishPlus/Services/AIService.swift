@@ -174,7 +174,7 @@ extension AiProxyRequest {
         sessionPrefix: String
     ) -> AiProxyRequest {
         let snapshot = request.questionSnapshot
-        AiProxyRequest(
+        return AiProxyRequest(
             taskType: taskType,
             classId: request.classCode,
             studentUid: request.studentUid,
