@@ -33,6 +33,8 @@ enum SupportThreadStatus: String, Codable {
     case waitingForStaff
     case replied
     case readByStudent
+    case staffHandledNoReply
+    case archived
     case closed
 }
 

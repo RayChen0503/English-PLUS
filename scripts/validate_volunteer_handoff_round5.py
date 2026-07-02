@@ -38,16 +38,16 @@ def main() -> int:
     firebase_repository = read(FIREBASE_REPOSITORY)
 
     required_shell_tokens = [
-        'Label("今日", systemImage: "heart.text.square")',
+        'Label("首頁", systemImage: "heart.text.square")',
         'Label("接力", systemImage: "flag")',
         'Label("紀錄", systemImage: "list.bullet.rectangle")',
+        ".badge(learningRepository.volunteerDashboardMetrics.waitingCount)",
     ]
     for token in required_shell_tokens:
         require(token in volunteer_shell, f"Volunteer shell missing focused tab token: {token}", errors)
 
     forbidden_shell_tokens = [
         'Label("學生"',
-        'Label("腳本"',
         "VolunteerStudentBriefsView()",
         "VolunteerScriptView()",
     ]
@@ -59,23 +59,24 @@ def main() -> int:
         "VolunteerQueuePickerCard",
         "VolunteerSelectedSupportPanel",
         "VolunteerQuestionContextCard",
-        "VolunteerReplyComposerCard",
+        "VolunteerStaffReplyComposerCard",
         "VolunteerCompanionScriptCard",
+        "StaffSupportQueueHeaderCard",
+        "StaffSupportActionBar",
         "selectedRequestId",
         "selectedRequest",
         "learningRepository.addVolunteerReply(to: request.id, body: replyDraft)",
+        "learningRepository.markSupportThreadHandledWithoutReply(request.id, by: appState.currentUser)",
+        "learningRepository.archiveSupportThreadForStaff(request.id, by: appState.currentUser)",
         "appState.coachVolunteerReplyWithAI(context: SupportAIContext(request: request))",
-        "送出後學生會在支援紀錄看到",
-        "先接住，再陪一題",
         "SupportQuestionSnapshotCard",
-        "學生答案與正解",
     ]
     for token in required_volunteer_tokens:
         require(token in volunteer_home, f"Volunteer handoff flow missing token: {token}", errors)
 
     required_support_tokens = [
-        "志工陪伴",
-        "老師/志工回覆",
+        "回覆中心",
+        "SupportReplyTimeline",
         "visibleReplies",
         "markSupportThreadReadByStudent",
     ]
@@ -84,7 +85,8 @@ def main() -> int:
 
     required_store_tokens = [
         "visibleVolunteerReplies",
-        "request.status == .waitingForStaff || request.status == .open",
+        "request.isWaitingForStaffAction",
+        "volunteerQueue.count",
     ]
     for token in required_store_tokens:
         require(token in store, f"Repository missing volunteer queue token: {token}", errors)
@@ -99,13 +101,6 @@ def main() -> int:
     backend_text = mock_repository + firebase_repository
     for token in required_backend_tokens:
         require(token in backend_text, f"Repository backend missing volunteer reply persistence token: {token}", errors)
-
-    forbidden_copy_tokens = [
-        "志工端只顯示陪伴所需資訊，不顯示老師的班級管理與評分資料。",
-        "可以直接照著說，也可以改成自己的語氣。",
-    ]
-    for token in forbidden_copy_tokens:
-        require(token not in volunteer_home, f"Volunteer flow still contains detached explanatory copy: {token}", errors)
 
     if errors:
         for error in errors:

@@ -23,7 +23,7 @@ struct TeacherHomeView: View {
                                 TeacherEmptyQueueCard()
                             } else {
                                 ForEach(learningRepository.teacherQueue.prefix(3)) { request in
-                                    TeacherRequestCard(request: request)
+                                    TeacherSupportRequestCard(request: request)
                                 }
                             }
                         }
@@ -47,41 +47,6 @@ struct TeacherHomeView: View {
     }
 }
 
-struct TeacherStudentsView: View {
-    @EnvironmentObject private var learningRepository: LearningRepositoryStore
-
-    var body: some View {
-        NavigationStack {
-            ZStack {
-                EPTheme.background.ignoresSafeArea()
-                List {
-                    ForEach(learningRepository.staffStudentSummaries) { summary in
-                        VStack(alignment: .leading, spacing: 6) {
-                            HStack {
-                                Text(summary.studentName)
-                                    .font(.headline)
-                                Spacer()
-                                Text(summary.riskLevel.uiTitle)
-                                    .font(.caption.bold())
-                                    .foregroundStyle(summary.riskLevel == .high ? EPTheme.warning : EPTheme.support)
-                            }
-                            Text(summary.classCode)
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
-                            Text(summary.nextAction)
-                                .font(.subheadline)
-                                .foregroundStyle(EPTheme.ink)
-                        }
-                        .padding(.vertical, 4)
-                    }
-                }
-                .scrollContentBackground(.hidden)
-            }
-            .navigationTitle("學生紀錄")
-        }
-    }
-}
-
 struct TeacherHandoffView: View {
     @EnvironmentObject private var learningRepository: LearningRepositoryStore
 
@@ -100,10 +65,19 @@ struct TeacherHandoffView: View {
                             .foregroundStyle(.secondary)
                             .fixedSize(horizontal: false, vertical: true)
 
+                        StaffSupportQueueHeaderCard(
+                            title: "待回覆接力",
+                            subtitle: "學生把卡住的題目送出後會集中在這裡。紅點代表未處理，回覆、已讀不回或收起後會自動消除。",
+                            waitingCount: learningRepository.teacherQueue.count,
+                            highPriorityCount: learningRepository.teacherQueue.filter { $0.priority == .high }.count,
+                            handledCount: learningRepository.staffDashboardMetrics.repliedCount,
+                            tint: EPTheme.primary
+                        )
+
                         TeacherHandoffSummaryCard()
 
                         ForEach(learningRepository.teacherQueue) { request in
-                            TeacherRequestCard(request: request)
+                            TeacherSupportRequestCard(request: request)
                         }
                     }
                     .padding(EPTheme.pagePadding)
@@ -111,6 +85,121 @@ struct TeacherHandoffView: View {
             }
             .navigationTitle("接力")
         }
+    }
+}
+
+struct TeacherSupportRequestCard: View {
+    @EnvironmentObject private var appState: AppState
+    @EnvironmentObject private var learningRepository: LearningRepositoryStore
+    let request: StudentSupportRequest
+
+    @State private var replyDraft = ""
+    @State private var isDraftingWithAI = false
+
+    private var canReply: Bool {
+        !replyDraft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack(alignment: .top, spacing: 12) {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(request.studentName)
+                        .font(.headline)
+                        .foregroundStyle(EPTheme.ink)
+                    Text("\(request.classCode) · \(request.status.uiTitle)")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+
+                Spacer()
+
+                Text(request.priority.uiTitle)
+                    .font(.caption.bold())
+                    .foregroundStyle(request.priority == .high ? EPTheme.warning : EPTheme.support)
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 6)
+                    .background((request.priority == .high ? EPTheme.warning : EPTheme.support).opacity(0.10))
+                    .clipShape(Capsule())
+            }
+
+            Text(request.studentMessage)
+                .font(.subheadline)
+                .foregroundStyle(EPTheme.ink)
+                .fixedSize(horizontal: false, vertical: true)
+
+            if let snapshot = request.questionSnapshot {
+                SupportQuestionSnapshotCard(
+                    snapshot: snapshot,
+                    title: "學生卡住的題目",
+                    showsExplanation: true
+                )
+            } else if request.latestQuestionId?.isEmpty == false {
+                Label("學生有題目紀錄，但目前缺少完整題目快照。", systemImage: "doc.text")
+                    .font(.caption.bold())
+                    .foregroundStyle(.secondary)
+            }
+
+            if let moodScore = request.moodScore {
+                Label("今日心情 \(moodScore)/5", systemImage: "heart.text.square")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+
+            if !request.replies.isEmpty {
+                VStack(alignment: .leading, spacing: 8) {
+                    Text("已有回覆")
+                        .font(.caption.bold())
+                        .foregroundStyle(.secondary)
+                    ForEach(request.replies) { reply in
+                        Text("\(reply.authorName)：\(reply.body)")
+                            .font(.footnote)
+                            .foregroundStyle(.secondary)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                }
+            }
+
+            TextField("輸入給學生的回覆，例如：你卡住的是 be 動詞主詞對應，我幫你拆一步。", text: $replyDraft, axis: .vertical)
+                .lineLimit(3...6)
+                .textFieldStyle(.roundedBorder)
+
+            Button(isDraftingWithAI ? "AI 正在整理建議" : "用 AI 產生回覆草稿") {
+                Task {
+                    await fillTeacherDraftWithAI()
+                }
+            }
+            .buttonStyle(.bordered)
+            .disabled(isDraftingWithAI)
+
+            StaffSupportActionBar(
+                canReply: canReply,
+                sendReply: {
+                    learningRepository.addTeacherReply(to: request.id, body: replyDraft)
+                    replyDraft = ""
+                },
+                markHandledWithoutReply: {
+                    learningRepository.markSupportThreadHandledWithoutReply(request.id, by: appState.currentUser)
+                },
+                archiveThread: {
+                    learningRepository.archiveSupportThreadForStaff(request.id, by: appState.currentUser)
+                }
+            )
+        }
+        .padding(16)
+        .background(.white)
+        .clipShape(RoundedRectangle(cornerRadius: EPTheme.cardRadius))
+    }
+
+    private func fillTeacherDraftWithAI() async {
+        isDraftingWithAI = true
+        let response = await appState.draftTeacherFeedbackWithAI(context: SupportAIContext(request: request))
+        replyDraft = response.output.studentFacingFeedback
+            ?? response.output.recommendedNextAction
+            ?? response.output.teacherSummary
+            ?? response.output.summary
+            ?? replyDraft
+        isDraftingWithAI = false
     }
 }
 
@@ -331,6 +420,7 @@ struct TeacherClassAssignmentView: View {
     @State private var selectedStudentUid: String?
     @State private var selectedQuestionType: QuestionType?
     @State private var selectedLevel: QuestionLevel?
+    @State private var selectedSkill: String?
     @State private var assignmentConfirmation: String?
 
     var body: some View {
@@ -341,7 +431,13 @@ struct TeacherClassAssignmentView: View {
                     VStack(alignment: .leading, spacing: 16) {
                         TeacherClassAssignmentHeader(
                             studentCount: learningRepository.staffStudentSummaries.count,
+                            waitingHelpCount: learningRepository.staffDashboardMetrics.waitingHelpCount,
                             assignmentCount: learningRepository.assignedPracticeTasks.count
+                        )
+
+                        TeacherClassRosterSummaryCard(
+                            metrics: learningRepository.staffDashboardMetrics,
+                            students: learningRepository.staffStudentSummaries
                         )
 
                         TeacherStudentPickerCard(
@@ -364,7 +460,8 @@ struct TeacherClassAssignmentView: View {
                                 selectedStudent: selectedStudent,
                                 sets: learningRepository.questionPracticeSets,
                                 selectedQuestionType: $selectedQuestionType,
-                                selectedLevel: $selectedLevel
+                                selectedLevel: $selectedLevel,
+                                selectedSkill: $selectedSkill
                             ) { set in
                                 learningRepository.assignPracticeSet(set, to: selectedStudent, by: appState.currentUser)
                                 assignmentConfirmation = "已指派給 \(selectedStudent.studentName)：\(set.title)"
@@ -399,15 +496,16 @@ struct TeacherClassAssignmentView: View {
 
 private struct TeacherClassAssignmentHeader: View {
     let studentCount: Int
+    let waitingHelpCount: Int
     let assignmentCount: Int
 
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
             VStack(alignment: .leading, spacing: 6) {
-                Text("班級派題")
+                Text("班級學生與派題")
                     .font(.title.bold())
                     .foregroundStyle(EPTheme.ink)
-                Text("先選學生，再指派 12 題內的小題組。題組已依題型、難度與技能整理，不需要老師從整份題庫慢慢找。")
+                Text("先看班級狀態，再選學生指派每組 12 題內的小題組。題組已依題型、難度與技能整理，不需要老師從整份題庫慢慢找。")
                     .font(.subheadline)
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
@@ -415,8 +513,69 @@ private struct TeacherClassAssignmentHeader: View {
 
             HStack(spacing: 10) {
                 TeacherStatusTile(title: "學生", value: "\(max(studentCount, 1))", color: EPTheme.primary)
+                TeacherStatusTile(title: "待接住", value: "\(waitingHelpCount)", color: EPTheme.warning)
                 TeacherStatusTile(title: "已派題", value: "\(assignmentCount)", color: EPTheme.support)
             }
+        }
+    }
+}
+
+private struct TeacherClassRosterSummaryCard: View {
+    let metrics: StaffDashboardMetrics
+    let students: [StaffStudentSummary]
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack(alignment: .top) {
+                VStack(alignment: .leading, spacing: 4) {
+                    Label("班級概況", systemImage: "person.3.sequence.fill")
+                        .font(.headline)
+                        .foregroundStyle(EPTheme.ink)
+                    Text("這裡是老師派任務前的總覽：先看誰需要照顧，再決定要派基礎修復、穩定練習或挑戰題。")
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+
+                Spacer()
+            }
+
+            HStack(spacing: 10) {
+                TeacherStatusTile(title: "高風險", value: "\(metrics.highRiskCount)", color: EPTheme.warning)
+                TeacherStatusTile(title: "待回覆", value: "\(metrics.waitingHelpCount)", color: EPTheme.primary)
+                TeacherStatusTile(title: "平均心情", value: metrics.averageMoodText, color: EPTheme.support)
+            }
+
+            if let firstPriority = students.sorted(by: prioritySort).first {
+                Text("建議先看 \(firstPriority.studentName)：\(firstPriority.nextAction)")
+                    .font(.footnote)
+                    .foregroundStyle(EPTheme.ink)
+                    .padding(10)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .background(EPTheme.primary.opacity(0.08))
+                    .clipShape(RoundedRectangle(cornerRadius: 10))
+            }
+        }
+        .padding(16)
+        .background(.white)
+        .clipShape(RoundedRectangle(cornerRadius: EPTheme.cardRadius))
+    }
+
+    private func prioritySort(_ lhs: StaffStudentSummary, _ rhs: StaffStudentSummary) -> Bool {
+        if riskScore(lhs.riskLevel) != riskScore(rhs.riskLevel) {
+            return riskScore(lhs.riskLevel) > riskScore(rhs.riskLevel)
+        }
+        return lhs.studentName < rhs.studentName
+    }
+
+    private func riskScore(_ risk: RiskLevel) -> Int {
+        switch risk {
+        case .low:
+            return 1
+        case .medium:
+            return 2
+        case .high:
+            return 3
         }
     }
 }
@@ -427,7 +586,7 @@ private struct TeacherStudentPickerCard: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
-            Label("1. 選擇學生", systemImage: "person.crop.circle.badge.checkmark")
+            Label("1. 選班級學生", systemImage: "person.crop.circle.badge.checkmark")
                 .font(.headline)
                 .foregroundStyle(EPTheme.ink)
 
@@ -494,49 +653,75 @@ private struct TeacherSelectedStudentPanel: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
-            Label("2. 確認學生狀態", systemImage: "list.clipboard")
+            Label("2. 看學生狀態", systemImage: "list.clipboard")
                 .font(.headline)
                 .foregroundStyle(EPTheme.ink)
 
-            VStack(alignment: .leading, spacing: 8) {
-                HStack {
-                    VStack(alignment: .leading, spacing: 4) {
-                        Text(student.studentName)
-                            .font(.title3.bold())
-                            .foregroundStyle(EPTheme.ink)
-                        Text(student.classCode)
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                    }
-                    Spacer()
-                    Text(student.riskLevel.uiTitle)
-                        .font(.caption.bold())
-                        .foregroundStyle(student.riskLevel == .high ? EPTheme.warning : EPTheme.support)
-                        .padding(.horizontal, 10)
-                        .padding(.vertical, 6)
-                        .background((student.riskLevel == .high ? EPTheme.warning : EPTheme.support).opacity(0.12))
-                        .clipShape(Capsule())
-                }
-
-                Text(student.nextAction)
-                    .font(.subheadline)
-                    .foregroundStyle(EPTheme.ink)
-                    .fixedSize(horizontal: false, vertical: true)
-
-                Text(recommendationText)
-                    .font(.footnote)
-                    .foregroundStyle(.secondary)
-                    .fixedSize(horizontal: false, vertical: true)
-            }
-            .padding(12)
-            .background(Color(.systemGray6))
-            .clipShape(RoundedRectangle(cornerRadius: EPTheme.cardRadius))
+            TeacherStudentMissionPanel(
+                student: student,
+                recommendationText: recommendationText
+            )
 
             TeacherStudentAssignmentHistory(assignments: assignments)
         }
         .padding(16)
         .background(.white)
         .clipShape(RoundedRectangle(cornerRadius: EPTheme.cardRadius))
+    }
+}
+
+private struct TeacherStudentMissionPanel: View {
+    let student: StaffStudentSummary
+    let recommendationText: String
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(student.studentName)
+                        .font(.title3.bold())
+                        .foregroundStyle(EPTheme.ink)
+                    Text(student.classCode)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+                Spacer()
+                Text(student.riskLevel.uiTitle)
+                    .font(.caption.bold())
+                    .foregroundStyle(student.riskLevel == .high ? EPTheme.warning : EPTheme.support)
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 6)
+                    .background((student.riskLevel == .high ? EPTheme.warning : EPTheme.support).opacity(0.12))
+                    .clipShape(Capsule())
+            }
+
+            HStack(spacing: 10) {
+                TeacherStatusTile(title: "心情", value: moodText, color: EPTheme.support)
+                TeacherStatusTile(title: "任務", value: student.missionProgress, color: EPTheme.primary)
+            }
+
+            VStack(alignment: .leading, spacing: 6) {
+                Text("下一步")
+                    .font(.caption.bold())
+                    .foregroundStyle(.secondary)
+                Text(student.nextAction)
+                    .font(.subheadline)
+                    .foregroundStyle(EPTheme.ink)
+                    .fixedSize(horizontal: false, vertical: true)
+                Text(recommendationText)
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        }
+        .padding(12)
+        .background(Color(.systemGray6))
+        .clipShape(RoundedRectangle(cornerRadius: EPTheme.cardRadius))
+    }
+
+    private var moodText: String {
+        guard let moodScore = student.moodScore else { return "未填" }
+        return "\(moodScore)/5"
     }
 }
 
@@ -633,15 +818,16 @@ private struct TeacherPracticeSetCatalog: View {
     let sets: [QuestionPracticeSet]
     @Binding var selectedQuestionType: QuestionType?
     @Binding var selectedLevel: QuestionLevel?
+    @Binding var selectedSkill: String?
     let assignPracticeSet: (QuestionPracticeSet) -> Void
 
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
             VStack(alignment: .leading, spacing: 4) {
-                Label("3. 選擇小題組", systemImage: "books.vertical")
+                Label("3. 依技能指派小題組", systemImage: "books.vertical")
                     .font(.headline)
                     .foregroundStyle(EPTheme.ink)
-                Text("每組最多 12 題，先按題型與難度縮小範圍，再指派給 \(selectedStudent.studentName)。")
+                Text("每組 12 題內，先按題型、難度與技能縮小範圍，再指派給 \(selectedStudent.studentName)。指派後會出現在學生任務，不會混進自由練習。")
                     .font(.subheadline)
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
@@ -659,9 +845,9 @@ private struct TeacherPracticeSetCatalog: View {
                     .clipShape(RoundedRectangle(cornerRadius: EPTheme.cardRadius))
             } else {
                 LazyVStack(spacing: 12) {
-                    ForEach(groupedPracticeSets, id: \.type) { group in
-                        TeacherPracticeSetCatalogSection(
-                            type: group.type,
+                    ForEach(groupedPracticeSetsBySkill, id: \.skill) { group in
+                        TeacherPracticeSetSkillSection(
+                            skill: group.skill,
                             sets: group.sets,
                             assignPracticeSet: assignPracticeSet
                         )
@@ -680,10 +866,12 @@ private struct TeacherPracticeSetCatalog: View {
                 HStack(spacing: 8) {
                     TeacherFilterChip(title: "全部題型", isSelected: selectedQuestionType == nil) {
                         selectedQuestionType = nil
+                        selectedSkill = nil
                     }
                     ForEach(QuestionType.allCases) { type in
                         TeacherFilterChip(title: type.title, isSelected: selectedQuestionType == type) {
                             selectedQuestionType = type
+                            selectedSkill = nil
                         }
                     }
                 }
@@ -694,15 +882,22 @@ private struct TeacherPracticeSetCatalog: View {
                 HStack(spacing: 8) {
                     TeacherFilterChip(title: "全部難度", isSelected: selectedLevel == nil) {
                         selectedLevel = nil
+                        selectedSkill = nil
                     }
                     ForEach(QuestionLevel.allCases) { level in
                         TeacherFilterChip(title: level.uiTitle, isSelected: selectedLevel == level) {
                             selectedLevel = level
+                            selectedSkill = nil
                         }
                     }
                 }
                 .padding(.vertical, 2)
             }
+
+            TeacherSkillFilterSection(
+                skills: availableSkills,
+                selectedSkill: $selectedSkill
+            )
         }
     }
 
@@ -711,7 +906,8 @@ private struct TeacherPracticeSetCatalog: View {
             .filter { set in
                 let typeMatches = selectedQuestionType.map { $0 == set.type } ?? true
                 let levelMatches = selectedLevel.map { $0 == set.level } ?? true
-                return typeMatches && levelMatches
+                let skillMatches = selectedSkill.map { $0 == set.skill } ?? true
+                return typeMatches && levelMatches && skillMatches
             }
             .sorted { lhs, rhs in
                 if lhs.type.rawValue != rhs.type.rawValue {
@@ -724,23 +920,53 @@ private struct TeacherPracticeSetCatalog: View {
             }
     }
 
-    private var groupedPracticeSets: [(type: QuestionType, sets: [QuestionPracticeSet])] {
-        QuestionType.allCases.compactMap { type in
-            let groupSets = filteredPracticeSets.filter { $0.type == type }
-            return groupSets.isEmpty ? nil : (type, Array(groupSets.prefix(8)))
+    private var availableSkills: [String] {
+        let scope = sets.filter { set in
+            let typeMatches = selectedQuestionType.map { $0 == set.type } ?? true
+            let levelMatches = selectedLevel.map { $0 == set.level } ?? true
+            return typeMatches && levelMatches
+        }
+        return Array(Set(scope.map(\.skill))).sorted()
+    }
+
+    private var groupedPracticeSetsBySkill: [(skill: String, sets: [QuestionPracticeSet])] {
+        availableSkills.compactMap { skill in
+            let groupSets = filteredPracticeSets.filter { $0.skill == skill }
+            return groupSets.isEmpty ? nil : (skill, Array(groupSets.prefix(6)))
         }
     }
 }
 
-private struct TeacherPracticeSetCatalogSection: View {
-    let type: QuestionType
+private struct TeacherSkillFilterSection: View {
+    let skills: [String]
+    @Binding var selectedSkill: String?
+
+    var body: some View {
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: 8) {
+                TeacherFilterChip(title: "全部技能", isSelected: selectedSkill == nil) {
+                    selectedSkill = nil
+                }
+                ForEach(skills.prefix(16), id: \.self) { skill in
+                    TeacherFilterChip(title: skill, isSelected: selectedSkill == skill) {
+                        selectedSkill = skill
+                    }
+                }
+            }
+            .padding(.vertical, 2)
+        }
+    }
+}
+
+private struct TeacherPracticeSetSkillSection: View {
+    let skill: String
     let sets: [QuestionPracticeSet]
     let assignPracticeSet: (QuestionPracticeSet) -> Void
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
             HStack {
-                Text(type.title)
+                Text(skill)
                     .font(.subheadline.bold())
                     .foregroundStyle(EPTheme.ink)
                 Spacer()
@@ -776,7 +1002,11 @@ private struct TeacherPracticeSetCatalogRow: View {
                     Text(set.subtitle)
                         .font(.caption)
                         .foregroundStyle(.secondary)
-                    Text("技能：\(set.previewText)")
+                    Text("技能：\(set.skill)")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(2)
+                    Text("概念：\(set.previewText)")
                         .font(.caption)
                         .foregroundStyle(.secondary)
                         .lineLimit(2)
@@ -784,13 +1014,17 @@ private struct TeacherPracticeSetCatalogRow: View {
 
                 Spacer()
 
-                Text("\(set.questionCount) 題")
-                    .font(.caption.bold())
-                    .foregroundStyle(EPTheme.primary)
-                    .padding(.horizontal, 10)
-                    .padding(.vertical, 6)
-                    .background(EPTheme.primary.opacity(0.08))
-                    .clipShape(Capsule())
+                VStack(alignment: .trailing, spacing: 6) {
+                    Text("\(set.questionCount) 題")
+                        .font(.caption.bold())
+                    Text("約 \(set.estimatedMinutes) 分")
+                        .font(.caption2.bold())
+                }
+                .foregroundStyle(EPTheme.primary)
+                .padding(.horizontal, 10)
+                .padding(.vertical, 6)
+                .background(EPTheme.primary.opacity(0.08))
+                .clipShape(RoundedRectangle(cornerRadius: 10))
             }
 
             Button(action: assign) {
@@ -880,96 +1114,6 @@ private struct TeacherStatusTile: View {
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(.white)
         .clipShape(RoundedRectangle(cornerRadius: EPTheme.cardRadius))
-    }
-}
-
-struct TeacherRequestCard: View {
-    @EnvironmentObject private var appState: AppState
-    @EnvironmentObject private var learningRepository: LearningRepositoryStore
-    let request: StudentSupportRequest
-
-    @State private var replyDraft = ""
-    @State private var isDraftingWithAI = false
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            HStack {
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(request.studentName)
-                        .font(.headline)
-                    Text(request.classCode)
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                }
-                Spacer()
-                Text(request.priority.uiTitle)
-                    .font(.caption.bold())
-                    .foregroundStyle(request.priority == .high ? EPTheme.warning : EPTheme.support)
-            }
-
-            Text(request.studentMessage)
-                .font(.subheadline)
-                .foregroundStyle(EPTheme.ink)
-                .fixedSize(horizontal: false, vertical: true)
-
-            if let snapshot = request.questionSnapshot {
-                SupportQuestionSnapshotCard(
-                    snapshot: snapshot,
-                    title: "針對這一題回覆",
-                    showsExplanation: true
-                )
-            } else if let questionId = request.latestQuestionId {
-                Label("學生求助題目：\(questionId)", systemImage: "doc.text")
-                    .font(.caption.bold())
-                    .foregroundStyle(.secondary)
-            }
-
-            if let moodScore = request.moodScore {
-                Label("心情 \(moodScore)/5", systemImage: "heart.text.square")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-            }
-
-            ForEach(request.replies) { reply in
-                Text("\(reply.authorName)：\(reply.body)")
-                    .font(.footnote)
-                    .foregroundStyle(.secondary)
-                    .fixedSize(horizontal: false, vertical: true)
-            }
-
-            TextField("針對這一題回覆學生下一步", text: $replyDraft, axis: .vertical)
-                .textFieldStyle(.roundedBorder)
-
-            Button(isDraftingWithAI ? "正在產生草稿" : "AI 產生建議草稿") {
-                Task {
-                    await fillTeacherDraftWithAI()
-                }
-            }
-            .buttonStyle(.bordered)
-            .disabled(isDraftingWithAI)
-
-            Button("送出回饋") {
-                learningRepository.addTeacherReply(to: request.id, body: replyDraft)
-                replyDraft = ""
-            }
-            .buttonStyle(PrimaryActionButtonStyle())
-            .disabled(replyDraft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
-            .opacity(replyDraft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? 0.45 : 1)
-        }
-        .padding(16)
-        .background(.white)
-        .clipShape(RoundedRectangle(cornerRadius: EPTheme.cardRadius))
-    }
-
-    private func fillTeacherDraftWithAI() async {
-        isDraftingWithAI = true
-        let response = await appState.draftTeacherFeedbackWithAI(context: SupportAIContext(request: request))
-        replyDraft = response.output.studentFacingFeedback
-            ?? response.output.recommendedNextAction
-            ?? response.output.teacherSummary
-            ?? response.output.summary
-            ?? replyDraft
-        isDraftingWithAI = false
     }
 }
 

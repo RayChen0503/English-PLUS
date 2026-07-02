@@ -79,6 +79,9 @@ protocol LearningRepositoryBackend: AnyObject {
     func addTeacherReply(to requestId: String, body: String)
     func addVolunteerReply(to requestId: String, body: String)
     func markSupportThreadReadByStudent(_ requestId: String)
+    func archiveSupportThreadForStudent(_ requestId: String)
+    func markSupportThreadHandledWithoutReply(_ requestId: String, by staffUser: DemoUser?)
+    func archiveSupportThreadForStaff(_ requestId: String, by staffUser: DemoUser?)
     func assignPracticeSet(_ set: QuestionPracticeSet, to student: StaffStudentSummary, by teacher: DemoUser?)
     func startAssignedPracticeTask(_ assignment: TeacherAssignedPracticeTask)
 }
@@ -164,14 +167,14 @@ final class LearningRepositoryStore: ObservableObject {
 
     var teacherQueue: [StudentSupportRequest] {
         supportRequests
-            .filter { $0.status == .waitingForStaff || $0.status == .open }
+            .filter(\.isWaitingForStaffAction)
             .sorted { priorityScore($0.priority) > priorityScore($1.priority) }
     }
 
     var volunteerQueue: [StudentSupportRequest] {
         supportRequests
             .filter { request in
-                (request.status == .waitingForStaff || request.status == .open)
+                request.isWaitingForStaffAction
                     && (request.route == .humanHandoff || request.reason == .emotionalSupport || request.reason == .readingHelp)
             }
             .sorted { priorityScore($0.priority) > priorityScore($1.priority) }
@@ -202,8 +205,8 @@ final class LearningRepositoryStore: ObservableObject {
         return StaffDashboardMetrics(
             studentCount: max(staffStudentSummaries.count, 1),
             highRiskCount: supportRequests.filter { $0.priority == .high }.count,
-            waitingHelpCount: teacherQueue.count,
-            repliedCount: supportRequests.filter { $0.status == .replied || $0.status == .readByStudent }.count,
+            waitingHelpCount: supportRequests.filter(\.countsTowardStaffBadge).count,
+            repliedCount: supportRequests.filter { $0.status == .replied || $0.status == .readByStudent || $0.status == .staffHandledNoReply }.count,
             questionCount: SeedData.approvedQuestionBankItems.count,
             averageMoodText: averageMood
         )
@@ -383,6 +386,7 @@ final class LearningRepositoryStore: ObservableObject {
         guard let studentUid else { return [] }
         return supportRequests
             .filter { $0.studentUid == studentUid }
+            .filter(\.isVisibleToStudent)
             .sorted { $0.updatedAt > $1.updatedAt }
     }
 
@@ -432,6 +436,21 @@ final class LearningRepositoryStore: ObservableObject {
 
     func markSupportThreadReadByStudent(_ requestId: String) {
         backend.markSupportThreadReadByStudent(requestId)
+        apply(backend.snapshot)
+    }
+
+    func archiveSupportThreadForStudent(_ requestId: String) {
+        backend.archiveSupportThreadForStudent(requestId)
+        apply(backend.snapshot)
+    }
+
+    func markSupportThreadHandledWithoutReply(_ requestId: String, by staffUser: DemoUser?) {
+        backend.markSupportThreadHandledWithoutReply(requestId, by: staffUser)
+        apply(backend.snapshot)
+    }
+
+    func archiveSupportThreadForStaff(_ requestId: String, by staffUser: DemoUser?) {
+        backend.archiveSupportThreadForStaff(requestId, by: staffUser)
         apply(backend.snapshot)
     }
 

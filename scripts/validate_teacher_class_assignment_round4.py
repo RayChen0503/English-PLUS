@@ -36,21 +36,26 @@ def main() -> int:
 
     required_teacher_tokens = [
         "struct TeacherClassAssignmentView",
-        "班級派題",
-        "先選學生，再指派 12 題內的小題組",
+        "班級學生與派題",
+        "先看班級狀態，再選學生指派每組 12 題內的小題組",
+        "TeacherClassRosterSummaryCard",
         "TeacherStudentPickerCard",
         "TeacherSelectedStudentPanel",
+        "TeacherStudentMissionPanel",
         "TeacherStudentAssignmentHistory",
         "TeacherPracticeSetCatalog",
-        "TeacherPracticeSetCatalogSection",
+        "TeacherSkillFilterSection",
+        "TeacherPracticeSetSkillSection",
         "selectedQuestionType",
         "selectedLevel",
+        "selectedSkill",
         "filteredPracticeSets",
+        "groupedPracticeSetsBySkill",
         "recommendationText(for: selectedStudent)",
         "learningRepository.assignments(forStudentUid:",
         "learningRepository.assignPracticeSet(set, to: selectedStudent, by: appState.currentUser)",
         "已指派給",
-        "每組最多 12 題",
+        "每組 12 題內",
     ]
     for token in required_teacher_tokens:
         require(token in teacher_home, f"Teacher class assignment flow missing token: {token}", errors)
@@ -59,6 +64,8 @@ def main() -> int:
             "Teacher tab must become the class assignment workspace", errors)
     require("TeacherClassAssignmentView()" in teacher_shell,
             "Teacher shell must route the class tab to TeacherClassAssignmentView", errors)
+    require("TeacherStudentsView()" not in teacher_shell,
+            "Teacher shell should not keep a duplicate student tab", errors)
     require('Label("題庫"' not in teacher_shell,
             "Teacher shell should not expose a standalone question-bank tab", errors)
 

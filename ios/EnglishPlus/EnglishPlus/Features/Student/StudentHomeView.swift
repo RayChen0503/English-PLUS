@@ -4,6 +4,8 @@ struct StudentHomeView: View {
     @EnvironmentObject private var appState: AppState
     @EnvironmentObject private var learningRepository: LearningRepositoryStore
 
+    let onOpenSupport: () -> Void
+
     @State private var moodScore = 3
     @State private var timeLevel = 3
     @State private var wantsChallenge = false
@@ -12,6 +14,12 @@ struct StudentHomeView: View {
     @State private var isGeneratingMissionWithAI = false
     @State private var isExplainingWrongAnswer = false
     @State private var latestWrongAnswerAIResponse: AiProxyResponse?
+    @State private var missionSupportConfirmation: String?
+    @State private var missionSupportSentQuestionIds = Set<String>()
+
+    init(onOpenSupport: @escaping () -> Void = {}) {
+        self.onOpenSupport = onOpenSupport
+    }
 
     var body: some View {
         NavigationStack {
@@ -207,12 +215,7 @@ struct StudentHomeView: View {
                 }
 
                 if let attempt = learningRepository.latestMissionAttempt {
-                    FeedbackCard(
-                        attempt: attempt,
-                        aiResponse: latestWrongAnswerAIResponse,
-                        isLoadingAI: isExplainingWrongAnswer,
-                        onOpenPractice: openPracticeFromAI
-                    )
+                    missionFeedbackCard(for: attempt)
                 }
             }
         }
@@ -429,25 +432,121 @@ struct StudentHomeView: View {
         guard let attempt = learningRepository.submitMissionAnswer(selectedAnswer) else { return }
         selectedAnswer = ""
         latestWrongAnswerAIResponse = nil
+        missionSupportConfirmation = nil
 
         guard !attempt.isCorrect else { return }
-        isExplainingWrongAnswer = true
         Task {
-            let aiContext = WrongAnswerAIContext(
-                classId: currentClassId,
-                studentUid: appState.currentUser?.id,
-                attempt: attempt,
-                questionItem: item
-            )
-            latestWrongAnswerAIResponse = await appState.explainWrongAnswerWithAI(context: aiContext)
-            isExplainingWrongAnswer = false
+            await askMissionAI(for: item, attempt: attempt)
         }
+    }
+
+    private func askMissionAI(for item: QuestionBankItem, attempt: MissionAttempt) async {
+        isExplainingWrongAnswer = true
+        let aiContext = WrongAnswerAIContext(
+            classId: currentClassId,
+            studentUid: appState.currentUser?.id,
+            attempt: attempt,
+            questionItem: item
+        )
+        latestWrongAnswerAIResponse = await appState.explainWrongAnswerWithAI(context: aiContext)
+        isExplainingWrongAnswer = false
+    }
+
+    private func missionFeedbackCard(for attempt: MissionAttempt) -> some View {
+        let item = learningRepository.currentMission?.questions.first { $0.id == attempt.questionId }
+        return FeedbackCard(
+            attempt: attempt,
+            questionItem: item,
+            aiResponse: latestWrongAnswerAIResponse,
+            supportConfirmation: missionSupportConfirmation,
+            teacherRequestSent: item.map { missionSupportSentQuestionIds.contains(missionSupportSentKey(for: $0, target: .teacher)) } ?? false,
+            volunteerRequestSent: item.map { missionSupportSentQuestionIds.contains(missionSupportSentKey(for: $0, target: .volunteer)) } ?? false,
+            isLoadingAI: isExplainingWrongAnswer,
+            onOpenPractice: openPracticeFromAI,
+            onOpenSupport: onOpenSupport,
+            onAskAI: {
+                guard let item else { return }
+                Task {
+                    await askMissionAI(for: item, attempt: attempt)
+                }
+            },
+            onSendTeacher: {
+                guard let item else { return }
+                sendMissionSupportRequest(for: item, attempt: attempt, target: .teacher)
+            },
+            onSendVolunteer: {
+                guard let item else { return }
+                sendMissionSupportRequest(for: item, attempt: attempt, target: .volunteer)
+            }
+        )
+    }
+
+    private func sendMissionSupportRequest(
+        for item: QuestionBankItem,
+        attempt: MissionAttempt,
+        target: MissionSupportTarget
+    ) {
+        learningRepository.sendQuestionSupportRequest(
+            from: appState.currentUser,
+            profile: appState.currentProfile,
+            option: missionSupportOption(for: target),
+            questionItem: item,
+            selectedAnswer: attempt.selectedAnswer,
+            message: missionSupportMessage(for: item, attempt: attempt, target: target)
+        )
+        missionSupportSentQuestionIds.insert(missionSupportSentKey(for: item, target: target))
+        missionSupportConfirmation = target.confirmationText
+    }
+
+    private func missionSupportOption(for target: MissionSupportTarget) -> SupportOption {
+        switch target {
+        case .teacher:
+            return SeedData.supportOptions.first { $0.id == "human-company" }
+                ?? SupportOption(
+                    id: "mission-teacher-help",
+                    reason: "請老師協助今日任務",
+                    studentText: "我想請老師看今天任務裡這一題。",
+                    platformAction: "請老師查看學生今日任務題目、答案與 AI 提示。",
+                    route: .humanHandoff
+                )
+        case .volunteer:
+            return SeedData.supportOptions.first { $0.id == "reading-too-long" }
+                ?? SupportOption(
+                    id: "mission-volunteer-help",
+                    reason: "請志工陪伴今日任務",
+                    studentText: "我想請志工陪我看今天任務裡這一題。",
+                    platformAction: "請志工陪學生拆解今日任務題目。",
+                    route: .readingBreakdown
+                )
+        }
+    }
+
+    private func missionSupportMessage(
+        for item: QuestionBankItem,
+        attempt: MissionAttempt,
+        target: MissionSupportTarget
+    ) -> String {
+        """
+        我在今日任務這題卡住，想請\(target.displayName)看一下。
+        題型：\(item.question.type.title)
+        難度：\(item.level.uiTitle)
+        題目：\(item.question.prompt)
+        我的答案：\(attempt.selectedAnswer)
+        正確答案：\(item.question.answer)
+        解析：\(item.question.explanation)
+        AI/系統提示：\(attempt.repairHint)
+        """
+    }
+
+    private func missionSupportSentKey(for item: QuestionBankItem, target: MissionSupportTarget) -> String {
+        "\(item.id)-\(target.rawValue)"
     }
 
     private func openPracticeFromAI() {
         learningRepository.enterFreePracticeMode()
         selectedAnswer = ""
         latestWrongAnswerAIResponse = nil
+        missionSupportConfirmation = nil
     }
 }
 
@@ -663,11 +762,42 @@ private struct AnswerOptionButton: View {
     }
 }
 
+private enum MissionSupportTarget: String {
+    case teacher
+    case volunteer
+
+    var displayName: String {
+        switch self {
+        case .teacher:
+            return "老師"
+        case .volunteer:
+            return "志工"
+        }
+    }
+
+    var confirmationText: String {
+        switch self {
+        case .teacher:
+            return "已送給老師，老師端會看到這一題與你的答案。"
+        case .volunteer:
+            return "已送給志工，志工端會看到這一題與你的答案。"
+        }
+    }
+}
+
 private struct FeedbackCard: View {
     let attempt: MissionAttempt
+    let questionItem: QuestionBankItem?
     let aiResponse: AiProxyResponse?
+    let supportConfirmation: String?
+    let teacherRequestSent: Bool
+    let volunteerRequestSent: Bool
     let isLoadingAI: Bool
     let onOpenPractice: () -> Void
+    let onOpenSupport: () -> Void
+    let onAskAI: () -> Void
+    let onSendTeacher: () -> Void
+    let onSendVolunteer: () -> Void
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
@@ -709,9 +839,100 @@ private struct FeedbackCard: View {
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
             }
+
+            if !attempt.isCorrect, questionItem != nil {
+                MissionQuestionSupportPanel(
+                    aiResponse: aiResponse,
+                    supportConfirmation: supportConfirmation,
+                    teacherRequestSent: teacherRequestSent,
+                    volunteerRequestSent: volunteerRequestSent,
+                    isLoadingAI: isLoadingAI,
+                    onOpenSupport: onOpenSupport,
+                    onAskAI: onAskAI,
+                    onSendTeacher: onSendTeacher,
+                    onSendVolunteer: onSendVolunteer
+                )
+            }
         }
         .padding(14)
         .background((attempt.isCorrect ? EPTheme.support : EPTheme.warning).opacity(0.10))
+        .clipShape(RoundedRectangle(cornerRadius: EPTheme.cardRadius))
+    }
+}
+
+private struct MissionQuestionSupportPanel: View {
+    let aiResponse: AiProxyResponse?
+    let supportConfirmation: String?
+    let teacherRequestSent: Bool
+    let volunteerRequestSent: Bool
+    let isLoadingAI: Bool
+    let onOpenSupport: () -> Void
+    let onAskAI: () -> Void
+    let onSendTeacher: () -> Void
+    let onSendVolunteer: () -> Void
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Label("卡住時可以直接求助", systemImage: "lifepreserver")
+                .font(.headline)
+                .foregroundStyle(EPTheme.ink)
+
+            Text("AI 可以立刻再講一次；老師或志工會收到這一題、你的答案與解析。送出後到「支持」查看回覆。")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+
+            HStack(spacing: 8) {
+                Button(action: onAskAI) {
+                    Label(aiResponse == nil ? "問 AI 解題" : "再問 AI 一次", systemImage: "sparkles")
+                        .font(.caption.bold())
+                        .frame(maxWidth: .infinity, minHeight: 44)
+                }
+                .buttonStyle(.borderedProminent)
+                .disabled(isLoadingAI)
+
+                Button(action: onSendTeacher) {
+                    Label(teacherRequestSent ? "已送老師" : "送給老師", systemImage: "person.text.rectangle")
+                        .font(.caption.bold())
+                        .frame(maxWidth: .infinity, minHeight: 44)
+                }
+                .buttonStyle(.bordered)
+                .disabled(teacherRequestSent)
+
+                Button(action: onSendVolunteer) {
+                    Label(volunteerRequestSent ? "已送志工" : "送給志工", systemImage: "hands.sparkles")
+                        .font(.caption.bold())
+                        .frame(maxWidth: .infinity, minHeight: 44)
+                }
+                .buttonStyle(.bordered)
+                .disabled(volunteerRequestSent)
+            }
+
+            if isLoadingAI {
+                Label("AI 正在看這一題...", systemImage: "sparkles")
+                    .font(.footnote)
+                    .foregroundStyle(EPTheme.primary)
+            }
+
+            if let supportConfirmation {
+                VStack(alignment: .leading, spacing: 8) {
+                    Label(supportConfirmation, systemImage: "paperplane.fill")
+                        .font(.footnote.bold())
+                        .foregroundStyle(EPTheme.support)
+                        .fixedSize(horizontal: false, vertical: true)
+
+                    Button(action: onOpenSupport) {
+                        Label("前往支持查看回覆", systemImage: "heart.text.square")
+                            .font(.caption.bold())
+                            .frame(maxWidth: .infinity, minHeight: 40)
+                    }
+                    .buttonStyle(.borderedProminent)
+                }
+            }
+        }
+        .padding(12)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(.white.opacity(0.74))
         .clipShape(RoundedRectangle(cornerRadius: EPTheme.cardRadius))
     }
 }

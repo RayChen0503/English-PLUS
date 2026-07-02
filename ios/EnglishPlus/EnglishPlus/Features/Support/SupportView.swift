@@ -50,14 +50,20 @@ struct SupportView: View {
     private var supportInboxSection: some View {
         VStack(alignment: .leading, spacing: 12) {
             VStack(alignment: .leading, spacing: 4) {
-                Text("我的求助紀錄")
+                Text("回覆中心")
                     .font(.title3.bold())
                     .foregroundStyle(EPTheme.ink)
-                Text("練習時可以在題目下方問 AI，或送給老師/志工。這裡會整理回覆與進度。")
+                Text("練習題送出後，老師、志工或 AI 的回覆都會集中在這裡。看懂後可以收起，列表就不會越堆越亂。")
                     .font(.subheadline)
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
             }
+
+            SupportReplyCenterSummaryCard(
+                waitingCount: waitingRequestCount,
+                unreadCount: unreadReplyCount,
+                answeredCount: answeredRequestCount
+            )
 
             if studentRequests.isEmpty {
                 SupportEmptyStateCard(onOpenPractice: openPracticeFromSupport)
@@ -65,7 +71,10 @@ struct SupportView: View {
                 ForEach(studentRequests) { request in
                     SupportRequestInboxCard(
                         request: request,
-                        onOpenPractice: openPracticeFromSupport
+                        onOpenPractice: openPracticeFromSupport,
+                        onArchive: {
+                            learningRepository.archiveSupportThreadForStudent(request.id)
+                        }
                     )
                 }
             }
@@ -75,6 +84,22 @@ struct SupportView: View {
     private var studentRequests: [StudentSupportRequest] {
         learningRepository.supportRequests(forStudentUid: appState.currentUser?.id)
             .sorted { $0.updatedAt > $1.updatedAt }
+    }
+
+    private var waitingRequestCount: Int {
+        studentRequests.filter { $0.status == .open || $0.status == .waitingForStaff }.count
+    }
+
+    private var unreadReplyCount: Int {
+        studentRequests.filter(\.hasStudentUnreadReply).count
+    }
+
+    private var answeredRequestCount: Int {
+        studentRequests.filter { request in
+            request.status == .replied
+                || request.status == .readByStudent
+                || !request.replies.filter(\.visibleToStudent).isEmpty
+        }.count
     }
 
     private func sendEmotionalSupportRequest() {
@@ -324,11 +349,74 @@ private struct SupportEmptyStateCard: View {
     }
 }
 
+private struct SupportReplyCenterSummaryCard: View {
+    let waitingCount: Int
+    let unreadCount: Int
+    let answeredCount: Int
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack {
+                Label("回覆中心狀態", systemImage: "tray.full")
+                    .font(.headline)
+                    .foregroundStyle(EPTheme.ink)
+                Spacer()
+                if unreadCount > 0 {
+                    Text("\(unreadCount) 則新回覆")
+                        .font(.caption.bold())
+                        .foregroundStyle(.white)
+                        .padding(.horizontal, 10)
+                        .padding(.vertical, 6)
+                        .background(EPTheme.primary)
+                        .clipShape(Capsule())
+                }
+            }
+
+            HStack(spacing: 8) {
+                SupportInboxMetricPill(title: "待回覆", value: "\(waitingCount)", tint: EPTheme.warning)
+                SupportInboxMetricPill(title: "新回覆", value: "\(unreadCount)", tint: EPTheme.primary)
+                SupportInboxMetricPill(title: "已回覆", value: "\(answeredCount)", tint: EPTheme.support)
+            }
+
+            Text("有新回覆時先看解析；看懂後可以把那筆收起，之後仍會保留在後端紀錄。")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        .padding(14)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(EPTheme.primary.opacity(0.06))
+        .clipShape(RoundedRectangle(cornerRadius: EPTheme.cardRadius))
+    }
+}
+
+private struct SupportInboxMetricPill: View {
+    let title: String
+    let value: String
+    let tint: Color
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Text(title)
+                .font(.caption.bold())
+                .foregroundStyle(.secondary)
+            Text(value)
+                .font(.title3.bold())
+                .foregroundStyle(tint)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(10)
+        .background(.white)
+        .clipShape(RoundedRectangle(cornerRadius: 10))
+    }
+}
+
 private struct SupportRequestInboxCard: View {
     @EnvironmentObject private var learningRepository: LearningRepositoryStore
 
     let request: StudentSupportRequest
     let onOpenPractice: () -> Void
+    let onArchive: () -> Void
 
     private var visibleReplies: [SupportReply] {
         request.replies.filter(\.visibleToStudent)
@@ -349,13 +437,25 @@ private struct SupportRequestInboxCard: View {
 
                 Spacer()
 
-                Text(statusTitle)
-                    .font(.caption.bold())
-                    .foregroundStyle(.white)
-                    .padding(.horizontal, 8)
-                    .padding(.vertical, 5)
-                    .background(statusColor)
-                    .clipShape(RoundedRectangle(cornerRadius: 8))
+                VStack(alignment: .trailing, spacing: 6) {
+                    if request.hasStudentUnreadReply {
+                        Text("新回覆")
+                            .font(.caption.bold())
+                            .foregroundStyle(.white)
+                            .padding(.horizontal, 8)
+                            .padding(.vertical, 5)
+                            .background(EPTheme.primary)
+                            .clipShape(RoundedRectangle(cornerRadius: 8))
+                    }
+
+                    Text(statusTitle)
+                        .font(.caption.bold())
+                        .foregroundStyle(.white)
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 5)
+                        .background(statusColor)
+                        .clipShape(RoundedRectangle(cornerRadius: 8))
+                }
             }
 
             if let snapshot = request.questionSnapshot {
@@ -364,8 +464,8 @@ private struct SupportRequestInboxCard: View {
                     title: "你送出的題目",
                     showsExplanation: true
                 )
-            } else if let questionId = request.latestQuestionId, !questionId.isEmpty {
-                Label("這筆求助來自題目 \(questionId)，但目前沒有完整題目快照。", systemImage: "doc.text")
+            } else if request.latestQuestionId?.isEmpty == false {
+                Label("這筆求助有題目紀錄，但目前缺少完整題目快照。", systemImage: "doc.text")
                     .font(.caption.bold())
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
@@ -383,7 +483,10 @@ private struct SupportRequestInboxCard: View {
                 SupportWaitingReplyCard(route: request.route)
             } else {
                 SupportReplyTimeline(replies: visibleReplies)
-                SupportFollowUpActionCard(onOpenPractice: onOpenPractice)
+                SupportThreadActionRow(
+                    onArchive: onArchive,
+                    onOpenPractice: onOpenPractice
+                )
             }
         }
         .padding(16)
@@ -418,6 +521,10 @@ private struct SupportRequestInboxCard: View {
             return "有新回覆"
         case .readByStudent:
             return "已讀"
+        case .staffHandledNoReply:
+            return "已處理"
+        case .archived:
+            return "已歸檔"
         case .closed:
             return "已結束"
         }
@@ -431,32 +538,46 @@ private struct SupportRequestInboxCard: View {
             return EPTheme.primary
         case .readByStudent:
             return EPTheme.support
+        case .staffHandledNoReply:
+            return EPTheme.support
+        case .archived:
+            return .secondary
         case .closed:
             return .secondary
         }
     }
 }
 
-private struct SupportFollowUpActionCard: View {
+private struct SupportThreadActionRow: View {
+    let onArchive: () -> Void
     let onOpenPractice: () -> Void
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
-            Label("看回覆後再練一題", systemImage: "arrow.clockwise.circle.fill")
+            Label("看完回覆後的下一步", systemImage: "checkmark.seal.fill")
                 .font(.subheadline.bold())
                 .foregroundStyle(EPTheme.support)
 
-            Text("先讀老師或志工的回覆，再回練習中心挑同題型的小題組。這樣支援才會接回學習，不會只停在聊天。")
+            Text("收起後不會刪除資料，只是不再顯示在你的回覆中心；如果還想練同類題，可以直接回練習中心。")
                 .font(.footnote)
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
 
-            Button(action: onOpenPractice) {
-                Label("回練習中心", systemImage: "target")
-                    .font(.subheadline.bold())
-                    .frame(maxWidth: .infinity, minHeight: 44)
+            HStack(spacing: 10) {
+                Button(action: onArchive) {
+                    Label("我看懂了，收起這筆", systemImage: "archivebox")
+                        .font(.caption.bold())
+                        .frame(maxWidth: .infinity, minHeight: 44)
+                }
+                .buttonStyle(.bordered)
+
+                Button(action: onOpenPractice) {
+                    Label("回練習中心", systemImage: "target")
+                        .font(.caption.bold())
+                        .frame(maxWidth: .infinity, minHeight: 44)
+                }
+                .buttonStyle(PrimaryActionButtonStyle())
             }
-            .buttonStyle(PrimaryActionButtonStyle())
         }
         .padding(12)
         .frame(maxWidth: .infinity, alignment: .leading)

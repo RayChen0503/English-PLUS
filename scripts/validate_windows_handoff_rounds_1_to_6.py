@@ -117,10 +117,20 @@ def validate_round_4_staff_support(errors):
 
     for token in ["sendSupportRequest", "SupportRequestInboxCard", "supportRequests(forStudentUid:", "SupportQuestionSnapshotCard"]:
         require(token in support, f"support flow missing {token}", errors)
-    for token in ["TeacherStatusStrip", "TeacherRequestCard", "TeacherClassSummary", "addTeacherReply", "teacherQueue"]:
+    for token in [
+        "TeacherStatusStrip",
+        "TeacherSupportRequestCard",
+        "TeacherClassSummary",
+        "TeacherClassAssignmentView",
+        "StaffSupportActionBar",
+        "addTeacherReply",
+        "teacherQueue",
+    ]:
         require(token in teacher, f"teacher workbench missing {token}", errors)
-    for token in ["TeacherStudentsView", "TeacherHandoffView", "TeacherReportView", "TeacherClassAssignmentView"]:
+    for token in ["TeacherHomeView", "TeacherHandoffView", "TeacherReportView", "TeacherClassAssignmentView"]:
         require(token in teacher_shell, f"teacher shell missing {token}", errors)
+    require("TeacherStudentsView()" not in teacher_shell, "teacher shell must not expose duplicate student tab", errors)
+    require('Label("學生"' not in teacher_shell, "teacher shell must not expose duplicate student tab label", errors)
     require('Label("題庫"' not in teacher_shell, "teacher shell must not expose old standalone question bank tab", errors)
     for token in [
         "VolunteerTodayPriorityCard",

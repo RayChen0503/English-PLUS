@@ -48,13 +48,13 @@ require(
 )
 
 require(
-    "teacher class assignment catalog groups small practice sets by type",
+    "teacher class assignment catalog groups small practice sets by skill",
     teacher_home,
     [
-        "groupedPracticeSets",
-        "TeacherPracticeSetCatalogSection",
-        "ForEach(groupedPracticeSets",
-        "每組最多 12 題",
+        "groupedPracticeSetsBySkill",
+        "TeacherPracticeSetSkillSection",
+        "ForEach(groupedPracticeSetsBySkill",
+        "每組 12 題內",
     ],
 )
 

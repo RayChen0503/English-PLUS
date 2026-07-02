@@ -77,14 +77,15 @@ final class MockLearningRepository: ObservableObject {
 
     var teacherQueue: [StudentSupportRequest] {
         supportRequests
-            .filter { $0.status == .waitingForStaff || $0.status == .open }
+            .filter(\.isWaitingForStaffAction)
             .sorted { priorityScore($0.priority) > priorityScore($1.priority) }
     }
 
     var volunteerQueue: [StudentSupportRequest] {
         supportRequests
             .filter { request in
-                request.route == .humanHandoff || request.reason == .emotionalSupport || request.reason == .readingHelp
+                request.isWaitingForStaffAction
+                    && (request.route == .humanHandoff || request.reason == .emotionalSupport || request.reason == .readingHelp)
             }
             .sorted { priorityScore($0.priority) > priorityScore($1.priority) }
     }
@@ -373,6 +374,7 @@ final class MockLearningRepository: ObservableObject {
         guard let studentUid else { return [] }
         return supportRequests
             .filter { $0.studentUid == studentUid }
+            .filter(\.isVisibleToStudent)
             .sorted { $0.updatedAt > $1.updatedAt }
     }
 
@@ -465,7 +467,45 @@ final class MockLearningRepository: ObservableObject {
         guard let index = supportRequests.firstIndex(where: { $0.id == requestId }) else { return }
         guard supportRequests[index].status == .replied else { return }
         supportRequests[index].status = .readByStudent
-        supportRequests[index].updatedAt = now()
+        let date = now()
+        supportRequests[index].studentLastReadAt = date
+        supportRequests[index].updatedAt = date
+        persistSnapshot()
+    }
+
+    func archiveSupportThreadForStudent(_ requestId: String) {
+        guard let index = supportRequests.firstIndex(where: { $0.id == requestId }) else { return }
+        let date = now()
+        supportRequests[index].studentArchivedAt = date
+        if supportRequests[index].status == .replied {
+            supportRequests[index].status = .readByStudent
+            supportRequests[index].studentLastReadAt = date
+        }
+        supportRequests[index].updatedAt = date
+        persistSnapshot()
+    }
+
+    func markSupportThreadHandledWithoutReply(_ requestId: String, by staffUser: DemoUser?) {
+        guard let index = supportRequests.firstIndex(where: { $0.id == requestId }) else { return }
+        let date = now()
+        supportRequests[index].status = .staffHandledNoReply
+        supportRequests[index].handledWithoutReplyAt = date
+        supportRequests[index].handledByUid = staffUser?.id
+        supportRequests[index].handledByName = staffUser?.displayName
+        supportRequests[index].handledByRole = staffUser?.role
+        supportRequests[index].updatedAt = date
+        persistSnapshot()
+    }
+
+    func archiveSupportThreadForStaff(_ requestId: String, by staffUser: DemoUser?) {
+        guard let index = supportRequests.firstIndex(where: { $0.id == requestId }) else { return }
+        let date = now()
+        supportRequests[index].status = .archived
+        supportRequests[index].staffArchivedAt = date
+        supportRequests[index].handledByUid = staffUser?.id
+        supportRequests[index].handledByName = staffUser?.displayName
+        supportRequests[index].handledByRole = staffUser?.role
+        supportRequests[index].updatedAt = date
         persistSnapshot()
     }
 

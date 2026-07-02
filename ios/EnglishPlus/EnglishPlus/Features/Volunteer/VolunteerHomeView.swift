@@ -66,6 +66,15 @@ struct VolunteerHandoffWorkspaceView: View {
                             .foregroundStyle(.secondary)
                             .fixedSize(horizontal: false, vertical: true)
 
+                        StaffSupportQueueHeaderCard(
+                            title: "待接力",
+                            subtitle: "學生需要陪伴、閱讀提示或題目拆解時會出現在這裡。未處理紅點代表待接力數，回覆、已讀不回或收起後會從待辦移除。",
+                            waitingCount: learningRepository.volunteerQueue.count,
+                            highPriorityCount: learningRepository.volunteerQueue.filter { $0.priority == .high }.count,
+                            handledCount: learningRepository.volunteerDashboardMetrics.repliedByVolunteerCount,
+                            tint: EPTheme.support
+                        )
+
                         VolunteerQueuePickerCard(
                             requests: learningRepository.volunteerQueue,
                             selectedRequestId: $selectedRequestId
@@ -75,7 +84,7 @@ struct VolunteerHandoffWorkspaceView: View {
                             VolunteerSelectedSupportPanel(request: selectedRequest)
                             VolunteerQuestionContextCard(request: selectedRequest)
                             VolunteerCompanionScriptCard(compact: false)
-                            VolunteerReplyComposerCard(request: selectedRequest)
+                            VolunteerStaffReplyComposerCard(request: selectedRequest)
                         } else {
                             VolunteerEmptyQueueCard()
                         }
@@ -85,6 +94,87 @@ struct VolunteerHandoffWorkspaceView: View {
             }
             .navigationTitle("接力")
         }
+    }
+}
+
+private struct VolunteerStaffReplyComposerCard: View {
+    @EnvironmentObject private var appState: AppState
+    @EnvironmentObject private var learningRepository: LearningRepositoryStore
+
+    let request: StudentSupportRequest
+
+    @State private var replyDraft = ""
+    @State private var isDraftingWithAI = false
+    @State private var confirmationText: String?
+
+    private var canReply: Bool {
+        !replyDraft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text("4. 回覆或處理")
+                .font(.headline)
+                .foregroundStyle(EPTheme.ink)
+
+            Text("志工可以先用 AI 整理陪伴語氣，再送出給學生；如果這筆已經不需要回覆，也可以標記已讀不回或收起。")
+                .font(.subheadline)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+
+            TextField("輸入陪伴回覆，例如：你已經抓到問題了，我們先把主詞和動詞分開看。", text: $replyDraft, axis: .vertical)
+                .lineLimit(3...6)
+                .textFieldStyle(.roundedBorder)
+
+            Button(isDraftingWithAI ? "AI 正在整理建議" : "用 AI 產生陪伴草稿") {
+                Task {
+                    await fillVolunteerDraftWithAI()
+                }
+            }
+            .buttonStyle(.bordered)
+            .disabled(isDraftingWithAI)
+
+            StaffSupportActionBar(
+                canReply: canReply,
+                sendReply: {
+                    learningRepository.addVolunteerReply(to: request.id, body: replyDraft)
+                    replyDraft = ""
+                    confirmationText = "已送出給學生，待接力數會同步更新。"
+                },
+                markHandledWithoutReply: {
+                    learningRepository.markSupportThreadHandledWithoutReply(request.id, by: appState.currentUser)
+                    confirmationText = "已標記為已讀不回。"
+                },
+                archiveThread: {
+                    learningRepository.archiveSupportThreadForStaff(request.id, by: appState.currentUser)
+                    confirmationText = "已從待接力列表收起。"
+                }
+            )
+
+            if let confirmationText {
+                Label(confirmationText, systemImage: "checkmark.circle.fill")
+                    .font(.footnote.bold())
+                    .foregroundStyle(EPTheme.support)
+            }
+        }
+        .padding(16)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(.white)
+        .clipShape(RoundedRectangle(cornerRadius: EPTheme.cardRadius))
+        .onChange(of: request.id) { _, _ in
+            replyDraft = ""
+            confirmationText = nil
+        }
+    }
+
+    private func fillVolunteerDraftWithAI() async {
+        isDraftingWithAI = true
+        let response = await appState.coachVolunteerReplyWithAI(context: SupportAIContext(request: request))
+        replyDraft = response.output.studentFacingFeedback
+            ?? response.output.recommendedNextAction
+            ?? response.output.summary
+            ?? replyDraft
+        isDraftingWithAI = false
     }
 }
 
@@ -405,8 +495,8 @@ private struct VolunteerQuestionContextCard: View {
                     title: "學生答案與正解",
                     showsExplanation: true
                 )
-            } else if let questionId = request.latestQuestionId, !questionId.isEmpty {
-                Label("這筆求助來自題目 \(questionId)，但目前沒有完整題目快照。", systemImage: "doc.text.magnifyingglass")
+            } else if request.latestQuestionId?.isEmpty == false {
+                Label("這筆求助有題目紀錄，但目前缺少完整題目快照。", systemImage: "doc.text.magnifyingglass")
                     .font(.subheadline.bold())
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
@@ -426,72 +516,6 @@ private struct VolunteerQuestionContextCard: View {
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(.white)
         .clipShape(RoundedRectangle(cornerRadius: EPTheme.cardRadius))
-    }
-}
-
-private struct VolunteerReplyComposerCard: View {
-    @EnvironmentObject private var appState: AppState
-    @EnvironmentObject private var learningRepository: LearningRepositoryStore
-
-    let request: StudentSupportRequest
-
-    @State private var replyDraft = ""
-    @State private var isDraftingWithAI = false
-    @State private var confirmationText: String?
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            Text("4. 留下學生看得懂的回覆")
-                .font(.headline)
-                .foregroundStyle(EPTheme.ink)
-
-            TextField("例如：你先看這句的主詞是誰，我們只處理這一步。", text: $replyDraft, axis: .vertical)
-                .lineLimit(3...6)
-                .textFieldStyle(.roundedBorder)
-
-            HStack(spacing: 10) {
-                Button(isDraftingWithAI ? "正在產生草稿" : "AI 產生草稿") {
-                    Task {
-                        await fillVolunteerDraftWithAI()
-                    }
-                }
-                .buttonStyle(.bordered)
-                .disabled(isDraftingWithAI)
-
-                Button("送出陪伴回覆") {
-                    learningRepository.addVolunteerReply(to: request.id, body: replyDraft)
-                    replyDraft = ""
-                    confirmationText = "已送出，學生會在支援紀錄看到。"
-                }
-                .buttonStyle(PrimaryActionButtonStyle())
-                .disabled(replyDraft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
-                .opacity(replyDraft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? 0.45 : 1)
-            }
-
-            if let confirmationText {
-                Label(confirmationText, systemImage: "checkmark.circle.fill")
-                    .font(.footnote.bold())
-                    .foregroundStyle(EPTheme.support)
-            }
-        }
-        .padding(16)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background(.white)
-        .clipShape(RoundedRectangle(cornerRadius: EPTheme.cardRadius))
-        .onChange(of: request.id) { _, _ in
-            replyDraft = ""
-            confirmationText = nil
-        }
-    }
-
-    private func fillVolunteerDraftWithAI() async {
-        isDraftingWithAI = true
-        let response = await appState.coachVolunteerReplyWithAI(context: SupportAIContext(request: request))
-        replyDraft = response.output.studentFacingFeedback
-            ?? response.output.recommendedNextAction
-            ?? response.output.summary
-            ?? replyDraft
-        isDraftingWithAI = false
     }
 }
 

@@ -61,7 +61,7 @@ final class FirebaseLearningRepository: LearningRepositoryBackend {
         onChange(currentSnapshot)
 
         #if canImport(FirebaseFirestore)
-        guard let db else {
+        guard db != nil else {
             return AnyLearningRepositoryListenerToken {}
         }
 
@@ -202,6 +202,7 @@ final class FirebaseLearningRepository: LearningRepositoryBackend {
         guard let studentUid else { return [] }
         return currentSnapshot.supportRequests
             .filter { $0.studentUid == studentUid }
+            .filter(\.isVisibleToStudent)
             .sorted { $0.updatedAt > $1.updatedAt }
     }
 
@@ -282,8 +283,52 @@ final class FirebaseLearningRepository: LearningRepositoryBackend {
             return
         }
         guard currentSnapshot.supportRequests[index].status == .replied else { return }
+        let date = Date()
         currentSnapshot.supportRequests[index].status = .readByStudent
-        currentSnapshot.supportRequests[index].updatedAt = Date()
+        currentSnapshot.supportRequests[index].studentLastReadAt = date
+        currentSnapshot.supportRequests[index].updatedAt = date
+        mirrorSupportRequestIfPossible(currentSnapshot.supportRequests[index])
+    }
+
+    func archiveSupportThreadForStudent(_ requestId: String) {
+        guard let index = currentSnapshot.supportRequests.firstIndex(where: { $0.id == requestId }) else {
+            return
+        }
+        let date = Date()
+        currentSnapshot.supportRequests[index].studentArchivedAt = date
+        if currentSnapshot.supportRequests[index].status == .replied {
+            currentSnapshot.supportRequests[index].status = .readByStudent
+            currentSnapshot.supportRequests[index].studentLastReadAt = date
+        }
+        currentSnapshot.supportRequests[index].updatedAt = date
+        mirrorSupportRequestIfPossible(currentSnapshot.supportRequests[index])
+    }
+
+    func markSupportThreadHandledWithoutReply(_ requestId: String, by staffUser: DemoUser?) {
+        guard let index = currentSnapshot.supportRequests.firstIndex(where: { $0.id == requestId }) else {
+            return
+        }
+        let date = Date()
+        currentSnapshot.supportRequests[index].status = .staffHandledNoReply
+        currentSnapshot.supportRequests[index].handledWithoutReplyAt = date
+        currentSnapshot.supportRequests[index].handledByUid = staffUser?.id
+        currentSnapshot.supportRequests[index].handledByName = staffUser?.displayName
+        currentSnapshot.supportRequests[index].handledByRole = staffUser?.role
+        currentSnapshot.supportRequests[index].updatedAt = date
+        mirrorSupportRequestIfPossible(currentSnapshot.supportRequests[index])
+    }
+
+    func archiveSupportThreadForStaff(_ requestId: String, by staffUser: DemoUser?) {
+        guard let index = currentSnapshot.supportRequests.firstIndex(where: { $0.id == requestId }) else {
+            return
+        }
+        let date = Date()
+        currentSnapshot.supportRequests[index].status = .archived
+        currentSnapshot.supportRequests[index].staffArchivedAt = date
+        currentSnapshot.supportRequests[index].handledByUid = staffUser?.id
+        currentSnapshot.supportRequests[index].handledByName = staffUser?.displayName
+        currentSnapshot.supportRequests[index].handledByRole = staffUser?.role
+        currentSnapshot.supportRequests[index].updatedAt = date
         mirrorSupportRequestIfPossible(currentSnapshot.supportRequests[index])
     }
 
@@ -729,6 +774,13 @@ final class FirebaseLearningRepository: LearningRepositoryBackend {
             "moodScore": nullable(request.moodScore),
             "latestQuestionId": nullable(request.latestQuestionId),
             "questionSnapshot": request.questionSnapshot.map(firestoreData(from:)) ?? NSNull(),
+            "studentArchivedAt": nullable(request.studentArchivedAt),
+            "staffArchivedAt": nullable(request.staffArchivedAt),
+            "handledWithoutReplyAt": nullable(request.handledWithoutReplyAt),
+            "handledByUid": nullable(request.handledByUid),
+            "handledByName": nullable(request.handledByName),
+            "handledByRole": request.handledByRole?.rawValue ?? NSNull(),
+            "studentLastReadAt": nullable(request.studentLastReadAt),
             "latestMessagePreview": request.replies.last?.body ?? request.studentMessage,
             "createdAt": request.createdAt,
             "updatedAt": request.updatedAt,
@@ -929,6 +981,7 @@ final class FirebaseLearningRepository: LearningRepositoryBackend {
 
         let routeRaw = data["route"] as? String
         let route = routeRaw.flatMap(SupportRoute.init(rawValue:)) ?? .humanHandoff
+        let handledRoleRaw = data["handledByRole"] as? String
         return StudentSupportRequest(
             id: document.documentID,
             studentUid: studentUid,
@@ -942,6 +995,13 @@ final class FirebaseLearningRepository: LearningRepositoryBackend {
             moodScore: data["moodScore"] as? Int,
             latestQuestionId: data["latestQuestionId"] as? String,
             questionSnapshot: supportQuestionSnapshot(from: data),
+            studentArchivedAt: firestoreDate(data["studentArchivedAt"]),
+            staffArchivedAt: firestoreDate(data["staffArchivedAt"]),
+            handledWithoutReplyAt: firestoreDate(data["handledWithoutReplyAt"]),
+            handledByUid: data["handledByUid"] as? String,
+            handledByName: data["handledByName"] as? String,
+            handledByRole: handledRoleRaw.flatMap(UserRole.init(rawValue:)),
+            studentLastReadAt: firestoreDate(data["studentLastReadAt"]),
             createdAt: firestoreDate(data["createdAt"]) ?? Date(),
             updatedAt: firestoreDate(data["updatedAt"]) ?? Date(),
             replies: []

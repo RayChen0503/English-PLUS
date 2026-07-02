@@ -230,9 +230,34 @@ struct StudentSupportRequest: Identifiable, Codable, Equatable {
     var moodScore: Int?
     var latestQuestionId: String?
     var questionSnapshot: SupportQuestionSnapshot?
+    var studentArchivedAt: Date? = nil
+    var staffArchivedAt: Date? = nil
+    var handledWithoutReplyAt: Date? = nil
+    var handledByUid: String? = nil
+    var handledByName: String? = nil
+    var handledByRole: UserRole? = nil
+    var studentLastReadAt: Date? = nil
     let createdAt: Date
     var updatedAt: Date
     var replies: [SupportReply]
+
+    var isVisibleToStudent: Bool {
+        studentArchivedAt == nil
+    }
+
+    var isWaitingForStaffAction: Bool {
+        staffArchivedAt == nil
+            && handledWithoutReplyAt == nil
+            && (status == .open || status == .waitingForStaff)
+    }
+
+    var countsTowardStaffBadge: Bool {
+        isWaitingForStaffAction
+    }
+
+    var hasStudentUnreadReply: Bool {
+        isVisibleToStudent && status == .replied
+    }
 }
 
 struct SupportQuestionSnapshot: Codable, Equatable {
@@ -598,6 +623,10 @@ extension SupportThreadStatus {
             return "已有回覆"
         case .readByStudent:
             return "學生已讀"
+        case .staffHandledNoReply:
+            return "已處理"
+        case .archived:
+            return "已歸檔"
         case .closed:
             return "已結案"
         }

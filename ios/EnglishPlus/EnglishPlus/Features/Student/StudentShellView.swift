@@ -6,7 +6,11 @@ struct StudentShellView: View {
 
     var body: some View {
         TabView(selection: $selectedTab) {
-            StudentHomeView()
+            StudentHomeView(
+                onOpenSupport: {
+                    selectedTab = .support
+                }
+            )
                 .tabItem {
                     Label("首頁", systemImage: "house")
                 }
