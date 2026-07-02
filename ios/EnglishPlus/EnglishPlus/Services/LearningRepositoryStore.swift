@@ -5,6 +5,8 @@ struct LearningRepositorySnapshot: Equatable {
     var currentMission: DailyMission?
     var missionAttempts: [MissionAttempt]
     var supportRequests: [StudentSupportRequest]
+    var assignedPracticeTasks: [TeacherAssignedPracticeTask]
+    var learningFlow: LearningFlowState
 }
 
 enum LearningRepositorySyncStatus: Equatable {
@@ -34,6 +36,7 @@ protocol LearningRepositoryBackend: AnyObject {
     var snapshot: LearningRepositorySnapshot { get }
     var supportedQuestionTypes: [QuestionType] { get }
     var defaultPreferredQuestionTypes: [QuestionType] { get }
+    var questionPracticeSets: [QuestionPracticeSet] { get }
 
     func refresh() async throws
     func startRealtimeListener(
@@ -53,6 +56,10 @@ protocol LearningRepositoryBackend: AnyObject {
         aiMission: AiMissionOutput?
     )
 
+    func startNewLearningRound(for user: DemoUser?, profile: AppUserProfile?)
+    func continueLearningFlow()
+    func enterFreePracticeMode()
+    func returnToMissionFlow()
     func submitMissionAnswer(_ answer: String) -> MissionAttempt?
     func supportRequests(forStudentUid studentUid: String?) -> [StudentSupportRequest]
     func sendSupportRequest(
@@ -64,6 +71,8 @@ protocol LearningRepositoryBackend: AnyObject {
     func addTeacherReply(to requestId: String, body: String)
     func addVolunteerReply(to requestId: String, body: String)
     func markSupportThreadReadByStudent(_ requestId: String)
+    func assignPracticeSet(_ set: QuestionPracticeSet, to student: StaffStudentSummary, by teacher: DemoUser?)
+    func startAssignedPracticeTask(_ assignment: TeacherAssignedPracticeTask)
 }
 
 @MainActor
@@ -72,6 +81,8 @@ final class LearningRepositoryStore: ObservableObject {
     @Published private(set) var currentMission: DailyMission?
     @Published private(set) var missionAttempts: [MissionAttempt] = []
     @Published private(set) var supportRequests: [StudentSupportRequest] = []
+    @Published private(set) var assignedPracticeTasks: [TeacherAssignedPracticeTask] = []
+    @Published private(set) var learningFlow: LearningFlowState = .initial(dateKey: "1970-01-01")
     @Published private(set) var syncStatus: LearningRepositorySyncStatus = .idle
 
     private let backend: any LearningRepositoryBackend
@@ -98,8 +109,20 @@ final class LearningRepositoryStore: ObservableObject {
         backend.defaultPreferredQuestionTypes
     }
 
+    var questionPracticeSets: [QuestionPracticeSet] {
+        backend.questionPracticeSets
+    }
+
     var latestMissionAttempt: MissionAttempt? {
         missionAttempts.last
+    }
+
+    var canContinuePreviousProgress: Bool {
+        learningFlow.canContinuePreviousProgress
+    }
+
+    var isDailyMissionComplete: Bool {
+        learningFlow.stage == .missionCompleted
     }
 
     var recentAccuracy: Double? {
@@ -321,6 +344,26 @@ final class LearningRepositoryStore: ObservableObject {
         apply(backend.snapshot)
     }
 
+    func startNewLearningRound(for user: DemoUser?, profile: AppUserProfile?) {
+        backend.startNewLearningRound(for: user, profile: profile)
+        apply(backend.snapshot)
+    }
+
+    func continueLearningFlow() {
+        backend.continueLearningFlow()
+        apply(backend.snapshot)
+    }
+
+    func enterFreePracticeMode() {
+        backend.enterFreePracticeMode()
+        apply(backend.snapshot)
+    }
+
+    func returnToMissionFlow() {
+        backend.returnToMissionFlow()
+        apply(backend.snapshot)
+    }
+
     func submitMissionAnswer(_ answer: String) -> MissionAttempt? {
         let attempt = backend.submitMissionAnswer(answer)
         apply(backend.snapshot)
@@ -364,11 +407,30 @@ final class LearningRepositoryStore: ObservableObject {
         apply(backend.snapshot)
     }
 
+    func pendingAssignments(forStudentUid studentUid: String?) -> [TeacherAssignedPracticeTask] {
+        guard let studentUid else { return [] }
+        return assignedPracticeTasks
+            .filter { $0.studentUid == studentUid && $0.status != .completed }
+            .sorted { $0.createdAt > $1.createdAt }
+    }
+
+    func assignPracticeSet(_ set: QuestionPracticeSet, to student: StaffStudentSummary, by teacher: DemoUser?) {
+        backend.assignPracticeSet(set, to: student, by: teacher)
+        apply(backend.snapshot)
+    }
+
+    func startAssignedPracticeTask(_ assignment: TeacherAssignedPracticeTask) {
+        backend.startAssignedPracticeTask(assignment)
+        apply(backend.snapshot)
+    }
+
     private func apply(_ snapshot: LearningRepositorySnapshot) {
         currentCheckIn = snapshot.currentCheckIn
         currentMission = snapshot.currentMission
         missionAttempts = snapshot.missionAttempts
         supportRequests = snapshot.supportRequests
+        assignedPracticeTasks = snapshot.assignedPracticeTasks
+        learningFlow = snapshot.learningFlow
     }
 
     private func updateSyncStatus(_ status: LearningRepositorySyncStatus) {
@@ -422,7 +484,9 @@ extension MockLearningRepository: LearningRepositoryBackend {
             currentCheckIn: currentCheckIn,
             currentMission: currentMission,
             missionAttempts: missionAttempts,
-            supportRequests: supportRequests
+            supportRequests: supportRequests,
+            assignedPracticeTasks: assignedPracticeTasks,
+            learningFlow: learningFlow
         )
     }
 

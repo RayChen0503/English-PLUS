@@ -4,9 +4,20 @@ struct SupportView: View {
     @EnvironmentObject private var appState: AppState
     @EnvironmentObject private var learningRepository: LearningRepositoryStore
 
+    let onOpenPractice: () -> Void
+    let onOpenHome: () -> Void
+
     private let supportOptions = SeedData.supportOptions
     @State private var latestSupportAIResponse: AiProxyResponse?
     @State private var isLoadingSupportAI = false
+
+    init(
+        onOpenPractice: @escaping () -> Void = {},
+        onOpenHome: @escaping () -> Void = {}
+    ) {
+        self.onOpenPractice = onOpenPractice
+        self.onOpenHome = onOpenHome
+    }
 
     var body: some View {
         NavigationStack {
@@ -42,6 +53,11 @@ struct SupportView: View {
 
                         if let latestSupportAIResponse {
                             SupportAIResponseCard(response: latestSupportAIResponse)
+                            SupportAIActionCard(
+                                response: latestSupportAIResponse,
+                                onOpenPractice: openPracticeFromSupport,
+                                onOpenHome: openHomeFromSupport
+                            )
                         }
 
                         studentRequestsSection
@@ -175,6 +191,16 @@ struct SupportView: View {
         }
     }
 
+    private func openPracticeFromSupport() {
+        learningRepository.enterFreePracticeMode()
+        onOpenPractice()
+    }
+
+    private func openHomeFromSupport() {
+        learningRepository.returnToMissionFlow()
+        onOpenHome()
+    }
+
     private func studentMessage(for option: SupportOption) -> String {
         switch option.route {
         case .aiCoach:
@@ -186,6 +212,54 @@ struct SupportView: View {
         case .recovery:
             return "我今天狀態比較低，想先做低壓任務。"
         }
+    }
+}
+
+private struct SupportAIActionCard: View {
+    let response: AiProxyResponse
+    let onOpenPractice: () -> Void
+    let onOpenHome: () -> Void
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text("接下來可以做這一步")
+                .font(.headline)
+                .foregroundStyle(EPTheme.ink)
+
+            Text(actionHint)
+                .font(.subheadline)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+
+            HStack(spacing: 10) {
+                Button {
+                    onOpenPractice()
+                } label: {
+                    Label("去練類似題", systemImage: "target")
+                        .frame(maxWidth: .infinity, minHeight: 44)
+                }
+                .buttonStyle(PrimaryActionButtonStyle())
+
+                Button {
+                    onOpenHome()
+                } label: {
+                    Label("回今日任務", systemImage: "house")
+                        .frame(maxWidth: .infinity, minHeight: 44)
+                }
+                .buttonStyle(.bordered)
+            }
+        }
+        .padding(16)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(.white)
+        .clipShape(RoundedRectangle(cornerRadius: EPTheme.cardRadius))
+    }
+
+    private var actionHint: String {
+        if response.output.staffEscalationNeeded == true {
+            return "這次求助已經留給老師或志工。你可以先練同類題，或回首頁看今日任務狀態。"
+        }
+        return "如果這段提示有幫助，先去練同類題；如果想照原本節奏走，就回今日任務。"
     }
 }
 

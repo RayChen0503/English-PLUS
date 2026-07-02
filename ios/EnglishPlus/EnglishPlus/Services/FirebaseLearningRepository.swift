@@ -23,7 +23,7 @@ final class FirebaseLearningRepository: LearningRepositoryBackend {
 
     init(fallback: MockLearningRepository) {
         self.fallback = fallback
-        currentSnapshot = fallback.snapshot
+        currentSnapshot = Self.normalizedSnapshotForToday(fallback.snapshot)
         #if canImport(FirebaseFirestore)
         db = FirebaseAppConfigurator.hasBundledConfig ? Firestore.firestore() : nil
         #endif
@@ -41,8 +41,13 @@ final class FirebaseLearningRepository: LearningRepositoryBackend {
         fallback.defaultPreferredQuestionTypes
     }
 
+    var questionPracticeSets: [QuestionPracticeSet] {
+        fallback.questionPracticeSets
+    }
+
     func refresh() async throws {
         currentSnapshot = fallback.snapshot
+        normalizeCurrentSnapshotForToday()
     }
 
     func startRealtimeListener(
@@ -52,6 +57,7 @@ final class FirebaseLearningRepository: LearningRepositoryBackend {
         onError: @escaping @MainActor (Error) -> Void
     ) -> LearningRepositoryListenerToken {
         activeClassId = classId
+        normalizeCurrentSnapshotForToday()
         onChange(currentSnapshot)
 
         #if canImport(FirebaseFirestore)
@@ -80,6 +86,8 @@ final class FirebaseLearningRepository: LearningRepositoryBackend {
         preferredQuestionTypes: [QuestionType],
         aiMission: AiMissionOutput?
     ) {
+        let preservingSupportRequests = currentSnapshot.supportRequests
+        let preservingAssignedPracticeTasks = currentSnapshot.assignedPracticeTasks
         fallback.generateMission(
             for: user,
             profile: profile,
@@ -89,16 +97,103 @@ final class FirebaseLearningRepository: LearningRepositoryBackend {
             preferredQuestionTypes: preferredQuestionTypes,
             aiMission: aiMission
         )
-        currentSnapshot = fallback.snapshot
+        currentSnapshot = fallbackSnapshot(
+            preservingSupportRequests: preservingSupportRequests,
+            preservingAssignedPracticeTasks: preservingAssignedPracticeTasks
+        )
         mirrorCheckInAndMissionIfPossible(profile: profile)
     }
 
+    func startNewLearningRound(for user: DemoUser?, profile: AppUserProfile?) {
+        let preservingSupportRequests = currentSnapshot.supportRequests
+        let preservingAssignedPracticeTasks = currentSnapshot.assignedPracticeTasks
+        fallback.startNewLearningRound(for: user, profile: profile)
+        currentSnapshot = fallbackSnapshot(
+            preservingSupportRequests: preservingSupportRequests,
+            preservingAssignedPracticeTasks: preservingAssignedPracticeTasks
+        )
+    }
+
+    func continueLearningFlow() {
+        normalizeCurrentSnapshotForToday()
+        guard let mission = currentSnapshot.currentMission else {
+            returnToMissionFlow()
+            return
+        }
+        currentSnapshot.learningFlow = LearningFlowState(
+            dateKey: mission.dateKey,
+            roundNumber: LearningFlowState.roundNumber(
+                fromMissionId: mission.id,
+                fallback: currentSnapshot.learningFlow.roundNumber
+            ),
+            stage: mission.status == .completed ? .missionCompleted : .missionActive,
+            activeMissionId: mission.id,
+            continuation: nil,
+            updatedAt: Date()
+        )
+    }
+
+    func enterFreePracticeMode() {
+        normalizeCurrentSnapshotForToday()
+        currentSnapshot.learningFlow = LearningFlowState(
+            dateKey: currentSnapshot.learningFlow.dateKey,
+            roundNumber: currentSnapshot.learningFlow.roundNumber,
+            stage: .freePractice,
+            activeMissionId: currentSnapshot.currentMission?.id,
+            continuation: LearningFlowState.continuation(
+                from: currentSnapshot.currentMission,
+                missionAttempts: currentSnapshot.missionAttempts,
+                fallbackRoundNumber: currentSnapshot.learningFlow.roundNumber
+            ) ?? currentSnapshot.learningFlow.continuation,
+            updatedAt: Date()
+        )
+    }
+
+    func returnToMissionFlow() {
+        normalizeCurrentSnapshotForToday()
+        guard let mission = currentSnapshot.currentMission else {
+            currentSnapshot.learningFlow = LearningFlowState(
+                dateKey: Self.dateKeyFormatter.string(from: Date()),
+                roundNumber: max(currentSnapshot.learningFlow.roundNumber, 1),
+                stage: .needsCheckIn,
+                activeMissionId: nil,
+                continuation: currentSnapshot.learningFlow.continuation,
+                updatedAt: Date()
+            )
+            return
+        }
+
+        currentSnapshot.learningFlow = LearningFlowState(
+            dateKey: mission.dateKey,
+            roundNumber: LearningFlowState.roundNumber(
+                fromMissionId: mission.id,
+                fallback: currentSnapshot.learningFlow.roundNumber
+            ),
+            stage: mission.status == .completed ? .missionCompleted : .missionActive,
+            activeMissionId: mission.id,
+            continuation: LearningFlowState.continuation(
+                from: mission,
+                missionAttempts: currentSnapshot.missionAttempts,
+                fallbackRoundNumber: currentSnapshot.learningFlow.roundNumber
+            ),
+            updatedAt: Date()
+        )
+    }
+
     func submitMissionAnswer(_ answer: String) -> MissionAttempt? {
+        let preservingSupportRequests = currentSnapshot.supportRequests
+        let preservingAssignedPracticeTasks = currentSnapshot.assignedPracticeTasks
         let attempt = fallback.submitMissionAnswer(answer)
-        currentSnapshot = fallback.snapshot
+        currentSnapshot = fallbackSnapshot(
+            preservingSupportRequests: preservingSupportRequests,
+            preservingAssignedPracticeTasks: preservingAssignedPracticeTasks
+        )
         if let attempt {
             mirrorAttemptIfPossible(attempt)
             mirrorMissionIfPossible()
+            currentSnapshot.assignedPracticeTasks
+                .first { $0.id == currentSnapshot.currentMission?.sourceCheckInId }
+                .map(mirrorPracticeAssignmentIfPossible)
         }
         return attempt
     }
@@ -116,13 +211,18 @@ final class FirebaseLearningRepository: LearningRepositoryBackend {
         option: SupportOption,
         message: String? = nil
     ) {
+        let preservingSupportRequests = currentSnapshot.supportRequests
+        let preservingAssignedPracticeTasks = currentSnapshot.assignedPracticeTasks
         fallback.sendSupportRequest(
             from: user,
             profile: profile,
             option: option,
             message: message
         )
-        currentSnapshot = fallback.snapshot
+        currentSnapshot = fallbackSnapshot(
+            preservingSupportRequests: preservingSupportRequests,
+            preservingAssignedPracticeTasks: preservingAssignedPracticeTasks
+        )
         if let request = currentSnapshot.supportRequests.first {
             mirrorSupportRequestIfPossible(request)
             mirrorStudentSupportMessageIfPossible(request)
@@ -157,6 +257,33 @@ final class FirebaseLearningRepository: LearningRepositoryBackend {
         currentSnapshot.supportRequests[index].status = .readByStudent
         currentSnapshot.supportRequests[index].updatedAt = Date()
         mirrorSupportRequestIfPossible(currentSnapshot.supportRequests[index])
+    }
+
+    func assignPracticeSet(_ set: QuestionPracticeSet, to student: StaffStudentSummary, by teacher: DemoUser?) {
+        let preservingSupportRequests = currentSnapshot.supportRequests
+        let preservingAssignedPracticeTasks = currentSnapshot.assignedPracticeTasks
+        fallback.assignPracticeSet(set, to: student, by: teacher)
+        currentSnapshot = fallbackSnapshot(
+            preservingSupportRequests: preservingSupportRequests,
+            preservingAssignedPracticeTasks: preservingAssignedPracticeTasks
+        )
+        currentSnapshot.assignedPracticeTasks
+            .first { $0.studentUid == student.studentUid && $0.setId == set.id && $0.status != .completed }
+            .map(mirrorPracticeAssignmentIfPossible)
+    }
+
+    func startAssignedPracticeTask(_ assignment: TeacherAssignedPracticeTask) {
+        let preservingSupportRequests = currentSnapshot.supportRequests
+        let preservingAssignedPracticeTasks = currentSnapshot.assignedPracticeTasks
+        fallback.startAssignedPracticeTask(assignment)
+        currentSnapshot = fallbackSnapshot(
+            preservingSupportRequests: preservingSupportRequests,
+            preservingAssignedPracticeTasks: preservingAssignedPracticeTasks
+        )
+        currentSnapshot.assignedPracticeTasks
+            .first { $0.id == assignment.id }
+            .map(mirrorPracticeAssignmentIfPossible)
+        mirrorMissionIfPossible()
     }
 
     private func mirrorCheckInAndMissionIfPossible(profile: AppUserProfile?) {
@@ -237,6 +364,13 @@ final class FirebaseLearningRepository: LearningRepositoryBackend {
         )
     }
 
+    private func mirrorPracticeAssignmentIfPossible(_ assignment: TeacherAssignedPracticeTask) {
+        setDocumentIfPossible(
+            path: "\(FirestorePath.classDocument(classId: assignment.classId))/practiceAssignments/\(assignment.id)",
+            data: firestoreData(from: assignment)
+        )
+    }
+
     private func appendSupportReply(
         to requestId: String,
         authorUid: String,
@@ -263,6 +397,66 @@ final class FirebaseLearningRepository: LearningRepositoryBackend {
         currentSnapshot.supportRequests[index].status = .replied
         currentSnapshot.supportRequests[index].updatedAt = date
         mirrorUpdatedSupportRequestIfPossible(requestId: requestId)
+    }
+
+    private static func normalizedSnapshotForToday(
+        _ snapshot: LearningRepositorySnapshot,
+        now: Date = Date()
+    ) -> LearningRepositorySnapshot {
+        var normalized = snapshot
+        normalized.learningFlow = LearningFlowState.normalizedForToday(
+            todayKey: Self.dateKeyFormatter.string(from: now),
+            currentMission: normalized.currentMission,
+            missionAttempts: normalized.missionAttempts,
+            storedFlow: normalized.learningFlow,
+            updatedAt: now
+        )
+        return normalized
+    }
+
+    private func fallbackSnapshot(
+        preservingSupportRequests existingSupportRequests: [StudentSupportRequest],
+        preservingAssignedPracticeTasks existingAssignedPracticeTasks: [TeacherAssignedPracticeTask]? = nil
+    ) -> LearningRepositorySnapshot {
+        var snapshot = fallback.snapshot
+        snapshot.supportRequests = mergedSupportRequests(
+            snapshot.supportRequests,
+            preservingSupportRequests: existingSupportRequests
+        )
+        snapshot.assignedPracticeTasks = mergedPracticeAssignments(
+            snapshot.assignedPracticeTasks,
+            preservingAssignedPracticeTasks: existingAssignedPracticeTasks ?? currentSnapshot.assignedPracticeTasks
+        )
+        return Self.normalizedSnapshotForToday(snapshot)
+    }
+
+    private func mergedSupportRequests(
+        _ fallbackRequests: [StudentSupportRequest],
+        preservingSupportRequests existingSupportRequests: [StudentSupportRequest]
+    ) -> [StudentSupportRequest] {
+        var requestsById = Dictionary(uniqueKeysWithValues: existingSupportRequests.map { ($0.id, $0) })
+        for request in fallbackRequests {
+            requestsById[request.id] = request
+        }
+        return requestsById.values.sorted { $0.updatedAt > $1.updatedAt }
+    }
+
+    private func mergedPracticeAssignments(
+        _ fallbackAssignments: [TeacherAssignedPracticeTask],
+        preservingAssignedPracticeTasks existingAssignments: [TeacherAssignedPracticeTask]
+    ) -> [TeacherAssignedPracticeTask] {
+        var assignmentsById = Dictionary(uniqueKeysWithValues: existingAssignments.map { ($0.id, $0) })
+        for assignment in fallbackAssignments {
+            assignmentsById[assignment.id] = assignment
+        }
+        return assignmentsById.values.sorted { $0.updatedAt > $1.updatedAt }
+    }
+
+    private func normalizeCurrentSnapshotForToday() {
+        currentSnapshot = Self.normalizedSnapshotForToday(currentSnapshot)
+        if currentSnapshot.learningFlow.stage == .needsCheckIn {
+            return
+        }
     }
 
     private func setDocumentIfPossible(path: String, data: [String: Any]) {
@@ -530,6 +724,23 @@ final class FirebaseLearningRepository: LearningRepositoryBackend {
         ]
     }
 
+    private func firestoreData(from assignment: TeacherAssignedPracticeTask) -> [String: Any] {
+        [
+            "assignmentId": assignment.id,
+            "classId": assignment.classId,
+            "studentUid": assignment.studentUid,
+            "studentName": assignment.studentName,
+            "setId": assignment.setId,
+            "setTitle": assignment.setTitle,
+            "questionIds": assignment.questionIds,
+            "assignedByUid": assignment.assignedByUid,
+            "assignedByName": assignment.assignedByName,
+            "status": assignment.status.rawValue,
+            "createdAt": assignment.createdAt,
+            "updatedAt": assignment.updatedAt,
+        ]
+    }
+
     private func firestoreData(fromStudentRequest request: StudentSupportRequest) -> [String: Any] {
         [
             "messageId": "\(request.id)-student-request",
@@ -634,10 +845,12 @@ final class FirebaseLearningRepository: LearningRepositoryBackend {
 
     private func replaceMission(_ mission: DailyMission?) {
         currentSnapshot.currentMission = mission
+        normalizeCurrentSnapshotForToday()
     }
 
     private func replaceAttempts(_ attempts: [MissionAttempt]) {
         currentSnapshot.missionAttempts = attempts
+        normalizeCurrentSnapshotForToday()
     }
 
     private func questionBankItems(for ids: [String]) -> [QuestionBankItem] {

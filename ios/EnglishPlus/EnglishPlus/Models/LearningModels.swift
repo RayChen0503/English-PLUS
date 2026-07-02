@@ -43,6 +43,161 @@ struct MissionAttempt: Identifiable, Codable, Equatable {
     let createdAt: Date
 }
 
+enum LearningFlowStage: String, Codable, Equatable {
+    case needsCheckIn
+    case missionActive
+    case missionCompleted
+    case freePractice
+}
+
+struct LearningContinuation: Codable, Equatable {
+    let missionId: String
+    let missionDateKey: String
+    let roundNumber: Int
+    let progressText: String
+}
+
+struct LearningFlowState: Codable, Equatable {
+    let dateKey: String
+    let roundNumber: Int
+    let stage: LearningFlowStage
+    let activeMissionId: String?
+    let continuation: LearningContinuation?
+    let updatedAt: Date
+
+    var hasActiveMission: Bool {
+        activeMissionId != nil
+    }
+
+    var canContinuePreviousProgress: Bool {
+        continuation != nil && stage == .needsCheckIn
+    }
+
+    static func initial(dateKey: String, updatedAt: Date = Date()) -> LearningFlowState {
+        LearningFlowState(
+            dateKey: dateKey,
+            roundNumber: 1,
+            stage: .needsCheckIn,
+            activeMissionId: nil,
+            continuation: nil,
+            updatedAt: updatedAt
+        )
+    }
+
+    static func derived(
+        dateKey: String,
+        currentMission: DailyMission?,
+        missionAttempts: [MissionAttempt],
+        updatedAt: Date
+    ) -> LearningFlowState {
+        guard let currentMission else {
+            return initial(dateKey: dateKey, updatedAt: updatedAt)
+        }
+
+        let stage: LearningFlowStage = currentMission.status == .completed ? .missionCompleted : .missionActive
+        return LearningFlowState(
+            dateKey: currentMission.dateKey,
+            roundNumber: roundNumber(fromMissionId: currentMission.id, fallback: 1),
+            stage: stage,
+            activeMissionId: currentMission.id,
+            continuation: continuation(
+                from: currentMission,
+                missionAttempts: missionAttempts,
+                fallbackRoundNumber: roundNumber(fromMissionId: currentMission.id, fallback: 1)
+            ),
+            updatedAt: updatedAt
+        )
+    }
+
+    static func normalizedForToday(
+        todayKey: String,
+        currentMission: DailyMission?,
+        missionAttempts: [MissionAttempt],
+        storedFlow: LearningFlowState,
+        updatedAt: Date
+    ) -> LearningFlowState {
+        if let currentMission, currentMission.dateKey != todayKey {
+            return LearningFlowState(
+                dateKey: todayKey,
+                roundNumber: 1,
+                stage: .needsCheckIn,
+                activeMissionId: nil,
+                continuation: continuation(
+                    from: currentMission,
+                    missionAttempts: missionAttempts,
+                    fallbackRoundNumber: storedFlow.roundNumber
+                ) ?? storedFlow.continuation,
+                updatedAt: updatedAt
+            )
+        }
+
+        guard let currentMission else {
+            if storedFlow.dateKey != todayKey {
+                return LearningFlowState(
+                    dateKey: todayKey,
+                    roundNumber: 1,
+                    stage: .needsCheckIn,
+                    activeMissionId: nil,
+                    continuation: storedFlow.continuation,
+                    updatedAt: updatedAt
+                )
+            }
+
+            return LearningFlowState(
+                dateKey: todayKey,
+                roundNumber: max(storedFlow.roundNumber, 1),
+                stage: storedFlow.stage == .freePractice ? .freePractice : .needsCheckIn,
+                activeMissionId: nil,
+                continuation: storedFlow.continuation,
+                updatedAt: storedFlow.updatedAt
+            )
+        }
+
+        let stage: LearningFlowStage
+        if storedFlow.stage == .freePractice {
+            stage = .freePractice
+        } else {
+            stage = currentMission.status == .completed ? .missionCompleted : .missionActive
+        }
+
+        return LearningFlowState(
+            dateKey: todayKey,
+            roundNumber: roundNumber(
+                fromMissionId: currentMission.id,
+                fallback: max(storedFlow.roundNumber, 1)
+            ),
+            stage: stage,
+            activeMissionId: currentMission.id,
+            continuation: storedFlow.continuation,
+            updatedAt: storedFlow.updatedAt
+        )
+    }
+
+    static func continuation(
+        from mission: DailyMission?,
+        missionAttempts: [MissionAttempt],
+        fallbackRoundNumber: Int
+    ) -> LearningContinuation? {
+        guard let mission else { return nil }
+        let correctCount = Set(missionAttempts.filter(\.isCorrect).map(\.questionId)).count
+        return LearningContinuation(
+            missionId: mission.id,
+            missionDateKey: mission.dateKey,
+            roundNumber: roundNumber(fromMissionId: mission.id, fallback: fallbackRoundNumber),
+            progressText: "已完成 \(min(correctCount, mission.targetCorrectCount)) / \(mission.targetCorrectCount)"
+        )
+    }
+
+    static func roundNumber(fromMissionId missionId: String, fallback: Int) -> Int {
+        guard let markerRange = missionId.range(of: "-r") else {
+            return fallback
+        }
+        let afterMarker = missionId[markerRange.upperBound...]
+        let numberText = afterMarker.prefix { $0.isNumber }
+        return Int(numberText) ?? fallback
+    }
+}
+
 struct StudentProgressSnapshot: Equatable {
     let correctCount: Int
     let targetCorrectCount: Int
@@ -77,6 +232,27 @@ struct StudentSupportRequest: Identifiable, Codable, Equatable {
     let createdAt: Date
     var updatedAt: Date
     var replies: [SupportReply]
+}
+
+enum PracticeAssignmentStatus: String, Codable, Equatable {
+    case pending
+    case active
+    case completed
+}
+
+struct TeacherAssignedPracticeTask: Identifiable, Codable, Equatable {
+    let id: String
+    let classId: String
+    let studentUid: String
+    let studentName: String
+    let setId: String
+    let setTitle: String
+    let questionIds: [String]
+    let assignedByUid: String
+    let assignedByName: String
+    var status: PracticeAssignmentStatus
+    let createdAt: Date
+    var updatedAt: Date
 }
 
 struct SupportReply: Identifiable, Codable, Equatable {
@@ -225,19 +401,40 @@ struct LocalLearningSnapshot: Codable, Equatable {
     let currentMission: DailyMission?
     let missionAttempts: [MissionAttempt]
     let supportRequests: [StudentSupportRequest]
+    let assignedPracticeTasks: [TeacherAssignedPracticeTask]
+    let learningFlow: LearningFlowState
     let savedAt: Date
+
+    private enum CodingKeys: String, CodingKey {
+        case currentCheckIn
+        case currentMission
+        case missionAttempts
+        case supportRequests
+        case assignedPracticeTasks
+        case learningFlow
+        case savedAt
+    }
 
     init(
         currentCheckIn: MoodCheckIn?,
         currentMission: DailyMission?,
         missionAttempts: [MissionAttempt],
         supportRequests: [StudentSupportRequest],
+        assignedPracticeTasks: [TeacherAssignedPracticeTask] = [],
+        learningFlow: LearningFlowState? = nil,
         savedAt: Date
     ) {
         self.currentCheckIn = currentCheckIn
         self.currentMission = currentMission
         self.missionAttempts = missionAttempts
         self.supportRequests = supportRequests
+        self.assignedPracticeTasks = assignedPracticeTasks
+        self.learningFlow = learningFlow ?? LearningFlowState.derived(
+            dateKey: currentMission?.dateKey ?? currentCheckIn?.dateKey ?? Self.dateKey(from: savedAt),
+            currentMission: currentMission,
+            missionAttempts: missionAttempts,
+            updatedAt: savedAt
+        )
         self.savedAt = savedAt
     }
 
@@ -247,6 +444,8 @@ struct LocalLearningSnapshot: Codable, Equatable {
             currentMission: snapshot.currentMission,
             missionAttempts: snapshot.missionAttempts,
             supportRequests: snapshot.supportRequests,
+            assignedPracticeTasks: snapshot.assignedPracticeTasks,
+            learningFlow: snapshot.learningFlow,
             savedAt: savedAt
         )
     }
@@ -256,9 +455,55 @@ struct LocalLearningSnapshot: Codable, Equatable {
             currentCheckIn: currentCheckIn,
             currentMission: currentMission,
             missionAttempts: missionAttempts,
-            supportRequests: supportRequests
+            supportRequests: supportRequests,
+            assignedPracticeTasks: assignedPracticeTasks,
+            learningFlow: learningFlow
         )
     }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        let currentCheckIn = try container.decodeIfPresent(MoodCheckIn.self, forKey: .currentCheckIn)
+        let currentMission = try container.decodeIfPresent(DailyMission.self, forKey: .currentMission)
+        let missionAttempts = try container.decodeIfPresent([MissionAttempt].self, forKey: .missionAttempts) ?? []
+        let supportRequests = try container.decodeIfPresent([StudentSupportRequest].self, forKey: .supportRequests) ?? []
+        let assignedPracticeTasks = try container.decodeIfPresent([TeacherAssignedPracticeTask].self, forKey: .assignedPracticeTasks) ?? []
+        let savedAt = try container.decodeIfPresent(Date.self, forKey: .savedAt) ?? Date()
+        let learningFlow = try container.decodeIfPresent(LearningFlowState.self, forKey: .learningFlow)
+
+        self.init(
+            currentCheckIn: currentCheckIn,
+            currentMission: currentMission,
+            missionAttempts: missionAttempts,
+            supportRequests: supportRequests,
+            assignedPracticeTasks: assignedPracticeTasks,
+            learningFlow: learningFlow,
+            savedAt: savedAt
+        )
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encodeIfPresent(currentCheckIn, forKey: .currentCheckIn)
+        try container.encodeIfPresent(currentMission, forKey: .currentMission)
+        try container.encode(missionAttempts, forKey: .missionAttempts)
+        try container.encode(supportRequests, forKey: .supportRequests)
+        try container.encode(assignedPracticeTasks, forKey: .assignedPracticeTasks)
+        try container.encode(learningFlow, forKey: .learningFlow)
+        try container.encode(savedAt, forKey: .savedAt)
+    }
+
+    private static func dateKey(from date: Date) -> String {
+        localDateFormatter.string(from: date)
+    }
+
+    private static let localDateFormatter: DateFormatter = {
+        let formatter = DateFormatter()
+        formatter.calendar = Calendar(identifier: .gregorian)
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.dateFormat = "yyyy-MM-dd"
+        return formatter
+    }()
 }
 
 extension QuestionType {

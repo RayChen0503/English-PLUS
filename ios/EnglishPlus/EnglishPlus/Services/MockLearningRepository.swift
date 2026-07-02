@@ -6,6 +6,8 @@ final class MockLearningRepository: ObservableObject {
     @Published private(set) var currentMission: DailyMission?
     @Published private(set) var missionAttempts: [MissionAttempt] = []
     @Published private(set) var supportRequests: [StudentSupportRequest]
+    @Published private(set) var assignedPracticeTasks: [TeacherAssignedPracticeTask]
+    @Published private(set) var learningFlow: LearningFlowState
 
     private let seedSnapshot: SeedDataSnapshot
     private let now: () -> Date
@@ -25,8 +27,19 @@ final class MockLearningRepository: ObservableObject {
             currentMission = restoredSnapshot.currentMission
             missionAttempts = restoredSnapshot.missionAttempts
             supportRequests = restoredSnapshot.supportRequests
+            assignedPracticeTasks = restoredSnapshot.assignedPracticeTasks
+            learningFlow = Self.normalizedLearningFlow(
+                from: restoredSnapshot,
+                todayKey: Self.dateKey(from: now()),
+                now: now()
+            )
         } else {
             supportRequests = Self.seedSupportRequests(now: now())
+            assignedPracticeTasks = []
+            learningFlow = LearningFlowState.initial(
+                dateKey: Self.dateKey(from: now()),
+                updatedAt: now()
+            )
         }
     }
 
@@ -38,6 +51,10 @@ final class MockLearningRepository: ObservableObject {
     var defaultPreferredQuestionTypes: [QuestionType] {
         let defaults = seedSnapshot.dailyMissionRules.defaultPreferredQuestionTypes
         return defaults.isEmpty ? Array(supportedQuestionTypes.prefix(2)) : defaults
+    }
+
+    var questionPracticeSets: [QuestionPracticeSet] {
+        QuestionPracticeSet.catalog(from: seedSnapshot.approvedQuestionBankItems)
     }
 
     var latestMissionAttempt: MissionAttempt? {
@@ -98,6 +115,8 @@ final class MockLearningRepository: ObservableObject {
         aiMission: AiMissionOutput? = nil
     ) {
         let date = now()
+        let dateKey = todayKey(from: date)
+        let roundNumber = learningFlow.dateKey == dateKey ? max(learningFlow.roundNumber, 1) : 1
         let minutes = aiMission?.recommendedMinutes ?? recommendedMinutes(for: availableTimeLevel)
         let targetCorrectCount = aiMission?.targetCorrectCount ?? questionGoal(for: minutes)
         let aiSelectedTypes = questionTypes(from: aiMission?.questionPlan)
@@ -107,9 +126,9 @@ final class MockLearningRepository: ObservableObject {
         let track = missionTrack(from: aiMission?.track) ?? missionTrack(moodScore: moodScore, wantsChallenge: wantsChallenge)
         let studentUid = user?.id ?? "demo-student"
         let checkIn = MoodCheckIn(
-            id: "checkin-\(todayKey(from: date))-\(studentUid)",
+            id: "checkin-\(dateKey)-r\(roundNumber)-\(studentUid)",
             studentUid: studentUid,
-            dateKey: todayKey(from: date),
+            dateKey: dateKey,
             moodScore: moodScore,
             availableTimeLevel: availableTimeLevel,
             wantsChallenge: wantsChallenge,
@@ -125,7 +144,7 @@ final class MockLearningRepository: ObservableObject {
 
         currentCheckIn = checkIn
         currentMission = DailyMission(
-            id: "mission-\(checkIn.dateKey)-\(studentUid)",
+            id: "mission-\(checkIn.dateKey)-r\(roundNumber)-\(studentUid)",
             studentUid: studentUid,
             dateKey: checkIn.dateKey,
             sourceCheckInId: checkIn.id,
@@ -135,6 +154,14 @@ final class MockLearningRepository: ObservableObject {
             questions: missionQuestions,
             createdAt: date,
             completedAt: nil
+        )
+        learningFlow = LearningFlowState(
+            dateKey: checkIn.dateKey,
+            roundNumber: roundNumber,
+            stage: .missionActive,
+            activeMissionId: currentMission?.id,
+            continuation: nil,
+            updatedAt: date
         )
         missionAttempts = []
         persistSnapshot()
@@ -174,9 +201,172 @@ final class MockLearningRepository: ObservableObject {
         if isCorrect && uniqueCorrectQuestionIds.count >= mission.targetCorrectCount {
             mission.completedAt = now()
             currentMission = mission
+            markAssignmentCompletedIfNeeded(sourceId: mission.sourceCheckInId)
+            learningFlow = LearningFlowState(
+                dateKey: mission.dateKey,
+                roundNumber: learningFlow.roundNumber,
+                stage: .missionCompleted,
+                activeMissionId: mission.id,
+                continuation: LearningFlowState.continuation(
+                    from: mission,
+                    missionAttempts: missionAttempts,
+                    fallbackRoundNumber: learningFlow.roundNumber
+                ),
+                updatedAt: now()
+            )
         }
         persistSnapshot()
         return attempt
+    }
+
+    func assignPracticeSet(_ set: QuestionPracticeSet, to student: StaffStudentSummary, by teacher: DemoUser?) {
+        let date = now()
+        let assignment = TeacherAssignedPracticeTask(
+            id: "practice-assignment-\(date.timeIntervalSince1970)-\(student.studentUid)-\(set.id)",
+            classId: student.classCode,
+            studentUid: student.studentUid,
+            studentName: student.studentName,
+            setId: set.id,
+            setTitle: set.title,
+            questionIds: set.questionIds,
+            assignedByUid: teacher?.id ?? "demo-teacher-1",
+            assignedByName: teacher?.displayName ?? "Teacher",
+            status: .pending,
+            createdAt: date,
+            updatedAt: date
+        )
+        assignedPracticeTasks.removeAll {
+            $0.studentUid == student.studentUid
+                && $0.setId == set.id
+                && $0.status != .completed
+        }
+        assignedPracticeTasks.insert(assignment, at: 0)
+        persistSnapshot()
+    }
+
+    func startAssignedPracticeTask(_ assignment: TeacherAssignedPracticeTask) {
+        let date = now()
+        let dateKey = todayKey(from: date)
+        let questions = questionBankItems(for: assignment.questionIds)
+        guard !questions.isEmpty else { return }
+        let targetCount = max(1, min(questions.count, 12))
+        let track: MissionTrack = questions.contains { $0.level == .b1 || $0.level == .b2 } ? .challenge : .steady
+
+        if let index = assignedPracticeTasks.firstIndex(where: { $0.id == assignment.id }) {
+            assignedPracticeTasks[index].status = .active
+            assignedPracticeTasks[index].updatedAt = date
+        }
+
+        currentCheckIn = nil
+        currentMission = DailyMission(
+            id: "mission-assigned-\(dateKey)-r\(max(learningFlow.roundNumber, 1))-\(assignment.studentUid)",
+            studentUid: assignment.studentUid,
+            dateKey: dateKey,
+            sourceCheckInId: assignment.id,
+            track: track,
+            targetCorrectCount: targetCount,
+            recommendedMinutes: max(3, min(18, questions.count * 2)),
+            questions: questions,
+            createdAt: date,
+            completedAt: nil
+        )
+        missionAttempts = []
+        learningFlow = LearningFlowState(
+            dateKey: dateKey,
+            roundNumber: max(learningFlow.roundNumber, 1),
+            stage: .missionActive,
+            activeMissionId: currentMission?.id,
+            continuation: nil,
+            updatedAt: date
+        )
+        persistSnapshot()
+    }
+
+    func startNewLearningRound(for user: DemoUser?, profile: AppUserProfile?) {
+        let date = now()
+        let dateKey = todayKey(from: date)
+        let roundNumber = nextRoundNumber(for: dateKey)
+        let continuation = LearningFlowState.continuation(
+            from: currentMission,
+            missionAttempts: missionAttempts,
+            fallbackRoundNumber: learningFlow.roundNumber
+        ) ?? learningFlow.continuation
+
+        currentCheckIn = nil
+        currentMission = nil
+        missionAttempts = []
+        learningFlow = LearningFlowState(
+            dateKey: dateKey,
+            roundNumber: roundNumber,
+            stage: .needsCheckIn,
+            activeMissionId: nil,
+            continuation: continuation,
+            updatedAt: date
+        )
+        persistSnapshot()
+    }
+
+    func continueLearningFlow() {
+        guard let mission = currentMission else {
+            returnToMissionFlow()
+            return
+        }
+        let stage: LearningFlowStage = mission.status == .completed ? .missionCompleted : .missionActive
+        learningFlow = LearningFlowState(
+            dateKey: mission.dateKey,
+            roundNumber: LearningFlowState.roundNumber(fromMissionId: mission.id, fallback: learningFlow.roundNumber),
+            stage: stage,
+            activeMissionId: mission.id,
+            continuation: nil,
+            updatedAt: now()
+        )
+        persistSnapshot()
+    }
+
+    func enterFreePracticeMode() {
+        learningFlow = LearningFlowState(
+            dateKey: learningFlow.dateKey,
+            roundNumber: learningFlow.roundNumber,
+            stage: .freePractice,
+            activeMissionId: currentMission?.id,
+            continuation: LearningFlowState.continuation(
+                from: currentMission,
+                missionAttempts: missionAttempts,
+                fallbackRoundNumber: learningFlow.roundNumber
+            ) ?? learningFlow.continuation,
+            updatedAt: now()
+        )
+        persistSnapshot()
+    }
+
+    func returnToMissionFlow() {
+        let date = now()
+        guard let mission = currentMission else {
+            learningFlow = LearningFlowState(
+                dateKey: todayKey(from: date),
+                roundNumber: learningFlow.roundNumber,
+                stage: .needsCheckIn,
+                activeMissionId: nil,
+                continuation: learningFlow.continuation,
+                updatedAt: date
+            )
+            persistSnapshot()
+            return
+        }
+
+        learningFlow = LearningFlowState(
+            dateKey: mission.dateKey,
+            roundNumber: LearningFlowState.roundNumber(fromMissionId: mission.id, fallback: learningFlow.roundNumber),
+            stage: mission.status == .completed ? .missionCompleted : .missionActive,
+            activeMissionId: mission.id,
+            continuation: LearningFlowState.continuation(
+                from: mission,
+                missionAttempts: missionAttempts,
+                fallbackRoundNumber: learningFlow.roundNumber
+            ),
+            updatedAt: date
+        )
+        persistSnapshot()
     }
 
     func supportRequests(forStudentUid studentUid: String?) -> [StudentSupportRequest] {
@@ -286,6 +476,17 @@ final class MockLearningRepository: ObservableObject {
 
     private func persistSnapshot() {
         localPersistence.saveSnapshot(LocalLearningSnapshot(snapshot: snapshot))
+    }
+
+    private func markAssignmentCompletedIfNeeded(sourceId: String) {
+        guard let index = assignedPracticeTasks.firstIndex(where: { $0.id == sourceId }) else { return }
+        assignedPracticeTasks[index].status = .completed
+        assignedPracticeTasks[index].updatedAt = now()
+    }
+
+    private func questionBankItems(for questionIds: [String]) -> [QuestionBankItem] {
+        let ids = Set(questionIds)
+        return seedSnapshot.approvedQuestionBankItems.filter { ids.contains($0.id) }
     }
 
     private func selectMissionQuestions(
@@ -453,6 +654,14 @@ final class MockLearningRepository: ObservableObject {
         Self.dateFormatter.string(from: date)
     }
 
+    private func nextRoundNumber(for dateKey: String) -> Int {
+        guard learningFlow.dateKey == dateKey else { return 1 }
+        guard currentCheckIn != nil || currentMission != nil || learningFlow.stage != .needsCheckIn else {
+            return max(learningFlow.roundNumber, 1)
+        }
+        return max(learningFlow.roundNumber + 1, 1)
+    }
+
     private func priorityScore(_ riskLevel: RiskLevel) -> Int {
         switch riskLevel {
         case .low:
@@ -471,6 +680,24 @@ final class MockLearningRepository: ObservableObject {
         formatter.dateFormat = "yyyy-MM-dd"
         return formatter
     }()
+
+    private static func dateKey(from date: Date) -> String {
+        dateFormatter.string(from: date)
+    }
+
+    private static func normalizedLearningFlow(
+        from snapshot: LearningRepositorySnapshot,
+        todayKey: String,
+        now: Date
+    ) -> LearningFlowState {
+        LearningFlowState.normalizedForToday(
+            todayKey: todayKey,
+            currentMission: snapshot.currentMission,
+            missionAttempts: snapshot.missionAttempts,
+            storedFlow: snapshot.learningFlow,
+            updatedAt: now
+        )
+    }
 
     private static func seedSupportRequests(now: Date) -> [StudentSupportRequest] {
         [

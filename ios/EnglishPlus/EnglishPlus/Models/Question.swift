@@ -120,3 +120,96 @@ struct QuestionBankItem: Identifiable, Codable, Equatable {
     let updatedAt: Date
     let question: Question
 }
+
+struct QuestionPracticeSet: Identifiable, Equatable {
+    let id: String
+    let title: String
+    let subtitle: String
+    let type: QuestionType
+    let level: QuestionLevel
+    let skill: String
+    let items: [QuestionBankItem]
+
+    var questionIds: [String] {
+        items.map(\.id)
+    }
+
+    var questionCount: Int {
+        items.count
+    }
+
+    var estimatedMinutes: Int {
+        max(3, min(18, items.count * 2))
+    }
+
+    var previewText: String {
+        items.first?.question.concept ?? skill
+    }
+
+    static func catalog(
+        from items: [QuestionBankItem],
+        maxQuestionsPerSet: Int = 12
+    ) -> [QuestionPracticeSet] {
+        let approved = items.filter { $0.reviewState == .approved }
+        let grouped = Dictionary(grouping: approved) { item in
+            PracticeSetGroupKey(
+                type: item.question.type,
+                level: item.level,
+                skill: normalizedSkill(item.skill)
+            )
+        }
+
+        let sortedGroups = grouped.sorted { lhs, rhs in
+            if lhs.key.type.rawValue != rhs.key.type.rawValue {
+                return lhs.key.type.rawValue < rhs.key.type.rawValue
+            }
+            if lhs.key.level.rawValue != rhs.key.level.rawValue {
+                return lhs.key.level.rawValue < rhs.key.level.rawValue
+            }
+            return lhs.key.skill < rhs.key.skill
+        }
+
+        return sortedGroups.enumerated().flatMap { groupIndex, entry in
+            entry.value
+                .sorted { $0.id < $1.id }
+                .chunked(size: max(1, maxQuestionsPerSet))
+                .enumerated()
+                .map { chunkIndex, chunk in
+                    let first = chunk[0]
+                    let skill = first.skill.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                        ? first.question.concept
+                        : first.skill
+                    let setIndex = chunkIndex + 1
+                    return QuestionPracticeSet(
+                        id: "practice-set-\(groupIndex)-\(setIndex)",
+                        title: "\(first.question.type.title) / \(skill)",
+                        subtitle: "\(first.level.uiTitle) / \(chunk.count) 題 / 約 \(max(3, min(18, chunk.count * 2))) 分鐘",
+                        type: first.question.type,
+                        level: first.level,
+                        skill: skill,
+                        items: chunk
+                    )
+                }
+        }
+    }
+
+    private static func normalizedSkill(_ value: String) -> String {
+        let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
+        return trimmed.isEmpty ? "general" : trimmed.lowercased()
+    }
+}
+
+private struct PracticeSetGroupKey: Hashable {
+    let type: QuestionType
+    let level: QuestionLevel
+    let skill: String
+}
+
+private extension Array {
+    func chunked(size: Int) -> [[Element]] {
+        guard size > 0 else { return [self] }
+        return stride(from: 0, to: count, by: size).map { start in
+            Array(self[start..<Swift.min(start + size, count)])
+        }
+    }
+}

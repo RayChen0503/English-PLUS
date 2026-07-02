@@ -6,6 +6,7 @@ struct PracticeCenterView: View {
 
     @State private var selectedPracticeType: QuestionType?
     @State private var selectedPracticeLevel: QuestionLevel?
+    @State private var selectedPracticeSetId: String?
     @State private var practiceIndex = 0
     @State private var practiceAnswer = ""
     @State private var practiceResult: PracticeResult?
@@ -13,8 +14,6 @@ struct PracticeCenterView: View {
     @State private var wrongAnswerAIResponse: AiProxyResponse?
     @State private var isLoadingPracticeAI = false
     @State private var isLoadingWrongAnswerAI = false
-
-    private let questionBankItems = SeedData.approvedQuestionBankItems
 
     var body: some View {
         NavigationStack {
@@ -24,6 +23,7 @@ struct PracticeCenterView: View {
                     VStack(alignment: .leading, spacing: 16) {
                         headerCard
                         filterCard
+                        practiceSetSelectionCard
                         currentPracticeCard
                         aiRecommendationCard
                     }
@@ -60,6 +60,16 @@ struct PracticeCenterView: View {
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(.white)
         .clipShape(RoundedRectangle(cornerRadius: EPTheme.cardRadius))
+    }
+
+    private var practiceSetSelectionCard: some View {
+        PracticeSetSelectionCard(
+            sets: learningRepository.questionPracticeSets,
+            selectedPracticeSetId: selectedPracticeSetId
+        ) { setId in
+            selectedPracticeSetId = setId
+            resetPracticePosition()
+        }
     }
 
     private var filterCard: some View {
@@ -215,7 +225,11 @@ struct PracticeCenterView: View {
             }
 
             if let practiceAIResponse {
-                PracticeAIRecommendationView(response: practiceAIResponse)
+                PracticeAIRecommendationView(
+                    response: practiceAIResponse,
+                    recommendedPracticeSet: recommendedPracticeSet,
+                    onApplyRecommendation: applyAIRecommendedPracticeSet
+                )
             }
         }
         .padding(16)
@@ -235,11 +249,41 @@ struct PracticeCenterView: View {
     }
 
     private var filteredPracticeItems: [QuestionBankItem] {
-        questionBankItems.filter { item in
+        let baseItems = selectedPracticeSet?.items ?? questionBankItems
+        return baseItems.filter { item in
             let typeMatches = selectedPracticeType == nil || item.question.type == selectedPracticeType
             let levelMatches = selectedPracticeLevel == nil || item.level == selectedPracticeLevel
             return typeMatches && levelMatches
         }
+    }
+
+    private var selectedPracticeSet: QuestionPracticeSet? {
+        guard let selectedPracticeSetId else { return nil }
+        return learningRepository.questionPracticeSets.first { $0.id == selectedPracticeSetId }
+    }
+
+    private var recommendedPracticeSet: QuestionPracticeSet? {
+        let sets = learningRepository.questionPracticeSets
+        guard !sets.isEmpty else { return nil }
+
+        if let exactMatch = sets.first(where: setMatchesAIRecommendation) {
+            return exactMatch
+        }
+
+        if let preferredMatch = sets.first(where: { set in
+            preferredQuestionTypesForAI.contains(set.type)
+        }) {
+            return preferredMatch
+        }
+
+        return sets.first
+    }
+
+    private var questionBankItems: [QuestionBankItem] {
+        let groupedItems = learningRepository.questionPracticeSets
+            .flatMap(\.items)
+            .uniqued(by: \.id)
+        return groupedItems.isEmpty ? SeedData.approvedQuestionBankItems : groupedItems
     }
 
     private var currentPracticeItem: QuestionBankItem? {
@@ -279,8 +323,9 @@ struct PracticeCenterView: View {
     }
 
     private func count(for type: QuestionType?) -> Int {
-        guard let type else { return questionBankItems.count }
-        return questionBankItems.filter { $0.question.type == type }.count
+        let baseItems = selectedPracticeSet?.items ?? questionBankItems
+        guard let type else { return baseItems.count }
+        return baseItems.filter { $0.question.type == type }.count
     }
 
     private func countText(for type: QuestionType?) -> String {
@@ -302,6 +347,41 @@ struct PracticeCenterView: View {
         practiceAnswer = ""
         practiceResult = nil
         wrongAnswerAIResponse = nil
+    }
+
+    private func setMatchesAIRecommendation(_ set: QuestionPracticeSet) -> Bool {
+        let recommendationText = [
+            practiceAIResponse?.output.summary,
+            practiceAIResponse?.output.nextHint,
+            practiceAIResponse?.output.teacherSummary,
+            practiceAIResponse?.output.recommendedNextAction,
+        ]
+            .compactMap { $0 }
+            .joined(separator: " ")
+            .lowercased()
+
+        let preferredTypeMatches = preferredQuestionTypesForAI.contains(set.type)
+        let typeTextMatches = recommendationText.contains(set.type.rawValue.lowercased())
+            || recommendationText.contains(set.type.aiProxyValue.lowercased())
+        let skillText = set.skill.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        let skillMatches = !skillText.isEmpty && recommendationText.contains(skillText)
+        let weakSkillMatches = learningRepository.recentWeakSkills.contains { weakSkill in
+            let normalized = weakSkill.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+            return !normalized.isEmpty && skillText.contains(normalized)
+        }
+
+        if recommendationText.isEmpty {
+            return preferredTypeMatches || weakSkillMatches
+        }
+
+        return typeTextMatches || skillMatches || weakSkillMatches
+    }
+
+    private func applyAIRecommendedPracticeSet(_ set: QuestionPracticeSet) {
+        selectedPracticeSetId = set.id
+        selectedPracticeType = set.type
+        selectedPracticeLevel = set.level
+        resetPracticePosition()
     }
 
     private func submitPracticeAnswer(for item: QuestionBankItem) {
@@ -450,6 +530,73 @@ private struct PracticeFilterChip: View {
     }
 }
 
+private struct PracticeSetSelectionCard: View {
+    let sets: [QuestionPracticeSet]
+    let selectedPracticeSetId: String?
+    let onSelect: (String?) -> Void
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack {
+                Text("小題組")
+                    .font(.headline)
+                    .foregroundStyle(EPTheme.ink)
+                Spacer()
+                Text(selectedTitle)
+                    .font(.caption.bold())
+                    .foregroundStyle(EPTheme.primary)
+            }
+
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 10) {
+                    setButton(title: "全部題目", subtitle: "自由挑戰", setId: nil)
+                    ForEach(sets.prefix(18)) { set in
+                        setButton(
+                            title: set.title,
+                            subtitle: set.subtitle,
+                            setId: set.id
+                        )
+                    }
+                }
+                .padding(.vertical, 2)
+            }
+        }
+        .padding(16)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(.white)
+        .clipShape(RoundedRectangle(cornerRadius: EPTheme.cardRadius))
+    }
+
+    private var selectedTitle: String {
+        guard let selectedPracticeSetId,
+              let set = sets.first(where: { $0.id == selectedPracticeSetId })
+        else { return "未選題組" }
+        return set.questionCount > 0 ? "\(set.questionCount) 題" : "題組"
+    }
+
+    private func setButton(title: String, subtitle: String, setId: String?) -> some View {
+        let isSelected = selectedPracticeSetId == setId
+        return Button {
+            onSelect(setId)
+        } label: {
+            VStack(alignment: .leading, spacing: 5) {
+                Text(title)
+                    .font(.subheadline.bold())
+                    .lineLimit(2)
+                Text(subtitle)
+                    .font(.caption)
+                    .lineLimit(2)
+            }
+            .foregroundStyle(isSelected ? .white : EPTheme.ink)
+            .frame(width: 160, minHeight: 74, alignment: .leading)
+            .padding(12)
+            .background(isSelected ? EPTheme.primary : Color(.systemGray6))
+            .clipShape(RoundedRectangle(cornerRadius: EPTheme.cardRadius))
+        }
+        .buttonStyle(.plain)
+    }
+}
+
 private struct PracticeAnswerOptionButton: View {
     let option: String
     let isSelected: Bool
@@ -470,6 +617,15 @@ private struct PracticeAnswerOptionButton: View {
             .clipShape(RoundedRectangle(cornerRadius: EPTheme.cardRadius))
         }
         .buttonStyle(.plain)
+    }
+}
+
+private extension Array {
+    func uniqued<ID: Hashable>(by keyPath: KeyPath<Element, ID>) -> [Element] {
+        var seen = Set<ID>()
+        return filter { element in
+            seen.insert(element[keyPath: keyPath]).inserted
+        }
     }
 }
 
@@ -520,6 +676,8 @@ private struct PracticeResultCard: View {
 
 private struct PracticeAIRecommendationView: View {
     let response: AiProxyResponse
+    let recommendedPracticeSet: QuestionPracticeSet?
+    let onApplyRecommendation: (QuestionPracticeSet) -> Void
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
@@ -531,10 +689,46 @@ private struct PracticeAIRecommendationView: View {
                     .foregroundStyle(EPTheme.support)
                     .fixedSize(horizontal: false, vertical: true)
             }
+
+            if let recommendedPracticeSet {
+                PracticeAIRecommendationActionCard(set: recommendedPracticeSet) {
+                    onApplyRecommendation(recommendedPracticeSet)
+                }
+            }
         }
         .padding(12)
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(.white)
+        .clipShape(RoundedRectangle(cornerRadius: EPTheme.cardRadius))
+    }
+}
+
+private struct PracticeAIRecommendationActionCard: View {
+    let set: QuestionPracticeSet
+    let action: () -> Void
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text("推薦題組")
+                .font(.caption.bold())
+                .foregroundStyle(EPTheme.primary)
+            Text(set.title)
+                .font(.subheadline.bold())
+                .foregroundStyle(EPTheme.ink)
+                .fixedSize(horizontal: false, vertical: true)
+            Text("\(set.questionCount) 題，約 \(set.estimatedMinutes) 分鐘")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+
+            Button(action: action) {
+                Label("套用這組練習", systemImage: "checkmark.circle.fill")
+                    .font(.subheadline.bold())
+                    .frame(maxWidth: .infinity, minHeight: 44)
+            }
+            .buttonStyle(PrimaryActionButtonStyle())
+        }
+        .padding(12)
+        .background(EPTheme.primary.opacity(0.08))
         .clipShape(RoundedRectangle(cornerRadius: EPTheme.cardRadius))
     }
 }

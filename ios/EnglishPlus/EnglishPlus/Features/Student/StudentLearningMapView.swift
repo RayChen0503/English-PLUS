@@ -13,6 +13,7 @@ struct StudentLearningMapView: View {
                 ScrollView {
                     VStack(alignment: .leading, spacing: 16) {
                         headerCard
+                        flowActionCard
                         todayRouteCard
                         questionBankCard
                         supportTimelineCard
@@ -54,6 +55,61 @@ struct StudentLearningMapView: View {
         }
         .padding(16)
         .frame(maxWidth: .infinity, alignment: .leading)
+        .background(.white)
+        .clipShape(RoundedRectangle(cornerRadius: EPTheme.cardRadius))
+    }
+
+    private var flowActionCard: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack(alignment: .top) {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(flowStageTitle)
+                        .font(.headline)
+                        .foregroundStyle(EPTheme.ink)
+                    Text(flowStageDetail)
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                Spacer()
+                Text("第 \(learningRepository.learningFlow.roundNumber) 輪")
+                    .font(.caption.bold())
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 6)
+                    .foregroundStyle(trackColor)
+                    .background(trackColor.opacity(0.12))
+                    .clipShape(Capsule())
+            }
+
+            HStack(spacing: 10) {
+                Button {
+                    learningRepository.startNewLearningRound(
+                        for: appState.currentUser,
+                        profile: appState.currentProfile
+                    )
+                } label: {
+                    Label("重新檢測", systemImage: "checklist")
+                        .frame(maxWidth: .infinity)
+                }
+                .buttonStyle(PrimaryActionButtonStyle())
+
+                Button {
+                    if learningRepository.learningFlow.canContinuePreviousProgress {
+                        learningRepository.continueLearningFlow()
+                    } else {
+                        learningRepository.enterFreePracticeMode()
+                    }
+                } label: {
+                    Label(
+                        learningRepository.learningFlow.canContinuePreviousProgress ? "延續進度" : "自由練習",
+                        systemImage: learningRepository.learningFlow.canContinuePreviousProgress ? "arrow.clockwise.circle" : "pencil.and.list.clipboard"
+                    )
+                    .frame(maxWidth: .infinity, minHeight: 44)
+                }
+                .buttonStyle(.bordered)
+            }
+        }
+        .padding(16)
         .background(.white)
         .clipShape(RoundedRectangle(cornerRadius: EPTheme.cardRadius))
     }
@@ -165,6 +221,39 @@ struct StudentLearningMapView: View {
             return "今天的指定題目任務已完成，可以休息，也可以到練習中心自由挑戰。"
         }
         return "今天先完成 \(currentMission.targetCorrectCount) 題正確答案；答錯不扣分，只保留提示。"
+    }
+
+    private var activeFlowStage: LearningFlowStage {
+        learningRepository.learningFlow.stage
+    }
+
+    private var flowStageTitle: String {
+        switch activeFlowStage {
+        case .needsCheckIn:
+            return "先做心情檢測"
+        case .missionActive:
+            return "今日任務進行中"
+        case .missionCompleted:
+            return "今日任務已完成"
+        case .freePractice:
+            return "正在自由練習"
+        }
+    }
+
+    private var flowStageDetail: String {
+        switch activeFlowStage {
+        case .needsCheckIn:
+            if let continuation = learningRepository.learningFlow.continuation {
+                return "可以重新開始，也可以延續上一輪：\(continuation.progressText)。"
+            }
+            return "完成四題檢測後，地圖會安排今日任務。"
+        case .missionActive:
+            return "照著今日任務走，答對才會推進進度。"
+        case .missionCompleted:
+            return "可以自由練習，也可以再跑一輪新的任務。"
+        case .freePractice:
+            return "自由練習不會改變今日任務完成度。"
+        }
     }
 
     private var routeSubtitle: String {

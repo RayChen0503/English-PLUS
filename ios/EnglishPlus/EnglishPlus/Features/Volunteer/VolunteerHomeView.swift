@@ -28,8 +28,12 @@ struct VolunteerHomeView: View {
                         .background(.white)
                         .clipShape(RoundedRectangle(cornerRadius: EPTheme.cardRadius))
 
-                        ForEach(learningRepository.volunteerQueue.prefix(3)) { request in
-                            VolunteerTaskCard(request: request)
+                        if learningRepository.volunteerQueue.isEmpty {
+                            VolunteerEmptyQueueCard()
+                        } else {
+                            ForEach(learningRepository.volunteerQueue.prefix(3)) { request in
+                                VolunteerTaskCard(request: request)
+                            }
                         }
 
                         VolunteerScriptPreviewCard()
@@ -48,6 +52,24 @@ struct VolunteerHomeView: View {
                 }
             }
         }
+    }
+}
+
+private struct VolunteerEmptyQueueCard: View {
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Label("目前沒有等待接力的學生", systemImage: "checkmark.circle.fill")
+                .font(.headline)
+                .foregroundStyle(EPTheme.support)
+            Text("如果稍後有學生求助，這裡會顯示最需要陪伴的一小步。現在可以先看陪伴話術或學生摘要。")
+                .font(.subheadline)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        .padding(16)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(.white)
+        .clipShape(RoundedRectangle(cornerRadius: EPTheme.cardRadius))
     }
 }
 

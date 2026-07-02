@@ -19,8 +19,12 @@ struct TeacherHomeView: View {
                         VStack(alignment: .leading, spacing: 10) {
                             Text("優先處理")
                                 .font(.headline)
-                            ForEach(learningRepository.teacherQueue.prefix(3)) { request in
-                                TeacherRequestCard(request: request)
+                            if learningRepository.teacherQueue.isEmpty {
+                                TeacherEmptyQueueCard()
+                            } else {
+                                ForEach(learningRepository.teacherQueue.prefix(3)) { request in
+                                    TeacherRequestCard(request: request)
+                                }
                             }
                         }
 
@@ -322,7 +326,9 @@ private struct TeacherReportPreviewCard: View {
 }
 
 struct TeacherQuestionBankView: View {
+    @EnvironmentObject private var appState: AppState
     @EnvironmentObject private var learningRepository: LearningRepositoryStore
+    @State private var selectedStudentUid: String?
 
     var body: some View {
         NavigationStack {
@@ -339,6 +345,14 @@ struct TeacherQuestionBankView: View {
                             .foregroundStyle(.secondary)
                             .fixedSize(horizontal: false, vertical: true)
 
+                        TeacherQuestionSetAssignmentCard(
+                            students: learningRepository.staffStudentSummaries,
+                            sets: learningRepository.questionPracticeSets,
+                            selectedStudentUid: $selectedStudentUid
+                        ) { set, student in
+                            learningRepository.assignPracticeSet(set, to: student, by: appState.currentUser)
+                        }
+
                         ForEach(learningRepository.questionBankOverview) { overview in
                             TeacherQuestionBankRow(overview: overview)
                         }
@@ -348,6 +362,246 @@ struct TeacherQuestionBankView: View {
             }
             .navigationTitle("題庫")
         }
+    }
+}
+
+private struct TeacherQuestionSetAssignmentCard: View {
+    let students: [StaffStudentSummary]
+    let sets: [QuestionPracticeSet]
+    @Binding var selectedStudentUid: String?
+    let assignPracticeSet: (QuestionPracticeSet, StaffStudentSummary) -> Void
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            Label("指派小題組", systemImage: "tray.and.arrow.down.fill")
+                .font(.headline)
+                .foregroundStyle(EPTheme.ink)
+
+            if students.isEmpty {
+                Text("目前沒有可指派的學生。學生送出求助或同步登入後，會出現在這裡。")
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            } else {
+                ScrollView(.horizontal, showsIndicators: false) {
+                    HStack(spacing: 8) {
+                        ForEach(students) { student in
+                            studentButton(student)
+                        }
+                    }
+                    .padding(.vertical, 2)
+                }
+
+                if let recommendedStudentForAssignment,
+                   let recommendedSet = recommendedAssignmentSets.first {
+                    TeacherRecommendedAssignmentCard(
+                        student: recommendedStudentForAssignment,
+                        set: recommendedSet
+                    ) {
+                        assignRecommendedPracticeSet(recommendedSet, to: recommendedStudentForAssignment)
+                    }
+                }
+
+                LazyVStack(spacing: 12) {
+                    ForEach(groupedSetsByType, id: \.type) { group in
+                        TeacherPracticeSetGroupSection(
+                            type: group.type,
+                            sets: group.sets,
+                            selectedStudent: selectedStudent,
+                            assignPracticeSet: assignPracticeSet
+                        )
+                    }
+                }
+            }
+        }
+        .padding(16)
+        .background(.white)
+        .clipShape(RoundedRectangle(cornerRadius: EPTheme.cardRadius))
+    }
+
+    private var selectedStudent: StaffStudentSummary? {
+        students.first { $0.studentUid == selectedStudentUid } ?? students.first
+    }
+
+    private var recommendedStudentForAssignment: StaffStudentSummary? {
+        students.sorted { lhs, rhs in
+            riskPriority(lhs.riskLevel) > riskPriority(rhs.riskLevel)
+        }.first ?? selectedStudent
+    }
+
+    private var recommendedAssignmentSets: [QuestionPracticeSet] {
+        guard let targetStudent = recommendedStudentForAssignment else {
+            return Array(sets.prefix(3))
+        }
+
+        let recommended = sets.filter { set in
+            isRecommended(set, for: targetStudent)
+        }
+
+        return Array((recommended.isEmpty ? sets : recommended).prefix(3))
+    }
+
+    private var groupedSetsByType: [(type: QuestionType, sets: [QuestionPracticeSet])] {
+        return QuestionType.allCases.compactMap { type in
+            let typeSets = Array(sets.filter { $0.type == type }.prefix(4))
+            return typeSets.isEmpty ? nil : (type, typeSets)
+        }
+    }
+
+    private func assignRecommendedPracticeSet(_ set: QuestionPracticeSet, to student: StaffStudentSummary) {
+        assignPracticeSet(set, student)
+    }
+
+    private func isRecommended(_ set: QuestionPracticeSet, for student: StaffStudentSummary) -> Bool {
+        switch student.riskLevel {
+        case .high:
+            return set.level == .a1 || set.level == .a2
+        case .medium:
+            return set.level == .a2 || set.level == .b1
+        case .low:
+            return set.level == .b1 || set.level == .b2
+        }
+    }
+
+    private func riskPriority(_ riskLevel: RiskLevel) -> Int {
+        switch riskLevel {
+        case .low:
+            return 1
+        case .medium:
+            return 2
+        case .high:
+            return 3
+        }
+    }
+
+    private func studentButton(_ student: StaffStudentSummary) -> some View {
+        let isSelected = selectedStudent?.studentUid == student.studentUid
+        return Button {
+            selectedStudentUid = student.studentUid
+        } label: {
+            VStack(alignment: .leading, spacing: 3) {
+                Text(student.studentName)
+                    .font(.caption.bold())
+                Text(student.riskLevel.uiTitle)
+                    .font(.caption2)
+            }
+            .foregroundStyle(isSelected ? .white : EPTheme.ink)
+            .padding(.horizontal, 12)
+            .padding(.vertical, 9)
+            .background(isSelected ? EPTheme.primary : Color(.systemGray6))
+            .clipShape(RoundedRectangle(cornerRadius: EPTheme.cardRadius))
+        }
+        .buttonStyle(.plain)
+    }
+}
+
+private struct TeacherEmptyQueueCard: View {
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Label("目前沒有需要接住的學生", systemImage: "checkmark.circle.fill")
+                .font(.headline)
+                .foregroundStyle(EPTheme.support)
+            Text("班級目前沒有新的高優先求助。可以先查看題庫指派，或到報告頁確認整體學習狀態。")
+                .font(.subheadline)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        .padding(16)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(.white)
+        .clipShape(RoundedRectangle(cornerRadius: EPTheme.cardRadius))
+    }
+}
+
+private struct TeacherPracticeSetGroupSection: View {
+    let type: QuestionType
+    let sets: [QuestionPracticeSet]
+    let selectedStudent: StaffStudentSummary?
+    let assignPracticeSet: (QuestionPracticeSet, StaffStudentSummary) -> Void
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack {
+                Text(type.title)
+                    .font(.subheadline.bold())
+                    .foregroundStyle(EPTheme.ink)
+                Spacer()
+                Text("\(sets.count) 組")
+                    .font(.caption.bold())
+                    .foregroundStyle(EPTheme.primary)
+            }
+
+            ForEach(sets) { set in
+                HStack(alignment: .top, spacing: 10) {
+                    VStack(alignment: .leading, spacing: 5) {
+                        Text(set.title)
+                            .font(.subheadline.bold())
+                            .foregroundStyle(EPTheme.ink)
+                            .fixedSize(horizontal: false, vertical: true)
+                        Text(set.subtitle)
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                        Text(set.previewText)
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                            .lineLimit(2)
+                    }
+                    Spacer()
+                    Button("指派") {
+                        if let selectedStudent {
+                            assignPracticeSet(set, selectedStudent)
+                        }
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .disabled(selectedStudent == nil)
+                }
+                .padding(12)
+                .background(Color(.systemGray6))
+                .clipShape(RoundedRectangle(cornerRadius: EPTheme.cardRadius))
+            }
+        }
+        .padding(12)
+        .background(EPTheme.primary.opacity(0.06))
+        .clipShape(RoundedRectangle(cornerRadius: EPTheme.cardRadius))
+    }
+}
+
+private struct TeacherRecommendedAssignmentCard: View {
+    let student: StaffStudentSummary
+    let set: QuestionPracticeSet
+    let action: () -> Void
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(alignment: .top, spacing: 10) {
+                Image(systemName: "sparkles")
+                    .font(.headline)
+                    .foregroundStyle(EPTheme.primary)
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("建議先指派")
+                        .font(.caption.bold())
+                        .foregroundStyle(EPTheme.primary)
+                    Text("\(student.studentName) / \(set.title)")
+                        .font(.subheadline.bold())
+                        .foregroundStyle(EPTheme.ink)
+                        .fixedSize(horizontal: false, vertical: true)
+                    Text("\(set.questionCount) 題，約 \(set.estimatedMinutes) 分鐘。依學生風險與難度先排最容易開始的一組。")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+            }
+
+            Button(action: action) {
+                Label("一鍵指派推薦題組", systemImage: "paperplane.fill")
+                    .font(.subheadline.bold())
+                    .frame(maxWidth: .infinity, minHeight: 44)
+            }
+            .buttonStyle(PrimaryActionButtonStyle())
+        }
+        .padding(12)
+        .background(EPTheme.primary.opacity(0.08))
+        .clipShape(RoundedRectangle(cornerRadius: EPTheme.cardRadius))
     }
 }
 
