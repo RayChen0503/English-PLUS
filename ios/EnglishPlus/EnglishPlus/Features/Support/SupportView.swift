@@ -4,9 +4,6 @@ struct SupportView: View {
     @EnvironmentObject private var appState: AppState
     @EnvironmentObject private var learningRepository: LearningRepositoryStore
 
-    @State private var latestSupportAIResponse: AiProxyResponse?
-    @State private var isLoadingSupportAI = false
-
     var body: some View {
         NavigationStack {
             ZStack {
@@ -14,14 +11,6 @@ struct SupportView: View {
 
                 ScrollView {
                     VStack(alignment: .leading, spacing: 16) {
-                        SupportInboxHeaderCard()
-
-                        SupportMoodAICard(
-                            response: latestSupportAIResponse,
-                            isLoading: isLoadingSupportAI,
-                            onAskAI: sendEmotionalSupportRequest
-                        )
-
                         supportInboxSection
                     }
                     .padding(EPTheme.pagePadding)
@@ -85,148 +74,6 @@ struct SupportView: View {
         }.count
     }
 
-    private func sendEmotionalSupportRequest() {
-        let option = SeedData.supportOptions.first { $0.route == .recovery }
-            ?? SupportOption(
-                id: "student-emotional-support",
-                reason: "情緒支持",
-                studentText: "我現在有點卡住，想先整理情緒再繼續英文。",
-                platformAction: "先用 AI 幫學生穩定狀態，再回到任務或練習。",
-                route: .recovery
-            )
-
-        learningRepository.sendSupportRequest(
-            from: appState.currentUser,
-            profile: appState.currentProfile,
-            option: option,
-            message: "我現在有點卡住，想先整理情緒再繼續英文。"
-        )
-
-        guard let request = learningRepository.supportRequests(forStudentUid: appState.currentUser?.id).first else {
-            return
-        }
-
-        Task {
-            await loadSupportAI(for: request)
-        }
-    }
-
-    @MainActor
-    private func loadSupportAI(for request: StudentSupportRequest) async {
-        isLoadingSupportAI = true
-        defer { isLoadingSupportAI = false }
-
-        latestSupportAIResponse = await appState.provideEmotionalSupportWithAI(
-            context: SupportAIContext(request: request)
-        )
-    }
-
-}
-
-private struct SupportInboxHeaderCard: View {
-    var body: some View {
-        VStack(alignment: .leading, spacing: 14) {
-            HStack(alignment: .top, spacing: 12) {
-                Image(systemName: "bubble.left.and.bubble.right.fill")
-                    .font(.title2)
-                    .foregroundStyle(EPTheme.support)
-                    .frame(width: 36, height: 36)
-                    .background(EPTheme.support.opacity(0.12))
-                    .clipShape(RoundedRectangle(cornerRadius: 10))
-
-                VStack(alignment: .leading, spacing: 4) {
-                    Text("支持中心")
-                        .font(.title.bold())
-                        .foregroundStyle(EPTheme.ink)
-                    Text("這裡不是任務入口，是你和 AI、老師、志工的支援紀錄。")
-                        .font(.subheadline)
-                        .foregroundStyle(EPTheme.secondaryInk)
-                        .fixedSize(horizontal: false, vertical: true)
-                }
-            }
-        }
-        .padding(16)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background(EPTheme.card)
-        .clipShape(RoundedRectangle(cornerRadius: EPTheme.cardRadius))
-    }
-}
-
-private struct SupportMoodAICard: View {
-    let response: AiProxyResponse?
-    let isLoading: Bool
-    let onAskAI: () -> Void
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            HStack(alignment: .top, spacing: 12) {
-                Image(systemName: "sparkles")
-                    .foregroundStyle(EPTheme.primary)
-                    .frame(width: 32, height: 32)
-
-                VStack(alignment: .leading, spacing: 4) {
-                    Text("先讓 AI 幫你整理一下")
-                        .font(.headline)
-                        .foregroundStyle(EPTheme.ink)
-                    Text("如果只是心情卡住，可以先請 AI 幫你把下一步變小。題目卡住時，回到練習題下方送給老師或志工。")
-                        .font(.subheadline)
-                        .foregroundStyle(EPTheme.secondaryInk)
-                        .fixedSize(horizontal: false, vertical: true)
-                }
-            }
-
-            Button(action: onAskAI) {
-                Label(isLoading ? "AI 正在整理..." : "請 AI 陪我整理一下", systemImage: "wand.and.stars")
-                    .font(.subheadline.bold())
-                    .frame(maxWidth: .infinity, minHeight: 44)
-            }
-            .buttonStyle(PrimaryActionButtonStyle())
-            .disabled(isLoading)
-
-            if isLoading {
-                ProgressView()
-                    .tint(EPTheme.primary)
-            }
-
-            if let response {
-                SupportAIResponseCard(response: response)
-            }
-        }
-        .padding(16)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background(EPTheme.support.opacity(0.10))
-        .clipShape(RoundedRectangle(cornerRadius: EPTheme.cardRadius))
-    }
-}
-
-private struct SupportAIResponseCard: View {
-    let response: AiProxyResponse
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Label(response.fallbackUsed ? "先用內建建議" : "AI 已整理", systemImage: response.fallbackUsed ? "exclamationmark.triangle.fill" : "sparkles")
-                .font(.subheadline.bold())
-                .foregroundStyle(response.fallbackUsed ? EPTheme.warning : EPTheme.support)
-
-            if let summary = response.output.summary, !summary.isEmpty {
-                Text(summary)
-                    .font(.subheadline)
-                    .foregroundStyle(EPTheme.ink)
-                    .fixedSize(horizontal: false, vertical: true)
-            }
-
-            if let nextAction = response.output.recommendedNextAction, !nextAction.isEmpty {
-                Text(nextAction)
-                    .font(.footnote.bold())
-                    .foregroundStyle(EPTheme.ink)
-                    .fixedSize(horizontal: false, vertical: true)
-            }
-        }
-        .padding(12)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background(EPTheme.card)
-        .clipShape(RoundedRectangle(cornerRadius: EPTheme.cardRadius))
-    }
 }
 
 private struct SupportEmptyStateCard: View {
