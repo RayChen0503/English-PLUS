@@ -1,4 +1,4 @@
-import SwiftUI
+﻿import SwiftUI
 
 struct SupportView: View {
     @EnvironmentObject private var appState: AppState
@@ -186,7 +186,7 @@ private struct SupportInboxHeaderCard: View {
         }
         .padding(16)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(.white)
+        .background(EPTheme.card)
         .clipShape(RoundedRectangle(cornerRadius: EPTheme.cardRadius))
     }
 }
@@ -279,7 +279,7 @@ private struct SupportAIActionCard: View {
         }
         .padding(12)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(.white)
+        .background(EPTheme.card)
         .clipShape(RoundedRectangle(cornerRadius: EPTheme.cardRadius))
     }
 
@@ -316,7 +316,7 @@ private struct SupportAIResponseCard: View {
         }
         .padding(12)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(.white)
+        .background(EPTheme.card)
         .clipShape(RoundedRectangle(cornerRadius: EPTheme.cardRadius))
     }
 }
@@ -344,7 +344,7 @@ private struct SupportEmptyStateCard: View {
         }
         .padding(16)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(.white)
+        .background(EPTheme.card)
         .clipShape(RoundedRectangle(cornerRadius: EPTheme.cardRadius))
     }
 }
@@ -406,7 +406,7 @@ private struct SupportInboxMetricPill: View {
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(10)
-        .background(.white)
+        .background(EPTheme.card)
         .clipShape(RoundedRectangle(cornerRadius: 10))
     }
 }
@@ -470,7 +470,7 @@ private struct SupportRequestInboxCard: View {
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
                     .padding(10)
-                    .background(Color(.systemGray6))
+                    .background(EPTheme.secondarySurface)
                     .clipShape(RoundedRectangle(cornerRadius: 8))
             }
 
@@ -491,7 +491,7 @@ private struct SupportRequestInboxCard: View {
         }
         .padding(16)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(.white)
+        .background(EPTheme.card)
         .clipShape(RoundedRectangle(cornerRadius: EPTheme.cardRadius))
         .onAppear {
             if request.status == .replied {
@@ -596,7 +596,7 @@ private struct SupportWaitingReplyCard: View {
             .fixedSize(horizontal: false, vertical: true)
             .padding(10)
             .frame(maxWidth: .infinity, alignment: .leading)
-            .background(Color(.systemGray6))
+            .background(EPTheme.secondarySurface)
             .clipShape(RoundedRectangle(cornerRadius: EPTheme.cardRadius))
     }
 
@@ -642,7 +642,7 @@ private struct SupportReplyTimeline: View {
                 }
                 .padding(10)
                 .frame(maxWidth: .infinity, alignment: .leading)
-                .background(Color(.systemGray6))
+                .background(EPTheme.secondarySurface)
                 .clipShape(RoundedRectangle(cornerRadius: EPTheme.cardRadius))
             }
         }

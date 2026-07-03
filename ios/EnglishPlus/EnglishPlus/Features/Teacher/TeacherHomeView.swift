@@ -1,4 +1,4 @@
-import SwiftUI
+﻿import SwiftUI
 
 struct TeacherHomeView: View {
     @EnvironmentObject private var appState: AppState
@@ -187,7 +187,7 @@ struct TeacherSupportRequestCard: View {
             )
         }
         .padding(16)
-        .background(.white)
+        .background(EPTheme.card)
         .clipShape(RoundedRectangle(cornerRadius: EPTheme.cardRadius))
     }
 
@@ -279,7 +279,7 @@ private struct TeacherReportMetricTile: View {
         }
         .padding(14)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(.white)
+        .background(EPTheme.card)
         .clipShape(RoundedRectangle(cornerRadius: EPTheme.cardRadius))
     }
 }
@@ -314,13 +314,13 @@ private struct TeacherReportPrioritySection: View {
                             .fixedSize(horizontal: false, vertical: true)
                     }
                     .padding(12)
-                    .background(Color(.systemGray6))
+                    .background(EPTheme.secondarySurface)
                     .clipShape(RoundedRectangle(cornerRadius: EPTheme.cardRadius))
                 }
             }
         }
         .padding(16)
-        .background(.white)
+        .background(EPTheme.card)
         .clipShape(RoundedRectangle(cornerRadius: EPTheme.cardRadius))
     }
 }
@@ -356,7 +356,7 @@ private struct TeacherReportQuestionBankSection: View {
             }
         }
         .padding(16)
-        .background(.white)
+        .background(EPTheme.card)
         .clipShape(RoundedRectangle(cornerRadius: EPTheme.cardRadius))
     }
 }
@@ -386,7 +386,7 @@ private struct TeacherReportActionList: View {
             }
         }
         .padding(16)
-        .background(.white)
+        .background(EPTheme.card)
         .clipShape(RoundedRectangle(cornerRadius: EPTheme.cardRadius))
     }
 }
@@ -409,7 +409,7 @@ private struct TeacherReportPreviewCard: View {
         }
         .padding(16)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(.white)
+        .background(EPTheme.card)
         .clipShape(RoundedRectangle(cornerRadius: EPTheme.cardRadius))
     }
 }
@@ -557,7 +557,7 @@ private struct TeacherClassRosterSummaryCard: View {
             }
         }
         .padding(16)
-        .background(.white)
+        .background(EPTheme.card)
         .clipShape(RoundedRectangle(cornerRadius: EPTheme.cardRadius))
     }
 
@@ -604,7 +604,7 @@ private struct TeacherStudentPickerCard: View {
             }
         }
         .padding(16)
-        .background(.white)
+        .background(EPTheme.card)
         .clipShape(RoundedRectangle(cornerRadius: EPTheme.cardRadius))
     }
 
@@ -639,7 +639,7 @@ private struct TeacherStudentPickerCard: View {
             .foregroundStyle(isSelected ? .white : EPTheme.ink)
             .padding(12)
             .frame(maxWidth: .infinity, alignment: .leading)
-            .background(isSelected ? EPTheme.primary : Color(.systemGray6))
+            .background(isSelected ? EPTheme.primary : EPTheme.secondarySurface)
             .clipShape(RoundedRectangle(cornerRadius: EPTheme.cardRadius))
         }
         .buttonStyle(.plain)
@@ -665,7 +665,7 @@ private struct TeacherSelectedStudentPanel: View {
             TeacherStudentAssignmentHistory(assignments: assignments)
         }
         .padding(16)
-        .background(.white)
+        .background(EPTheme.card)
         .clipShape(RoundedRectangle(cornerRadius: EPTheme.cardRadius))
     }
 }
@@ -715,7 +715,7 @@ private struct TeacherStudentMissionPanel: View {
             }
         }
         .padding(12)
-        .background(Color(.systemGray6))
+        .background(EPTheme.secondarySurface)
         .clipShape(RoundedRectangle(cornerRadius: EPTheme.cardRadius))
     }
 
@@ -755,7 +755,7 @@ private struct TeacherStudentAssignmentHistory: View {
                         Spacer()
                     }
                     .padding(10)
-                    .background(.white)
+                    .background(EPTheme.card)
                     .clipShape(RoundedRectangle(cornerRadius: 10))
                 }
             }
@@ -790,7 +790,7 @@ private struct TeacherClassEmptyStudentCard: View {
         }
         .padding(16)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(.white)
+        .background(EPTheme.card)
         .clipShape(RoundedRectangle(cornerRadius: EPTheme.cardRadius))
     }
 }
@@ -808,7 +808,7 @@ private struct TeacherEmptyQueueCard: View {
         }
         .padding(16)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(.white)
+        .background(EPTheme.card)
         .clipShape(RoundedRectangle(cornerRadius: EPTheme.cardRadius))
     }
 }
@@ -841,7 +841,7 @@ private struct TeacherPracticeSetCatalog: View {
                     .foregroundStyle(.secondary)
                     .padding(14)
                     .frame(maxWidth: .infinity, alignment: .leading)
-                    .background(Color(.systemGray6))
+                    .background(EPTheme.secondarySurface)
                     .clipShape(RoundedRectangle(cornerRadius: EPTheme.cardRadius))
             } else {
                 LazyVStack(spacing: 12) {
@@ -856,7 +856,7 @@ private struct TeacherPracticeSetCatalog: View {
             }
         }
         .padding(16)
-        .background(.white)
+        .background(EPTheme.card)
         .clipShape(RoundedRectangle(cornerRadius: EPTheme.cardRadius))
     }
 
@@ -1035,7 +1035,7 @@ private struct TeacherPracticeSetCatalogRow: View {
             .buttonStyle(PrimaryActionButtonStyle())
         }
         .padding(12)
-        .background(Color(.systemGray6))
+        .background(EPTheme.secondarySurface)
         .clipShape(RoundedRectangle(cornerRadius: EPTheme.cardRadius))
     }
 }
@@ -1052,7 +1052,7 @@ private struct TeacherFilterChip: View {
                 .foregroundStyle(isSelected ? .white : EPTheme.ink)
                 .padding(.horizontal, 12)
                 .padding(.vertical, 9)
-                .background(isSelected ? EPTheme.primary : Color(.systemGray6))
+                .background(isSelected ? EPTheme.primary : EPTheme.secondarySurface)
                 .clipShape(Capsule())
         }
         .buttonStyle(.plain)
@@ -1112,7 +1112,7 @@ private struct TeacherStatusTile: View {
         }
         .padding(14)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(.white)
+        .background(EPTheme.card)
         .clipShape(RoundedRectangle(cornerRadius: EPTheme.cardRadius))
     }
 }
@@ -1140,12 +1140,12 @@ private struct TeacherClassSummary: View {
                         .multilineTextAlignment(.trailing)
                 }
                 .padding(12)
-                .background(Color(.systemGray6))
+                .background(EPTheme.secondarySurface)
                 .clipShape(RoundedRectangle(cornerRadius: EPTheme.cardRadius))
             }
         }
         .padding(16)
-        .background(.white)
+        .background(EPTheme.card)
         .clipShape(RoundedRectangle(cornerRadius: EPTheme.cardRadius))
     }
 
@@ -1179,7 +1179,7 @@ private struct TeacherHandoffSummaryCard: View {
             }
         }
         .padding(16)
-        .background(.white)
+        .background(EPTheme.card)
         .clipShape(RoundedRectangle(cornerRadius: EPTheme.cardRadius))
     }
 }
@@ -1211,7 +1211,7 @@ struct TeacherReportSignalCard: View {
         }
         .padding(16)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(.white)
+        .background(EPTheme.card)
         .clipShape(RoundedRectangle(cornerRadius: EPTheme.cardRadius))
     }
 }
@@ -1241,7 +1241,7 @@ struct TeacherQuestionBankRow: View {
                 .fixedSize(horizontal: false, vertical: true)
         }
         .padding(16)
-        .background(.white)
+        .background(EPTheme.card)
         .clipShape(RoundedRectangle(cornerRadius: EPTheme.cardRadius))
     }
 }

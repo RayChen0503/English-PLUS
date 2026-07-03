@@ -1,0 +1,55 @@
+from pathlib import Path
+
+
+ROOT = Path(__file__).resolve().parents[1]
+PRACTICE_VIEW = ROOT / "ios" / "EnglishPlus" / "EnglishPlus" / "Features" / "Practice" / "PracticeCenterView.swift"
+
+
+def require_token(source: str, token: str, message: str) -> None:
+    if token not in source:
+        raise SystemExit(f"Missing {message}: {token}")
+
+
+def forbid_token(source: str, token: str, message: str) -> None:
+    if token in source:
+        raise SystemExit(f"Forbidden {message}: {token}")
+
+
+def main() -> None:
+    source = PRACTICE_VIEW.read_text(encoding="utf-8")
+
+    required_tokens = [
+        ("practiceSelectionNote", "visible relaxed-filter note"),
+        ("practiceOptionOrderByQuestionId", "stable per-question option order cache"),
+        ("PracticeSessionSelection", "practice session selection result"),
+        ("buildPracticeSessionItems", "shared practice session builder"),
+        ("exactItems.count >= freePracticeSessionLimit", "exact-match session guard"),
+        ("exactIds = Set(exactItems.map", "duplicate-safe fallback fill"),
+        ("filledItems.count > exactItems.count", "partial-session fallback note"),
+        ("fallbackPracticeCandidates", "relaxed fallback candidate search"),
+        ("balancedPracticeItems", "balanced item ordering"),
+        ("practiceDiversityScore", "diversity scoring"),
+        ("answerDistributionKey", "answer distribution key"),
+        ("balancedAnswerOptions", "stable balanced answer option ordering"),
+        ("shuffledAnswerOptions(for: item)", "answer UI using balanced options"),
+        ("buildPracticeSessionItems(from: filteredPracticeItems)", "free practice using shared builder"),
+        ("buildPracticeSessionItems(from: plan.items)", "AI recommendation using shared builder"),
+    ]
+
+    for token, message in required_tokens:
+        require_token(source, token, message)
+
+    forbidden_tokens = [
+        ("ForEach(item.question.options, id: \\.self)", "direct option ordering"),
+        ("Array(filteredPracticeItems.prefix(freePracticeSessionLimit))", "direct filtered prefix session"),
+        ("startPracticeSession(with: plan.items, sourceTitle: plan.title)", "direct AI plan session start"),
+    ]
+
+    for token, message in forbidden_tokens:
+        forbid_token(source, token, message)
+
+    print("Practice bank fallback and quality round 2 validation passed.")
+
+
+if __name__ == "__main__":
+    main()

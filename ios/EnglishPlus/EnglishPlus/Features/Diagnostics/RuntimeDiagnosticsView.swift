@@ -1,4 +1,4 @@
-import SwiftUI
+﻿import SwiftUI
 
 struct RuntimeDiagnosticsView: View {
     @EnvironmentObject private var appState: AppState
@@ -112,7 +112,7 @@ struct RuntimeDiagnosticsView: View {
         }
         .padding(16)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(.white)
+        .background(EPTheme.card)
         .clipShape(RoundedRectangle(cornerRadius: EPTheme.cardRadius))
     }
 }

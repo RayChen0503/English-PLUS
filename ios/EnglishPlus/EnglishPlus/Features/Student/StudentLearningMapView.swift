@@ -1,4 +1,4 @@
-import SwiftUI
+﻿import SwiftUI
 
 struct StudentLearningMapView: View {
     @EnvironmentObject private var appState: AppState
@@ -13,6 +13,9 @@ struct StudentLearningMapView: View {
                 ScrollView {
                     VStack(alignment: .leading, spacing: 16) {
                         headerCard
+                        if allLearningMapNodesCompleted {
+                            todayCompleteCard
+                        }
                         flowActionCard
                         todayRouteCard
                         questionBankCard
@@ -55,7 +58,24 @@ struct StudentLearningMapView: View {
         }
         .padding(16)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(.white)
+        .background(EPTheme.card)
+        .clipShape(RoundedRectangle(cornerRadius: EPTheme.cardRadius))
+    }
+
+    private var todayCompleteCard: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Label("今天的任務完成了", systemImage: "checkmark.seal.fill")
+                .font(.title3.bold())
+                .foregroundStyle(EPTheme.support)
+
+            Text("心情檢測、今日題目、低壓修復、自由練習和支持回覆都已整理好。你可以休息，也可以繼續自由練習。")
+                .font(.subheadline)
+                .foregroundStyle(EPTheme.secondaryInk)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        .padding(16)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(EPTheme.support.opacity(0.10))
         .clipShape(RoundedRectangle(cornerRadius: EPTheme.cardRadius))
     }
 
@@ -110,7 +130,7 @@ struct StudentLearningMapView: View {
             }
         }
         .padding(16)
-        .background(.white)
+        .background(EPTheme.card)
         .clipShape(RoundedRectangle(cornerRadius: EPTheme.cardRadius))
     }
 
@@ -140,7 +160,7 @@ struct StudentLearningMapView: View {
             }
         }
         .padding(16)
-        .background(.white)
+        .background(EPTheme.card)
         .clipShape(RoundedRectangle(cornerRadius: EPTheme.cardRadius))
     }
 
@@ -166,13 +186,13 @@ struct StudentLearningMapView: View {
                     }
                     .padding(12)
                     .frame(maxWidth: .infinity, alignment: .leading)
-                    .background(Color(.systemGray6))
+                    .background(EPTheme.secondarySurface)
                     .clipShape(RoundedRectangle(cornerRadius: EPTheme.cardRadius))
                 }
             }
         }
         .padding(16)
-        .background(.white)
+        .background(EPTheme.card)
         .clipShape(RoundedRectangle(cornerRadius: EPTheme.cardRadius))
     }
 
@@ -203,13 +223,13 @@ struct StudentLearningMapView: View {
                             .lineLimit(2)
                     }
                     .padding(12)
-                    .background(Color(.systemGray6))
+                    .background(EPTheme.secondarySurface)
                     .clipShape(RoundedRectangle(cornerRadius: EPTheme.cardRadius))
                 }
             }
         }
         .padding(16)
-        .background(.white)
+        .background(EPTheme.card)
         .clipShape(RoundedRectangle(cornerRadius: EPTheme.cardRadius))
     }
 
@@ -291,17 +311,71 @@ struct StudentLearningMapView: View {
             ),
             LearningMapNode(
                 title: "自由練習",
-                detail: "完成今日任務後可以自己挑戰，不會改變今日任務進度。",
-                state: isComplete ? .current : .available,
+                detail: freePracticeDetail,
+                state: freePracticeNodeState,
                 icon: "pencil.and.list.clipboard"
             ),
             LearningMapNode(
                 title: "支持回覆",
-                detail: studentSupportRequests.isEmpty ? "卡住時可以求助；老師或志工的回覆會留在這裡。" : "已有 \(studentSupportRequests.count) 則求助或回覆紀錄。",
-                state: studentSupportRequests.isEmpty ? .available : .current,
+                detail: supportReplyDetail,
+                state: supportReplyNodeState,
                 icon: "heart"
             ),
         ]
+    }
+
+    private var allLearningMapNodesCompleted: Bool {
+        !learningMapNodes.isEmpty && learningMapNodes.allSatisfy { $0.state == .done }
+    }
+
+    private var hasCompletedFreePracticeSession: Bool {
+        learningRepository.hasCompletedFreePracticeSession
+    }
+
+    private var freePracticeNodeState: LearningMapNode.State {
+        if hasCompletedFreePracticeSession {
+            return .done
+        }
+        if learningRepository.progressSnapshot?.status == .completed {
+            return .current
+        }
+        return .available
+    }
+
+    private var freePracticeDetail: String {
+        if hasCompletedFreePracticeSession {
+            return "已完成至少一組自由練習，之後可以繼續挑戰。"
+        }
+        return "完成今日任務後可以自己挑戰，不會改變今日任務進度。"
+    }
+
+    private var pendingSupportRequests: [StudentSupportRequest] {
+        studentSupportRequests.filter(\.isPendingOnStudentLearningMap)
+    }
+
+    private var unreadSupportReplyCount: Int {
+        pendingSupportRequests.filter(\.hasStudentUnreadReply).count
+    }
+
+    private var supportRepliesCleared: Bool {
+        pendingSupportRequests.isEmpty
+    }
+
+    private var supportReplyNodeState: LearningMapNode.State {
+        supportRepliesCleared ? .done : .current
+    }
+
+    private var supportReplyDetail: String {
+        if supportRepliesCleared {
+            if studentSupportRequests.isEmpty {
+                return "目前沒有待處理回覆。"
+            }
+            return "所有回覆都已看完或收起。"
+        }
+        if unreadSupportReplyCount > 0 {
+            return "有 \(unreadSupportReplyCount) 則新回覆待查看。"
+        }
+        return "有 \(pendingSupportRequests.count) 則求助正在等待老師或志工。"
     }
 
     private var missionDetail: String {
@@ -424,7 +498,7 @@ private struct LearningMapNodeRow: View {
             }
         }
         .padding(12)
-        .background(node.state == .current ? stateColor.opacity(0.08) : Color(.systemGray6))
+        .background(node.state == .current ? stateColor.opacity(0.08) : EPTheme.secondarySurface)
         .clipShape(RoundedRectangle(cornerRadius: EPTheme.cardRadius))
     }
 

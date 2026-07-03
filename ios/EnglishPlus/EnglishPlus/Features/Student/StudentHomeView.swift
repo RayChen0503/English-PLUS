@@ -1,4 +1,4 @@
-import SwiftUI
+﻿import SwiftUI
 
 struct StudentHomeView: View {
     @EnvironmentObject private var appState: AppState
@@ -164,7 +164,7 @@ struct StudentHomeView: View {
             }
         }
         .padding(16)
-        .background(.white)
+        .background(EPTheme.card)
         .clipShape(RoundedRectangle(cornerRadius: EPTheme.cardRadius))
     }
 
@@ -220,7 +220,7 @@ struct StudentHomeView: View {
             }
         }
         .padding(16)
-        .background(.white)
+        .background(EPTheme.card)
         .clipShape(RoundedRectangle(cornerRadius: EPTheme.cardRadius))
     }
 
@@ -255,7 +255,7 @@ struct StudentHomeView: View {
             }
         }
         .padding(16)
-        .background(.white)
+        .background(EPTheme.card)
         .clipShape(RoundedRectangle(cornerRadius: EPTheme.cardRadius))
     }
 
@@ -291,7 +291,7 @@ struct StudentHomeView: View {
             }
         }
         .padding(16)
-        .background(.white)
+        .background(EPTheme.card)
         .clipShape(RoundedRectangle(cornerRadius: EPTheme.cardRadius))
     }
 
@@ -307,7 +307,7 @@ struct StudentHomeView: View {
         }
         .padding(16)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(.white)
+        .background(EPTheme.card)
         .clipShape(RoundedRectangle(cornerRadius: EPTheme.cardRadius))
     }
 
@@ -585,7 +585,7 @@ private struct LearningFlowStatusCard: View {
             }
         }
         .padding(16)
-        .background(.white)
+        .background(EPTheme.card)
         .clipShape(RoundedRectangle(cornerRadius: EPTheme.cardRadius))
     }
 

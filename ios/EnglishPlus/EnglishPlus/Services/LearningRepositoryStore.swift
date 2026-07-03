@@ -60,6 +60,7 @@ protocol LearningRepositoryBackend: AnyObject {
     func continueLearningFlow()
     func enterFreePracticeMode()
     func returnToMissionFlow()
+    func completeFreePracticeSession(correctCount: Int, totalCount: Int)
     func submitMissionAnswer(_ answer: String) -> MissionAttempt?
     func supportRequests(forStudentUid studentUid: String?) -> [StudentSupportRequest]
     func sendSupportRequest(
@@ -136,6 +137,10 @@ final class LearningRepositoryStore: ObservableObject {
         learningFlow.stage == .missionCompleted
     }
 
+    var hasCompletedFreePracticeSession: Bool {
+        learningFlow.hasCompletedFreePracticeSession
+    }
+
     var recentAccuracy: Double? {
         guard !missionAttempts.isEmpty else { return nil }
         let correctCount = missionAttempts.filter(\.isCorrect).count
@@ -167,7 +172,7 @@ final class LearningRepositoryStore: ObservableObject {
 
     var teacherQueue: [StudentSupportRequest] {
         supportRequests
-            .filter(\.isWaitingForStaffAction)
+            .filter(\.requiresStaffTeachingResponse)
             .sorted { priorityScore($0.priority) > priorityScore($1.priority) }
     }
 
@@ -373,6 +378,11 @@ final class LearningRepositoryStore: ObservableObject {
 
     func returnToMissionFlow() {
         backend.returnToMissionFlow()
+        apply(backend.snapshot)
+    }
+
+    func completeFreePracticeSession(correctCount: Int, totalCount: Int) {
+        backend.completeFreePracticeSession(correctCount: correctCount, totalCount: totalCount)
         apply(backend.snapshot)
     }
 

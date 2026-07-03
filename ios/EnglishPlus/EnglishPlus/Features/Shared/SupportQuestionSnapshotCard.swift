@@ -1,4 +1,4 @@
-import SwiftUI
+﻿import SwiftUI
 
 struct SupportQuestionSnapshotCard: View {
     let snapshot: SupportQuestionSnapshot
@@ -57,7 +57,7 @@ struct SupportQuestionSnapshotCard: View {
                 }
                 .padding(10)
                 .frame(maxWidth: .infinity, alignment: .leading)
-                .background(Color(.systemGray6))
+                .background(EPTheme.secondarySurface)
                 .clipShape(RoundedRectangle(cornerRadius: 10))
             }
         }
@@ -73,7 +73,7 @@ struct SupportQuestionSnapshotCard: View {
             .foregroundStyle(EPTheme.primary)
             .padding(.horizontal, 8)
             .padding(.vertical, 5)
-            .background(.white)
+            .background(EPTheme.card)
             .clipShape(RoundedRectangle(cornerRadius: 8))
     }
 

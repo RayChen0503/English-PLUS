@@ -1,4 +1,4 @@
-import SwiftUI
+﻿import SwiftUI
 
 struct ConsentView: View {
     @EnvironmentObject private var appState: AppState
@@ -46,7 +46,7 @@ struct ConsentView: View {
                         )
                     }
                     .padding(16)
-                    .background(.white)
+                    .background(EPTheme.card)
                     .clipShape(RoundedRectangle(cornerRadius: EPTheme.cardRadius))
 
                     Text(PrivacyPolicyCopy.refusalPath)

@@ -64,13 +64,89 @@ struct LearningFlowState: Codable, Equatable {
     let activeMissionId: String?
     let continuation: LearningContinuation?
     let updatedAt: Date
+    let completedFreePracticeSessionCount: Int
+    let lastFreePracticeCompletedAt: Date?
+
+    private enum CodingKeys: String, CodingKey {
+        case dateKey
+        case roundNumber
+        case stage
+        case activeMissionId
+        case continuation
+        case updatedAt
+        case completedFreePracticeSessionCount
+        case lastFreePracticeCompletedAt
+    }
+
+    init(
+        dateKey: String,
+        roundNumber: Int,
+        stage: LearningFlowStage,
+        activeMissionId: String?,
+        continuation: LearningContinuation?,
+        updatedAt: Date,
+        completedFreePracticeSessionCount: Int = 0,
+        lastFreePracticeCompletedAt: Date? = nil
+    ) {
+        self.dateKey = dateKey
+        self.roundNumber = roundNumber
+        self.stage = stage
+        self.activeMissionId = activeMissionId
+        self.continuation = continuation
+        self.updatedAt = updatedAt
+        self.completedFreePracticeSessionCount = max(completedFreePracticeSessionCount, 0)
+        self.lastFreePracticeCompletedAt = lastFreePracticeCompletedAt
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        self.init(
+            dateKey: try container.decode(String.self, forKey: .dateKey),
+            roundNumber: try container.decode(Int.self, forKey: .roundNumber),
+            stage: try container.decode(LearningFlowStage.self, forKey: .stage),
+            activeMissionId: try container.decodeIfPresent(String.self, forKey: .activeMissionId),
+            continuation: try container.decodeIfPresent(LearningContinuation.self, forKey: .continuation),
+            updatedAt: try container.decode(Date.self, forKey: .updatedAt),
+            completedFreePracticeSessionCount: try container.decodeIfPresent(Int.self, forKey: .completedFreePracticeSessionCount) ?? 0,
+            lastFreePracticeCompletedAt: try container.decodeIfPresent(Date.self, forKey: .lastFreePracticeCompletedAt)
+        )
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(dateKey, forKey: .dateKey)
+        try container.encode(roundNumber, forKey: .roundNumber)
+        try container.encode(stage, forKey: .stage)
+        try container.encodeIfPresent(activeMissionId, forKey: .activeMissionId)
+        try container.encodeIfPresent(continuation, forKey: .continuation)
+        try container.encode(updatedAt, forKey: .updatedAt)
+        try container.encode(completedFreePracticeSessionCount, forKey: .completedFreePracticeSessionCount)
+        try container.encodeIfPresent(lastFreePracticeCompletedAt, forKey: .lastFreePracticeCompletedAt)
+    }
 
     var hasActiveMission: Bool {
         activeMissionId != nil
     }
 
+    var hasCompletedFreePracticeSession: Bool {
+        completedFreePracticeSessionCount > 0
+    }
+
     var canContinuePreviousProgress: Bool {
         continuation != nil && stage == .needsCheckIn
+    }
+
+    func recordingFreePracticeSessionCompleted(at date: Date) -> LearningFlowState {
+        LearningFlowState(
+            dateKey: dateKey,
+            roundNumber: roundNumber,
+            stage: stage,
+            activeMissionId: activeMissionId,
+            continuation: continuation,
+            updatedAt: date,
+            completedFreePracticeSessionCount: completedFreePracticeSessionCount + 1,
+            lastFreePracticeCompletedAt: date
+        )
     }
 
     static func initial(dateKey: String, updatedAt: Date = Date()) -> LearningFlowState {
@@ -149,7 +225,9 @@ struct LearningFlowState: Codable, Equatable {
                 stage: storedFlow.stage == .freePractice ? .freePractice : .needsCheckIn,
                 activeMissionId: nil,
                 continuation: storedFlow.continuation,
-                updatedAt: storedFlow.updatedAt
+                updatedAt: storedFlow.updatedAt,
+                completedFreePracticeSessionCount: storedFlow.completedFreePracticeSessionCount,
+                lastFreePracticeCompletedAt: storedFlow.lastFreePracticeCompletedAt
             )
         }
 
@@ -169,7 +247,9 @@ struct LearningFlowState: Codable, Equatable {
             stage: stage,
             activeMissionId: currentMission.id,
             continuation: storedFlow.continuation,
-            updatedAt: storedFlow.updatedAt
+            updatedAt: storedFlow.updatedAt,
+            completedFreePracticeSessionCount: storedFlow.completedFreePracticeSessionCount,
+            lastFreePracticeCompletedAt: storedFlow.lastFreePracticeCompletedAt
         )
     }
 
@@ -251,12 +331,28 @@ struct StudentSupportRequest: Identifiable, Codable, Equatable {
             && (status == .open || status == .waitingForStaff)
     }
 
+    var hasCompleteQuestionSnapshotForStaff: Bool {
+        guard let questionSnapshot else { return false }
+        return !questionSnapshot.prompt.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            && !questionSnapshot.correctAnswer.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            && !questionSnapshot.explanation.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    }
+
+    var requiresStaffTeachingResponse: Bool {
+        isWaitingForStaffAction && hasCompleteQuestionSnapshotForStaff
+    }
+
     var countsTowardStaffBadge: Bool {
-        isWaitingForStaffAction
+        requiresStaffTeachingResponse
     }
 
     var hasStudentUnreadReply: Bool {
         isVisibleToStudent && status == .replied
+    }
+
+    var isPendingOnStudentLearningMap: Bool {
+        isVisibleToStudent
+            && (status == .open || status == .waitingForStaff || hasStudentUnreadReply)
     }
 }
 

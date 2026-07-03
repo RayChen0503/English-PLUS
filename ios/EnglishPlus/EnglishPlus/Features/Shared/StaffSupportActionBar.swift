@@ -1,4 +1,4 @@
-import SwiftUI
+﻿import SwiftUI
 
 struct StaffSupportQueueHeaderCard: View {
     let title: String
@@ -50,7 +50,7 @@ struct StaffSupportQueueHeaderCard: View {
         }
         .padding(16)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(.white)
+        .background(EPTheme.card)
         .clipShape(RoundedRectangle(cornerRadius: EPTheme.cardRadius))
     }
 }

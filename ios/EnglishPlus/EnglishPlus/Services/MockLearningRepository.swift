@@ -77,7 +77,7 @@ final class MockLearningRepository: ObservableObject {
 
     var teacherQueue: [StudentSupportRequest] {
         supportRequests
-            .filter(\.isWaitingForStaffAction)
+            .filter(\.requiresStaffTeachingResponse)
             .sorted { priorityScore($0.priority) > priorityScore($1.priority) }
     }
 
@@ -319,6 +319,8 @@ final class MockLearningRepository: ObservableObject {
             stage: stage,
             activeMissionId: mission.id,
             continuation: nil,
+            completedFreePracticeSessionCount: learningFlow.completedFreePracticeSessionCount,
+            lastFreePracticeCompletedAt: learningFlow.lastFreePracticeCompletedAt,
             updatedAt: now()
         )
         persistSnapshot()
@@ -335,6 +337,8 @@ final class MockLearningRepository: ObservableObject {
                 missionAttempts: missionAttempts,
                 fallbackRoundNumber: learningFlow.roundNumber
             ) ?? learningFlow.continuation,
+            completedFreePracticeSessionCount: learningFlow.completedFreePracticeSessionCount,
+            lastFreePracticeCompletedAt: learningFlow.lastFreePracticeCompletedAt,
             updatedAt: now()
         )
         persistSnapshot()
@@ -349,6 +353,8 @@ final class MockLearningRepository: ObservableObject {
                 stage: .needsCheckIn,
                 activeMissionId: nil,
                 continuation: learningFlow.continuation,
+                completedFreePracticeSessionCount: learningFlow.completedFreePracticeSessionCount,
+                lastFreePracticeCompletedAt: learningFlow.lastFreePracticeCompletedAt,
                 updatedAt: date
             )
             persistSnapshot()
@@ -365,8 +371,16 @@ final class MockLearningRepository: ObservableObject {
                 missionAttempts: missionAttempts,
                 fallbackRoundNumber: learningFlow.roundNumber
             ),
+            completedFreePracticeSessionCount: learningFlow.completedFreePracticeSessionCount,
+            lastFreePracticeCompletedAt: learningFlow.lastFreePracticeCompletedAt,
             updatedAt: date
         )
+        persistSnapshot()
+    }
+
+    func completeFreePracticeSession(correctCount: Int, totalCount: Int) {
+        guard totalCount > 0 else { return }
+        learningFlow = learningFlow.recordingFreePracticeSessionCompleted(at: now())
         persistSnapshot()
     }
 

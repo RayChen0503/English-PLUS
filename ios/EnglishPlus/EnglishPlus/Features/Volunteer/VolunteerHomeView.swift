@@ -1,4 +1,4 @@
-import SwiftUI
+﻿import SwiftUI
 
 struct VolunteerHomeView: View {
     @EnvironmentObject private var appState: AppState
@@ -159,7 +159,7 @@ private struct VolunteerStaffReplyComposerCard: View {
         }
         .padding(16)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(.white)
+        .background(EPTheme.card)
         .clipShape(RoundedRectangle(cornerRadius: EPTheme.cardRadius))
         .onChange(of: request.id) { _, _ in
             replyDraft = ""
@@ -253,7 +253,7 @@ private struct VolunteerHeaderCard: View {
         }
         .padding(18)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(.white)
+        .background(EPTheme.card)
         .clipShape(RoundedRectangle(cornerRadius: EPTheme.cardRadius))
     }
 }
@@ -298,7 +298,7 @@ private struct VolunteerMetricTile: View {
         }
         .padding(14)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(.white)
+        .background(EPTheme.card)
         .clipShape(RoundedRectangle(cornerRadius: EPTheme.cardRadius))
     }
 }
@@ -343,7 +343,7 @@ private struct VolunteerTodayPriorityCard: View {
         }
         .padding(16)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(.white)
+        .background(EPTheme.card)
         .clipShape(RoundedRectangle(cornerRadius: EPTheme.cardRadius))
     }
 
@@ -389,7 +389,7 @@ private struct VolunteerQueuePickerCard: View {
                                 .foregroundStyle(request.priority == .high ? EPTheme.warning : EPTheme.support)
                         }
                         .padding(12)
-                        .background(isSelected(request) ? EPTheme.support.opacity(0.12) : Color(.systemGray6))
+                        .background(isSelected(request) ? EPTheme.support.opacity(0.12) : EPTheme.secondarySurface)
                         .overlay(
                             RoundedRectangle(cornerRadius: 12)
                                 .stroke(isSelected(request) ? EPTheme.support : Color.clear, lineWidth: 1)
@@ -402,7 +402,7 @@ private struct VolunteerQueuePickerCard: View {
         }
         .padding(16)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(.white)
+        .background(EPTheme.card)
         .clipShape(RoundedRectangle(cornerRadius: EPTheme.cardRadius))
     }
 
@@ -445,7 +445,7 @@ private struct VolunteerSelectedSupportPanel: View {
         }
         .padding(16)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(.white)
+        .background(EPTheme.card)
         .clipShape(RoundedRectangle(cornerRadius: EPTheme.cardRadius))
     }
 
@@ -514,7 +514,7 @@ private struct VolunteerQuestionContextCard: View {
         }
         .padding(16)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(.white)
+        .background(EPTheme.card)
         .clipShape(RoundedRectangle(cornerRadius: EPTheme.cardRadius))
     }
 }
@@ -540,13 +540,13 @@ private struct VolunteerCompanionScriptCard: View {
                 }
                 .padding(10)
                 .frame(maxWidth: .infinity, alignment: .leading)
-                .background(Color(.systemGray6))
+                .background(EPTheme.secondarySurface)
                 .clipShape(RoundedRectangle(cornerRadius: 10))
             }
         }
         .padding(16)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(.white)
+        .background(EPTheme.card)
         .clipShape(RoundedRectangle(cornerRadius: EPTheme.cardRadius))
     }
 }
@@ -568,7 +568,7 @@ private struct VolunteerStatusTile: View {
         }
         .padding(12)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(Color(.systemGray6))
+        .background(EPTheme.secondarySurface)
         .clipShape(RoundedRectangle(cornerRadius: 12))
     }
 }
@@ -587,7 +587,7 @@ private struct VolunteerRecordStatusCard: View {
         }
         .padding(16)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(.white)
+        .background(EPTheme.card)
         .clipShape(RoundedRectangle(cornerRadius: EPTheme.cardRadius))
     }
 }
@@ -624,13 +624,13 @@ private struct VolunteerRecordRequestCard: View {
                     .fixedSize(horizontal: false, vertical: true)
                     .padding(10)
                     .frame(maxWidth: .infinity, alignment: .leading)
-                    .background(Color(.systemGray6))
+                    .background(EPTheme.secondarySurface)
                     .clipShape(RoundedRectangle(cornerRadius: 10))
             }
         }
         .padding(16)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(.white)
+        .background(EPTheme.card)
         .clipShape(RoundedRectangle(cornerRadius: EPTheme.cardRadius))
     }
 }
@@ -648,7 +648,7 @@ private struct VolunteerEmptyQueueCard: View {
         }
         .padding(16)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(.white)
+        .background(EPTheme.card)
         .clipShape(RoundedRectangle(cornerRadius: EPTheme.cardRadius))
     }
 }
@@ -666,7 +666,7 @@ private struct EmptyRecordCard: View {
         }
         .padding(16)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(.white)
+        .background(EPTheme.card)
         .clipShape(RoundedRectangle(cornerRadius: EPTheme.cardRadius))
     }
 }

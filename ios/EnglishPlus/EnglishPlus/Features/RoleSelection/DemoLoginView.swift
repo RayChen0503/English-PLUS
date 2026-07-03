@@ -1,4 +1,4 @@
-import SwiftUI
+﻿import SwiftUI
 
 struct DemoLoginView: View {
     @EnvironmentObject private var appState: AppState
@@ -81,13 +81,13 @@ struct DemoLoginView: View {
                                 .buttonStyle(.plain)
                             }
                             .padding(10)
-                            .background(Color(.systemGray6))
+                            .background(EPTheme.secondarySurface)
                             .clipShape(RoundedRectangle(cornerRadius: 8))
                         }
                     }
                     .padding(16)
                     .frame(maxWidth: .infinity, alignment: .leading)
-                    .background(.white)
+                    .background(EPTheme.card)
                     .clipShape(RoundedRectangle(cornerRadius: EPTheme.cardRadius))
 
                     if let message = appState.signInErrorMessage {

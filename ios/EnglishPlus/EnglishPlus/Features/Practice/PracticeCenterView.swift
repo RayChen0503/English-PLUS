@@ -1,4 +1,4 @@
-import SwiftUI
+﻿import SwiftUI
 
 struct PracticeCenterView: View {
     @EnvironmentObject private var appState: AppState
@@ -16,6 +16,9 @@ struct PracticeCenterView: View {
     @State private var practiceQuestionAIResponse: AiProxyResponse?
     @State private var wrongAnswerAIResponse: AiProxyResponse?
     @State private var practiceSupportConfirmation: String?
+    @State private var activePracticeSourceTitle: String?
+    @State private var practiceSelectionNote: String?
+    @State private var practiceOptionOrderByQuestionId: [String: [String]] = [:]
     @State private var freePracticeSessionItems: [QuestionBankItem] = []
     @State private var freePracticeAnsweredCount = 0
     @State private var freePracticeCorrectCount = 0
@@ -74,7 +77,7 @@ struct PracticeCenterView: View {
         }
         .padding(16)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(.white)
+        .background(EPTheme.card)
         .clipShape(RoundedRectangle(cornerRadius: EPTheme.cardRadius))
     }
 
@@ -130,7 +133,7 @@ struct PracticeCenterView: View {
         }
         .padding(16)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(.white)
+        .background(EPTheme.card)
         .clipShape(RoundedRectangle(cornerRadius: EPTheme.cardRadius))
     }
 
@@ -144,6 +147,13 @@ struct PracticeCenterView: View {
                 Text(positionText)
                     .font(.caption.bold())
                     .foregroundStyle(.secondary)
+            }
+
+            if let practiceSelectionNote, !practiceSelectionNote.isEmpty {
+                Label(practiceSelectionNote, systemImage: "arrow.triangle.branch")
+                    .font(.caption.bold())
+                    .foregroundStyle(EPTheme.primary)
+                    .fixedSize(horizontal: false, vertical: true)
             }
 
             if isFreePracticeSessionComplete {
@@ -160,7 +170,7 @@ struct PracticeCenterView: View {
                 PracticeSessionStartCard(
                     availableCount: filteredPracticeItems.count,
                     sessionLimit: min(freePracticeSessionLimit, filteredPracticeItems.count),
-                    selectedSetTitle: selectedPracticeSet?.title ?? "全部題庫",
+                    selectedSetTitle: activePracticeSourceTitle ?? selectedPracticeSet?.title ?? "全部題庫",
                     onStart: startFreePracticeSession
                 )
             } else if let item = currentPracticeItem {
@@ -184,7 +194,7 @@ struct PracticeCenterView: View {
                         .textFieldStyle(.roundedBorder)
                 } else {
                     VStack(spacing: 8) {
-                        ForEach(item.question.options, id: \.self) { option in
+                        ForEach(shuffledAnswerOptions(for: item), id: \.self) { option in
                             PracticeAnswerOptionButton(
                                 option: option,
                                 isSelected: option == practiceAnswer
@@ -251,7 +261,7 @@ struct PracticeCenterView: View {
         }
         .padding(16)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(.white)
+        .background(EPTheme.card)
         .clipShape(RoundedRectangle(cornerRadius: EPTheme.cardRadius))
     }
 
@@ -291,8 +301,8 @@ struct PracticeCenterView: View {
             if let practiceAIResponse {
                 PracticeAIRecommendationView(
                     response: practiceAIResponse,
-                    recommendedPracticeSet: recommendedPracticeSet,
-                    onApplyRecommendation: applyAIRecommendedPracticeSet
+                    recommendedPracticePlan: recommendedPracticePlan,
+                    onApplyRecommendation: applyAIRecommendedPracticePlan
                 )
             }
         }
@@ -326,21 +336,9 @@ struct PracticeCenterView: View {
         return learningRepository.questionPracticeSets.first { $0.id == selectedPracticeSetId }
     }
 
-    private var recommendedPracticeSet: QuestionPracticeSet? {
-        let sets = learningRepository.questionPracticeSets
-        guard !sets.isEmpty else { return nil }
-
-        if let exactMatch = sets.first(where: setMatchesAIRecommendation) {
-            return exactMatch
-        }
-
-        if let preferredMatch = sets.first(where: { set in
-            preferredQuestionTypesForAI.contains(set.type)
-        }) {
-            return preferredMatch
-        }
-
-        return sets.first
+    private var recommendedPracticePlan: AIPracticeRecommendationPlan? {
+        guard let practiceAIResponse else { return nil }
+        return buildAIRecommendationPlan(from: practiceAIResponse)
     }
 
     private var questionBankItems: [QuestionBankItem] {
@@ -422,6 +420,9 @@ struct PracticeCenterView: View {
         wrongAnswerAIResponse = nil
         practiceQuestionAIResponse = nil
         practiceSupportConfirmation = nil
+        activePracticeSourceTitle = nil
+        practiceSelectionNote = nil
+        practiceOptionOrderByQuestionId = [:]
         freePracticeSessionItems = []
         freePracticeAnsweredCount = 0
         freePracticeCorrectCount = 0
@@ -430,8 +431,21 @@ struct PracticeCenterView: View {
     }
 
     private func startFreePracticeSession() {
-        let sessionItems = Array(filteredPracticeItems.prefix(freePracticeSessionLimit))
+        let sessionSelection = buildPracticeSessionItems(from: filteredPracticeItems)
+        let sessionItems = sessionSelection.items
+        practiceSelectionNote = sessionSelection.note
+        startPracticeSession(with: sessionItems, sourceTitle: selectedPracticeSet?.title ?? "自由練習")
+    }
+
+    private func startPracticeSession(with items: [QuestionBankItem], sourceTitle: String? = nil) {
+        let sessionItems = Array(balancedPracticeItems(from: items).prefix(freePracticeSessionLimit))
         freePracticeSessionItems = sessionItems
+        activePracticeSourceTitle = sourceTitle
+        practiceOptionOrderByQuestionId = Dictionary(
+            uniqueKeysWithValues: sessionItems.map { item in
+                (item.id, balancedAnswerOptions(for: item))
+            }
+        )
         practiceIndex = 0
         practiceAnswer = ""
         practiceResult = nil
@@ -445,6 +459,10 @@ struct PracticeCenterView: View {
     }
 
     private func finishFreePracticeSession() {
+        learningRepository.completeFreePracticeSession(
+            correctCount: freePracticeCorrectCount,
+            totalCount: freePracticeSessionItems.count
+        )
         practiceAnswer = ""
         practiceResult = nil
         wrongAnswerAIResponse = nil
@@ -454,39 +472,417 @@ struct PracticeCenterView: View {
         isFreePracticeSessionComplete = true
     }
 
-    private func setMatchesAIRecommendation(_ set: QuestionPracticeSet) -> Bool {
-        let recommendationText = [
-            practiceAIResponse?.output.summary,
-            practiceAIResponse?.output.nextHint,
-            practiceAIResponse?.output.teacherSummary,
-            practiceAIResponse?.output.recommendedNextAction,
-        ]
-            .compactMap { $0 }
-            .joined(separator: " ")
-            .lowercased()
+    private func buildAIRecommendationPlan(from response: AiProxyResponse) -> AIPracticeRecommendationPlan? {
+        let searchText = recommendationSearchText(from: response)
+        let inferredTypes = inferRecommendedQuestionTypes(from: searchText)
+        let inferredLevels = inferRecommendedQuestionLevels(from: searchText)
+        let skillHints = inferRecommendedSkillHints(from: searchText)
 
-        let preferredTypeMatches = preferredQuestionTypesForAI.contains(set.type)
-        let typeTextMatches = recommendationText.contains(set.type.rawValue.lowercased())
-            || recommendationText.contains(set.type.aiProxyValue.lowercased())
-        let skillText = set.skill.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
-        let skillMatches = !skillText.isEmpty && recommendationText.contains(skillText)
-        let weakSkillMatches = learningRepository.recentWeakSkills.contains { weakSkill in
-            let normalized = weakSkill.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
-            return !normalized.isEmpty && skillText.contains(normalized)
-        }
+        let scoredItems = questionBankItems
+            .map { item in
+                (item: item, score: scoreAIRecommendedItem(
+                    item,
+                    searchText: searchText,
+                    inferredTypes: inferredTypes,
+                    inferredLevels: inferredLevels,
+                    skillHints: skillHints
+                ))
+            }
+            .filter { $0.score > 0 }
+            .sorted { left, right in
+                if left.score != right.score {
+                    return left.score > right.score
+                }
+                return left.item.id < right.item.id
+            }
+            .map(\.item)
+            .uniqued(by: \.id)
 
-        if recommendationText.isEmpty {
-            return preferredTypeMatches || weakSkillMatches
-        }
+        let fallbackItems = fallbackAIRecommendationItems(
+            inferredTypes: inferredTypes,
+            inferredLevels: inferredLevels
+        )
+        let selectedItems = Array((scoredItems.isEmpty ? fallbackItems : scoredItems).prefix(freePracticeSessionLimit))
+        guard let firstItem = selectedItems.first else { return nil }
 
-        return typeTextMatches || skillMatches || weakSkillMatches
+        let resolvedSkill = resolvedRecommendationSkill(from: selectedItems, skillHints: skillHints)
+        let titleSkill = resolvedSkill.isEmpty ? firstItem.skill : resolvedSkill
+        let title = "AI 推薦：\(firstItem.question.type.title) / \(titleSkill)"
+        let subtitle = "\(selectedItems.count) 題，約 \(max(3, min(18, selectedItems.count * 2))) 分鐘"
+        let note = recommendationMatchNote(
+            inferredTypes: inferredTypes,
+            inferredLevels: inferredLevels,
+            skill: titleSkill,
+            usedFallback: scoredItems.isEmpty
+        )
+
+        return AIPracticeRecommendationPlan(
+            id: "ai-\(firstItem.question.type.rawValue)-\(firstItem.level.rawValue)-\(selectedItems.map(\.id).joined(separator: "-"))",
+            title: title,
+            subtitle: subtitle,
+            matchNote: note,
+            type: firstItem.question.type,
+            level: firstItem.level,
+            skill: titleSkill,
+            items: selectedItems
+        )
     }
 
-    private func applyAIRecommendedPracticeSet(_ set: QuestionPracticeSet) {
-        selectedPracticeSetId = set.id
-        selectedPracticeType = set.type
-        selectedPracticeLevel = set.level
-        resetPracticePosition()
+    private func recommendationSearchText(from response: AiProxyResponse) -> String {
+        var parts = [
+            response.output.summary,
+            response.output.shortFeedback,
+            response.output.whyWrong,
+            response.output.nextHint,
+            response.output.teacherSummary,
+            response.output.studentFacingFeedback,
+            response.output.recommendedNextAction,
+        ].compactMap { $0 }
+
+        if let mission = response.output.mission {
+            parts.append(mission.track.rawValue)
+            mission.questionPlan.forEach { planItem in
+                parts.append("\(planItem.type) \(planItem.difficulty)")
+            }
+        }
+
+        return parts.joined(separator: " ").lowercased()
+    }
+
+    private func inferRecommendedQuestionTypes(from searchText: String) -> [QuestionType] {
+        var types: [QuestionType] = []
+
+        func append(_ type: QuestionType, when keywords: [String]) {
+            guard keywords.contains(where: { searchText.contains($0) }),
+                  !types.contains(type)
+            else { return }
+            types.append(type)
+        }
+
+        append(.cloze, when: ["cloze", "克漏", "文意推論"])
+        append(.grammar, when: ["grammar", "multiplechoice", "文法", "be 動詞", "be动词", "be verb", "am is are"])
+        append(.fillBlank, when: ["fillblank", "fill blank", "blank", "填空"])
+        append(.reading, when: ["reading", "閱讀"])
+        append(.translation, when: ["translation", "翻譯", "句子重組"])
+        append(.dialogue, when: ["dialogue", "對話"])
+        append(.vocabulary, when: ["vocabulary", "單字", "字彙"])
+
+        if types.isEmpty, let selectedPracticeType {
+            types.append(selectedPracticeType)
+        }
+
+        if types.isEmpty {
+            types.append(contentsOf: preferredQuestionTypesForAI)
+        }
+
+        return types.uniqued()
+    }
+
+    private func inferRecommendedQuestionLevels(from searchText: String) -> [QuestionLevel] {
+        var levels: [QuestionLevel] = []
+
+        func append(_ level: QuestionLevel, when keywords: [String]) {
+            guard keywords.contains(where: { searchText.contains($0.lowercased()) }),
+                  !levels.contains(level)
+            else { return }
+            levels.append(level)
+        }
+
+        append(.a1, when: ["a1", "基礎", "低壓", "repair"])
+        append(.a2, when: ["a2", "穩定", "steady"])
+        append(.b1, when: ["b1", "會考", "挑戰"])
+        append(.b2, when: ["b2", "進階", "高挑戰"])
+
+        if levels.isEmpty, let selectedPracticeLevel {
+            levels.append(selectedPracticeLevel)
+        }
+
+        return levels
+    }
+
+    private func inferRecommendedSkillHints(from searchText: String) -> [String] {
+        let hardcodedHints = [
+            "be 動詞",
+            "be动词",
+            "be verb",
+            "am",
+            "is",
+            "are",
+            "was",
+            "were",
+            "克漏",
+            "文意推論",
+        ].filter { searchText.contains($0.lowercased()) }
+
+        let bankSkills = questionBankItems
+            .map(\.skill)
+            .filter { !$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
+            .filter { searchText.contains($0.lowercased()) }
+
+        let weakSkills = learningRepository.recentWeakSkills
+            .filter { !$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
+            .filter { searchText.contains($0.lowercased()) || searchText.isEmpty }
+
+        return (hardcodedHints + bankSkills + weakSkills).uniqued()
+    }
+
+    private func scoreAIRecommendedItem(
+        _ item: QuestionBankItem,
+        searchText: String,
+        inferredTypes: [QuestionType],
+        inferredLevels: [QuestionLevel],
+        skillHints: [String]
+    ) -> Int {
+        var score = 0
+        let itemText = "\(item.skill) \(item.unit) \(item.question.concept) \(item.question.prompt) \(item.question.explanation)"
+            .lowercased()
+
+        if let typeIndex = inferredTypes.firstIndex(of: item.question.type) {
+            score += max(70, 140 - (typeIndex * 30))
+        } else if !inferredTypes.isEmpty {
+            score -= 30
+        } else if preferredQuestionTypesForAI.contains(item.question.type) {
+            score += 16
+        }
+
+        if inferredLevels.contains(item.level) {
+            score += 24
+        } else if !inferredLevels.isEmpty {
+            score -= 8
+        }
+
+        skillHints.forEach { hint in
+            let normalizedHint = hint.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+            if !normalizedHint.isEmpty, itemText.contains(normalizedHint) {
+                score += 34
+            }
+        }
+
+        if !item.skill.isEmpty, searchText.contains(item.skill.lowercased()) {
+            score += 48
+        }
+
+        let weakSkillMatches = learningRepository.recentWeakSkills.contains { weakSkill in
+            let normalized = weakSkill.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+            return !normalized.isEmpty && itemText.contains(normalized)
+        }
+        if weakSkillMatches {
+            score += 28
+        }
+
+        if selectedPracticeType == item.question.type {
+            score += 12
+        }
+        if selectedPracticeLevel == item.level {
+            score += 8
+        }
+
+        return score
+    }
+
+    private func fallbackAIRecommendationItems(
+        inferredTypes: [QuestionType],
+        inferredLevels: [QuestionLevel]
+    ) -> [QuestionBankItem] {
+        var candidates = questionBankItems
+
+        if let type = inferredTypes.first {
+            let typeMatches = candidates.filter { $0.question.type == type }
+            if !typeMatches.isEmpty {
+                candidates = typeMatches
+            }
+        }
+
+        if let level = inferredLevels.first {
+            let levelMatches = candidates.filter { $0.level == level }
+            if !levelMatches.isEmpty {
+                candidates = levelMatches
+            }
+        }
+
+        if candidates.isEmpty {
+            candidates = filteredPracticeItems
+        }
+
+        return candidates.isEmpty ? questionBankItems : candidates
+    }
+
+    private func buildPracticeSessionItems(from candidates: [QuestionBankItem]) -> PracticeSessionSelection {
+        let balancedCandidates = balancedPracticeItems(from: candidates)
+        let exactItems = Array(balancedCandidates.prefix(freePracticeSessionLimit))
+        if exactItems.count >= freePracticeSessionLimit {
+            return PracticeSessionSelection(
+                items: exactItems,
+                note: nil
+            )
+        }
+
+        let exactIds = Set(exactItems.map(\.id))
+        let fallbackCandidates = fallbackPracticeCandidates()
+            .filter { !exactIds.contains($0.id) }
+        let filledItems = Array(
+            balancedPracticeItems(from: exactItems + fallbackCandidates)
+                .prefix(freePracticeSessionLimit)
+        )
+        let note = filledItems.isEmpty
+            ? "目前題庫還沒有可用題目。"
+            : (filledItems.count > exactItems.count
+                ? "目前條件題數不足，已自動放寬條件，先安排最接近的一組。"
+                : nil)
+        return PracticeSessionSelection(items: filledItems, note: note)
+    }
+
+    private func fallbackPracticeCandidates() -> [QuestionBankItem] {
+        let allItems = questionBankItems
+        var candidateGroups: [[QuestionBankItem]] = []
+
+        if let selectedPracticeType {
+            candidateGroups.append(allItems.filter { $0.question.type == selectedPracticeType })
+        }
+
+        if let selectedPracticeLevel {
+            candidateGroups.append(allItems.filter { $0.level == selectedPracticeLevel })
+        }
+
+        let preferredItems = allItems.filter { preferredQuestionTypesForAI.contains($0.question.type) }
+        candidateGroups.append(preferredItems)
+        candidateGroups.append(allItems)
+
+        return candidateGroups.first(where: { !$0.isEmpty }) ?? []
+    }
+
+    private func balancedPracticeItems(from items: [QuestionBankItem]) -> [QuestionBankItem] {
+        var remaining = items
+            .uniqued(by: \.id)
+            .sorted { stablePracticeSortKey($0) < stablePracticeSortKey($1) }
+        var selected: [QuestionBankItem] = []
+
+        while !remaining.isEmpty, selected.count < freePracticeSessionLimit {
+            let nextIndex = remaining.indices.max { leftIndex, rightIndex in
+                let leftScore = practiceDiversityScore(for: remaining[leftIndex], selected: selected)
+                let rightScore = practiceDiversityScore(for: remaining[rightIndex], selected: selected)
+                if leftScore != rightScore {
+                    return leftScore < rightScore
+                }
+                return stablePracticeSortKey(remaining[leftIndex]) > stablePracticeSortKey(remaining[rightIndex])
+            } ?? remaining.startIndex
+
+            selected.append(remaining.remove(at: nextIndex))
+        }
+
+        return selected
+    }
+
+    private func practiceDiversityScore(for item: QuestionBankItem, selected: [QuestionBankItem]) -> Int {
+        guard !selected.isEmpty else { return 1_000 }
+
+        let recentItems = selected.suffix(3)
+        var score = 0
+
+        if !recentItems.contains(where: { answerDistributionKey($0) == answerDistributionKey(item) }) {
+            score += 60
+        }
+
+        if !recentItems.contains(where: { normalizedPracticeSkill($0.skill) == normalizedPracticeSkill(item.skill) }) {
+            score += 34
+        }
+
+        if selected.last?.question.type != item.question.type {
+            score += 12
+        }
+
+        if !selected.contains(where: { $0.question.prompt == item.question.prompt }) {
+            score += 8
+        }
+
+        score += stablePracticeHash(item.id) % 7
+        return score
+    }
+
+    private func stablePracticeSortKey(_ item: QuestionBankItem) -> String {
+        "\(item.question.type.rawValue)-\(item.level.rawValue)-\(normalizedPracticeSkill(item.skill))-\(item.id)"
+    }
+
+    private func answerDistributionKey(_ item: QuestionBankItem) -> String {
+        normalizedPracticeAnswer(item.question.answer)
+    }
+
+    private func normalizedPracticeSkill(_ skill: String) -> String {
+        skill.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+    }
+
+    private func balancedAnswerOptions(for item: QuestionBankItem) -> [String] {
+        var options = item.question.options.uniqued()
+        if options.isEmpty {
+            return []
+        }
+
+        if !options.map(normalizedPracticeAnswer).contains(normalizedPracticeAnswer(item.question.answer)) {
+            options.append(item.question.answer)
+        }
+
+        let offset = stablePracticeHash("\(item.id)-options") % options.count
+        var rotated = options.indices.map { index in
+            options[(index + offset) % options.count]
+        }
+
+        let correctKey = normalizedPracticeAnswer(item.question.answer)
+        if let correctIndex = rotated.firstIndex(where: { normalizedPracticeAnswer($0) == correctKey }) {
+            let preferredIndex = stablePracticeHash("\(item.id)-answer") % rotated.count
+            if preferredIndex != correctIndex {
+                rotated.swapAt(correctIndex, preferredIndex)
+            }
+        }
+
+        return rotated
+    }
+
+    private func shuffledAnswerOptions(for item: QuestionBankItem) -> [String] {
+        practiceOptionOrderByQuestionId[item.id] ?? balancedAnswerOptions(for: item)
+    }
+
+    private func stablePracticeHash(_ text: String) -> Int {
+        text.unicodeScalars.reduce(17) { partial, scalar in
+            ((partial * 31) + Int(scalar.value)) % 1_000_003
+        }
+    }
+
+    private func resolvedRecommendationSkill(from items: [QuestionBankItem], skillHints: [String]) -> String {
+        if let matchingHint = skillHints.first(where: { hint in
+            let normalizedHint = hint.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+            return !normalizedHint.isEmpty && items.contains { item in
+                "\(item.skill) \(item.unit) \(item.question.concept) \(item.question.prompt)"
+                    .lowercased()
+                    .contains(normalizedHint)
+            }
+        }) {
+            return matchingHint
+        }
+
+        return items.first?.skill ?? ""
+    }
+
+    private func recommendationMatchNote(
+        inferredTypes: [QuestionType],
+        inferredLevels: [QuestionLevel],
+        skill: String,
+        usedFallback: Bool
+    ) -> String {
+        let typeText = inferredTypes.first?.title ?? "目前條件"
+        let levelText = inferredLevels.first?.uiTitle ?? "合適難度"
+        let skillText = skill.isEmpty ? "最近卡點" : skill
+        return usedFallback
+            ? "找不到完全符合的題組，已改用最接近的 \(typeText) / \(levelText)。"
+            : "依 AI 建議鎖定 \(typeText) / \(levelText)，優先練 \(skillText)。"
+    }
+
+    private func applyAIRecommendedPracticePlan(_ plan: AIPracticeRecommendationPlan) {
+        selectedPracticeSetId = nil
+        selectedPracticeType = plan.type
+        selectedPracticeLevel = plan.level
+        let sessionSelection = buildPracticeSessionItems(from: plan.items)
+        startPracticeSession(with: sessionSelection.items, sourceTitle: plan.title)
+        practiceSelectionNote = sessionSelection.note ?? plan.matchNote
     }
 
     private func submitPracticeAnswer(for item: QuestionBankItem) {
@@ -674,6 +1070,30 @@ private struct PracticeResult: Equatable {
     let repairHint: String
 }
 
+private struct PracticeSessionSelection: Equatable {
+    let items: [QuestionBankItem]
+    let note: String?
+}
+
+private struct AIPracticeRecommendationPlan: Identifiable, Equatable {
+    let id: String
+    let title: String
+    let subtitle: String
+    let matchNote: String
+    let type: QuestionType
+    let level: QuestionLevel
+    let skill: String
+    let items: [QuestionBankItem]
+
+    var questionCount: Int {
+        items.count
+    }
+
+    var estimatedMinutes: Int {
+        max(3, min(18, items.count * 2))
+    }
+}
+
 private enum PracticeSupportTarget {
     case teacher
     case volunteer
@@ -712,7 +1132,7 @@ private struct PracticeStatPill: View {
         }
         .padding(.horizontal, 12)
         .padding(.vertical, 8)
-        .background(Color(.systemGray6))
+        .background(EPTheme.secondarySurface)
         .clipShape(RoundedRectangle(cornerRadius: EPTheme.cardRadius))
     }
 }
@@ -741,7 +1161,7 @@ private struct PracticeFilterChip: View {
             .font(.caption.bold())
             .frame(maxWidth: .infinity, minHeight: 38)
             .foregroundStyle(isSelected ? .white : EPTheme.ink)
-            .background(isSelected ? EPTheme.primary : Color(.systemGray6))
+            .background(isSelected ? EPTheme.primary : EPTheme.secondarySurface)
             .clipShape(RoundedRectangle(cornerRadius: EPTheme.cardRadius))
         }
         .buttonStyle(.plain)
@@ -781,7 +1201,7 @@ private struct PracticeSetSelectionCard: View {
         }
         .padding(16)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(.white)
+        .background(EPTheme.card)
         .clipShape(RoundedRectangle(cornerRadius: EPTheme.cardRadius))
     }
 
@@ -809,7 +1229,7 @@ private struct PracticeSetSelectionCard: View {
             .frame(width: 160, alignment: .leading)
             .frame(minHeight: 74, alignment: .leading)
             .padding(12)
-            .background(isSelected ? EPTheme.primary : Color(.systemGray6))
+            .background(isSelected ? EPTheme.primary : EPTheme.secondarySurface)
             .clipShape(RoundedRectangle(cornerRadius: EPTheme.cardRadius))
         }
         .buttonStyle(.plain)
@@ -832,7 +1252,7 @@ private struct PracticeAnswerOptionButton: View {
                 Spacer()
             }
             .padding(12)
-            .background(isSelected ? EPTheme.primary.opacity(0.12) : Color(.systemGray6))
+            .background(isSelected ? EPTheme.primary.opacity(0.12) : EPTheme.secondarySurface)
             .clipShape(RoundedRectangle(cornerRadius: EPTheme.cardRadius))
         }
         .buttonStyle(.plain)
@@ -941,7 +1361,7 @@ private struct FreePracticeSessionSummaryCard: View {
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(10)
-        .background(.white)
+        .background(EPTheme.card)
         .clipShape(RoundedRectangle(cornerRadius: EPTheme.cardRadius))
     }
 }
@@ -1032,6 +1452,16 @@ private extension Array {
     }
 }
 
+private extension Array where Element: Equatable {
+    func uniqued() -> [Element] {
+        var result: [Element] = []
+        for element in self where !result.contains(element) {
+            result.append(element)
+        }
+        return result
+    }
+}
+
 private struct PracticeResultCard: View {
     let result: PracticeResult
     let aiResponse: AiProxyResponse?
@@ -1079,8 +1509,8 @@ private struct PracticeResultCard: View {
 
 private struct PracticeAIRecommendationView: View {
     let response: AiProxyResponse
-    let recommendedPracticeSet: QuestionPracticeSet?
-    let onApplyRecommendation: (QuestionPracticeSet) -> Void
+    let recommendedPracticePlan: AIPracticeRecommendationPlan?
+    let onApplyRecommendation: (AIPracticeRecommendationPlan) -> Void
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
@@ -1093,21 +1523,21 @@ private struct PracticeAIRecommendationView: View {
                     .fixedSize(horizontal: false, vertical: true)
             }
 
-            if let recommendedPracticeSet {
-                PracticeAIRecommendationActionCard(set: recommendedPracticeSet) {
-                    onApplyRecommendation(recommendedPracticeSet)
+            if let recommendedPracticePlan {
+                PracticeAIRecommendationActionCard(plan: recommendedPracticePlan) {
+                    onApplyRecommendation(recommendedPracticePlan)
                 }
             }
         }
         .padding(12)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(.white)
+        .background(EPTheme.card)
         .clipShape(RoundedRectangle(cornerRadius: EPTheme.cardRadius))
     }
 }
 
 private struct PracticeAIRecommendationActionCard: View {
-    let set: QuestionPracticeSet
+    let plan: AIPracticeRecommendationPlan
     let action: () -> Void
 
     var body: some View {
@@ -1115,16 +1545,20 @@ private struct PracticeAIRecommendationActionCard: View {
             Text("推薦題組")
                 .font(.caption.bold())
                 .foregroundStyle(EPTheme.primary)
-            Text(set.title)
+            Text(plan.title)
                 .font(.subheadline.bold())
                 .foregroundStyle(EPTheme.ink)
                 .fixedSize(horizontal: false, vertical: true)
-            Text("\(set.questionCount) 題，約 \(set.estimatedMinutes) 分鐘")
+            Text("\(plan.questionCount) 題，約 \(plan.estimatedMinutes) 分鐘")
                 .font(.caption)
                 .foregroundStyle(.secondary)
+            Text(plan.matchNote)
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
 
             Button(action: action) {
-                Label("套用這組練習", systemImage: "checkmark.circle.fill")
+                Label("套用並開始這組練習", systemImage: "checkmark.circle.fill")
                     .font(.subheadline.bold())
                     .frame(maxWidth: .infinity, minHeight: 44)
             }
@@ -1184,7 +1618,7 @@ private struct PracticeEmptyState: View {
         }
         .padding(12)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(Color(.systemGray6))
+        .background(EPTheme.secondarySurface)
         .clipShape(RoundedRectangle(cornerRadius: EPTheme.cardRadius))
     }
 }

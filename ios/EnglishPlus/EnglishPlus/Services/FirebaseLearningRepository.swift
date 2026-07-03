@@ -129,6 +129,8 @@ final class FirebaseLearningRepository: LearningRepositoryBackend {
             stage: mission.status == .completed ? .missionCompleted : .missionActive,
             activeMissionId: mission.id,
             continuation: nil,
+            completedFreePracticeSessionCount: currentSnapshot.learningFlow.completedFreePracticeSessionCount,
+            lastFreePracticeCompletedAt: currentSnapshot.learningFlow.lastFreePracticeCompletedAt,
             updatedAt: Date()
         )
     }
@@ -145,6 +147,8 @@ final class FirebaseLearningRepository: LearningRepositoryBackend {
                 missionAttempts: currentSnapshot.missionAttempts,
                 fallbackRoundNumber: currentSnapshot.learningFlow.roundNumber
             ) ?? currentSnapshot.learningFlow.continuation,
+            completedFreePracticeSessionCount: currentSnapshot.learningFlow.completedFreePracticeSessionCount,
+            lastFreePracticeCompletedAt: currentSnapshot.learningFlow.lastFreePracticeCompletedAt,
             updatedAt: Date()
         )
     }
@@ -158,6 +162,8 @@ final class FirebaseLearningRepository: LearningRepositoryBackend {
                 stage: .needsCheckIn,
                 activeMissionId: nil,
                 continuation: currentSnapshot.learningFlow.continuation,
+                completedFreePracticeSessionCount: currentSnapshot.learningFlow.completedFreePracticeSessionCount,
+                lastFreePracticeCompletedAt: currentSnapshot.learningFlow.lastFreePracticeCompletedAt,
                 updatedAt: Date()
             )
             return
@@ -176,8 +182,16 @@ final class FirebaseLearningRepository: LearningRepositoryBackend {
                 missionAttempts: currentSnapshot.missionAttempts,
                 fallbackRoundNumber: currentSnapshot.learningFlow.roundNumber
             ),
+            completedFreePracticeSessionCount: currentSnapshot.learningFlow.completedFreePracticeSessionCount,
+            lastFreePracticeCompletedAt: currentSnapshot.learningFlow.lastFreePracticeCompletedAt,
             updatedAt: Date()
         )
+    }
+
+    func completeFreePracticeSession(correctCount: Int, totalCount: Int) {
+        guard totalCount > 0 else { return }
+        fallback.completeFreePracticeSession(correctCount: correctCount, totalCount: totalCount)
+        currentSnapshot.learningFlow = currentSnapshot.learningFlow.recordingFreePracticeSessionCompleted(at: Date())
     }
 
     func submitMissionAnswer(_ answer: String) -> MissionAttempt? {

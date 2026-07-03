@@ -1,4 +1,4 @@
-import SwiftUI
+﻿import SwiftUI
 
 struct RoleSelectionView: View {
     @EnvironmentObject private var appState: AppState
@@ -49,7 +49,7 @@ struct RoleSelectionView: View {
                                         .foregroundStyle(.secondary)
                                 }
                                 .padding(16)
-                                .background(.white)
+                                .background(EPTheme.card)
                                 .clipShape(RoundedRectangle(cornerRadius: EPTheme.cardRadius))
                             }
                             .buttonStyle(.plain)
