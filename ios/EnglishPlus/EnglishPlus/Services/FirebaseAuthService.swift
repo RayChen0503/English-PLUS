@@ -118,7 +118,7 @@ struct FirebaseAuthService: AuthService {
 
     #if canImport(FirebaseAuth)
     private func signInWithFirebase(email: String, password: String) async throws -> AuthDataResult {
-        try await withCheckedThrowingContinuation { continuation in
+        try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<AuthDataResult, Error>) in
             Auth.auth().signIn(withEmail: email, password: password) { result, error in
                 if let error {
                     continuation.resume(throwing: error)
@@ -135,7 +135,7 @@ struct FirebaseAuthService: AuthService {
     }
 
     private func createUserWithFirebase(email: String, password: String) async throws -> AuthDataResult {
-        try await withCheckedThrowingContinuation { continuation in
+        try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<AuthDataResult, Error>) in
             Auth.auth().createUser(withEmail: email, password: password) { result, error in
                 if let error {
                     continuation.resume(throwing: error)
@@ -153,7 +153,7 @@ struct FirebaseAuthService: AuthService {
 
     private func updateFirebaseDisplayName(_ displayName: String, for user: User) async throws {
         guard !displayName.isEmpty else { return }
-        try await withCheckedThrowingContinuation { continuation in
+        try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
             let request = user.createProfileChangeRequest()
             request.displayName = displayName
             request.commitChanges { error in
@@ -226,7 +226,7 @@ struct FirebaseAuthService: AuthService {
     }
 
     private func setDocument(path: String, data: [String: Any], merge: Bool) async throws {
-        try await withCheckedThrowingContinuation { continuation in
+        try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
             Firestore.firestore().document(path).setData(data, merge: merge) { error in
                 if let error {
                     continuation.resume(throwing: error)
@@ -263,7 +263,7 @@ struct FirebaseAuthService: AuthService {
     }
 
     private func documentSnapshot(path: String) async throws -> DocumentSnapshot {
-        try await withCheckedThrowingContinuation { continuation in
+        try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<DocumentSnapshot, Error>) in
             Firestore.firestore().document(path).getDocument { snapshot, error in
                 if let error {
                     continuation.resume(throwing: error)

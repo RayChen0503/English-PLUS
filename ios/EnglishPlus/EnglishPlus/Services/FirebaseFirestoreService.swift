@@ -125,7 +125,7 @@ final class FirebaseFirestoreService: FirestoreService {
 
     #if canImport(FirebaseFirestore)
     private func documentSnapshot(path: String, db: Firestore) async throws -> DocumentSnapshot {
-        try await withCheckedThrowingContinuation { continuation in
+        try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<DocumentSnapshot, Error>) in
             db.document(path).getDocument { snapshot, error in
                 if let error {
                     continuation.resume(throwing: error)
