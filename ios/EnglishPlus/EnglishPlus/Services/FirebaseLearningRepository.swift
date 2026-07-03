@@ -521,7 +521,10 @@ final class FirebaseLearningRepository: LearningRepositoryBackend {
         _ fallbackRequests: [StudentSupportRequest],
         preservingSupportRequests existingSupportRequests: [StudentSupportRequest]
     ) -> [StudentSupportRequest] {
-        var requestsById = Dictionary(uniqueKeysWithValues: existingSupportRequests.map { ($0.id, $0) })
+        var requestsById = Dictionary(
+            existingSupportRequests.map { ($0.id, $0) },
+            uniquingKeysWith: { existing, _ in existing }
+        )
         for request in fallbackRequests {
             requestsById[request.id] = request
         }
@@ -532,7 +535,10 @@ final class FirebaseLearningRepository: LearningRepositoryBackend {
         _ fallbackAssignments: [TeacherAssignedPracticeTask],
         preservingAssignedPracticeTasks existingAssignments: [TeacherAssignedPracticeTask]
     ) -> [TeacherAssignedPracticeTask] {
-        var assignmentsById = Dictionary(uniqueKeysWithValues: existingAssignments.map { ($0.id, $0) })
+        var assignmentsById = Dictionary(
+            existingAssignments.map { ($0.id, $0) },
+            uniquingKeysWith: { existing, _ in existing }
+        )
         for assignment in fallbackAssignments {
             assignmentsById[assignment.id] = assignment
         }
@@ -942,7 +948,10 @@ final class FirebaseLearningRepository: LearningRepositoryBackend {
     }
 
     private func mergeSupportRequests(_ syncedRequests: [StudentSupportRequest]) {
-        let existingById = Dictionary(uniqueKeysWithValues: currentSnapshot.supportRequests.map { ($0.id, $0) })
+        let existingById = Dictionary(
+            currentSnapshot.supportRequests.map { ($0.id, $0) },
+            uniquingKeysWith: { existing, _ in existing }
+        )
         currentSnapshot.supportRequests = syncedRequests.map { request in
             var merged = request
             if let existing = existingById[request.id] {
@@ -964,7 +973,10 @@ final class FirebaseLearningRepository: LearningRepositoryBackend {
     }
 
     private func questionBankItems(for ids: [String]) -> [QuestionBankItem] {
-        let itemsById = Dictionary(uniqueKeysWithValues: SeedData.approvedQuestionBankItems.map { ($0.id, $0) })
+        let itemsById = Dictionary(
+            SeedData.approvedQuestionBankItems.map { ($0.id, $0) },
+            uniquingKeysWith: { existing, _ in existing }
+        )
         return ids.compactMap { itemsById[$0] }
     }
 

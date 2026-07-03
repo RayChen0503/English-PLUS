@@ -149,7 +149,10 @@ final class LearningRepositoryStore: ObservableObject {
 
     var recentWeakSkills: [String] {
         guard let currentMission else { return [] }
-        let questionsById = Dictionary(uniqueKeysWithValues: currentMission.questions.map { ($0.id, $0) })
+        let questionsById = Dictionary(
+            currentMission.questions.map { ($0.id, $0) },
+            uniquingKeysWith: { existing, _ in existing }
+        )
         let missedSkills = missionAttempts
             .filter { !$0.isCorrect }
             .compactMap { questionsById[$0.questionId]?.question.concept }

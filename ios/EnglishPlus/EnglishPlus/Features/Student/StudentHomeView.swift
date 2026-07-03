@@ -352,7 +352,7 @@ struct StudentHomeView: View {
                     .textFieldStyle(.roundedBorder)
             } else {
                 VStack(spacing: 8) {
-                    ForEach(missionOptionOrder(for: item), id: \.self) { option in
+                    ForEach(Array(missionOptionOrder(for: item).enumerated()), id: \.offset) { _, option in
                         AnswerOptionButton(
                             option: option,
                             isSelected: option == selectedAnswer

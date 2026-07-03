@@ -194,7 +194,7 @@ struct PracticeCenterView: View {
                         .textFieldStyle(.roundedBorder)
                 } else {
                     VStack(spacing: 8) {
-                        ForEach(shuffledAnswerOptions(for: item), id: \.self) { option in
+                        ForEach(Array(shuffledAnswerOptions(for: item).enumerated()), id: \.offset) { _, option in
                             PracticeAnswerOptionButton(
                                 option: option,
                                 isSelected: option == practiceAnswer
@@ -442,9 +442,10 @@ struct PracticeCenterView: View {
         freePracticeSessionItems = sessionItems
         activePracticeSourceTitle = sourceTitle
         practiceOptionOrderByQuestionId = Dictionary(
-            uniqueKeysWithValues: sessionItems.enumerated().map { index, item in
+            sessionItems.enumerated().map { index, item in
                 (item.id, QuestionGroupingEngine.balancedOptions(for: item, sessionIndex: index))
-            }
+            },
+            uniquingKeysWith: { _, latest in latest }
         )
         practiceIndex = 0
         practiceAnswer = ""

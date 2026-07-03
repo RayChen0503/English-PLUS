@@ -23,7 +23,12 @@ def main() -> int:
     question_model = read("ios/EnglishPlus/EnglishPlus/Models/Question.swift")
     practice = read("ios/EnglishPlus/EnglishPlus/Features/Practice/PracticeCenterView.swift")
     student_home = read("ios/EnglishPlus/EnglishPlus/Features/Student/StudentHomeView.swift")
+    support_snapshot = read("ios/EnglishPlus/EnglishPlus/Features/Shared/SupportQuestionSnapshotCard.swift")
     mock_repository = read("ios/EnglishPlus/EnglishPlus/Services/MockLearningRepository.swift")
+    app_sources = "\n".join(
+        path.read_text(encoding="utf-8")
+        for path in (ROOT / "ios" / "EnglishPlus" / "EnglishPlus").rglob("*.swift")
+    )
 
     for marker in [
         "enum QuestionGroupingEngine",
@@ -50,15 +55,28 @@ def main() -> int:
         "QuestionGroupingEngine.balancedOptions(",
         "QuestionGroupingEngine.balancedFallbackCandidates(",
         "sessionItems.enumerated().map",
+        "uniquingKeysWith",
         "selection.fallbackUsed",
     ]:
         require(practice, marker, "practice center balanced grouping")
+
+    reject(
+        practice,
+        "practiceOptionOrderByQuestionId = Dictionary(\n            uniqueKeysWithValues:",
+        "unsafe practice option dictionary creation",
+    )
+    reject(
+        practice,
+        "ForEach(shuffledAnswerOptions(for: item), id: \\.self)",
+        "practice option ForEach keyed by answer text",
+    )
 
     for marker in [
         "QuestionGroupingEngine.balancedItems(",
         "QuestionGroupingEngine.balancedOptions(",
         "missionOptionOrder(",
         "missionQuestionIndex(",
+        "Array(missionOptionOrder(for: item).enumerated())",
     ]:
         require(student_home, marker, "student mission balanced option order")
 
@@ -66,6 +84,28 @@ def main() -> int:
         student_home,
         "ForEach(item.question.options, id: \\.self)",
         "raw mission option ordering",
+    )
+    reject(
+        student_home,
+        "ForEach(missionOptionOrder(for: item), id: \\.self)",
+        "mission option ForEach keyed by answer text",
+    )
+
+    require(
+        support_snapshot,
+        "Array(snapshot.options.enumerated())",
+        "support question snapshot option identity",
+    )
+    reject(
+        support_snapshot,
+        "ForEach(snapshot.options, id: \\.self)",
+        "support snapshot option ForEach keyed by answer text",
+    )
+
+    reject(
+        app_sources,
+        "Dictionary(uniqueKeysWithValues:",
+        "runtime-trapping dictionary construction",
     )
 
     for marker in [

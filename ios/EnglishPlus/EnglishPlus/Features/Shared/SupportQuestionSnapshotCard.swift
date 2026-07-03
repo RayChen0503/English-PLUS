@@ -26,7 +26,7 @@ struct SupportQuestionSnapshotCard: View {
 
             if !snapshot.options.isEmpty {
                 VStack(alignment: .leading, spacing: 6) {
-                    ForEach(snapshot.options, id: \.self) { option in
+                    ForEach(Array(snapshot.options.enumerated()), id: \.offset) { _, option in
                         optionRow(option)
                     }
                 }
