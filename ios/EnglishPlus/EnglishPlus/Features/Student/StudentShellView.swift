@@ -54,7 +54,9 @@ struct StudentShellView: View {
         }
         .onChange(of: selectedTab) { _, tab in
             guard tab == .practice else { return }
-            learningRepository.enterFreePracticeMode()
+            Task { @MainActor in
+                learningRepository.enterFreePracticeMode()
+            }
         }
     }
 }

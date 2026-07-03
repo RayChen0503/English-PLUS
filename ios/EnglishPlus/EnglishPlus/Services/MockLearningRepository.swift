@@ -12,6 +12,9 @@ final class MockLearningRepository: ObservableObject {
     private let seedSnapshot: SeedDataSnapshot
     private let now: () -> Date
     private let localPersistence: any LocalLearningPersistence
+    private let cachedSupportedQuestionTypes: [QuestionType]
+    private let cachedDefaultPreferredQuestionTypes: [QuestionType]
+    private let cachedQuestionPracticeSets: [QuestionPracticeSet]
 
     init(
         seedSnapshot: SeedDataSnapshot = SeedData.current,
@@ -21,6 +24,12 @@ final class MockLearningRepository: ObservableObject {
         self.seedSnapshot = seedSnapshot
         self.now = now
         self.localPersistence = localPersistence
+        let seededTypes = Set(seedSnapshot.approvedQuestionBankItems.map(\.question.type))
+        let supportedTypes = QuestionType.allCases.filter { seededTypes.contains($0) }
+        cachedSupportedQuestionTypes = supportedTypes
+        let defaultTypes = seedSnapshot.dailyMissionRules.defaultPreferredQuestionTypes
+        cachedDefaultPreferredQuestionTypes = defaultTypes.isEmpty ? Array(supportedTypes.prefix(2)) : defaultTypes
+        cachedQuestionPracticeSets = QuestionPracticeSet.catalog(from: seedSnapshot.approvedQuestionBankItems)
 
         if let restoredSnapshot = localPersistence.loadSnapshot()?.repositorySnapshot {
             currentCheckIn = restoredSnapshot.currentCheckIn
@@ -44,17 +53,15 @@ final class MockLearningRepository: ObservableObject {
     }
 
     var supportedQuestionTypes: [QuestionType] {
-        let seededTypes = Set(seedSnapshot.approvedQuestionBankItems.map(\.question.type))
-        return QuestionType.allCases.filter { seededTypes.contains($0) }
+        cachedSupportedQuestionTypes
     }
 
     var defaultPreferredQuestionTypes: [QuestionType] {
-        let defaults = seedSnapshot.dailyMissionRules.defaultPreferredQuestionTypes
-        return defaults.isEmpty ? Array(supportedQuestionTypes.prefix(2)) : defaults
+        cachedDefaultPreferredQuestionTypes
     }
 
     var questionPracticeSets: [QuestionPracticeSet] {
-        QuestionPracticeSet.catalog(from: seedSnapshot.approvedQuestionBankItems)
+        cachedQuestionPracticeSets
     }
 
     var latestMissionAttempt: MissionAttempt? {
