@@ -129,9 +129,9 @@ final class FirebaseLearningRepository: LearningRepositoryBackend {
             stage: mission.status == .completed ? .missionCompleted : .missionActive,
             activeMissionId: mission.id,
             continuation: nil,
+            updatedAt: Date(),
             completedFreePracticeSessionCount: currentSnapshot.learningFlow.completedFreePracticeSessionCount,
-            lastFreePracticeCompletedAt: currentSnapshot.learningFlow.lastFreePracticeCompletedAt,
-            updatedAt: Date()
+            lastFreePracticeCompletedAt: currentSnapshot.learningFlow.lastFreePracticeCompletedAt
         )
     }
 
@@ -147,9 +147,9 @@ final class FirebaseLearningRepository: LearningRepositoryBackend {
                 missionAttempts: currentSnapshot.missionAttempts,
                 fallbackRoundNumber: currentSnapshot.learningFlow.roundNumber
             ) ?? currentSnapshot.learningFlow.continuation,
+            updatedAt: Date(),
             completedFreePracticeSessionCount: currentSnapshot.learningFlow.completedFreePracticeSessionCount,
-            lastFreePracticeCompletedAt: currentSnapshot.learningFlow.lastFreePracticeCompletedAt,
-            updatedAt: Date()
+            lastFreePracticeCompletedAt: currentSnapshot.learningFlow.lastFreePracticeCompletedAt
         )
     }
 
@@ -162,9 +162,9 @@ final class FirebaseLearningRepository: LearningRepositoryBackend {
                 stage: .needsCheckIn,
                 activeMissionId: nil,
                 continuation: currentSnapshot.learningFlow.continuation,
+                updatedAt: Date(),
                 completedFreePracticeSessionCount: currentSnapshot.learningFlow.completedFreePracticeSessionCount,
-                lastFreePracticeCompletedAt: currentSnapshot.learningFlow.lastFreePracticeCompletedAt,
-                updatedAt: Date()
+                lastFreePracticeCompletedAt: currentSnapshot.learningFlow.lastFreePracticeCompletedAt
             )
             return
         }
@@ -182,9 +182,9 @@ final class FirebaseLearningRepository: LearningRepositoryBackend {
                 missionAttempts: currentSnapshot.missionAttempts,
                 fallbackRoundNumber: currentSnapshot.learningFlow.roundNumber
             ),
+            updatedAt: Date(),
             completedFreePracticeSessionCount: currentSnapshot.learningFlow.completedFreePracticeSessionCount,
-            lastFreePracticeCompletedAt: currentSnapshot.learningFlow.lastFreePracticeCompletedAt,
-            updatedAt: Date()
+            lastFreePracticeCompletedAt: currentSnapshot.learningFlow.lastFreePracticeCompletedAt
         )
     }
 

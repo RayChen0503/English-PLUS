@@ -319,9 +319,9 @@ final class MockLearningRepository: ObservableObject {
             stage: stage,
             activeMissionId: mission.id,
             continuation: nil,
+            updatedAt: now(),
             completedFreePracticeSessionCount: learningFlow.completedFreePracticeSessionCount,
-            lastFreePracticeCompletedAt: learningFlow.lastFreePracticeCompletedAt,
-            updatedAt: now()
+            lastFreePracticeCompletedAt: learningFlow.lastFreePracticeCompletedAt
         )
         persistSnapshot()
     }
@@ -337,9 +337,9 @@ final class MockLearningRepository: ObservableObject {
                 missionAttempts: missionAttempts,
                 fallbackRoundNumber: learningFlow.roundNumber
             ) ?? learningFlow.continuation,
+            updatedAt: now(),
             completedFreePracticeSessionCount: learningFlow.completedFreePracticeSessionCount,
-            lastFreePracticeCompletedAt: learningFlow.lastFreePracticeCompletedAt,
-            updatedAt: now()
+            lastFreePracticeCompletedAt: learningFlow.lastFreePracticeCompletedAt
         )
         persistSnapshot()
     }
@@ -353,9 +353,9 @@ final class MockLearningRepository: ObservableObject {
                 stage: .needsCheckIn,
                 activeMissionId: nil,
                 continuation: learningFlow.continuation,
+                updatedAt: date,
                 completedFreePracticeSessionCount: learningFlow.completedFreePracticeSessionCount,
-                lastFreePracticeCompletedAt: learningFlow.lastFreePracticeCompletedAt,
-                updatedAt: date
+                lastFreePracticeCompletedAt: learningFlow.lastFreePracticeCompletedAt
             )
             persistSnapshot()
             return
@@ -371,9 +371,9 @@ final class MockLearningRepository: ObservableObject {
                 missionAttempts: missionAttempts,
                 fallbackRoundNumber: learningFlow.roundNumber
             ),
+            updatedAt: date,
             completedFreePracticeSessionCount: learningFlow.completedFreePracticeSessionCount,
-            lastFreePracticeCompletedAt: learningFlow.lastFreePracticeCompletedAt,
-            updatedAt: date
+            lastFreePracticeCompletedAt: learningFlow.lastFreePracticeCompletedAt
         )
         persistSnapshot()
     }
