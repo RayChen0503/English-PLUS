@@ -26,24 +26,32 @@ practice_center = read("ios/EnglishPlus/EnglishPlus/Features/Practice/PracticeCe
 
 
 require(
-    "support AI response must provide real next-step actions",
+    "support AI response stays focused on support instead of extra navigation",
     support_view,
     [
-        "SupportAIActionCard",
-        "onOpenPractice",
-        "onOpenHome",
-        "learningRepository.enterFreePracticeMode()",
-        "learningRepository.returnToMissionFlow()",
+        "SupportMoodAICard",
+        "SupportAIResponseCard",
+        "sendEmotionalSupportRequest",
     ],
 )
 
 require(
-    "student support tab can route directly to practice or home",
+    "student support tab can still route to practice from meaningful empty states",
     student_shell,
     [
         "SupportView(",
         "selectedTab = .practice",
-        "selectedTab = .home",
+    ],
+)
+
+require_absent(
+    "removed support navigation action card and home shortcut",
+    support_view,
+    [
+        "SupportAIActionCard",
+        "Label(\"回今日任務\"",
+        "onOpenHome",
+        "returnToMissionFlow()",
     ],
 )
 

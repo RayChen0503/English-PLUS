@@ -191,15 +191,17 @@ struct TeacherSupportRequestCard: View {
         .clipShape(RoundedRectangle(cornerRadius: EPTheme.cardRadius))
     }
 
+    @MainActor
     private func fillTeacherDraftWithAI() async {
         isDraftingWithAI = true
+        defer { isDraftingWithAI = false }
+
         let response = await appState.draftTeacherFeedbackWithAI(context: SupportAIContext(request: request))
         replyDraft = response.output.studentFacingFeedback
             ?? response.output.recommendedNextAction
             ?? response.output.teacherSummary
             ?? response.output.summary
             ?? replyDraft
-        isDraftingWithAI = false
     }
 }
 

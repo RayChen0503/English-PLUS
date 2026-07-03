@@ -808,21 +808,30 @@ struct PracticeCenterView: View {
             repairHint: item.question.repairHint,
             createdAt: Date()
         )
-        isLoadingWrongAnswerAI = true
         Task {
-            let context = WrongAnswerAIContext(
-                classId: currentClassId,
-                studentUid: appState.currentUser?.id,
-                attempt: attempt,
-                questionItem: item
-            )
-            wrongAnswerAIResponse = await appState.explainWrongAnswerWithAI(context: context)
-            isLoadingWrongAnswerAI = false
+            await explainPracticeWrongAnswer(attempt: attempt, item: item)
         }
     }
 
+    @MainActor
+    private func explainPracticeWrongAnswer(attempt: MissionAttempt, item: QuestionBankItem) async {
+        isLoadingWrongAnswerAI = true
+        defer { isLoadingWrongAnswerAI = false }
+
+        let context = WrongAnswerAIContext(
+            classId: currentClassId,
+            studentUid: appState.currentUser?.id,
+            attempt: attempt,
+            questionItem: item
+        )
+        wrongAnswerAIResponse = await appState.explainWrongAnswerWithAI(context: context)
+    }
+
+    @MainActor
     private func askPracticeAI(for item: QuestionBankItem) async {
         isLoadingPracticeQuestionAI = true
+        defer { isLoadingPracticeQuestionAI = false }
+
         let answerText = normalizedPracticeAnswer(practiceAnswer).isEmpty ? "尚未作答" : practiceAnswer
         let attempt = MissionAttempt(
             id: "practice-ai-\(UUID().uuidString)",
@@ -844,7 +853,6 @@ struct PracticeCenterView: View {
             questionItem: item
         )
         practiceQuestionAIResponse = await appState.explainWrongAnswerWithAI(context: context)
-        isLoadingPracticeQuestionAI = false
     }
 
     private func sendPracticeSupportRequest(for item: QuestionBankItem, target: PracticeSupportTarget) {
@@ -918,8 +926,11 @@ struct PracticeCenterView: View {
             .lowercased()
     }
 
+    @MainActor
     private func requestPracticeRecommendation() async {
         isLoadingPracticeAI = true
+        defer { isLoadingPracticeAI = false }
+
         let context = PracticeRecommendationAIContext(
             classId: currentClassId,
             studentUid: appState.currentUser?.id,
@@ -928,7 +939,6 @@ struct PracticeCenterView: View {
             preferredQuestionTypes: preferredQuestionTypesForAI
         )
         practiceAIResponse = await appState.recommendPracticeWithAI(context: context)
-        isLoadingPracticeAI = false
     }
 }
 

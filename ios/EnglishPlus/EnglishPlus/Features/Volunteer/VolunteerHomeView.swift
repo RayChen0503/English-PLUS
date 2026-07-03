@@ -167,14 +167,16 @@ private struct VolunteerStaffReplyComposerCard: View {
         }
     }
 
+    @MainActor
     private func fillVolunteerDraftWithAI() async {
         isDraftingWithAI = true
+        defer { isDraftingWithAI = false }
+
         let response = await appState.coachVolunteerReplyWithAI(context: SupportAIContext(request: request))
         replyDraft = response.output.studentFacingFeedback
             ?? response.output.recommendedNextAction
             ?? response.output.summary
             ?? replyDraft
-        isDraftingWithAI = false
     }
 }
 

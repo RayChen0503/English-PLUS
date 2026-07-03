@@ -5,17 +5,14 @@ struct SupportView: View {
     @EnvironmentObject private var learningRepository: LearningRepositoryStore
 
     let onOpenPractice: () -> Void
-    let onOpenHome: () -> Void
 
     @State private var latestSupportAIResponse: AiProxyResponse?
     @State private var isLoadingSupportAI = false
 
     init(
-        onOpenPractice: @escaping () -> Void = {},
-        onOpenHome: @escaping () -> Void = {}
+        onOpenPractice: @escaping () -> Void = {}
     ) {
         self.onOpenPractice = onOpenPractice
-        self.onOpenHome = onOpenHome
     }
 
     var body: some View {
@@ -25,17 +22,12 @@ struct SupportView: View {
 
                 ScrollView {
                     VStack(alignment: .leading, spacing: 16) {
-                        SupportInboxHeaderCard(
-                            onOpenPractice: openPracticeFromSupport,
-                            onOpenHome: openHomeFromSupport
-                        )
+                        SupportInboxHeaderCard()
 
                         SupportMoodAICard(
                             response: latestSupportAIResponse,
                             isLoading: isLoadingSupportAI,
-                            onAskAI: sendEmotionalSupportRequest,
-                            onOpenPractice: openPracticeFromSupport,
-                            onOpenHome: openHomeFromSupport
+                            onAskAI: sendEmotionalSupportRequest
                         )
 
                         supportInboxSection
@@ -123,13 +115,19 @@ struct SupportView: View {
             return
         }
 
-        isLoadingSupportAI = true
         Task {
-            latestSupportAIResponse = await appState.provideEmotionalSupportWithAI(
-                context: SupportAIContext(request: request)
-            )
-            isLoadingSupportAI = false
+            await loadSupportAI(for: request)
         }
+    }
+
+    @MainActor
+    private func loadSupportAI(for request: StudentSupportRequest) async {
+        isLoadingSupportAI = true
+        defer { isLoadingSupportAI = false }
+
+        latestSupportAIResponse = await appState.provideEmotionalSupportWithAI(
+            context: SupportAIContext(request: request)
+        )
     }
 
     private func openPracticeFromSupport() {
@@ -137,16 +135,9 @@ struct SupportView: View {
         onOpenPractice()
     }
 
-    private func openHomeFromSupport() {
-        learningRepository.returnToMissionFlow()
-        onOpenHome()
-    }
 }
 
 private struct SupportInboxHeaderCard: View {
-    let onOpenPractice: () -> Void
-    let onOpenHome: () -> Void
-
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
             HStack(alignment: .top, spacing: 12) {
@@ -167,22 +158,6 @@ private struct SupportInboxHeaderCard: View {
                         .fixedSize(horizontal: false, vertical: true)
                 }
             }
-
-            HStack(spacing: 10) {
-                Button(action: onOpenPractice) {
-                    Label("去練習", systemImage: "pencil.and.list.clipboard")
-                        .font(.subheadline.bold())
-                        .frame(maxWidth: .infinity, minHeight: 44)
-                }
-                .buttonStyle(PrimaryActionButtonStyle())
-
-                Button(action: onOpenHome) {
-                    Label("回今日任務", systemImage: "target")
-                        .font(.subheadline.bold())
-                        .frame(maxWidth: .infinity, minHeight: 44)
-                }
-                .buttonStyle(SecondaryActionButtonStyle())
-            }
         }
         .padding(16)
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -195,8 +170,6 @@ private struct SupportMoodAICard: View {
     let response: AiProxyResponse?
     let isLoading: Bool
     let onAskAI: () -> Void
-    let onOpenPractice: () -> Void
-    let onOpenHome: () -> Void
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
@@ -231,63 +204,12 @@ private struct SupportMoodAICard: View {
 
             if let response {
                 SupportAIResponseCard(response: response)
-                SupportAIActionCard(
-                    response: response,
-                    onOpenPractice: onOpenPractice,
-                    onOpenHome: onOpenHome
-                )
             }
         }
         .padding(16)
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(EPTheme.support.opacity(0.10))
         .clipShape(RoundedRectangle(cornerRadius: EPTheme.cardRadius))
-    }
-}
-
-private struct SupportAIActionCard: View {
-    let response: AiProxyResponse
-    let onOpenPractice: () -> Void
-    let onOpenHome: () -> Void
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            Text("接下來可以做這個")
-                .font(.headline)
-                .foregroundStyle(EPTheme.ink)
-
-            Text(actionHint)
-                .font(.subheadline)
-                .foregroundStyle(EPTheme.secondaryInk)
-                .fixedSize(horizontal: false, vertical: true)
-
-            HStack(spacing: 10) {
-                Button(action: onOpenPractice) {
-                    Label("去練習", systemImage: "target")
-                        .font(.subheadline.bold())
-                        .frame(maxWidth: .infinity, minHeight: 44)
-                }
-                .buttonStyle(PrimaryActionButtonStyle())
-
-                Button(action: onOpenHome) {
-                    Label("回今日任務", systemImage: "house")
-                        .font(.subheadline.bold())
-                        .frame(maxWidth: .infinity, minHeight: 44)
-                }
-                .buttonStyle(SecondaryActionButtonStyle())
-            }
-        }
-        .padding(12)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background(EPTheme.card)
-        .clipShape(RoundedRectangle(cornerRadius: EPTheme.cardRadius))
-    }
-
-    private var actionHint: String {
-        if response.output.staffEscalationNeeded == true {
-            return "如果 AI 判斷需要真人協助，先去練習題目下方把那一題送給老師或志工。"
-        }
-        return "先做一小步就好，可以回今日任務，也可以去練習中心挑短題組。"
     }
 }
 

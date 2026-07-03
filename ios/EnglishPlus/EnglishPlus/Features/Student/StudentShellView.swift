@@ -32,9 +32,6 @@ struct StudentShellView: View {
             SupportView(
                 onOpenPractice: {
                     selectedTab = .practice
-                },
-                onOpenHome: {
-                    selectedTab = .home
                 }
             )
                 .tabItem {

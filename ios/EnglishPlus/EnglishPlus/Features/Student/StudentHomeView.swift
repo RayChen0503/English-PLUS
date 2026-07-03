@@ -407,9 +407,12 @@ struct StudentHomeView: View {
         selectedTypes = Set(learningRepository.defaultPreferredQuestionTypes)
     }
 
+    @MainActor
     private func generateMissionAfterAI() async {
         guard !preferredTypesInDisplayOrder.isEmpty else { return }
         isGeneratingMissionWithAI = true
+        defer { isGeneratingMissionWithAI = false }
+
         let aiContext = DailyMissionAIContext(
             classId: currentClassId,
             studentUid: appState.currentUser?.id,
@@ -432,7 +435,6 @@ struct StudentHomeView: View {
         )
         selectedAnswer = ""
         latestWrongAnswerAIResponse = nil
-        isGeneratingMissionWithAI = false
     }
 
     private func submitMissionAnswerWithAI(for item: QuestionBankItem) {
@@ -447,8 +449,11 @@ struct StudentHomeView: View {
         }
     }
 
+    @MainActor
     private func askMissionAI(for item: QuestionBankItem, attempt: MissionAttempt) async {
         isExplainingWrongAnswer = true
+        defer { isExplainingWrongAnswer = false }
+
         let aiContext = WrongAnswerAIContext(
             classId: currentClassId,
             studentUid: appState.currentUser?.id,
@@ -456,7 +461,6 @@ struct StudentHomeView: View {
             questionItem: item
         )
         latestWrongAnswerAIResponse = await appState.explainWrongAnswerWithAI(context: aiContext)
-        isExplainingWrongAnswer = false
     }
 
     private func missionFeedbackCard(for attempt: MissionAttempt) -> some View {
