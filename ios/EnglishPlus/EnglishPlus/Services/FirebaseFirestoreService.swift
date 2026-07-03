@@ -33,6 +33,42 @@ final class FirebaseFirestoreService: FirestoreService {
         return fallback.hasAcceptedRequiredConsent(uid: uid)
     }
 
+    func loadConsentRecord(uid: String) async -> PrivacyConsentRecord? {
+        if let cached = cachedConsentRecords[uid] {
+            return cached
+        }
+
+        #if canImport(FirebaseFirestore)
+        guard let db else {
+            return await fallback.loadConsentRecord(uid: uid)
+        }
+
+        let path = FirestorePath.userConsent(
+            uid: uid,
+            consentVersion: PrivacyConsentRecord.currentVersion
+        )
+
+        do {
+            let snapshot = try await documentSnapshot(path: path, db: db)
+            guard
+                snapshot.exists,
+                let data = snapshot.data(),
+                let record = PrivacyConsentRecord.firestoreRecord(uid: uid, data: data)
+            else {
+                return await fallback.loadConsentRecord(uid: uid)
+            }
+
+            cachedConsentRecords[uid] = record
+            fallback.saveConsent(record)
+            return record
+        } catch {
+            return await fallback.loadConsentRecord(uid: uid)
+        }
+        #else
+        return await fallback.loadConsentRecord(uid: uid)
+        #endif
+    }
+
     func saveConsent(_ record: PrivacyConsentRecord) {
         cachedConsentRecords[record.acceptedByUid] = record
         fallback.saveConsent(record)
@@ -88,6 +124,23 @@ final class FirebaseFirestoreService: FirestoreService {
     }
 
     #if canImport(FirebaseFirestore)
+    private func documentSnapshot(path: String, db: Firestore) async throws -> DocumentSnapshot {
+        try await withCheckedThrowingContinuation { continuation in
+            db.document(path).getDocument { snapshot, error in
+                if let error {
+                    continuation.resume(throwing: error)
+                    return
+                }
+
+                if let snapshot {
+                    continuation.resume(returning: snapshot)
+                } else {
+                    continuation.resume(throwing: FirebaseFirestoreServiceError.permissionDenied)
+                }
+            }
+        }
+    }
+
     private func firestoreConsentData(from record: PrivacyConsentRecord) -> [String: Any] {
         [
             "version": record.version,
@@ -140,7 +193,7 @@ private extension PrivacyConsentRecord {
 
         let categories = (data["categoriesAccepted"] as? [String] ?? [])
             .compactMap(PrivacyConsentCategory.init(rawValue:))
-        let acceptedAt = data["acceptedAt"] as? Date ?? Date()
+        let acceptedAt = firestoreDate(data["acceptedAt"]) ?? Date()
 
         return PrivacyConsentRecord(
             id: version,
@@ -156,5 +209,17 @@ private extension PrivacyConsentRecord {
             policyUrl: policyUrl,
             categoriesAccepted: categories
         )
+    }
+
+    private static func firestoreDate(_ value: Any?) -> Date? {
+        if let date = value as? Date {
+            return date
+        }
+        #if canImport(FirebaseFirestore)
+        if let timestamp = value as? Timestamp {
+            return timestamp.dateValue()
+        }
+        #endif
+        return nil
     }
 }

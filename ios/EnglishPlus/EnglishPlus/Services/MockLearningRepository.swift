@@ -142,9 +142,10 @@ final class MockLearningRepository: ObservableObject {
         let minutes = aiMission?.recommendedMinutes ?? recommendedMinutes(for: availableTimeLevel)
         let targetCorrectCount = aiMission?.targetCorrectCount ?? questionGoal(for: minutes)
         let aiSelectedTypes = questionTypes(from: aiMission?.questionPlan)
-        let selectedTypes = aiSelectedTypes.isEmpty
-            ? (preferredQuestionTypes.isEmpty ? defaultPreferredQuestionTypes : preferredQuestionTypes)
-            : aiSelectedTypes
+        let selectedTypes = typesRespectingStudentPreference(
+            aiSelectedTypes: aiSelectedTypes,
+            preferredTypes: preferredQuestionTypes
+        )
         let track = missionTrack(from: aiMission?.track) ?? missionTrack(moodScore: moodScore, wantsChallenge: wantsChallenge)
         let studentUid = user?.id ?? "demo-student"
         let checkIn = MoodCheckIn(
@@ -602,7 +603,8 @@ final class MockLearningRepository: ObservableObject {
         track: MissionTrack,
         targetCount: Int
     ) -> [QuestionBankItem] {
-        let preferredSet = Set(preferredTypes)
+        let allowedTypes = preferredTypes.isEmpty ? defaultPreferredQuestionTypes : preferredTypes
+        let preferredSet = Set(allowedTypes)
         let target = max(1, targetCount)
         let preferredLevels = preferredLevels(for: track)
         let exactMatches = cachedQuestionBankItems.filter { item in
@@ -611,20 +613,21 @@ final class MockLearningRepository: ObservableObject {
         let typeMatches = cachedQuestionBankItems.filter { item in
             preferredSet.contains(item.question.type)
         }
-        let levelMatches = cachedQuestionBankItems.filter { item in
-            preferredLevels.contains(item.level)
-        }
+        let sameTypeCandidates = (exactMatches + typeMatches).uniqued(by: \.id)
+        let fallbackPool = sameTypeCandidates.isEmpty
+            ? cachedQuestionBankItems
+            : sameTypeCandidates
         let candidateWindow = missionCandidateWindow(
-            from: exactMatches + typeMatches + levelMatches,
+            from: sameTypeCandidates.isEmpty ? cachedQuestionBankItems : sameTypeCandidates,
             limit: max(24, target * 5)
         )
         let selection = QuestionGroupingEngine.practiceSelection(
             from: candidateWindow,
             fallbackCandidates: QuestionGroupingEngine.balancedFallbackCandidates(
-                preferredTypes: preferredTypes,
+                preferredTypes: allowedTypes,
                 preferredLevels: preferredLevels,
                 from: missionCandidateWindow(
-                    from: cachedQuestionBankItems,
+                    from: fallbackPool,
                     limit: max(36, target * 6)
                 )
             ),
@@ -759,6 +762,20 @@ final class MockLearningRepository: ObservableObject {
         guard let plan else { return [] }
         let types = plan.compactMap { questionType(from: $0.type) }
         return types.uniqued(by: \.self)
+    }
+
+    private func typesRespectingStudentPreference(
+        aiSelectedTypes: [QuestionType],
+        preferredTypes: [QuestionType]
+    ) -> [QuestionType] {
+        let fallbackTypes = preferredTypes.isEmpty ? defaultPreferredQuestionTypes : preferredTypes
+        guard !aiSelectedTypes.isEmpty else {
+            return fallbackTypes
+        }
+
+        let preferredSet = Set(fallbackTypes)
+        let constrainedTypes = aiSelectedTypes.filter { preferredSet.contains($0) }
+        return constrainedTypes.isEmpty ? fallbackTypes : constrainedTypes
     }
 
     private func questionType(from aiValue: String) -> QuestionType? {

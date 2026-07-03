@@ -10,6 +10,10 @@ final class MockFirestoreService: FirestoreService {
         return record.accepted && record.version == PrivacyConsentRecord.currentVersion
     }
 
+    func loadConsentRecord(uid: String) async -> PrivacyConsentRecord? {
+        consentRecord(uid: uid)
+    }
+
     func saveConsent(_ record: PrivacyConsentRecord) {
         consentRecords[record.acceptedByUid] = record
     }

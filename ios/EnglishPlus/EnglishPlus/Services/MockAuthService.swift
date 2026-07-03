@@ -25,6 +25,29 @@ struct MockAuthService: AuthService {
         )
     }
 
+    func createAccount(
+        email: String,
+        password: String,
+        displayName: String,
+        role: UserRole
+    ) async throws -> AuthSession {
+        let cleanedEmail = email.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        let cleanedName = displayName.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !cleanedEmail.isEmpty, password.count >= 6, !cleanedName.isEmpty else {
+            throw DemoAuthError.invalidCredential
+        }
+
+        let profile = Self.profile(
+            id: cleanedEmail.replacingOccurrences(of: "@", with: "-"),
+            displayName: cleanedName,
+            role: role
+        )
+        return AuthSession(
+            user: DemoUser(id: profile.id, displayName: profile.displayName, role: profile.role),
+            profile: profile
+        )
+    }
+
     private static func profile(id: String, displayName: String, role: UserRole) -> AppUserProfile {
         let now = Date(timeIntervalSince1970: 1_718_668_800)
         return AppUserProfile(

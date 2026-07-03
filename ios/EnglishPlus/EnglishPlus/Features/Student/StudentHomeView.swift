@@ -215,8 +215,11 @@ struct StudentHomeView: View {
 
                 if progress.status == .completed {
                     CompletionCard()
-                } else if let item = learningRepository.nextMissionQuestion {
-                    missionQuestionView(item)
+                } else {
+                    let activeMissionQuestion = learningRepository.nextMissionQuestion
+                    if let item = activeMissionQuestion {
+                        missionQuestionView(item)
+                    }
                 }
 
                 if let attempt = learningRepository.latestMissionAttempt {
@@ -385,14 +388,7 @@ struct StudentHomeView: View {
     }
 
     private func missionQuestionIndex(for item: QuestionBankItem) -> Int {
-        let missionQuestions = learningRepository.currentMission?.questions ?? []
-        let balancedQuestions = QuestionGroupingEngine.balancedItems(
-            from: missionQuestions,
-            limit: missionQuestions.count
-        )
-        return balancedQuestions.firstIndex { $0.id == item.id }
-            ?? missionQuestions.firstIndex { $0.id == item.id }
-            ?? 0
+        learningRepository.currentMission?.questions.firstIndex { $0.id == item.id } ?? 0
     }
 
     private func missionOptionOrder(for item: QuestionBankItem) -> [String] {
@@ -438,14 +434,21 @@ struct StudentHomeView: View {
     }
 
     private func submitMissionAnswerWithAI(for item: QuestionBankItem) {
+        guard learningRepository.nextMissionQuestion?.id == item.id else {
+            selectedAnswer = ""
+            latestWrongAnswerAIResponse = nil
+            missionSupportConfirmation = nil
+            return
+        }
         guard let attempt = learningRepository.submitMissionAnswer(selectedAnswer) else { return }
         selectedAnswer = ""
         latestWrongAnswerAIResponse = nil
         missionSupportConfirmation = nil
 
         guard !attempt.isCorrect else { return }
+        let answeredItem = learningRepository.currentMission?.questions.first { $0.id == attempt.questionId } ?? item
         Task {
-            await askMissionAI(for: item, attempt: attempt)
+            await askMissionAI(for: answeredItem, attempt: attempt)
         }
     }
 

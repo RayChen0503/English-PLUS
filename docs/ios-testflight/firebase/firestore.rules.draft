@@ -97,7 +97,15 @@ service cloud.firestore {
 
       match /members/{uid} {
         allow read: if isSelf(uid) || isClassTeacher(classId);
-        allow write: if isClassTeacher(classId);
+        allow create: if isClassTeacher(classId)
+          || (
+            isSelf(uid)
+            && request.resource.data.uid == request.auth.uid
+            && request.resource.data.role == "student"
+            && request.resource.data.active == true
+          );
+        allow update: if isClassTeacher(classId);
+        allow delete: if false;
       }
 
       match /students/{studentUid} {

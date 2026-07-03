@@ -55,6 +55,35 @@ struct FirebaseAuthService: AuthService {
         #endif
     }
 
+    func createAccount(
+        email: String,
+        password: String,
+        displayName: String,
+        role: UserRole
+    ) async throws -> AuthSession {
+        #if canImport(FirebaseAuth) && canImport(FirebaseFirestore)
+        guard FirebaseAppConfigurator.hasBundledConfig else {
+            throw FirebaseAuthServiceError.notConfigured
+        }
+
+        let cleanedName = displayName.trimmingCharacters(in: .whitespacesAndNewlines)
+        let result = try await createUserWithFirebase(
+            email: email.trimmingCharacters(in: .whitespacesAndNewlines),
+            password: password
+        )
+        try? await updateFirebaseDisplayName(cleanedName, for: result.user)
+        try await createInitialProfileDocuments(
+            uid: result.user.uid,
+            email: email,
+            displayName: cleanedName,
+            role: role
+        )
+        return try await membershipSession(uid: result.user.uid, expectedRole: role)
+        #else
+        throw FirebaseAuthServiceError.firebaseSDKUnavailable
+        #endif
+    }
+
     func restorePreviousSession() async throws -> AuthSession? {
         try await currentSession()
     }
@@ -104,9 +133,110 @@ struct FirebaseAuthService: AuthService {
             }
         }
     }
+
+    private func createUserWithFirebase(email: String, password: String) async throws -> AuthDataResult {
+        try await withCheckedThrowingContinuation { continuation in
+            Auth.auth().createUser(withEmail: email, password: password) { result, error in
+                if let error {
+                    continuation.resume(throwing: error)
+                    return
+                }
+
+                if let result {
+                    continuation.resume(returning: result)
+                } else {
+                    continuation.resume(throwing: FirebaseAuthServiceError.noAuthenticatedUser)
+                }
+            }
+        }
+    }
+
+    private func updateFirebaseDisplayName(_ displayName: String, for user: User) async throws {
+        guard !displayName.isEmpty else { return }
+        try await withCheckedThrowingContinuation { continuation in
+            let request = user.createProfileChangeRequest()
+            request.displayName = displayName
+            request.commitChanges { error in
+                if let error {
+                    continuation.resume(throwing: error)
+                } else {
+                    continuation.resume()
+                }
+            }
+        }
+    }
     #endif
 
     #if canImport(FirebaseFirestore)
+    private func createInitialProfileDocuments(
+        uid: String,
+        email: String,
+        displayName: String,
+        role: UserRole
+    ) async throws {
+        let classId = FirebaseBackendConfig.firstClassId
+        let now = Date()
+        let name = displayName.isEmpty ? email.components(separatedBy: "@").first ?? "English+ Student" : displayName
+
+        try await setDocument(
+            path: FirestorePath.user(uid: uid),
+            data: [
+                "displayName": name,
+                "preferredName": name,
+                "primaryRole": role.rawValue,
+                "createdAt": now,
+                "lastLoginAt": now,
+                "active": true,
+            ],
+            merge: true
+        )
+
+        try await setDocument(
+            path: FirestorePath.member(classId: classId, uid: uid),
+            data: [
+                "uid": uid,
+                "role": role.rawValue,
+                "displayName": name,
+                "active": true,
+                "joinedAt": now,
+                "updatedAt": now,
+                "consentStatus": ConsentStatus.pending.rawValue,
+            ],
+            merge: true
+        )
+
+        if role == .student {
+            try await setDocument(
+                path: FirestorePath.student(classId: classId, studentUid: uid),
+                data: [
+                    "uid": uid,
+                    "displayName": name,
+                    "gradeBand": "8A",
+                    "classCode": classId,
+                    "currentLevel": "A2",
+                    "recommendedTrack": MissionTrack.steady.rawValue,
+                    "lastMissionStatus": MissionStatus.active.rawValue,
+                    "riskLevel": RiskLevel.low.rawValue,
+                    "legacyAndroidId": NSNull(),
+                    "lastActivityAt": now,
+                ],
+                merge: true
+            )
+        }
+    }
+
+    private func setDocument(path: String, data: [String: Any], merge: Bool) async throws {
+        try await withCheckedThrowingContinuation { continuation in
+            Firestore.firestore().document(path).setData(data, merge: merge) { error in
+                if let error {
+                    continuation.resume(throwing: error)
+                } else {
+                    continuation.resume()
+                }
+            }
+        }
+    }
+
     private func membershipSession(uid: String, expectedRole: UserRole?) async throws -> AuthSession {
         let classId = FirebaseBackendConfig.firstClassId
         let path = FirestorePath.member(classId: classId, uid: uid)

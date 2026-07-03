@@ -9,6 +9,12 @@ protocol AuthService {
     func demoSession(for role: UserRole) -> AuthSession
     func signInDemoAccount(for role: UserRole) async throws -> AuthSession
     func signIn(email: String, password: String, expectedRole: UserRole) async throws -> AuthSession
+    func createAccount(
+        email: String,
+        password: String,
+        displayName: String,
+        role: UserRole
+    ) async throws -> AuthSession
     func restorePreviousSession() async throws -> AuthSession?
     func signOut()
 }
@@ -34,6 +40,15 @@ extension AuthService {
         return demoSession(for: expectedRole)
     }
 
+    func createAccount(
+        email: String,
+        password: String,
+        displayName: String,
+        role: UserRole
+    ) async throws -> AuthSession {
+        throw DemoAuthError.accountCreationUnavailable
+    }
+
     func restorePreviousSession() async throws -> AuthSession? {
         nil
     }
@@ -43,6 +58,7 @@ extension AuthService {
 
 enum DemoAuthError: Error, Equatable {
     case invalidCredential
+    case accountCreationUnavailable
 }
 
 struct DemoAccountCredential: Equatable {

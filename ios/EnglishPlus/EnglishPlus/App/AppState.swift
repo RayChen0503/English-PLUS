@@ -51,18 +51,37 @@ final class AppState: ObservableObject {
                 password: password,
                 expectedRole: role
             )
-            currentUser = session.user
-            currentProfile = session.profile
-            runtimeDiagnostics = runtimeDiagnostics.withSession(user: session.user, profile: session.profile)
-            hasAcceptedConsent = firestoreService.hasAcceptedRequiredConsent(uid: session.user.id)
+            await finishAuthenticatedSession(session)
             signingInRole = nil
-            route = hasAcceptedConsent ? .home(role) : .privacyConsent(role)
         } catch {
-            currentUser = nil
-            currentProfile = nil
-            hasAcceptedConsent = false
+            clearFailedAuthenticationState()
+            signInErrorMessage = "登入失敗。請確認帳號、密碼、身分與班級資料是否正確。"
+        }
+    }
+
+    func createAccount(
+        email: String,
+        password: String,
+        displayName: String,
+        role: UserRole
+    ) async {
+        guard signingInRole == nil else { return }
+        selectedRole = role
+        signingInRole = role
+        signInErrorMessage = nil
+
+        do {
+            let session = try await authService.createAccount(
+                email: email.trimmingCharacters(in: .whitespacesAndNewlines),
+                password: password,
+                displayName: displayName.trimmingCharacters(in: .whitespacesAndNewlines),
+                role: role
+            )
+            await finishAuthenticatedSession(session)
             signingInRole = nil
-            signInErrorMessage = "登入失敗。請確認帳號密碼、連線設定，以及班級成員資料是否正確。"
+        } catch {
+            clearFailedAuthenticationState()
+            signInErrorMessage = "建立帳號失敗。請確認 email 格式、密碼至少 6 碼，或稍後再試。"
         }
     }
 
@@ -80,12 +99,7 @@ final class AppState: ObservableObject {
             guard let session = try await authService.restorePreviousSession() else {
                 return
             }
-            currentUser = session.user
-            currentProfile = session.profile
-            selectedRole = session.user.role
-            runtimeDiagnostics = runtimeDiagnostics.withSession(user: session.user, profile: session.profile)
-            hasAcceptedConsent = firestoreService.hasAcceptedRequiredConsent(uid: session.user.id)
-            route = hasAcceptedConsent ? .home(session.user.role) : .privacyConsent(session.user.role)
+            await finishAuthenticatedSession(session)
         } catch {
             currentUser = nil
             currentProfile = nil
@@ -154,6 +168,30 @@ final class AppState: ObservableObject {
         let response = await aiService.recommendPractice(context: context, currentUser: currentUser)
         recordAIResponse(response)
         return response
+    }
+
+    private func finishAuthenticatedSession(_ session: AuthSession) async {
+        currentUser = session.user
+        currentProfile = session.profile
+        selectedRole = session.user.role
+        runtimeDiagnostics = runtimeDiagnostics.withSession(user: session.user, profile: session.profile)
+        hasAcceptedConsent = await acceptedConsentStatus(for: session.user.id)
+        route = hasAcceptedConsent ? .home(session.user.role) : .privacyConsent(session.user.role)
+    }
+
+    private func acceptedConsentStatus(for uid: String) async -> Bool {
+        if let record = await firestoreService.loadConsentRecord(uid: uid) {
+            return record.accepted && record.version == PrivacyConsentRecord.currentVersion
+        }
+        return firestoreService.hasAcceptedRequiredConsent(uid: uid)
+    }
+
+    private func clearFailedAuthenticationState() {
+        currentUser = nil
+        currentProfile = nil
+        hasAcceptedConsent = false
+        signingInRole = nil
+        runtimeDiagnostics = runtimeDiagnostics.clearingSession()
     }
 
     private func recordAIResponse(_ response: AiProxyResponse) {
