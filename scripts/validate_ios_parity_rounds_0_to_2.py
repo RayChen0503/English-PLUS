@@ -112,18 +112,19 @@ def validate_learning_map(errors):
     shell = read_text(STUDENT_SHELL)
     map_text = read_text(LEARNING_MAP)
 
-    if "StudentLearningMapView()" not in shell:
+    if "StudentLearningMapView(" not in shell:
         fail("StudentShellView must use StudentLearningMapView in the map tab", errors)
-    if 'Text("學習地圖")' in shell:
+    if 'Text("placeholder learning map")' in shell:
         fail("StudentShellView still contains placeholder learning map text", errors)
 
     required_markers = [
         "LearningMapNode",
         "今日路線",
-        "修復",
-        "穩定",
-        "挑戰",
-        "完成",
+        "心情檢測",
+        "今日題目任務",
+        "低壓修復",
+        "自由練習",
+        "支持回覆",
         "ProgressView",
         "currentMission",
         "progressSnapshot",

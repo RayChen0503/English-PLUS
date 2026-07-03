@@ -62,7 +62,7 @@ struct TeacherHandoffView: View {
 
                         Text("排序規則：學生主動求助、高風險心情、閱讀卡點會先排在前面。")
                             .font(.subheadline)
-                            .foregroundStyle(.secondary)
+                            .foregroundStyle(EPTheme.secondaryInk)
                             .fixedSize(horizontal: false, vertical: true)
 
                         StaffSupportQueueHeaderCard(
@@ -109,7 +109,7 @@ struct TeacherSupportRequestCard: View {
                         .foregroundStyle(EPTheme.ink)
                     Text("\(request.classCode) · \(request.status.uiTitle)")
                         .font(.caption)
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(EPTheme.secondaryInk)
                 }
 
                 Spacer()
@@ -137,24 +137,24 @@ struct TeacherSupportRequestCard: View {
             } else if request.latestQuestionId?.isEmpty == false {
                 Label("學生有題目紀錄，但目前缺少完整題目快照。", systemImage: "doc.text")
                     .font(.caption.bold())
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(EPTheme.secondaryInk)
             }
 
             if let moodScore = request.moodScore {
                 Label("今日心情 \(moodScore)/5", systemImage: "heart.text.square")
                     .font(.caption)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(EPTheme.secondaryInk)
             }
 
             if !request.replies.isEmpty {
                 VStack(alignment: .leading, spacing: 8) {
                     Text("已有回覆")
                         .font(.caption.bold())
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(EPTheme.secondaryInk)
                     ForEach(request.replies) { reply in
                         Text("\(reply.authorName)：\(reply.body)")
                             .font(.footnote)
-                            .foregroundStyle(.secondary)
+                            .foregroundStyle(EPTheme.secondaryInk)
                             .fixedSize(horizontal: false, vertical: true)
                     }
                 }
@@ -169,7 +169,7 @@ struct TeacherSupportRequestCard: View {
                     await fillTeacherDraftWithAI()
                 }
             }
-            .buttonStyle(.bordered)
+            .buttonStyle(SecondaryActionButtonStyle())
             .disabled(isDraftingWithAI)
 
             StaffSupportActionBar(
@@ -220,7 +220,7 @@ struct TeacherReportView: View {
 
                         Text("用進步證據取代排名壓力，整理學生任務、求助與接力紀錄。")
                             .font(.subheadline)
-                            .foregroundStyle(.secondary)
+                            .foregroundStyle(EPTheme.secondaryInk)
 
                         TeacherReportMetricGrid(report: report)
                         TeacherReportPrioritySection(report: report)
@@ -266,7 +266,7 @@ private struct TeacherReportMetricTile: View {
         VStack(alignment: .leading, spacing: 6) {
             Text(metric.label)
                 .font(.caption)
-                .foregroundStyle(.secondary)
+                .foregroundStyle(EPTheme.secondaryInk)
             HStack(alignment: .firstTextBaseline, spacing: 4) {
                 Text(metric.value)
                     .font(.title2.bold())
@@ -274,7 +274,7 @@ private struct TeacherReportMetricTile: View {
                     .monospacedDigit()
                 Text(metric.detail)
                     .font(.caption)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(EPTheme.secondaryInk)
             }
         }
         .padding(14)
@@ -296,7 +296,7 @@ private struct TeacherReportPrioritySection: View {
             if report.priorityStudents.isEmpty {
                 Text("目前沒有待回應學生，可以先回顧本週已完成的支持紀錄。")
                     .font(.subheadline)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(EPTheme.secondaryInk)
             } else {
                 ForEach(report.priorityStudents) { row in
                     VStack(alignment: .leading, spacing: 6) {
@@ -310,7 +310,7 @@ private struct TeacherReportPrioritySection: View {
                         }
                         Text(row.summary)
                             .font(.caption)
-                            .foregroundStyle(.secondary)
+                            .foregroundStyle(EPTheme.secondaryInk)
                             .fixedSize(horizontal: false, vertical: true)
                     }
                     .padding(12)
@@ -341,7 +341,7 @@ private struct TeacherReportQuestionBankSection: View {
                             .font(.subheadline.bold())
                         Text(row.levelSummary)
                             .font(.caption)
-                            .foregroundStyle(.secondary)
+                            .foregroundStyle(EPTheme.secondaryInk)
                             .fixedSize(horizontal: false, vertical: true)
                     }
                     Spacer()
@@ -402,7 +402,7 @@ private struct TeacherReportPreviewCard: View {
 
             Text(report.shareText)
                 .font(.caption)
-                .foregroundStyle(.secondary)
+                .foregroundStyle(EPTheme.secondaryInk)
                 .lineLimit(10)
                 .textSelection(.enabled)
                 .fixedSize(horizontal: false, vertical: true)
@@ -507,7 +507,7 @@ private struct TeacherClassAssignmentHeader: View {
                     .foregroundStyle(EPTheme.ink)
                 Text("先看班級狀態，再選學生指派每組 12 題內的小題組。題組已依題型、難度與技能整理，不需要老師從整份題庫慢慢找。")
                     .font(.subheadline)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(EPTheme.secondaryInk)
                     .fixedSize(horizontal: false, vertical: true)
             }
 
@@ -533,7 +533,7 @@ private struct TeacherClassRosterSummaryCard: View {
                         .foregroundStyle(EPTheme.ink)
                     Text("這裡是老師派任務前的總覽：先看誰需要照顧，再決定要派基礎修復、穩定練習或挑戰題。")
                         .font(.subheadline)
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(EPTheme.secondaryInk)
                         .fixedSize(horizontal: false, vertical: true)
                 }
 
@@ -593,7 +593,7 @@ private struct TeacherStudentPickerCard: View {
             if students.isEmpty {
                 Text("目前沒有學生資料。學生登入、送出求助或產生學習紀錄後，會出現在這裡。")
                     .font(.subheadline)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(EPTheme.secondaryInk)
                     .fixedSize(horizontal: false, vertical: true)
             } else {
                 VStack(spacing: 10) {
@@ -623,7 +623,7 @@ private struct TeacherStudentPickerCard: View {
                         .font(.subheadline.bold())
                     Text(student.classCode)
                         .font(.caption)
-                        .foregroundStyle(isSelected ? .white.opacity(0.86) : .secondary)
+                        .foregroundStyle(isSelected ? .white.opacity(0.86) : EPTheme.secondaryInk)
                 }
 
                 Spacer()
@@ -683,7 +683,7 @@ private struct TeacherStudentMissionPanel: View {
                         .foregroundStyle(EPTheme.ink)
                     Text(student.classCode)
                         .font(.caption)
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(EPTheme.secondaryInk)
                 }
                 Spacer()
                 Text(student.riskLevel.uiTitle)
@@ -703,14 +703,14 @@ private struct TeacherStudentMissionPanel: View {
             VStack(alignment: .leading, spacing: 6) {
                 Text("下一步")
                     .font(.caption.bold())
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(EPTheme.secondaryInk)
                 Text(student.nextAction)
                     .font(.subheadline)
                     .foregroundStyle(EPTheme.ink)
                     .fixedSize(horizontal: false, vertical: true)
                 Text(recommendationText)
                     .font(.footnote)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(EPTheme.secondaryInk)
                     .fixedSize(horizontal: false, vertical: true)
             }
         }
@@ -737,7 +737,7 @@ private struct TeacherStudentAssignmentHistory: View {
             if assignments.isEmpty {
                 Text("這位學生目前沒有老師指派題組。")
                     .font(.caption)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(EPTheme.secondaryInk)
             } else {
                 ForEach(assignments.prefix(3)) { assignment in
                     HStack(alignment: .top, spacing: 10) {
@@ -750,7 +750,7 @@ private struct TeacherStudentAssignmentHistory: View {
                                 .fixedSize(horizontal: false, vertical: true)
                             Text("\(assignment.questionIds.count) 題 / \(assignment.status.displayTitle)")
                                 .font(.caption2)
-                                .foregroundStyle(.secondary)
+                                .foregroundStyle(EPTheme.secondaryInk)
                         }
                         Spacer()
                     }
@@ -785,7 +785,7 @@ private struct TeacherClassEmptyStudentCard: View {
                 .foregroundStyle(EPTheme.ink)
             Text("等學生登入、完成檢測或送出求助後，這裡會出現班級名單。")
                 .font(.subheadline)
-                .foregroundStyle(.secondary)
+                .foregroundStyle(EPTheme.secondaryInk)
                 .fixedSize(horizontal: false, vertical: true)
         }
         .padding(16)
@@ -803,7 +803,7 @@ private struct TeacherEmptyQueueCard: View {
                 .foregroundStyle(EPTheme.support)
             Text("班級目前沒有新的高優先求助。可以先查看題庫指派，或到報告頁確認整體學習狀態。")
                 .font(.subheadline)
-                .foregroundStyle(.secondary)
+                .foregroundStyle(EPTheme.secondaryInk)
                 .fixedSize(horizontal: false, vertical: true)
         }
         .padding(16)
@@ -829,7 +829,7 @@ private struct TeacherPracticeSetCatalog: View {
                     .foregroundStyle(EPTheme.ink)
                 Text("每組 12 題內，先按題型、難度與技能縮小範圍，再指派給 \(selectedStudent.studentName)。指派後會出現在學生任務，不會混進自由練習。")
                     .font(.subheadline)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(EPTheme.secondaryInk)
                     .fixedSize(horizontal: false, vertical: true)
             }
 
@@ -838,7 +838,7 @@ private struct TeacherPracticeSetCatalog: View {
             if filteredPracticeSets.isEmpty {
                 Text("目前沒有符合篩選條件的題組。")
                     .font(.subheadline)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(EPTheme.secondaryInk)
                     .padding(14)
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .background(EPTheme.secondarySurface)
@@ -1001,14 +1001,14 @@ private struct TeacherPracticeSetCatalogRow: View {
                         .fixedSize(horizontal: false, vertical: true)
                     Text(set.subtitle)
                         .font(.caption)
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(EPTheme.secondaryInk)
                     Text("技能：\(set.skill)")
                         .font(.caption)
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(EPTheme.secondaryInk)
                         .lineLimit(2)
                     Text("概念：\(set.previewText)")
                         .font(.caption)
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(EPTheme.secondaryInk)
                         .lineLimit(2)
                 }
 
@@ -1108,7 +1108,7 @@ private struct TeacherStatusTile: View {
                 .foregroundStyle(color)
             Text(title)
                 .font(.caption)
-                .foregroundStyle(.secondary)
+                .foregroundStyle(EPTheme.secondaryInk)
         }
         .padding(14)
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -1131,7 +1131,7 @@ private struct TeacherClassSummary: View {
                             .font(.subheadline.bold())
                         Text(summary.missionProgress)
                             .font(.caption)
-                            .foregroundStyle(.secondary)
+                            .foregroundStyle(EPTheme.secondaryInk)
                     }
                     Spacer()
                     Text(summary.nextAction)
@@ -1162,7 +1162,7 @@ private struct TeacherHandoffSummaryCard: View {
 
             Text("老師先看求助與風險，再決定要直接回覆、交給志工陪練，或放進本週追蹤。")
                 .font(.subheadline)
-                .foregroundStyle(.secondary)
+                .foregroundStyle(EPTheme.secondaryInk)
                 .fixedSize(horizontal: false, vertical: true)
 
             HStack(spacing: 10) {
@@ -1205,7 +1205,7 @@ struct TeacherReportSignalCard: View {
                     .foregroundStyle(EPTheme.ink)
                 Text(message)
                     .font(.subheadline)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(EPTheme.secondaryInk)
                     .fixedSize(horizontal: false, vertical: true)
             }
         }
@@ -1237,7 +1237,7 @@ struct TeacherQuestionBankRow: View {
 
             Text(overview.levelSummary)
                 .font(.subheadline)
-                .foregroundStyle(.secondary)
+                .foregroundStyle(EPTheme.secondaryInk)
                 .fixedSize(horizontal: false, vertical: true)
         }
         .padding(16)

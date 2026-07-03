@@ -21,7 +21,7 @@ struct RoleSelectionView: View {
                             .foregroundStyle(EPTheme.ink)
                         Text("學生先完成心情檢測，再進入每日任務；老師與志工則先看需要接力的學生。")
                             .font(.body)
-                            .foregroundStyle(.secondary)
+                            .foregroundStyle(EPTheme.secondaryInk)
                             .fixedSize(horizontal: false, vertical: true)
                     }
 
@@ -41,12 +41,12 @@ struct RoleSelectionView: View {
                                             .foregroundStyle(EPTheme.ink)
                                         Text(role.shortPurpose)
                                             .font(.subheadline)
-                                            .foregroundStyle(.secondary)
+                                            .foregroundStyle(EPTheme.secondaryInk)
                                             .multilineTextAlignment(.leading)
                                     }
                                     Spacer()
                                     Image(systemName: "chevron.right")
-                                        .foregroundStyle(.secondary)
+                                        .foregroundStyle(EPTheme.secondaryInk)
                                 }
                                 .padding(16)
                                 .background(EPTheme.card)
@@ -59,7 +59,7 @@ struct RoleSelectionView: View {
                     if let message = appState.signInErrorMessage {
                         Text(message)
                             .font(.footnote.weight(.semibold))
-                            .foregroundStyle(.red)
+                            .foregroundStyle(EPTheme.danger)
                             .fixedSize(horizontal: false, vertical: true)
                     }
 

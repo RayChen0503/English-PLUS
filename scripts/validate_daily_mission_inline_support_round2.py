@@ -22,7 +22,7 @@ require(
     "daily mission support state and navigation",
     student_home + student_shell,
     [
-        "init(onOpenSupport:",
+        "onOpenSupport: @escaping () -> Void = {}",
         "let onOpenSupport: () -> Void",
         "missionSupportConfirmation",
         "missionSupportSentQuestionIds",

@@ -34,7 +34,7 @@ struct DemoLoginView: View {
                             .foregroundStyle(EPTheme.ink)
                         Text(role.shortPurpose)
                             .font(.body)
-                            .foregroundStyle(.secondary)
+                            .foregroundStyle(EPTheme.secondaryInk)
                     }
 
                     VStack(alignment: .leading, spacing: 14) {
@@ -43,13 +43,13 @@ struct DemoLoginView: View {
                             .foregroundStyle(EPTheme.ink)
                         Text("請使用測試帳號登入。系統會檢查帳號、密碼、角色與班級資料；未通過就不會進入 App。")
                             .font(.subheadline)
-                            .foregroundStyle(.secondary)
+                            .foregroundStyle(EPTheme.secondaryInk)
                             .fixedSize(horizontal: false, vertical: true)
 
                         VStack(alignment: .leading, spacing: 8) {
                             Text("帳號")
                                 .font(.caption.bold())
-                                .foregroundStyle(.secondary)
+                                .foregroundStyle(EPTheme.secondaryInk)
                             TextField("email", text: $email)
                                 .textInputAutocapitalization(.never)
                                 .keyboardType(.emailAddress)
@@ -60,7 +60,7 @@ struct DemoLoginView: View {
                         VStack(alignment: .leading, spacing: 8) {
                             Text("密碼")
                                 .font(.caption.bold())
-                                .foregroundStyle(.secondary)
+                                .foregroundStyle(EPTheme.secondaryInk)
                             HStack {
                                 if showsPassword {
                                     TextField("password", text: $password)
@@ -76,7 +76,7 @@ struct DemoLoginView: View {
                                     showsPassword.toggle()
                                 } label: {
                                     Image(systemName: showsPassword ? "eye.slash" : "eye")
-                                        .foregroundStyle(.secondary)
+                                        .foregroundStyle(EPTheme.secondaryInk)
                                 }
                                 .buttonStyle(.plain)
                             }
@@ -93,7 +93,7 @@ struct DemoLoginView: View {
                     if let message = appState.signInErrorMessage {
                         Text(message)
                             .font(.footnote.weight(.semibold))
-                            .foregroundStyle(.red)
+                            .foregroundStyle(EPTheme.danger)
                             .fixedSize(horizontal: false, vertical: true)
                     }
 

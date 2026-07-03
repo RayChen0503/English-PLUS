@@ -9,6 +9,9 @@ struct StudentShellView: View {
             StudentHomeView(
                 onOpenSupport: {
                     selectedTab = .support
+                },
+                onOpenPractice: {
+                    selectedTab = .practice
                 }
             )
                 .tabItem {
@@ -39,7 +42,11 @@ struct StudentShellView: View {
                 }
                 .tag(StudentTab.support)
 
-            StudentLearningMapView()
+            StudentLearningMapView(
+                onOpenHome: {
+                    selectedTab = .home
+                }
+            )
                 .tabItem {
                     Label("地圖", systemImage: "map")
                 }

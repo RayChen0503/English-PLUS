@@ -5,6 +5,7 @@ struct StudentHomeView: View {
     @EnvironmentObject private var learningRepository: LearningRepositoryStore
 
     let onOpenSupport: () -> Void
+    let onOpenPractice: () -> Void
 
     @State private var moodScore = 3
     @State private var timeLevel = 3
@@ -17,8 +18,12 @@ struct StudentHomeView: View {
     @State private var missionSupportConfirmation: String?
     @State private var missionSupportSentQuestionIds = Set<String>()
 
-    init(onOpenSupport: @escaping () -> Void = {}) {
+    init(
+        onOpenSupport: @escaping () -> Void = {},
+        onOpenPractice: @escaping () -> Void = {}
+    ) {
         self.onOpenSupport = onOpenSupport
+        self.onOpenPractice = onOpenPractice
     }
 
     var body: some View {
@@ -84,7 +89,7 @@ struct StudentHomeView: View {
                 ? "先做一個短短的心情檢測，English+ 會用 AI 幫你排今天最適合的任務。"
                 : "照著今日任務前進。答對才會增加進度，完成後可以自由練習。")
                 .font(.subheadline)
-                .foregroundStyle(.secondary)
+                .foregroundStyle(EPTheme.secondaryInk)
                 .fixedSize(horizontal: false, vertical: true)
         }
     }
@@ -98,7 +103,7 @@ struct StudentHomeView: View {
             if let continuation = learningRepository.learningFlow.continuation {
                 Text("上一輪：\(continuation.progressText)")
                     .font(.subheadline)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(EPTheme.secondaryInk)
             }
 
             Button {
@@ -122,7 +127,7 @@ struct StudentHomeView: View {
                     .foregroundStyle(EPTheme.ink)
                 Text("這裡只問四題。系統會依照你的狀態、時間與想練的題型，產生今日任務。")
                     .font(.subheadline)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(EPTheme.secondaryInk)
                     .fixedSize(horizontal: false, vertical: true)
             }
 
@@ -180,7 +185,7 @@ struct StudentHomeView: View {
                                 .foregroundStyle(EPTheme.ink)
                             Text("\(mission.track.uiTitle) · 約 \(mission.recommendedMinutes) 分鐘")
                                 .font(.subheadline)
-                                .foregroundStyle(.secondary)
+                                .foregroundStyle(EPTheme.secondaryInk)
                         }
                         Spacer()
                         Text("\(progress.correctCount)/\(progress.targetCorrectCount)")
@@ -196,7 +201,7 @@ struct StudentHomeView: View {
                         .tint(EPTheme.primary)
                     Text(progress.progressText)
                         .font(.caption)
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(EPTheme.secondaryInk)
                 }
 
                 if let response = appState.latestAIResponse, response.taskType == .dailyMission {
@@ -205,7 +210,7 @@ struct StudentHomeView: View {
 
                 Text("答對才會增加進度。答錯時會保留這題，先看提示再重試。")
                     .font(.footnote)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(EPTheme.secondaryInk)
                     .fixedSize(horizontal: false, vertical: true)
 
                 if progress.status == .completed {
@@ -228,31 +233,18 @@ struct StudentHomeView: View {
         VStack(alignment: .leading, spacing: 14) {
             CompletionCard()
 
-            Text("今天的每日任務已完成。你可以保留成果去自由練習，也可以重新做一次心情檢測，讓 English+ 幫你安排下一輪任務。")
+            Text("今天的每日任務已完成。下一步可以到練習中心自由挑戰；如果想重新安排任務，請到學習地圖按重新檢測。")
                 .font(.subheadline)
-                .foregroundStyle(.secondary)
+                .foregroundStyle(EPTheme.secondaryInk)
                 .fixedSize(horizontal: false, vertical: true)
 
-            HStack(spacing: 10) {
-                Button {
-                    learningRepository.startNewLearningRound(
-                        for: appState.currentUser,
-                        profile: appState.currentProfile
-                    )
-                } label: {
-                    Label("再跑一輪", systemImage: "arrow.triangle.2.circlepath")
-                        .frame(maxWidth: .infinity)
-                }
-                .buttonStyle(PrimaryActionButtonStyle())
-
-                Button {
-                    learningRepository.enterFreePracticeMode()
-                } label: {
-                    Label("自由練習", systemImage: "pencil.and.list.clipboard")
-                        .frame(maxWidth: .infinity, minHeight: 44)
-                }
-                .buttonStyle(.bordered)
+            Button {
+                openFreePractice()
+            } label: {
+                Label("前往自由練習", systemImage: "pencil.and.list.clipboard")
+                    .frame(maxWidth: .infinity)
             }
+            .buttonStyle(PrimaryActionButtonStyle())
         }
         .padding(16)
         .background(EPTheme.card)
@@ -264,9 +256,9 @@ struct StudentHomeView: View {
             Text("自由練習模式")
                 .font(.headline)
                 .foregroundStyle(EPTheme.ink)
-            Text("這裡不計入每日任務進度。想回到今天任務時，可以切回任務流程；想重新安排，也可以再做一次心情檢測。")
+            Text("這裡不計入每日任務進度。想回到今天任務時，可以切回任務流程；想重新安排，請到學習地圖按重新檢測。")
                 .font(.subheadline)
-                .foregroundStyle(.secondary)
+                .foregroundStyle(EPTheme.secondaryInk)
                 .fixedSize(horizontal: false, vertical: true)
 
             HStack(spacing: 10) {
@@ -276,15 +268,12 @@ struct StudentHomeView: View {
                     Label("回到今日任務", systemImage: "target")
                         .frame(maxWidth: .infinity, minHeight: 44)
                 }
-                .buttonStyle(.bordered)
+                .buttonStyle(SecondaryActionButtonStyle())
 
                 Button {
-                    learningRepository.startNewLearningRound(
-                        for: appState.currentUser,
-                        profile: appState.currentProfile
-                    )
+                    openFreePractice()
                 } label: {
-                    Label("重新檢測", systemImage: "checklist")
+                    Label("自由練習", systemImage: "pencil.and.list.clipboard")
                         .frame(maxWidth: .infinity)
                 }
                 .buttonStyle(PrimaryActionButtonStyle())
@@ -302,7 +291,7 @@ struct StudentHomeView: View {
                 .foregroundStyle(EPTheme.ink)
             Text("完成今日任務後，可以到練習中心自由挑題。自由練習不會影響今日任務進度。")
                 .font(.subheadline)
-                .foregroundStyle(.secondary)
+                .foregroundStyle(EPTheme.secondaryInk)
                 .fixedSize(horizontal: false, vertical: true)
         }
         .padding(16)
@@ -322,9 +311,9 @@ struct StudentHomeView: View {
                 .foregroundStyle(EPTheme.ink)
                 .fixedSize(horizontal: false, vertical: true)
 
-            Text("\(assignment.questionIds.count) 題・答對才會推進任務進度。")
+            Text("\(assignment.questionIds.count) 題?答對才會推進任務進度。")
                 .font(.subheadline)
-                .foregroundStyle(.secondary)
+                .foregroundStyle(EPTheme.secondaryInk)
 
             Button {
                 learningRepository.startAssignedPracticeTask(assignment)
@@ -349,7 +338,7 @@ struct StudentHomeView: View {
                     .foregroundStyle(EPTheme.primary)
                 Text(item.level.uiTitle)
                     .font(.caption)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(EPTheme.secondaryInk)
                 Spacer()
             }
 
@@ -363,7 +352,7 @@ struct StudentHomeView: View {
                     .textFieldStyle(.roundedBorder)
             } else {
                 VStack(spacing: 8) {
-                    ForEach(item.question.options, id: \.self) { option in
+                    ForEach(missionOptionOrder(for: item), id: \.self) { option in
                         AnswerOptionButton(
                             option: option,
                             isSelected: option == selectedAnswer
@@ -393,6 +382,24 @@ struct StudentHomeView: View {
 
     private var currentStudentUid: String? {
         appState.currentUser?.id ?? appState.currentProfile?.id
+    }
+
+    private func missionQuestionIndex(for item: QuestionBankItem) -> Int {
+        let missionQuestions = learningRepository.currentMission?.questions ?? []
+        let balancedQuestions = QuestionGroupingEngine.balancedItems(
+            from: missionQuestions,
+            limit: missionQuestions.count
+        )
+        return balancedQuestions.firstIndex { $0.id == item.id }
+            ?? missionQuestions.firstIndex { $0.id == item.id }
+            ?? 0
+    }
+
+    private func missionOptionOrder(for item: QuestionBankItem) -> [String] {
+        QuestionGroupingEngine.balancedOptions(
+            for: item,
+            sessionIndex: missionQuestionIndex(for: item)
+        )
     }
 
     private func initializePreferredTypes() {
@@ -543,10 +550,15 @@ struct StudentHomeView: View {
     }
 
     private func openPracticeFromAI() {
+        openFreePractice()
+    }
+
+    private func openFreePractice() {
         learningRepository.enterFreePracticeMode()
         selectedAnswer = ""
         latestWrongAnswerAIResponse = nil
         missionSupportConfirmation = nil
+        onOpenPractice()
     }
 }
 
@@ -563,7 +575,7 @@ private struct LearningFlowStatusCard: View {
                         .foregroundStyle(EPTheme.ink)
                     Text(stageDetail)
                         .font(.subheadline)
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(EPTheme.secondaryInk)
                         .fixedSize(horizontal: false, vertical: true)
                 }
                 Spacer()
@@ -606,13 +618,13 @@ private struct LearningFlowStatusCard: View {
         switch flow.stage {
         case .needsCheckIn:
             if let continuation = flow.continuation {
-                return "可以重新檢測，也可以延續上一輪：\(continuation.progressText)。"
+                return "可以延續上一輪：\(continuation.progressText)。若想重新安排，請到學習地圖按重新檢測。"
             }
             return "回答四題短檢測後，系統會安排今天的任務。"
         case .missionActive:
             return "答對題目才會推進每日任務進度。"
         case .missionCompleted:
-            return "你已完成今天的任務，可以自由練習或再跑一輪。"
+            return "你已完成今天的任務，下一步可以自由練習。"
         case .freePractice:
             return "自由練習不影響每日任務完成度。"
         }
@@ -667,7 +679,7 @@ private struct ScaleSelector: View {
                 Text(highLabel)
             }
             .font(.caption)
-            .foregroundStyle(.secondary)
+            .foregroundStyle(EPTheme.secondaryInk)
         }
     }
 }
@@ -810,7 +822,7 @@ private struct FeedbackCard: View {
 
             Text(attempt.isCorrect ? "進度已增加。繼續完成今天的小任務。" : "進度不會增加。先看提示，再重試這題。")
                 .font(.subheadline)
-                .foregroundStyle(.secondary)
+                .foregroundStyle(EPTheme.secondaryInk)
                 .fixedSize(horizontal: false, vertical: true)
 
             Text(attempt.explanation)
@@ -836,7 +848,7 @@ private struct FeedbackCard: View {
             } else if !attempt.isCorrect {
                 Text("提示：\(attempt.repairHint)")
                     .font(.footnote)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(EPTheme.secondaryInk)
                     .fixedSize(horizontal: false, vertical: true)
             }
 
@@ -879,7 +891,7 @@ private struct MissionQuestionSupportPanel: View {
 
             Text("AI 可以立刻再講一次；老師或志工會收到這一題、你的答案與解析。送出後到「支持」查看回覆。")
                 .font(.caption)
-                .foregroundStyle(.secondary)
+                .foregroundStyle(EPTheme.secondaryInk)
                 .fixedSize(horizontal: false, vertical: true)
 
             HStack(spacing: 8) {
@@ -888,7 +900,7 @@ private struct MissionQuestionSupportPanel: View {
                         .font(.caption.bold())
                         .frame(maxWidth: .infinity, minHeight: 44)
                 }
-                .buttonStyle(.borderedProminent)
+                .buttonStyle(PrimaryActionButtonStyle())
                 .disabled(isLoadingAI)
 
                 Button(action: onSendTeacher) {
@@ -896,7 +908,7 @@ private struct MissionQuestionSupportPanel: View {
                         .font(.caption.bold())
                         .frame(maxWidth: .infinity, minHeight: 44)
                 }
-                .buttonStyle(.bordered)
+                .buttonStyle(SecondaryActionButtonStyle())
                 .disabled(teacherRequestSent)
 
                 Button(action: onSendVolunteer) {
@@ -904,7 +916,7 @@ private struct MissionQuestionSupportPanel: View {
                         .font(.caption.bold())
                         .frame(maxWidth: .infinity, minHeight: 44)
                 }
-                .buttonStyle(.bordered)
+                .buttonStyle(SecondaryActionButtonStyle())
                 .disabled(volunteerRequestSent)
             }
 
@@ -926,13 +938,13 @@ private struct MissionQuestionSupportPanel: View {
                             .font(.caption.bold())
                             .frame(maxWidth: .infinity, minHeight: 40)
                     }
-                    .buttonStyle(.borderedProminent)
+                    .buttonStyle(PrimaryActionButtonStyle())
                 }
             }
         }
         .padding(12)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(.white.opacity(0.74))
+        .background(EPTheme.elevatedCard)
         .clipShape(RoundedRectangle(cornerRadius: EPTheme.cardRadius))
     }
 }
@@ -957,17 +969,17 @@ private struct AIActionButtonRow: View {
                         .font(.subheadline.bold())
                     Text(detail)
                         .font(.caption)
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(EPTheme.secondaryInk)
                         .fixedSize(horizontal: false, vertical: true)
                 }
                 Spacer()
                 Image(systemName: "chevron.right")
                     .font(.caption.bold())
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(EPTheme.secondaryInk)
             }
             .foregroundStyle(EPTheme.ink)
             .padding(12)
-            .background(.white.opacity(0.72))
+            .background(EPTheme.elevatedCard)
             .clipShape(RoundedRectangle(cornerRadius: EPTheme.cardRadius))
         }
         .buttonStyle(.plain)
@@ -991,7 +1003,7 @@ private struct AIExplanationCard: View {
             if let hint = response.output.nextHint, !hint.isEmpty {
                 Text("下一步：\(hint)")
                     .font(.footnote)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(EPTheme.secondaryInk)
                     .fixedSize(horizontal: false, vertical: true)
             }
         }
@@ -1012,7 +1024,7 @@ private struct AIStatusCard: View {
                 ? "先用內建提示幫你整理下一步。"
                 : "已整理成下一個可執行的小步驟。")
                 .font(.caption)
-                .foregroundStyle(.secondary)
+                .foregroundStyle(EPTheme.secondaryInk)
 
             if let summary = response.output.summary, !summary.isEmpty {
                 Text(summary)
@@ -1035,7 +1047,7 @@ private struct CompletionCard: View {
                 .foregroundStyle(EPTheme.support)
             Text("做得很好。今天的必要任務已經完成，接下來可以休息，或到練習中心自由挑戰。")
                 .font(.subheadline)
-                .foregroundStyle(.secondary)
+                .foregroundStyle(EPTheme.secondaryInk)
                 .fixedSize(horizontal: false, vertical: true)
         }
         .padding(14)

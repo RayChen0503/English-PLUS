@@ -29,7 +29,7 @@ struct ConsentView: View {
                             .font(.largeTitle.bold())
                             .foregroundStyle(EPTheme.ink)
                         Text("請先確認 English+ 如何使用資料，再進入\(role.title)端。")
-                            .foregroundStyle(.secondary)
+                            .foregroundStyle(EPTheme.secondaryInk)
                     }
 
                     VStack(alignment: .leading, spacing: 14) {
@@ -51,7 +51,7 @@ struct ConsentView: View {
 
                     Text(PrivacyPolicyCopy.refusalPath)
                         .font(.footnote)
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(EPTheme.secondaryInk)
                         .fixedSize(horizontal: false, vertical: true)
 
                     Button("我了解並繼續") {
@@ -79,14 +79,14 @@ private struct ConsentToggle: View {
             VStack(alignment: .leading, spacing: 6) {
                 HStack(alignment: .firstTextBaseline, spacing: 10) {
                     Image(systemName: isOn ? "checkmark.square.fill" : "square")
-                        .foregroundStyle(isOn ? EPTheme.primary : .secondary)
+                        .foregroundStyle(isOn ? EPTheme.primary : EPTheme.secondaryInk)
                     Text(title)
                         .font(.headline)
                         .foregroundStyle(EPTheme.ink)
                 }
                 Text(text)
                     .font(.subheadline)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(EPTheme.secondaryInk)
                     .fixedSize(horizontal: false, vertical: true)
             }
         }

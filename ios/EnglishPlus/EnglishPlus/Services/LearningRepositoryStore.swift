@@ -172,6 +172,7 @@ final class LearningRepositoryStore: ObservableObject {
 
     var teacherQueue: [StudentSupportRequest] {
         supportRequests
+            .filter(\.isWaitingForStaffAction)
             .filter(\.requiresStaffTeachingResponse)
             .sorted { priorityScore($0.priority) > priorityScore($1.priority) }
     }

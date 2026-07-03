@@ -27,12 +27,12 @@ require_markers(
     "AI recommendation can become a selected practice set",
     practice_center,
     [
-        "recommendedPracticeSet",
-        "setMatchesAIRecommendation",
-        "applyAIRecommendedPracticeSet",
+        "recommendedPracticePlan",
+        "buildAIRecommendationPlan",
+        "applyAIRecommendedPracticePlan",
         "PracticeAIRecommendationActionCard",
         "onApplyRecommendation",
-        "selectedPracticeSetId = set.id",
+        "startPracticeSession(with: sessionSelection.items",
     ],
 )
 

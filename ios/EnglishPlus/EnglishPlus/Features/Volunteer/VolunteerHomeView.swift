@@ -63,7 +63,7 @@ struct VolunteerHandoffWorkspaceView: View {
 
                         Text("先接住，再陪一題。志工只需要看卡住原因、題目脈絡，留下學生看得懂的一段回覆。")
                             .font(.subheadline)
-                            .foregroundStyle(.secondary)
+                            .foregroundStyle(EPTheme.secondaryInk)
                             .fixedSize(horizontal: false, vertical: true)
 
                         StaffSupportQueueHeaderCard(
@@ -119,7 +119,7 @@ private struct VolunteerStaffReplyComposerCard: View {
 
             Text("志工可以先用 AI 整理陪伴語氣，再送出給學生；如果這筆已經不需要回覆，也可以標記已讀不回或收起。")
                 .font(.subheadline)
-                .foregroundStyle(.secondary)
+                .foregroundStyle(EPTheme.secondaryInk)
                 .fixedSize(horizontal: false, vertical: true)
 
             TextField("輸入陪伴回覆，例如：你已經抓到問題了，我們先把主詞和動詞分開看。", text: $replyDraft, axis: .vertical)
@@ -131,7 +131,7 @@ private struct VolunteerStaffReplyComposerCard: View {
                     await fillVolunteerDraftWithAI()
                 }
             }
-            .buttonStyle(.bordered)
+            .buttonStyle(SecondaryActionButtonStyle())
             .disabled(isDraftingWithAI)
 
             StaffSupportActionBar(
@@ -201,7 +201,7 @@ struct VolunteerRecordView: View {
 
                         Text("這裡保留已送出的志工回覆，方便下一位老師或志工接續。")
                             .font(.subheadline)
-                            .foregroundStyle(.secondary)
+                            .foregroundStyle(EPTheme.secondaryInk)
                             .fixedSize(horizontal: false, vertical: true)
 
                         VolunteerRecordStatusCard()
@@ -248,7 +248,7 @@ private struct VolunteerHeaderCard: View {
 
             Text("只處理已送出的求助，不看老師管理資訊；每次回覆都會回到學生支援紀錄。")
                 .font(.subheadline)
-                .foregroundStyle(.secondary)
+                .foregroundStyle(EPTheme.secondaryInk)
                 .fixedSize(horizontal: false, vertical: true)
         }
         .padding(18)
@@ -294,7 +294,7 @@ private struct VolunteerMetricTile: View {
                 .foregroundStyle(tint)
             Text(title)
                 .font(.caption)
-                .foregroundStyle(.secondary)
+                .foregroundStyle(EPTheme.secondaryInk)
         }
         .padding(14)
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -319,7 +319,7 @@ private struct VolunteerTodayPriorityCard: View {
                         .foregroundStyle(EPTheme.ink)
                     Text(statusSummary)
                         .font(.caption)
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(EPTheme.secondaryInk)
                 }
                 Spacer()
                 Text(request.priority.uiTitle)
@@ -338,7 +338,7 @@ private struct VolunteerTodayPriorityCard: View {
 
             Text("到「接力」頁面後，可以用 AI 產生草稿，再送出學生看得到的回覆。")
                 .font(.footnote)
-                .foregroundStyle(.secondary)
+                .foregroundStyle(EPTheme.secondaryInk)
                 .fixedSize(horizontal: false, vertical: true)
         }
         .padding(16)
@@ -368,7 +368,7 @@ private struct VolunteerQueuePickerCard: View {
             if requests.isEmpty {
                 Text("目前沒有等待志工接力的學生。")
                     .font(.subheadline)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(EPTheme.secondaryInk)
             } else {
                 ForEach(requests) { request in
                     Button {
@@ -381,7 +381,7 @@ private struct VolunteerQueuePickerCard: View {
                                     .foregroundStyle(EPTheme.ink)
                                 Text(queueSubtitle(for: request))
                                     .font(.caption)
-                                    .foregroundStyle(.secondary)
+                                    .foregroundStyle(EPTheme.secondaryInk)
                             }
                             Spacer()
                             Text(request.priority.uiTitle)
@@ -488,7 +488,7 @@ private struct VolunteerQuestionContextCard: View {
             if let snapshot = request.questionSnapshot {
                 Text("先看學生答案與正解，再回一個能讓學生重試的小提示。")
                     .font(.subheadline)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(EPTheme.secondaryInk)
                     .fixedSize(horizontal: false, vertical: true)
                 SupportQuestionSnapshotCard(
                     snapshot: snapshot,
@@ -498,18 +498,18 @@ private struct VolunteerQuestionContextCard: View {
             } else if request.latestQuestionId?.isEmpty == false {
                 Label("這筆求助有題目紀錄，但目前缺少完整題目快照。", systemImage: "doc.text.magnifyingglass")
                     .font(.subheadline.bold())
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(EPTheme.secondaryInk)
                     .fixedSize(horizontal: false, vertical: true)
             } else {
                 Label("這次求助沒有綁定單一題目", systemImage: "text.bubble")
                     .font(.subheadline.bold())
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(EPTheme.secondaryInk)
                     .fixedSize(horizontal: false, vertical: true)
             }
 
             Text("回覆時不要直接給長篇答案，先給一個能讓學生重試的提示。送出後學生會在支援紀錄看到這段回覆。")
                 .font(.subheadline)
-                .foregroundStyle(.secondary)
+                .foregroundStyle(EPTheme.secondaryInk)
                 .fixedSize(horizontal: false, vertical: true)
         }
         .padding(16)
@@ -535,7 +535,7 @@ private struct VolunteerCompanionScriptCard: View {
                         .foregroundStyle(EPTheme.ink)
                     Text(template.body)
                         .font(.footnote)
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(EPTheme.secondaryInk)
                         .fixedSize(horizontal: false, vertical: true)
                 }
                 .padding(10)
@@ -559,7 +559,7 @@ private struct VolunteerStatusTile: View {
         VStack(alignment: .leading, spacing: 4) {
             Text(title)
                 .font(.caption.bold())
-                .foregroundStyle(.secondary)
+                .foregroundStyle(EPTheme.secondaryInk)
             Text(value)
                 .font(.subheadline.bold())
                 .foregroundStyle(EPTheme.ink)
@@ -583,7 +583,7 @@ private struct VolunteerRecordStatusCard: View {
                 .foregroundStyle(EPTheme.support)
             Text("已累積 \(learningRepository.volunteerDashboardMetrics.syncRecordCount) 筆陪伴回覆與追蹤紀錄。")
                 .font(.subheadline)
-                .foregroundStyle(.secondary)
+                .foregroundStyle(EPTheme.secondaryInk)
         }
         .padding(16)
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -604,7 +604,7 @@ private struct VolunteerRecordRequestCard: View {
                         .foregroundStyle(EPTheme.ink)
                     Text(request.updatedAt.formatted(date: .abbreviated, time: .shortened))
                         .font(.caption)
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(EPTheme.secondaryInk)
                 }
                 Spacer()
                 Text(request.status.uiTitle)
@@ -614,7 +614,7 @@ private struct VolunteerRecordRequestCard: View {
 
             Text(request.studentMessage)
                 .font(.footnote)
-                .foregroundStyle(.secondary)
+                .foregroundStyle(EPTheme.secondaryInk)
                 .fixedSize(horizontal: false, vertical: true)
 
             ForEach(request.replies.filter { $0.authorRole == .volunteer }) { reply in
@@ -643,7 +643,7 @@ private struct VolunteerEmptyQueueCard: View {
                 .foregroundStyle(EPTheme.support)
             Text("學生從練習題送出求助後，這裡會出現最需要陪伴的一小步。")
                 .font(.subheadline)
-                .foregroundStyle(.secondary)
+                .foregroundStyle(EPTheme.secondaryInk)
                 .fixedSize(horizontal: false, vertical: true)
         }
         .padding(16)
@@ -661,7 +661,7 @@ private struct EmptyRecordCard: View {
                 .foregroundStyle(EPTheme.ink)
             Text("接力學生後，回覆內容會留在這裡，方便下一位老師或志工接續。")
                 .font(.subheadline)
-                .foregroundStyle(.secondary)
+                .foregroundStyle(EPTheme.secondaryInk)
                 .fixedSize(horizontal: false, vertical: true)
         }
         .padding(16)

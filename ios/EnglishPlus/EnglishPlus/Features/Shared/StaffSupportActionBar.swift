@@ -24,7 +24,7 @@ struct StaffSupportQueueHeaderCard: View {
                         .foregroundStyle(EPTheme.ink)
                     Text(subtitle)
                         .font(.subheadline)
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(EPTheme.secondaryInk)
                         .fixedSize(horizontal: false, vertical: true)
                 }
 
@@ -64,7 +64,7 @@ private struct StaffSupportMetricPill: View {
         VStack(alignment: .leading, spacing: 4) {
             Text(title)
                 .font(.caption.bold())
-                .foregroundStyle(.secondary)
+                .foregroundStyle(EPTheme.secondaryInk)
             Text(value)
                 .font(.title3.bold())
                 .foregroundStyle(tint)
@@ -104,7 +104,7 @@ struct StaffSupportActionBar: View {
                         .font(.subheadline.bold())
                         .frame(maxWidth: .infinity, minHeight: 44)
                 }
-                .buttonStyle(.bordered)
+                .buttonStyle(SecondaryActionButtonStyle())
             }
 
             Button(action: archiveThread) {
@@ -112,11 +112,11 @@ struct StaffSupportActionBar: View {
                     .font(.subheadline.bold())
                     .frame(maxWidth: .infinity, minHeight: 44)
             }
-            .buttonStyle(.bordered)
+            .buttonStyle(SecondaryActionButtonStyle())
 
             Text("已讀不回會把紅點消掉，但不會傳訊息給學生；收起會從老師/志工待辦中移除。")
                 .font(.caption)
-                .foregroundStyle(.secondary)
+                .foregroundStyle(EPTheme.secondaryInk)
                 .fixedSize(horizontal: false, vertical: true)
         }
         .padding(12)

@@ -41,7 +41,7 @@ struct SupportQuestionSnapshotCard: View {
                 VStack(alignment: .leading, spacing: 6) {
                     Text("解析")
                         .font(.caption.bold())
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(EPTheme.secondaryInk)
                     Text(snapshot.explanation)
                         .font(.footnote)
                         .foregroundStyle(EPTheme.ink)
@@ -49,7 +49,7 @@ struct SupportQuestionSnapshotCard: View {
 
                     Text("下一步")
                         .font(.caption.bold())
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(EPTheme.secondaryInk)
                     Text(snapshot.repairHint)
                         .font(.footnote)
                         .foregroundStyle(EPTheme.ink)
@@ -82,7 +82,7 @@ struct SupportQuestionSnapshotCard: View {
         let isCorrect = option == snapshot.correctAnswer
         return HStack(spacing: 8) {
             Image(systemName: isCorrect ? "checkmark.circle.fill" : isSelected ? "xmark.circle.fill" : "circle")
-                .foregroundStyle(isCorrect ? EPTheme.support : isSelected ? EPTheme.warning : .secondary)
+                .foregroundStyle(isCorrect ? EPTheme.support : isSelected ? EPTheme.warning : EPTheme.secondaryInk)
             Text(option)
                 .font(.footnote)
                 .foregroundStyle(EPTheme.ink)
@@ -90,7 +90,7 @@ struct SupportQuestionSnapshotCard: View {
             Spacer()
         }
         .padding(8)
-        .background(isCorrect ? EPTheme.support.opacity(0.10) : isSelected ? EPTheme.warning.opacity(0.10) : .white)
+        .background(isCorrect ? EPTheme.support.opacity(0.10) : isSelected ? EPTheme.warning.opacity(0.10) : EPTheme.card)
         .clipShape(RoundedRectangle(cornerRadius: 8))
     }
 
@@ -98,7 +98,7 @@ struct SupportQuestionSnapshotCard: View {
         HStack(alignment: .top, spacing: 8) {
             Text(title)
                 .font(.caption.bold())
-                .foregroundStyle(.secondary)
+                .foregroundStyle(EPTheme.secondaryInk)
                 .frame(width: 64, alignment: .leading)
             Text(value)
                 .font(.subheadline.bold())

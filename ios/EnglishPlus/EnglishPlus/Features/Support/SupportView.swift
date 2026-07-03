@@ -55,7 +55,7 @@ struct SupportView: View {
                     .foregroundStyle(EPTheme.ink)
                 Text("練習題送出後，老師、志工或 AI 的回覆都會集中在這裡。看懂後可以收起，列表就不會越堆越亂。")
                     .font(.subheadline)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(EPTheme.secondaryInk)
                     .fixedSize(horizontal: false, vertical: true)
             }
 
@@ -163,7 +163,7 @@ private struct SupportInboxHeaderCard: View {
                         .foregroundStyle(EPTheme.ink)
                     Text("這裡不是任務入口，是你和 AI、老師、志工的支援紀錄。")
                         .font(.subheadline)
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(EPTheme.secondaryInk)
                         .fixedSize(horizontal: false, vertical: true)
                 }
             }
@@ -181,7 +181,7 @@ private struct SupportInboxHeaderCard: View {
                         .font(.subheadline.bold())
                         .frame(maxWidth: .infinity, minHeight: 44)
                 }
-                .buttonStyle(.bordered)
+                .buttonStyle(SecondaryActionButtonStyle())
             }
         }
         .padding(16)
@@ -211,7 +211,7 @@ private struct SupportMoodAICard: View {
                         .foregroundStyle(EPTheme.ink)
                     Text("如果只是心情卡住，可以先請 AI 幫你把下一步變小。題目卡住時，回到練習題下方送給老師或志工。")
                         .font(.subheadline)
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(EPTheme.secondaryInk)
                         .fixedSize(horizontal: false, vertical: true)
                 }
             }
@@ -221,7 +221,7 @@ private struct SupportMoodAICard: View {
                     .font(.subheadline.bold())
                     .frame(maxWidth: .infinity, minHeight: 44)
             }
-            .buttonStyle(.borderedProminent)
+            .buttonStyle(PrimaryActionButtonStyle())
             .disabled(isLoading)
 
             if isLoading {
@@ -258,7 +258,7 @@ private struct SupportAIActionCard: View {
 
             Text(actionHint)
                 .font(.subheadline)
-                .foregroundStyle(.secondary)
+                .foregroundStyle(EPTheme.secondaryInk)
                 .fixedSize(horizontal: false, vertical: true)
 
             HStack(spacing: 10) {
@@ -274,7 +274,7 @@ private struct SupportAIActionCard: View {
                         .font(.subheadline.bold())
                         .frame(maxWidth: .infinity, minHeight: 44)
                 }
-                .buttonStyle(.bordered)
+                .buttonStyle(SecondaryActionButtonStyle())
             }
         }
         .padding(12)
@@ -332,7 +332,7 @@ private struct SupportEmptyStateCard: View {
 
             Text("開始練習後，如果某一題看不懂，可以在題目下方直接問 AI，或把那一題送給老師/志工。")
                 .font(.subheadline)
-                .foregroundStyle(.secondary)
+                .foregroundStyle(EPTheme.secondaryInk)
                 .fixedSize(horizontal: false, vertical: true)
 
             Button(action: onOpenPractice) {
@@ -380,7 +380,7 @@ private struct SupportReplyCenterSummaryCard: View {
 
             Text("有新回覆時先看解析；看懂後可以把那筆收起，之後仍會保留在後端紀錄。")
                 .font(.caption)
-                .foregroundStyle(.secondary)
+                .foregroundStyle(EPTheme.secondaryInk)
                 .fixedSize(horizontal: false, vertical: true)
         }
         .padding(14)
@@ -399,7 +399,7 @@ private struct SupportInboxMetricPill: View {
         VStack(alignment: .leading, spacing: 4) {
             Text(title)
                 .font(.caption.bold())
-                .foregroundStyle(.secondary)
+                .foregroundStyle(EPTheme.secondaryInk)
             Text(value)
                 .font(.title3.bold())
                 .foregroundStyle(tint)
@@ -432,7 +432,7 @@ private struct SupportRequestInboxCard: View {
 
                     Text(request.updatedAt.formatted(date: .abbreviated, time: .shortened))
                         .font(.caption)
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(EPTheme.secondaryInk)
                 }
 
                 Spacer()
@@ -467,7 +467,7 @@ private struct SupportRequestInboxCard: View {
             } else if request.latestQuestionId?.isEmpty == false {
                 Label("這筆求助有題目紀錄，但目前缺少完整題目快照。", systemImage: "doc.text")
                     .font(.caption.bold())
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(EPTheme.secondaryInk)
                     .fixedSize(horizontal: false, vertical: true)
                     .padding(10)
                     .background(EPTheme.secondarySurface)
@@ -541,9 +541,9 @@ private struct SupportRequestInboxCard: View {
         case .staffHandledNoReply:
             return EPTheme.support
         case .archived:
-            return .secondary
+            return EPTheme.secondaryInk
         case .closed:
-            return .secondary
+            return EPTheme.secondaryInk
         }
     }
 }
@@ -560,7 +560,7 @@ private struct SupportThreadActionRow: View {
 
             Text("收起後不會刪除資料，只是不再顯示在你的回覆中心；如果還想練同類題，可以直接回練習中心。")
                 .font(.footnote)
-                .foregroundStyle(.secondary)
+                .foregroundStyle(EPTheme.secondaryInk)
                 .fixedSize(horizontal: false, vertical: true)
 
             HStack(spacing: 10) {
@@ -569,7 +569,7 @@ private struct SupportThreadActionRow: View {
                         .font(.caption.bold())
                         .frame(maxWidth: .infinity, minHeight: 44)
                 }
-                .buttonStyle(.bordered)
+                .buttonStyle(SecondaryActionButtonStyle())
 
                 Button(action: onOpenPractice) {
                     Label("回練習中心", systemImage: "target")
@@ -592,7 +592,7 @@ private struct SupportWaitingReplyCard: View {
     var body: some View {
         Label(waitingText, systemImage: "clock")
             .font(.footnote)
-            .foregroundStyle(.secondary)
+            .foregroundStyle(EPTheme.secondaryInk)
             .fixedSize(horizontal: false, vertical: true)
             .padding(10)
             .frame(maxWidth: .infinity, alignment: .leading)
@@ -621,7 +621,7 @@ private struct SupportReplyTimeline: View {
         VStack(alignment: .leading, spacing: 8) {
             Text("老師/志工回覆")
                 .font(.caption.bold())
-                .foregroundStyle(.secondary)
+                .foregroundStyle(EPTheme.secondaryInk)
 
             ForEach(replies) { reply in
                 VStack(alignment: .leading, spacing: 5) {
@@ -632,7 +632,7 @@ private struct SupportReplyTimeline: View {
                         Spacer()
                         Text(reply.createdAt.formatted(date: .omitted, time: .shortened))
                             .font(.caption2)
-                            .foregroundStyle(.secondary)
+                            .foregroundStyle(EPTheme.secondaryInk)
                     }
 
                     Text(reply.body)

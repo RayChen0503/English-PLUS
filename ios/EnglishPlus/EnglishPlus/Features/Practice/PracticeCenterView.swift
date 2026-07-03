@@ -65,7 +65,7 @@ struct PracticeCenterView: View {
                         .foregroundStyle(EPTheme.ink)
                     Text("這裡可以自行選題型與難度。自由練習不影響今日任務進度，但答錯時仍可請 AI 解釋。")
                         .font(.subheadline)
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(EPTheme.secondaryInk)
                         .fixedSize(horizontal: false, vertical: true)
                 }
             }
@@ -100,7 +100,7 @@ struct PracticeCenterView: View {
             VStack(alignment: .leading, spacing: 8) {
                 Text("題型")
                     .font(.caption.bold())
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(EPTheme.secondaryInk)
                 LazyVGrid(columns: [GridItem(.adaptive(minimum: 96), spacing: 8)], spacing: 8) {
                     ForEach(typeFilterOptions) { option in
                         PracticeFilterChip(
@@ -117,7 +117,7 @@ struct PracticeCenterView: View {
             VStack(alignment: .leading, spacing: 8) {
                 Text("難度")
                     .font(.caption.bold())
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(EPTheme.secondaryInk)
                 LazyVGrid(columns: [GridItem(.adaptive(minimum: 72), spacing: 8)], spacing: 8) {
                     ForEach(levelFilterOptions) { option in
                         PracticeFilterChip(
@@ -146,7 +146,7 @@ struct PracticeCenterView: View {
                 Spacer()
                 Text(positionText)
                     .font(.caption.bold())
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(EPTheme.secondaryInk)
             }
 
             if let practiceSelectionNote, !practiceSelectionNote.isEmpty {
@@ -179,7 +179,7 @@ struct PracticeCenterView: View {
                         .tint(EPTheme.primary)
                     Text("答完 \(freePracticeSessionItems.count) 題就會結算，自由練習不會影響今日任務進度。")
                         .font(.caption)
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(EPTheme.secondaryInk)
                 }
 
                 questionMetaRow(item)
@@ -251,7 +251,7 @@ struct PracticeCenterView: View {
                             .font(.subheadline.bold())
                             .frame(minHeight: 44)
                     }
-                    .buttonStyle(.bordered)
+                    .buttonStyle(SecondaryActionButtonStyle())
                     .disabled(practiceResult == nil)
                     .opacity(practiceResult == nil ? 0.45 : 1)
                 }
@@ -276,7 +276,7 @@ struct PracticeCenterView: View {
                         .foregroundStyle(EPTheme.ink)
                     Text("可以依照最近表現請 AI 推薦下一步。這是驗證 AI 是否連線的另一個入口。")
                         .font(.subheadline)
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(EPTheme.secondaryInk)
                         .fixedSize(horizontal: false, vertical: true)
                 }
             }
@@ -290,7 +290,7 @@ struct PracticeCenterView: View {
                     .font(.subheadline.bold())
                     .frame(maxWidth: .infinity, minHeight: 44)
             }
-            .buttonStyle(.borderedProminent)
+            .buttonStyle(PrimaryActionButtonStyle())
             .disabled(isLoadingPracticeAI)
 
             if isLoadingPracticeAI {
@@ -438,12 +438,12 @@ struct PracticeCenterView: View {
     }
 
     private func startPracticeSession(with items: [QuestionBankItem], sourceTitle: String? = nil) {
-        let sessionItems = Array(balancedPracticeItems(from: items).prefix(freePracticeSessionLimit))
+        let sessionItems = QuestionGroupingEngine.balancedItems(from: items, limit: freePracticeSessionLimit)
         freePracticeSessionItems = sessionItems
         activePracticeSourceTitle = sourceTitle
         practiceOptionOrderByQuestionId = Dictionary(
-            uniqueKeysWithValues: sessionItems.map { item in
-                (item.id, balancedAnswerOptions(for: item))
+            uniqueKeysWithValues: sessionItems.enumerated().map { index, item in
+                (item.id, QuestionGroupingEngine.balancedOptions(for: item, sessionIndex: index))
             }
         )
         practiceIndex = 0
@@ -502,7 +502,12 @@ struct PracticeCenterView: View {
             inferredTypes: inferredTypes,
             inferredLevels: inferredLevels
         )
-        let selectedItems = Array((scoredItems.isEmpty ? fallbackItems : scoredItems).prefix(freePracticeSessionLimit))
+        let selection = QuestionGroupingEngine.practiceSelection(
+            from: scoredItems,
+            fallbackCandidates: fallbackItems,
+            limit: freePracticeSessionLimit
+        )
+        let selectedItems = selection.items
         guard let firstItem = selectedItems.first else { return nil }
 
         let resolvedSkill = resolvedRecommendationSkill(from: selectedItems, skillHints: skillHints)
@@ -513,7 +518,7 @@ struct PracticeCenterView: View {
             inferredTypes: inferredTypes,
             inferredLevels: inferredLevels,
             skill: titleSkill,
-            usedFallback: scoredItems.isEmpty
+            usedFallback: selection.fallbackUsed
         )
 
         return AIPracticeRecommendationPlan(
@@ -560,7 +565,7 @@ struct PracticeCenterView: View {
         }
 
         append(.cloze, when: ["cloze", "克漏", "文意推論"])
-        append(.grammar, when: ["grammar", "multiplechoice", "文法", "be 動詞", "be动词", "be verb", "am is are"])
+        append(.grammar, when: ["grammar", "multiplechoice", "文法", "be 動詞", "be??", "be verb", "am is are"])
         append(.fillBlank, when: ["fillblank", "fill blank", "blank", "填空"])
         append(.reading, when: ["reading", "閱讀"])
         append(.translation, when: ["translation", "翻譯", "句子重組"])
@@ -603,7 +608,7 @@ struct PracticeCenterView: View {
     private func inferRecommendedSkillHints(from searchText: String) -> [String] {
         let hardcodedHints = [
             "be 動詞",
-            "be动词",
+            "be??",
             "be verb",
             "am",
             "is",
@@ -684,167 +689,48 @@ struct PracticeCenterView: View {
         inferredTypes: [QuestionType],
         inferredLevels: [QuestionLevel]
     ) -> [QuestionBankItem] {
-        var candidates = questionBankItems
-
-        if let type = inferredTypes.first {
-            let typeMatches = candidates.filter { $0.question.type == type }
-            if !typeMatches.isEmpty {
-                candidates = typeMatches
-            }
-        }
-
-        if let level = inferredLevels.first {
-            let levelMatches = candidates.filter { $0.level == level }
-            if !levelMatches.isEmpty {
-                candidates = levelMatches
-            }
-        }
-
-        if candidates.isEmpty {
-            candidates = filteredPracticeItems
-        }
-
-        return candidates.isEmpty ? questionBankItems : candidates
+        QuestionGroupingEngine.balancedFallbackCandidates(
+            preferredTypes: inferredTypes.isEmpty ? preferredQuestionTypesForAI : inferredTypes,
+            preferredLevels: inferredLevels,
+            from: questionBankItems.isEmpty ? filteredPracticeItems : questionBankItems
+        )
     }
 
     private func buildPracticeSessionItems(from candidates: [QuestionBankItem]) -> PracticeSessionSelection {
-        let balancedCandidates = balancedPracticeItems(from: candidates)
-        let exactItems = Array(balancedCandidates.prefix(freePracticeSessionLimit))
-        if exactItems.count >= freePracticeSessionLimit {
-            return PracticeSessionSelection(
-                items: exactItems,
-                note: nil
-            )
-        }
-
-        let exactIds = Set(exactItems.map(\.id))
-        let fallbackCandidates = fallbackPracticeCandidates()
-            .filter { !exactIds.contains($0.id) }
-        let filledItems = Array(
-            balancedPracticeItems(from: exactItems + fallbackCandidates)
-                .prefix(freePracticeSessionLimit)
+        let selection = QuestionGroupingEngine.practiceSelection(
+            from: candidates,
+            fallbackCandidates: fallbackPracticeCandidates(),
+            limit: freePracticeSessionLimit
         )
-        let note = filledItems.isEmpty
+        let note = selection.items.isEmpty
             ? "目前題庫還沒有可用題目。"
-            : (filledItems.count > exactItems.count
+            : (selection.fallbackUsed
                 ? "目前條件題數不足，已自動放寬條件，先安排最接近的一組。"
                 : nil)
-        return PracticeSessionSelection(items: filledItems, note: note)
+        return PracticeSessionSelection(items: selection.items, note: note)
     }
 
     private func fallbackPracticeCandidates() -> [QuestionBankItem] {
         let allItems = questionBankItems
-        var candidateGroups: [[QuestionBankItem]] = []
-
-        if let selectedPracticeType {
-            candidateGroups.append(allItems.filter { $0.question.type == selectedPracticeType })
-        }
-
-        if let selectedPracticeLevel {
-            candidateGroups.append(allItems.filter { $0.level == selectedPracticeLevel })
-        }
-
-        let preferredItems = allItems.filter { preferredQuestionTypesForAI.contains($0.question.type) }
-        candidateGroups.append(preferredItems)
-        candidateGroups.append(allItems)
-
-        return candidateGroups.first(where: { !$0.isEmpty }) ?? []
+        let preferredTypes = selectedPracticeType.map { [$0] } ?? preferredQuestionTypesForAI
+        let preferredLevels = selectedPracticeLevel.map { [$0] } ?? []
+        return QuestionGroupingEngine.balancedFallbackCandidates(
+            preferredTypes: preferredTypes,
+            preferredLevels: preferredLevels,
+            from: allItems
+        )
     }
 
     private func balancedPracticeItems(from items: [QuestionBankItem]) -> [QuestionBankItem] {
-        var remaining = items
-            .uniqued(by: \.id)
-            .sorted { stablePracticeSortKey($0) < stablePracticeSortKey($1) }
-        var selected: [QuestionBankItem] = []
-
-        while !remaining.isEmpty, selected.count < freePracticeSessionLimit {
-            let nextIndex = remaining.indices.max { leftIndex, rightIndex in
-                let leftScore = practiceDiversityScore(for: remaining[leftIndex], selected: selected)
-                let rightScore = practiceDiversityScore(for: remaining[rightIndex], selected: selected)
-                if leftScore != rightScore {
-                    return leftScore < rightScore
-                }
-                return stablePracticeSortKey(remaining[leftIndex]) > stablePracticeSortKey(remaining[rightIndex])
-            } ?? remaining.startIndex
-
-            selected.append(remaining.remove(at: nextIndex))
-        }
-
-        return selected
-    }
-
-    private func practiceDiversityScore(for item: QuestionBankItem, selected: [QuestionBankItem]) -> Int {
-        guard !selected.isEmpty else { return 1_000 }
-
-        let recentItems = selected.suffix(3)
-        var score = 0
-
-        if !recentItems.contains(where: { answerDistributionKey($0) == answerDistributionKey(item) }) {
-            score += 60
-        }
-
-        if !recentItems.contains(where: { normalizedPracticeSkill($0.skill) == normalizedPracticeSkill(item.skill) }) {
-            score += 34
-        }
-
-        if selected.last?.question.type != item.question.type {
-            score += 12
-        }
-
-        if !selected.contains(where: { $0.question.prompt == item.question.prompt }) {
-            score += 8
-        }
-
-        score += stablePracticeHash(item.id) % 7
-        return score
-    }
-
-    private func stablePracticeSortKey(_ item: QuestionBankItem) -> String {
-        "\(item.question.type.rawValue)-\(item.level.rawValue)-\(normalizedPracticeSkill(item.skill))-\(item.id)"
-    }
-
-    private func answerDistributionKey(_ item: QuestionBankItem) -> String {
-        normalizedPracticeAnswer(item.question.answer)
-    }
-
-    private func normalizedPracticeSkill(_ skill: String) -> String {
-        skill.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        QuestionGroupingEngine.balancedItems(from: items, limit: freePracticeSessionLimit)
     }
 
     private func balancedAnswerOptions(for item: QuestionBankItem) -> [String] {
-        var options = item.question.options.uniqued()
-        if options.isEmpty {
-            return []
-        }
-
-        if !options.map(normalizedPracticeAnswer).contains(normalizedPracticeAnswer(item.question.answer)) {
-            options.append(item.question.answer)
-        }
-
-        let offset = stablePracticeHash("\(item.id)-options") % options.count
-        var rotated = options.indices.map { index in
-            options[(index + offset) % options.count]
-        }
-
-        let correctKey = normalizedPracticeAnswer(item.question.answer)
-        if let correctIndex = rotated.firstIndex(where: { normalizedPracticeAnswer($0) == correctKey }) {
-            let preferredIndex = stablePracticeHash("\(item.id)-answer") % rotated.count
-            if preferredIndex != correctIndex {
-                rotated.swapAt(correctIndex, preferredIndex)
-            }
-        }
-
-        return rotated
+        QuestionGroupingEngine.balancedOptions(for: item)
     }
 
     private func shuffledAnswerOptions(for item: QuestionBankItem) -> [String] {
         practiceOptionOrderByQuestionId[item.id] ?? balancedAnswerOptions(for: item)
-    }
-
-    private func stablePracticeHash(_ text: String) -> Int {
-        text.unicodeScalars.reduce(17) { partial, scalar in
-            ((partial * 31) + Int(scalar.value)) % 1_000_003
-        }
     }
 
     private func resolvedRecommendationSkill(from items: [QuestionBankItem], skillHints: [String]) -> String {
@@ -1125,7 +1011,7 @@ private struct PracticeStatPill: View {
         VStack(alignment: .leading, spacing: 2) {
             Text(title)
                 .font(.caption)
-                .foregroundStyle(.secondary)
+                .foregroundStyle(EPTheme.secondaryInk)
             Text(value)
                 .font(.subheadline.bold())
                 .foregroundStyle(EPTheme.ink)
@@ -1154,7 +1040,7 @@ private struct PracticeFilterChip: View {
                         .font(.caption2.bold())
                         .padding(.horizontal, 6)
                         .padding(.vertical, 2)
-                        .background(isSelected ? .white.opacity(0.22) : EPTheme.primary.opacity(0.10))
+                        .background(isSelected ? EPTheme.elevatedCard.opacity(0.24) : EPTheme.primary.opacity(0.10))
                         .clipShape(Capsule())
                 }
             }
@@ -1245,7 +1131,7 @@ private struct PracticeAnswerOptionButton: View {
         Button(action: action) {
             HStack(spacing: 10) {
                 Image(systemName: isSelected ? "checkmark.circle.fill" : "circle")
-                    .foregroundStyle(isSelected ? EPTheme.primary : .secondary)
+                    .foregroundStyle(isSelected ? EPTheme.primary : EPTheme.secondaryInk)
                 Text(option)
                     .foregroundStyle(EPTheme.ink)
                     .fixedSize(horizontal: false, vertical: true)
@@ -1280,7 +1166,7 @@ private struct PracticeSessionStartCard: View {
                 ? "這一輪會從目前條件中安排 \(sessionLimit) 題。做完就會看到結算，再決定要不要繼續。"
                 : "目前條件下沒有可練習的題目，換一個題型或難度試試。")
                 .font(.subheadline)
-                .foregroundStyle(.secondary)
+                .foregroundStyle(EPTheme.secondaryInk)
                 .fixedSize(horizontal: false, vertical: true)
 
             Button(action: onStart) {
@@ -1319,7 +1205,7 @@ private struct FreePracticeSessionSummaryCard: View {
 
             Text("你已經完成一個可結束的小回合。可以再練一組，也可以回今日任務看下一步。")
                 .font(.subheadline)
-                .foregroundStyle(.secondary)
+                .foregroundStyle(EPTheme.secondaryInk)
                 .fixedSize(horizontal: false, vertical: true)
 
             HStack(spacing: 10) {
@@ -1341,7 +1227,7 @@ private struct FreePracticeSessionSummaryCard: View {
                         .font(.subheadline.bold())
                         .frame(maxWidth: .infinity, minHeight: 44)
                 }
-                .buttonStyle(.bordered)
+                .buttonStyle(SecondaryActionButtonStyle())
             }
         }
         .padding(12)
@@ -1354,7 +1240,7 @@ private struct FreePracticeSessionSummaryCard: View {
         VStack(alignment: .leading, spacing: 4) {
             Text(title)
                 .font(.caption.bold())
-                .foregroundStyle(.secondary)
+                .foregroundStyle(EPTheme.secondaryInk)
             Text(value)
                 .font(.title3.bold())
                 .foregroundStyle(EPTheme.ink)
@@ -1383,7 +1269,7 @@ private struct PracticeInlineSupportPanel: View {
 
             Text("AI 會立刻解題；老師或志工會收到這一題、你的答案與解析。送出後到「支持」查看回覆。")
                 .font(.caption)
-                .foregroundStyle(.secondary)
+                .foregroundStyle(EPTheme.secondaryInk)
                 .fixedSize(horizontal: false, vertical: true)
 
             HStack(spacing: 8) {
@@ -1392,7 +1278,7 @@ private struct PracticeInlineSupportPanel: View {
                         .font(.caption.bold())
                         .frame(maxWidth: .infinity, minHeight: 44)
                 }
-                .buttonStyle(.borderedProminent)
+                .buttonStyle(PrimaryActionButtonStyle())
                 .disabled(isLoadingAI)
 
                 Button(action: onSendTeacher) {
@@ -1400,14 +1286,14 @@ private struct PracticeInlineSupportPanel: View {
                         .font(.caption.bold())
                         .frame(maxWidth: .infinity, minHeight: 44)
                 }
-                .buttonStyle(.bordered)
+                .buttonStyle(SecondaryActionButtonStyle())
 
                 Button(action: onSendVolunteer) {
                     Label("送給志工", systemImage: "hands.sparkles")
                         .font(.caption.bold())
                         .frame(maxWidth: .infinity, minHeight: 44)
                 }
-                .buttonStyle(.bordered)
+                .buttonStyle(SecondaryActionButtonStyle())
             }
 
             if isLoadingAI {
@@ -1432,7 +1318,7 @@ private struct PracticeInlineSupportPanel: View {
                             .font(.caption.bold())
                             .frame(maxWidth: .infinity, minHeight: 40)
                     }
-                    .buttonStyle(.borderedProminent)
+                    .buttonStyle(PrimaryActionButtonStyle())
                 }
             }
         }
@@ -1484,7 +1370,7 @@ private struct PracticeResultCard: View {
 
             Text(result.explanation)
                 .font(.subheadline)
-                .foregroundStyle(.secondary)
+                .foregroundStyle(EPTheme.secondaryInk)
                 .fixedSize(horizontal: false, vertical: true)
 
             if isLoadingAI {
@@ -1551,10 +1437,10 @@ private struct PracticeAIRecommendationActionCard: View {
                 .fixedSize(horizontal: false, vertical: true)
             Text("\(plan.questionCount) 題，約 \(plan.estimatedMinutes) 分鐘")
                 .font(.caption)
-                .foregroundStyle(.secondary)
+                .foregroundStyle(EPTheme.secondaryInk)
             Text(plan.matchNote)
                 .font(.caption)
-                .foregroundStyle(.secondary)
+                .foregroundStyle(EPTheme.secondaryInk)
                 .fixedSize(horizontal: false, vertical: true)
 
             Button(action: action) {
@@ -1583,7 +1469,7 @@ private struct PracticeAIStatusCard: View {
                 ? "先用內建提示陪你修這一題。"
                 : "已整理成下一個可執行的小步驟。")
                 .font(.caption)
-                .foregroundStyle(.secondary)
+                .foregroundStyle(EPTheme.secondaryInk)
             if let summary = response.output.summary, !summary.isEmpty {
                 Text(summary)
                     .font(.footnote)
@@ -1599,7 +1485,7 @@ private struct PracticeAIStatusCard: View {
             if let hint = response.output.nextHint, !hint.isEmpty {
                 Text("下一步：\(hint)")
                     .font(.caption)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(EPTheme.secondaryInk)
                     .fixedSize(horizontal: false, vertical: true)
             }
         }
@@ -1614,7 +1500,7 @@ private struct PracticeEmptyState: View {
                 .foregroundStyle(EPTheme.ink)
             Text("可以放寬題型或難度，再回來選題。")
                 .font(.subheadline)
-                .foregroundStyle(.secondary)
+                .foregroundStyle(EPTheme.secondaryInk)
         }
         .padding(12)
         .frame(maxWidth: .infinity, alignment: .leading)

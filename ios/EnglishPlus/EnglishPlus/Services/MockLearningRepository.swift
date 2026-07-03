@@ -77,6 +77,7 @@ final class MockLearningRepository: ObservableObject {
 
     var teacherQueue: [StudentSupportRequest] {
         supportRequests
+            .filter(\.isWaitingForStaffAction)
             .filter(\.requiresStaffTeachingResponse)
             .sorted { priorityScore($0.priority) > priorityScore($1.priority) }
     }
@@ -587,7 +588,20 @@ final class MockLearningRepository: ObservableObject {
         let ranked = approved.sorted { lhs, rhs in
             score(item: lhs, preferredTypes: preferredSet, track: track) < score(item: rhs, preferredTypes: preferredSet, track: track)
         }
-        return Array(ranked.uniqued(by: \.id).prefix(max(1, targetCount)))
+        let candidateWindow = Array(ranked.uniqued(by: \.id).prefix(max(24, max(1, targetCount) * 5)))
+        let selection = QuestionGroupingEngine.practiceSelection(
+            from: candidateWindow,
+            fallbackCandidates: QuestionGroupingEngine.balancedFallbackCandidates(
+                preferredTypes: preferredTypes,
+                preferredLevels: preferredLevels(for: track),
+                from: approved
+            ),
+            limit: max(1, targetCount)
+        )
+        let fallbackUsed = selection.fallbackUsed
+        return fallbackUsed
+            ? QuestionGroupingEngine.balancedItems(from: selection.items, limit: selection.items.count)
+            : selection.items
     }
 
     private func score(
@@ -624,6 +638,17 @@ final class MockLearningRepository: ObservableObject {
             levelScore = 8
         }
         return preferredScore + levelScore
+    }
+
+    private func preferredLevels(for track: MissionTrack) -> [QuestionLevel] {
+        switch track {
+        case .repair:
+            return [.a1, .a2]
+        case .steady:
+            return [.a2, .b1]
+        case .challenge:
+            return [.b1, .b2]
+        }
     }
 
     private func recommendedMinutes(for timeScale: Int) -> Int {

@@ -170,8 +170,7 @@ struct QuestionPracticeSet: Identifiable, Equatable {
         }
 
         return sortedGroups.enumerated().flatMap { groupIndex, entry in
-            entry.value
-                .sorted { $0.id < $1.id }
+            QuestionGroupingEngine.balancedItems(from: entry.value, limit: entry.value.count)
                 .chunked(size: max(1, maxQuestionsPerSet))
                 .enumerated()
                 .map { chunkIndex, chunk in
@@ -196,6 +195,222 @@ struct QuestionPracticeSet: Identifiable, Equatable {
     private static func normalizedSkill(_ value: String) -> String {
         let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
         return trimmed.isEmpty ? "general" : trimmed.lowercased()
+    }
+}
+
+struct QuestionPracticeSelection: Equatable {
+    let items: [QuestionBankItem]
+    let fallbackUsed: Bool
+}
+
+enum QuestionGroupingEngine {
+    private static let recentAnswerPenalty = 90
+    private static let recentSkillPenalty = 54
+    private static let recentSlotPenalty = 42
+
+    static func balancedItems(
+        from items: [QuestionBankItem],
+        limit: Int = Int.max
+    ) -> [QuestionBankItem] {
+        let approvedItems = uniqueItems(items.filter { $0.reviewState == .approved })
+        let cappedLimit = min(max(0, limit), approvedItems.count)
+        guard cappedLimit > 0 else { return [] }
+
+        var remaining = approvedItems.sorted { stableSortKey($0) < stableSortKey($1) }
+        var selected: [QuestionBankItem] = []
+
+        while !remaining.isEmpty, selected.count < cappedLimit {
+            let sessionIndex = selected.count
+            let nextIndex = remaining.indices.max { leftIndex, rightIndex in
+                let left = remaining[leftIndex]
+                let right = remaining[rightIndex]
+                let leftScore = diversityScore(for: left, selected: selected, sessionIndex: sessionIndex)
+                let rightScore = diversityScore(for: right, selected: selected, sessionIndex: sessionIndex)
+                if leftScore != rightScore {
+                    return leftScore < rightScore
+                }
+                return stableSortKey(left) > stableSortKey(right)
+            } ?? remaining.startIndex
+
+            selected.append(remaining.remove(at: nextIndex))
+        }
+
+        return selected
+    }
+
+    static func practiceSelection(
+        from candidates: [QuestionBankItem],
+        fallbackCandidates: [QuestionBankItem],
+        limit: Int
+    ) -> QuestionPracticeSelection {
+        let cappedLimit = max(0, limit)
+        guard cappedLimit > 0 else {
+            return QuestionPracticeSelection(items: [], fallbackUsed: false)
+        }
+
+        let exactItems = balancedItems(from: candidates, limit: cappedLimit)
+        if exactItems.count >= cappedLimit {
+            return QuestionPracticeSelection(items: exactItems, fallbackUsed: false)
+        }
+
+        let exactIds = Set(exactItems.map(\.id))
+        let fallbackItems = balancedFallbackCandidates(from: fallbackCandidates)
+            .filter { !exactIds.contains($0.id) }
+        let filledItems = balancedItems(from: exactItems + fallbackItems, limit: cappedLimit)
+        let fallbackUsed = filledItems.count > exactItems.count || exactItems.count < cappedLimit
+        return QuestionPracticeSelection(items: filledItems, fallbackUsed: fallbackUsed)
+    }
+
+    static func balancedFallbackCandidates(
+        preferredTypes: [QuestionType] = [],
+        preferredLevels: [QuestionLevel] = [],
+        from items: [QuestionBankItem]
+    ) -> [QuestionBankItem] {
+        let approved = items.filter { $0.reviewState == .approved }
+        var tiers: [[QuestionBankItem]] = []
+
+        if !preferredTypes.isEmpty, !preferredLevels.isEmpty {
+            tiers.append(approved.filter { preferredTypes.contains($0.question.type) && preferredLevels.contains($0.level) })
+        }
+        if !preferredTypes.isEmpty {
+            tiers.append(approved.filter { preferredTypes.contains($0.question.type) })
+        }
+        if !preferredLevels.isEmpty {
+            tiers.append(approved.filter { preferredLevels.contains($0.level) })
+        }
+        tiers.append(approved)
+
+        return balancedItems(from: uniqueItems(tiers.flatMap { $0 }), limit: approved.count)
+    }
+
+    static func balancedOptions(
+        for item: QuestionBankItem,
+        sessionIndex: Int = 0
+    ) -> [String] {
+        let options = normalizedOptions(for: item)
+        guard options.count > 1 else { return options }
+
+        let answerKey = normalizedAnswer(item.question.answer)
+        let correctOption = options.first { normalizedAnswer($0) == answerKey } ?? item.question.answer
+        var distractors = options.filter { normalizedAnswer($0) != answerKey }
+        if !distractors.isEmpty {
+            let offset = stableHash("\(item.id)-distractors-\(sessionIndex)") % distractors.count
+            distractors = distractors.indices.map { index in
+                distractors[(index + offset) % distractors.count]
+            }
+        }
+
+        let slot = answerSlot(for: item, sessionIndex: sessionIndex)
+        var result: [String] = []
+        var distractorIndex = 0
+        for index in 0..<options.count {
+            if index == slot {
+                result.append(correctOption)
+            } else if distractorIndex < distractors.count {
+                result.append(distractors[distractorIndex])
+                distractorIndex += 1
+            }
+        }
+        return result
+    }
+
+    private static func diversityScore(
+        for item: QuestionBankItem,
+        selected: [QuestionBankItem],
+        sessionIndex: Int
+    ) -> Int {
+        guard !selected.isEmpty else {
+            return 1_000 + stableHash(item.id) % 29
+        }
+
+        let recentItems = selected.suffix(4)
+        let itemAnswer = normalizedAnswer(item.question.answer)
+        let itemSkill = normalizedSkill(item)
+        let itemSlot = answerSlot(for: item, sessionIndex: sessionIndex)
+        var score = 1_000
+
+        if recentItems.contains(where: { normalizedAnswer($0.question.answer) == itemAnswer }) {
+            score -= recentAnswerPenalty
+        }
+        if recentItems.contains(where: { normalizedSkill($0) == itemSkill }) {
+            score -= recentSkillPenalty
+        }
+        if recentItems.enumerated().contains(where: { pair in
+            answerSlot(
+                for: pair.element,
+                sessionIndex: selected.count - recentItems.count + pair.offset
+            ) == itemSlot
+        }) {
+            score -= recentSlotPenalty
+        }
+
+        score -= selected.filter { normalizedAnswer($0.question.answer) == itemAnswer }.count * 18
+        score -= selected.filter { normalizedSkill($0) == itemSkill }.count * 12
+        score -= selected.filter { $0.question.type == item.question.type }.count * 3
+
+        if selected.last?.question.type != item.question.type {
+            score += 18
+        }
+        if selected.last?.level != item.level {
+            score += 8
+        }
+
+        score += stableHash("\(item.id)-\(sessionIndex)") % 17
+        return score
+    }
+
+    private static func answerSlot(for item: QuestionBankItem, sessionIndex: Int) -> Int {
+        let optionCount = max(1, normalizedOptions(for: item).count)
+        return stableHash("\(item.id)-answerSlot-\(sessionIndex)") % optionCount
+    }
+
+    private static func normalizedOptions(for item: QuestionBankItem) -> [String] {
+        var seen: Set<String> = []
+        var values: [String] = []
+
+        for option in item.question.options + [item.question.answer] {
+            let trimmed = option.trimmingCharacters(in: .whitespacesAndNewlines)
+            let key = normalizedAnswer(trimmed)
+            guard !trimmed.isEmpty, !seen.contains(key) else { continue }
+            seen.insert(key)
+            values.append(trimmed)
+        }
+        return values
+    }
+
+    private static func uniqueItems(_ items: [QuestionBankItem]) -> [QuestionBankItem] {
+        var seen: Set<String> = []
+        var result: [QuestionBankItem] = []
+        for item in items where !seen.contains(item.id) {
+            seen.insert(item.id)
+            result.append(item)
+        }
+        return result
+    }
+
+    private static func stableSortKey(_ item: QuestionBankItem) -> String {
+        "\(item.question.type.rawValue)-\(item.level.rawValue)-\(normalizedSkill(item))-\(item.id)"
+    }
+
+    private static func normalizedSkill(_ item: QuestionBankItem) -> String {
+        let skill = item.skill.trimmingCharacters(in: .whitespacesAndNewlines)
+        let concept = item.question.concept.trimmingCharacters(in: .whitespacesAndNewlines)
+        return (skill.isEmpty ? concept : skill)
+            .folding(options: [.caseInsensitive, .diacriticInsensitive], locale: .current)
+            .lowercased()
+    }
+
+    private static func normalizedAnswer(_ value: String) -> String {
+        value
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .folding(options: [.caseInsensitive, .diacriticInsensitive], locale: .current)
+            .lowercased()
+    }
+
+    private static func stableHash(_ text: String) -> Int {
+        text.unicodeScalars.reduce(23) { partial, scalar in
+            ((partial * 33) + Int(scalar.value)) % 1_000_003
+        }
     }
 }
 

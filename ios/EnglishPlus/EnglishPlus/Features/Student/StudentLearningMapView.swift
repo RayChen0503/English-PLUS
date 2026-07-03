@@ -4,7 +4,13 @@ struct StudentLearningMapView: View {
     @EnvironmentObject private var appState: AppState
     @EnvironmentObject private var learningRepository: LearningRepositoryStore
 
+    let onOpenHome: () -> Void
+
     private let questionBankItems = SeedData.approvedQuestionBankItems
+
+    init(onOpenHome: @escaping () -> Void = {}) {
+        self.onOpenHome = onOpenHome
+    }
 
     var body: some View {
         NavigationStack {
@@ -36,7 +42,7 @@ struct StudentLearningMapView: View {
 
             Text(headerSubtitle)
                 .font(.subheadline)
-                .foregroundStyle(.secondary)
+                .foregroundStyle(EPTheme.secondaryInk)
 
             if let progress = learningRepository.progressSnapshot {
                 ProgressView(value: progress.progressFraction)
@@ -53,7 +59,7 @@ struct StudentLearningMapView: View {
                     .tint(EPTheme.primary)
                 Text("完成心情檢測後，這裡會只追蹤今日題目任務。")
                     .font(.caption)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(EPTheme.secondaryInk)
             }
         }
         .padding(16)
@@ -88,7 +94,7 @@ struct StudentLearningMapView: View {
                         .foregroundStyle(EPTheme.ink)
                     Text(flowStageDetail)
                         .font(.subheadline)
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(EPTheme.secondaryInk)
                         .fixedSize(horizontal: false, vertical: true)
                 }
                 Spacer()
@@ -101,33 +107,17 @@ struct StudentLearningMapView: View {
                     .clipShape(Capsule())
             }
 
-            HStack(spacing: 10) {
-                Button {
-                    learningRepository.startNewLearningRound(
-                        for: appState.currentUser,
-                        profile: appState.currentProfile
-                    )
-                } label: {
-                    Label("重新檢測", systemImage: "checklist")
-                        .frame(maxWidth: .infinity)
-                }
-                .buttonStyle(PrimaryActionButtonStyle())
-
-                Button {
-                    if learningRepository.learningFlow.canContinuePreviousProgress {
-                        learningRepository.continueLearningFlow()
-                    } else {
-                        learningRepository.enterFreePracticeMode()
-                    }
-                } label: {
-                    Label(
-                        learningRepository.learningFlow.canContinuePreviousProgress ? "延續進度" : "自由練習",
-                        systemImage: learningRepository.learningFlow.canContinuePreviousProgress ? "arrow.clockwise.circle" : "pencil.and.list.clipboard"
-                    )
-                    .frame(maxWidth: .infinity, minHeight: 44)
-                }
-                .buttonStyle(.bordered)
+            Button {
+                learningRepository.startNewLearningRound(
+                    for: appState.currentUser,
+                    profile: appState.currentProfile
+                )
+                onOpenHome()
+            } label: {
+                Label("重新檢測", systemImage: "checklist")
+                    .frame(maxWidth: .infinity)
             }
+            .buttonStyle(PrimaryActionButtonStyle())
         }
         .padding(16)
         .background(EPTheme.card)
@@ -143,7 +133,7 @@ struct StudentLearningMapView: View {
                         .foregroundStyle(EPTheme.ink)
                     Text(routeSubtitle)
                         .font(.subheadline)
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(EPTheme.secondaryInk)
                 }
                 Spacer()
                 Text(trackBadgeTitle)
@@ -172,14 +162,14 @@ struct StudentLearningMapView: View {
 
             Text("自由練習與每日任務會從不同題型抽題，完成今日任務後也可以再挑戰。")
                 .font(.subheadline)
-                .foregroundStyle(.secondary)
+                .foregroundStyle(EPTheme.secondaryInk)
 
             LazyVGrid(columns: [GridItem(.adaptive(minimum: 126), spacing: 8)], spacing: 8) {
                 ForEach(QuestionType.allCases) { type in
                     VStack(alignment: .leading, spacing: 6) {
                         Text(type.title)
                             .font(.caption.bold())
-                            .foregroundStyle(.secondary)
+                            .foregroundStyle(EPTheme.secondaryInk)
                         Text("\(count(for: type)) 題")
                             .font(.headline)
                             .foregroundStyle(EPTheme.ink)
@@ -205,7 +195,7 @@ struct StudentLearningMapView: View {
             if studentSupportRequests.isEmpty {
                 Text("目前沒有新的求助紀錄。卡住時可以到支持頁請老師或志工陪你。")
                     .font(.subheadline)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(EPTheme.secondaryInk)
             } else {
                 ForEach(studentSupportRequests.prefix(3)) { request in
                     VStack(alignment: .leading, spacing: 6) {
@@ -219,7 +209,7 @@ struct StudentLearningMapView: View {
                         }
                         Text(request.studentMessage)
                             .font(.caption)
-                            .foregroundStyle(.secondary)
+                            .foregroundStyle(EPTheme.secondaryInk)
                             .lineLimit(2)
                     }
                     .padding(12)
@@ -493,7 +483,7 @@ private struct LearningMapNodeRow: View {
 
                 Text(node.detail)
                     .font(.subheadline)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(EPTheme.secondaryInk)
                     .fixedSize(horizontal: false, vertical: true)
             }
         }
@@ -524,7 +514,7 @@ private struct LearningMapNodeRow: View {
         case .available:
             return EPTheme.warning
         case .locked:
-            return .secondary
+            return EPTheme.secondaryInk
         }
     }
 }

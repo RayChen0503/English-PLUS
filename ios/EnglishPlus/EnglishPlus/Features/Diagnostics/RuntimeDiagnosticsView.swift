@@ -99,7 +99,7 @@ struct RuntimeDiagnosticsView: View {
                 HStack(alignment: .top, spacing: 12) {
                     Text(row.0)
                         .font(.caption.weight(.semibold))
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(EPTheme.secondaryInk)
                         .frame(width: 92, alignment: .leading)
                     Text(row.1)
                         .font(.caption.monospaced())
