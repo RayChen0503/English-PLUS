@@ -29,11 +29,7 @@ struct StudentShellView: View {
                 }
                 .tag(StudentTab.practice)
 
-            SupportView(
-                onOpenPractice: {
-                    selectedTab = .practice
-                }
-            )
+            SupportView()
                 .tabItem {
                     Label("支持", systemImage: "heart")
                 }

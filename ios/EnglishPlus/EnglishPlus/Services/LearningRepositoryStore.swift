@@ -36,6 +36,7 @@ protocol LearningRepositoryBackend: AnyObject {
     var snapshot: LearningRepositorySnapshot { get }
     var supportedQuestionTypes: [QuestionType] { get }
     var defaultPreferredQuestionTypes: [QuestionType] { get }
+    var questionBankItems: [QuestionBankItem] { get }
     var questionPracticeSets: [QuestionPracticeSet] { get }
 
     func refresh() async throws
@@ -119,6 +120,10 @@ final class LearningRepositoryStore: ObservableObject {
 
     var defaultPreferredQuestionTypes: [QuestionType] {
         backend.defaultPreferredQuestionTypes
+    }
+
+    var questionBankItems: [QuestionBankItem] {
+        backend.questionBankItems
     }
 
     var questionPracticeSets: [QuestionPracticeSet] {

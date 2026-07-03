@@ -13,6 +13,7 @@ struct PracticeCenterView: View {
     @State private var practiceAnswer = ""
     @State private var practiceResult: PracticeResult?
     @State private var practiceAIResponse: AiProxyResponse?
+    @State private var recommendedPracticePlan: AIPracticeRecommendationPlan?
     @State private var practiceQuestionAIResponse: AiProxyResponse?
     @State private var wrongAnswerAIResponse: AiProxyResponse?
     @State private var practiceSupportConfirmation: String?
@@ -83,7 +84,7 @@ struct PracticeCenterView: View {
 
     private var practiceSetSelectionCard: some View {
         PracticeSetSelectionCard(
-            sets: learningRepository.questionPracticeSets,
+            sets: visiblePracticeSets,
             selectedPracticeSetId: selectedPracticeSetId
         ) { setId in
             selectedPracticeSetId = setId
@@ -333,19 +334,15 @@ struct PracticeCenterView: View {
 
     private var selectedPracticeSet: QuestionPracticeSet? {
         guard let selectedPracticeSetId else { return nil }
-        return learningRepository.questionPracticeSets.first { $0.id == selectedPracticeSetId }
+        return visiblePracticeSets.first { $0.id == selectedPracticeSetId }
     }
 
-    private var recommendedPracticePlan: AIPracticeRecommendationPlan? {
-        guard let practiceAIResponse else { return nil }
-        return buildAIRecommendationPlan(from: practiceAIResponse)
+    private var visiblePracticeSets: [QuestionPracticeSet] {
+        Array(learningRepository.questionPracticeSets.prefix(18))
     }
 
     private var questionBankItems: [QuestionBankItem] {
-        let groupedItems = learningRepository.questionPracticeSets
-            .flatMap(\.items)
-            .uniqued(by: \.id)
-        return groupedItems.isEmpty ? SeedData.approvedQuestionBankItems : groupedItems
+        learningRepository.questionBankItems
     }
 
     private var currentPracticeItem: QuestionBankItem? {
@@ -417,6 +414,8 @@ struct PracticeCenterView: View {
         practiceIndex = 0
         practiceAnswer = ""
         practiceResult = nil
+        practiceAIResponse = nil
+        recommendedPracticePlan = nil
         wrongAnswerAIResponse = nil
         practiceQuestionAIResponse = nil
         practiceSupportConfirmation = nil
@@ -930,6 +929,8 @@ struct PracticeCenterView: View {
     private func requestPracticeRecommendation() async {
         isLoadingPracticeAI = true
         defer { isLoadingPracticeAI = false }
+        practiceAIResponse = nil
+        recommendedPracticePlan = nil
 
         let context = PracticeRecommendationAIContext(
             classId: currentClassId,
@@ -938,7 +939,9 @@ struct PracticeCenterView: View {
             recentWeakSkills: learningRepository.recentWeakSkills,
             preferredQuestionTypes: preferredQuestionTypesForAI
         )
-        practiceAIResponse = await appState.recommendPracticeWithAI(context: context)
+        let response = await appState.recommendPracticeWithAI(context: context)
+        practiceAIResponse = response
+        recommendedPracticePlan = buildAIRecommendationPlan(from: response)
     }
 }
 

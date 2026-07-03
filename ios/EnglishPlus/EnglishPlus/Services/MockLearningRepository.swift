@@ -14,6 +14,8 @@ final class MockLearningRepository: ObservableObject {
     private let localPersistence: any LocalLearningPersistence
     private let cachedSupportedQuestionTypes: [QuestionType]
     private let cachedDefaultPreferredQuestionTypes: [QuestionType]
+    private let cachedQuestionBankItems: [QuestionBankItem]
+    private let cachedQuestionBankItemById: [String: QuestionBankItem]
     private let cachedQuestionPracticeSets: [QuestionPracticeSet]
 
     init(
@@ -24,12 +26,19 @@ final class MockLearningRepository: ObservableObject {
         self.seedSnapshot = seedSnapshot
         self.now = now
         self.localPersistence = localPersistence
-        let seededTypes = Set(seedSnapshot.approvedQuestionBankItems.map(\.question.type))
+        let approvedQuestionBankItems = seedSnapshot.approvedQuestionBankItems
+        cachedQuestionBankItems = approvedQuestionBankItems
+        var questionBankItemById: [String: QuestionBankItem] = [:]
+        for item in approvedQuestionBankItems {
+            questionBankItemById[item.id] = item
+        }
+        cachedQuestionBankItemById = questionBankItemById
+        let seededTypes = Set(approvedQuestionBankItems.map(\.question.type))
         let supportedTypes = QuestionType.allCases.filter { seededTypes.contains($0) }
         cachedSupportedQuestionTypes = supportedTypes
         let defaultTypes = seedSnapshot.dailyMissionRules.defaultPreferredQuestionTypes
         cachedDefaultPreferredQuestionTypes = defaultTypes.isEmpty ? Array(supportedTypes.prefix(2)) : defaultTypes
-        cachedQuestionPracticeSets = QuestionPracticeSet.catalog(from: seedSnapshot.approvedQuestionBankItems)
+        cachedQuestionPracticeSets = QuestionPracticeSet.catalog(from: approvedQuestionBankItems)
 
         if let restoredSnapshot = localPersistence.loadSnapshot()?.repositorySnapshot {
             currentCheckIn = restoredSnapshot.currentCheckIn
@@ -58,6 +67,10 @@ final class MockLearningRepository: ObservableObject {
 
     var defaultPreferredQuestionTypes: [QuestionType] {
         cachedDefaultPreferredQuestionTypes
+    }
+
+    var questionBankItems: [QuestionBankItem] {
+        cachedQuestionBankItems
     }
 
     var questionPracticeSets: [QuestionPracticeSet] {
@@ -581,8 +594,7 @@ final class MockLearningRepository: ObservableObject {
     }
 
     private func questionBankItems(for questionIds: [String]) -> [QuestionBankItem] {
-        let ids = Set(questionIds)
-        return seedSnapshot.approvedQuestionBankItems.filter { ids.contains($0.id) }
+        questionIds.compactMap { cachedQuestionBankItemById[$0] }
     }
 
     private func selectMissionQuestions(
@@ -591,19 +603,32 @@ final class MockLearningRepository: ObservableObject {
         targetCount: Int
     ) -> [QuestionBankItem] {
         let preferredSet = Set(preferredTypes)
-        let approved = seedSnapshot.approvedQuestionBankItems
-        let ranked = approved.sorted { lhs, rhs in
-            score(item: lhs, preferredTypes: preferredSet, track: track) < score(item: rhs, preferredTypes: preferredSet, track: track)
+        let target = max(1, targetCount)
+        let preferredLevels = preferredLevels(for: track)
+        let exactMatches = cachedQuestionBankItems.filter { item in
+            preferredSet.contains(item.question.type) && preferredLevels.contains(item.level)
         }
-        let candidateWindow = Array(ranked.uniqued(by: \.id).prefix(max(24, max(1, targetCount) * 5)))
+        let typeMatches = cachedQuestionBankItems.filter { item in
+            preferredSet.contains(item.question.type)
+        }
+        let levelMatches = cachedQuestionBankItems.filter { item in
+            preferredLevels.contains(item.level)
+        }
+        let candidateWindow = missionCandidateWindow(
+            from: exactMatches + typeMatches + levelMatches,
+            limit: max(24, target * 5)
+        )
         let selection = QuestionGroupingEngine.practiceSelection(
             from: candidateWindow,
             fallbackCandidates: QuestionGroupingEngine.balancedFallbackCandidates(
                 preferredTypes: preferredTypes,
-                preferredLevels: preferredLevels(for: track),
-                from: approved
+                preferredLevels: preferredLevels,
+                from: missionCandidateWindow(
+                    from: cachedQuestionBankItems,
+                    limit: max(36, target * 6)
+                )
             ),
-            limit: max(1, targetCount)
+            limit: target
         )
         let fallbackUsed = selection.fallbackUsed
         return fallbackUsed
@@ -645,6 +670,41 @@ final class MockLearningRepository: ObservableObject {
             levelScore = 8
         }
         return preferredScore + levelScore
+    }
+
+    private func missionCandidateWindow(
+        from items: [QuestionBankItem],
+        limit: Int
+    ) -> [QuestionBankItem] {
+        guard limit > 0 else { return [] }
+
+        var buckets: [String: [QuestionBankItem]] = [:]
+        var bucketOrder: [String] = []
+        var seenItemIds = Set<String>()
+
+        for item in items where seenItemIds.insert(item.id).inserted {
+            let key = "\(item.question.type.rawValue)|\(item.level.rawValue)|\(item.skill)"
+            if buckets[key] == nil {
+                buckets[key] = []
+                bucketOrder.append(key)
+            }
+            if buckets[key, default: []].count < 5 {
+                buckets[key, default: []].append(item)
+            }
+        }
+
+        var result: [QuestionBankItem] = []
+        var bucketIndex = 0
+        while result.count < limit && bucketOrder.contains(where: { !(buckets[$0] ?? []).isEmpty }) {
+            let key = bucketOrder[bucketIndex % bucketOrder.count]
+            if var bucket = buckets[key], !bucket.isEmpty {
+                result.append(bucket.removeFirst())
+                buckets[key] = bucket
+            }
+            bucketIndex += 1
+        }
+
+        return result
     }
 
     private func preferredLevels(for track: MissionTrack) -> [QuestionLevel] {

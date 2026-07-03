@@ -4,16 +4,8 @@ struct SupportView: View {
     @EnvironmentObject private var appState: AppState
     @EnvironmentObject private var learningRepository: LearningRepositoryStore
 
-    let onOpenPractice: () -> Void
-
     @State private var latestSupportAIResponse: AiProxyResponse?
     @State private var isLoadingSupportAI = false
-
-    init(
-        onOpenPractice: @escaping () -> Void = {}
-    ) {
-        self.onOpenPractice = onOpenPractice
-    }
 
     var body: some View {
         NavigationStack {
@@ -58,12 +50,11 @@ struct SupportView: View {
             )
 
             if studentRequests.isEmpty {
-                SupportEmptyStateCard(onOpenPractice: openPracticeFromSupport)
+                SupportEmptyStateCard()
             } else {
                 ForEach(studentRequests) { request in
                     SupportRequestInboxCard(
                         request: request,
-                        onOpenPractice: openPracticeFromSupport,
                         onArchive: {
                             learningRepository.archiveSupportThreadForStudent(request.id)
                         }
@@ -128,11 +119,6 @@ struct SupportView: View {
         latestSupportAIResponse = await appState.provideEmotionalSupportWithAI(
             context: SupportAIContext(request: request)
         )
-    }
-
-    private func openPracticeFromSupport() {
-        learningRepository.enterFreePracticeMode()
-        onOpenPractice()
     }
 
 }
@@ -244,8 +230,6 @@ private struct SupportAIResponseCard: View {
 }
 
 private struct SupportEmptyStateCard: View {
-    let onOpenPractice: () -> Void
-
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             Label("目前沒有求助紀錄", systemImage: "tray")
@@ -256,13 +240,6 @@ private struct SupportEmptyStateCard: View {
                 .font(.subheadline)
                 .foregroundStyle(EPTheme.secondaryInk)
                 .fixedSize(horizontal: false, vertical: true)
-
-            Button(action: onOpenPractice) {
-                Label("去練習中心", systemImage: "arrow.right.circle.fill")
-                    .font(.subheadline.bold())
-                    .frame(maxWidth: .infinity, minHeight: 44)
-            }
-            .buttonStyle(PrimaryActionButtonStyle())
         }
         .padding(16)
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -337,7 +314,6 @@ private struct SupportRequestInboxCard: View {
     @EnvironmentObject private var learningRepository: LearningRepositoryStore
 
     let request: StudentSupportRequest
-    let onOpenPractice: () -> Void
     let onArchive: () -> Void
 
     private var visibleReplies: [SupportReply] {
@@ -406,8 +382,7 @@ private struct SupportRequestInboxCard: View {
             } else {
                 SupportReplyTimeline(replies: visibleReplies)
                 SupportThreadActionRow(
-                    onArchive: onArchive,
-                    onOpenPractice: onOpenPractice
+                    onArchive: onArchive
                 )
             }
         }
@@ -472,7 +447,6 @@ private struct SupportRequestInboxCard: View {
 
 private struct SupportThreadActionRow: View {
     let onArchive: () -> Void
-    let onOpenPractice: () -> Void
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
@@ -480,26 +454,17 @@ private struct SupportThreadActionRow: View {
                 .font(.subheadline.bold())
                 .foregroundStyle(EPTheme.support)
 
-            Text("收起後不會刪除資料，只是不再顯示在你的回覆中心；如果還想練同類題，可以直接回練習中心。")
+            Text("收起後不會刪除資料，只是不再顯示在你的回覆中心。需要繼續練習時，直接用下方分頁切回練習中心。")
                 .font(.footnote)
                 .foregroundStyle(EPTheme.secondaryInk)
                 .fixedSize(horizontal: false, vertical: true)
 
-            HStack(spacing: 10) {
-                Button(action: onArchive) {
-                    Label("我看懂了，收起這筆", systemImage: "archivebox")
-                        .font(.caption.bold())
-                        .frame(maxWidth: .infinity, minHeight: 44)
-                }
-                .buttonStyle(SecondaryActionButtonStyle())
-
-                Button(action: onOpenPractice) {
-                    Label("回練習中心", systemImage: "target")
-                        .font(.caption.bold())
-                        .frame(maxWidth: .infinity, minHeight: 44)
-                }
-                .buttonStyle(PrimaryActionButtonStyle())
+            Button(action: onArchive) {
+                Label("我看懂了，收起這筆", systemImage: "archivebox")
+                    .font(.caption.bold())
+                    .frame(maxWidth: .infinity, minHeight: 44)
             }
+            .buttonStyle(SecondaryActionButtonStyle())
         }
         .padding(12)
         .frame(maxWidth: .infinity, alignment: .leading)

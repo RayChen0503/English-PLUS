@@ -41,6 +41,10 @@ final class FirebaseLearningRepository: LearningRepositoryBackend {
         fallback.defaultPreferredQuestionTypes
     }
 
+    var questionBankItems: [QuestionBankItem] {
+        fallback.questionBankItems
+    }
+
     var questionPracticeSets: [QuestionPracticeSet] {
         fallback.questionPracticeSets
     }

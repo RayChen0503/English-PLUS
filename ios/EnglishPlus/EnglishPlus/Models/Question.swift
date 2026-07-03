@@ -218,21 +218,24 @@ enum QuestionGroupingEngine {
 
         var remaining = approvedItems.sorted { stableSortKey($0) < stableSortKey($1) }
         var selected: [QuestionBankItem] = []
+        var distributionState = AnswerDistributionState()
 
         while !remaining.isEmpty, selected.count < cappedLimit {
             let sessionIndex = selected.count
             let nextIndex = remaining.indices.max { leftIndex, rightIndex in
                 let left = remaining[leftIndex]
                 let right = remaining[rightIndex]
-                let leftScore = diversityScore(for: left, selected: selected, sessionIndex: sessionIndex)
-                let rightScore = diversityScore(for: right, selected: selected, sessionIndex: sessionIndex)
+                let leftScore = diversityScore(for: left, state: distributionState, sessionIndex: sessionIndex)
+                let rightScore = diversityScore(for: right, state: distributionState, sessionIndex: sessionIndex)
                 if leftScore != rightScore {
                     return leftScore < rightScore
                 }
                 return stableSortKey(left) > stableSortKey(right)
             } ?? remaining.startIndex
 
-            selected.append(remaining.remove(at: nextIndex))
+            let nextItem = remaining.remove(at: nextIndex)
+            selected.append(nextItem)
+            distributionState.record(nextItem, sessionIndex: sessionIndex)
         }
 
         return selected
@@ -280,7 +283,11 @@ enum QuestionGroupingEngine {
         }
         tiers.append(approved)
 
-        return balancedItems(from: uniqueItems(tiers.flatMap { $0 }), limit: approved.count)
+        let perTierLimit = max(24, min(72, approved.count))
+        let candidatePool = uniqueItems(
+            tiers.flatMap { diverseCandidateWindow(from: $0, limit: perTierLimit) }
+        )
+        return candidatePool
     }
 
     static func balancedOptions(
@@ -316,42 +323,36 @@ enum QuestionGroupingEngine {
 
     private static func diversityScore(
         for item: QuestionBankItem,
-        selected: [QuestionBankItem],
+        state: AnswerDistributionState,
         sessionIndex: Int
     ) -> Int {
-        guard !selected.isEmpty else {
+        guard state.selectedCount > 0 else {
             return 1_000 + stableHash(item.id) % 29
         }
 
-        let recentItems = selected.suffix(4)
         let itemAnswer = normalizedAnswer(item.question.answer)
         let itemSkill = normalizedSkill(item)
         let itemSlot = answerSlot(for: item, sessionIndex: sessionIndex)
         var score = 1_000
 
-        if recentItems.contains(where: { normalizedAnswer($0.question.answer) == itemAnswer }) {
+        if state.recentAnswers.contains(itemAnswer) {
             score -= recentAnswerPenalty
         }
-        if recentItems.contains(where: { normalizedSkill($0) == itemSkill }) {
+        if state.recentSkills.contains(itemSkill) {
             score -= recentSkillPenalty
         }
-        if recentItems.enumerated().contains(where: { pair in
-            answerSlot(
-                for: pair.element,
-                sessionIndex: selected.count - recentItems.count + pair.offset
-            ) == itemSlot
-        }) {
+        if state.recentSlots.contains(itemSlot) {
             score -= recentSlotPenalty
         }
 
-        score -= selected.filter { normalizedAnswer($0.question.answer) == itemAnswer }.count * 18
-        score -= selected.filter { normalizedSkill($0) == itemSkill }.count * 12
-        score -= selected.filter { $0.question.type == item.question.type }.count * 3
+        score -= (state.answerCounts[itemAnswer] ?? 0) * 18
+        score -= (state.skillCounts[itemSkill] ?? 0) * 12
+        score -= (state.typeCounts[item.question.type] ?? 0) * 3
 
-        if selected.last?.question.type != item.question.type {
+        if state.lastType != item.question.type {
             score += 18
         }
-        if selected.last?.level != item.level {
+        if state.lastLevel != item.level {
             score += 8
         }
 
@@ -388,6 +389,43 @@ enum QuestionGroupingEngine {
         return result
     }
 
+    private static func diverseCandidateWindow(
+        from items: [QuestionBankItem],
+        limit: Int
+    ) -> [QuestionBankItem] {
+        let unique = uniqueItems(items)
+        let cappedLimit = min(max(0, limit), unique.count)
+        guard cappedLimit > 0 else { return [] }
+        guard unique.count > cappedLimit else {
+            return unique.sorted { stableSortKey($0) < stableSortKey($1) }
+        }
+
+        let groupedBySkill = Dictionary(grouping: unique) { normalizedSkill($0) }
+        let sortedSkillKeys = groupedBySkill.keys.sorted()
+        let sortedGroups = sortedSkillKeys.map { key in
+            (groupedBySkill[key] ?? []).sorted { stableSortKey($0) < stableSortKey($1) }
+        }
+
+        var result: [QuestionBankItem] = []
+        var offset = 0
+        while result.count < cappedLimit {
+            var didAppend = false
+            for group in sortedGroups where offset < group.count {
+                result.append(group[offset])
+                didAppend = true
+                if result.count >= cappedLimit {
+                    break
+                }
+            }
+            if !didAppend {
+                break
+            }
+            offset += 1
+        }
+
+        return result
+    }
+
     private static func stableSortKey(_ item: QuestionBankItem) -> String {
         "\(item.question.type.rawValue)-\(item.level.rawValue)-\(normalizedSkill(item))-\(item.id)"
     }
@@ -410,6 +448,38 @@ enum QuestionGroupingEngine {
     private static func stableHash(_ text: String) -> Int {
         text.unicodeScalars.reduce(23) { partial, scalar in
             ((partial * 33) + Int(scalar.value)) % 1_000_003
+        }
+    }
+
+    private struct AnswerDistributionState {
+        private(set) var selectedCount = 0
+        private(set) var answerCounts: [String: Int] = [:]
+        private(set) var skillCounts: [String: Int] = [:]
+        private(set) var typeCounts: [QuestionType: Int] = [:]
+        private(set) var recentAnswers: [String] = []
+        private(set) var recentSkills: [String] = []
+        private(set) var recentSlots: [Int] = []
+        private(set) var lastType: QuestionType?
+        private(set) var lastLevel: QuestionLevel?
+
+        mutating func record(_ item: QuestionBankItem, sessionIndex: Int) {
+            let answer = QuestionGroupingEngine.normalizedAnswer(item.question.answer)
+            let skill = QuestionGroupingEngine.normalizedSkill(item)
+            let slot = QuestionGroupingEngine.answerSlot(for: item, sessionIndex: sessionIndex)
+
+            selectedCount += 1
+            answerCounts[answer, default: 0] += 1
+            skillCounts[skill, default: 0] += 1
+            typeCounts[item.question.type, default: 0] += 1
+            recentAnswers = Self.appendingRecent(answer, to: recentAnswers)
+            recentSkills = Self.appendingRecent(skill, to: recentSkills)
+            recentSlots = Self.appendingRecent(slot, to: recentSlots)
+            lastType = item.question.type
+            lastLevel = item.level
+        }
+
+        private static func appendingRecent<T>(_ value: T, to values: [T]) -> [T] {
+            Array((values + [value]).suffix(4))
         }
     }
 }
