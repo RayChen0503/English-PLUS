@@ -13,6 +13,11 @@ def require(label: str, text: str, markers: list[str]) -> None:
     assert not missing, f"Missing {label}: {missing}"
 
 
+def reject(label: str, text: str, markers: list[str]) -> None:
+    present = [marker for marker in markers if marker in text]
+    assert not present, f"Unexpected {label}: {present}"
+
+
 student_home = read("ios/EnglishPlus/EnglishPlus/Features/Student/StudentHomeView.swift")
 student_shell = read("ios/EnglishPlus/EnglishPlus/Features/Student/StudentShellView.swift")
 store = read("ios/EnglishPlus/EnglishPlus/Services/LearningRepositoryStore.swift")
@@ -32,18 +37,28 @@ require(
 )
 
 require(
-    "daily mission inline support panel",
+    "daily mission shared inline support panel",
     student_home,
     [
         "MissionQuestionSupportPanel",
         "onAskAI",
+        "onSendSupport",
+        "supportRequestSent",
+        "missionSupportSentKey(for item: QuestionBankItem)",
+        "onOpenSupport",
+    ],
+)
+
+reject(
+    "split daily mission support targets",
+    student_home,
+    [
+        "MissionSupportTarget",
         "onSendTeacher",
         "onSendVolunteer",
-        "onOpenSupport",
-        "問 AI 解題",
-        "送給老師",
-        "送給志工",
-        "前往支持查看回覆",
+        "sendMissionSupportRequest(for: item, attempt: attempt, target:",
+        "missionSupportOption(for target:",
+        "missionSupportMessage(for: item, attempt: attempt, target:",
     ],
 )
 
@@ -51,12 +66,11 @@ require(
     "daily mission support request plumbing",
     student_home + store,
     [
-        "sendMissionSupportRequest(for: item, attempt: attempt, target: .teacher)",
-        "sendMissionSupportRequest(for: item, attempt: attempt, target: .volunteer)",
+        "sendMissionSupportRequest(for: item, attempt: attempt)",
         "learningRepository.sendQuestionSupportRequest(",
         "questionItem: item",
         "selectedAnswer: attempt.selectedAnswer",
-        "missionSupportMessage(for: item, attempt: attempt, target: target)",
+        "missionSupportMessage(for: item, attempt: attempt)",
     ],
 )
 

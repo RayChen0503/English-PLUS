@@ -473,8 +473,7 @@ struct StudentHomeView: View {
             questionItem: item,
             aiResponse: latestWrongAnswerAIResponse,
             supportConfirmation: missionSupportConfirmation,
-            teacherRequestSent: item.map { missionSupportSentQuestionIds.contains(missionSupportSentKey(for: $0, target: .teacher)) } ?? false,
-            volunteerRequestSent: item.map { missionSupportSentQuestionIds.contains(missionSupportSentKey(for: $0, target: .volunteer)) } ?? false,
+            supportRequestSent: item.map { missionSupportSentQuestionIds.contains(missionSupportSentKey(for: $0)) } ?? false,
             isLoadingAI: isExplainingWrongAnswer,
             onOpenPractice: openPracticeFromAI,
             onOpenSupport: onOpenSupport,
@@ -484,64 +483,46 @@ struct StudentHomeView: View {
                     await askMissionAI(for: item, attempt: attempt)
                 }
             },
-            onSendTeacher: {
+            onSendSupport: {
                 guard let item else { return }
-                sendMissionSupportRequest(for: item, attempt: attempt, target: .teacher)
-            },
-            onSendVolunteer: {
-                guard let item else { return }
-                sendMissionSupportRequest(for: item, attempt: attempt, target: .volunteer)
+                sendMissionSupportRequest(for: item, attempt: attempt)
             }
         )
     }
 
     private func sendMissionSupportRequest(
         for item: QuestionBankItem,
-        attempt: MissionAttempt,
-        target: MissionSupportTarget
+        attempt: MissionAttempt
     ) {
         learningRepository.sendQuestionSupportRequest(
             from: appState.currentUser,
             profile: appState.currentProfile,
-            option: missionSupportOption(for: target),
+            option: missionSupportOption(),
             questionItem: item,
             selectedAnswer: attempt.selectedAnswer,
-            message: missionSupportMessage(for: item, attempt: attempt, target: target)
+            message: missionSupportMessage(for: item, attempt: attempt)
         )
-        missionSupportSentQuestionIds.insert(missionSupportSentKey(for: item, target: target))
-        missionSupportConfirmation = target.confirmationText
+        missionSupportSentQuestionIds.insert(missionSupportSentKey(for: item))
+        missionSupportConfirmation = "已送給老師與志工，兩邊都會看到這一題與你的答案。"
     }
 
-    private func missionSupportOption(for target: MissionSupportTarget) -> SupportOption {
-        switch target {
-        case .teacher:
-            return SeedData.supportOptions.first { $0.id == "human-company" }
-                ?? SupportOption(
-                    id: "mission-teacher-help",
-                    reason: "請老師協助今日任務",
-                    studentText: "我想請老師看今天任務裡這一題。",
-                    platformAction: "請老師查看學生今日任務題目、答案與 AI 提示。",
-                    route: .humanHandoff
-                )
-        case .volunteer:
-            return SeedData.supportOptions.first { $0.id == "reading-too-long" }
-                ?? SupportOption(
-                    id: "mission-volunteer-help",
-                    reason: "請志工陪伴今日任務",
-                    studentText: "我想請志工陪我看今天任務裡這一題。",
-                    platformAction: "請志工陪學生拆解今日任務題目。",
-                    route: .readingBreakdown
-                )
-        }
+    private func missionSupportOption() -> SupportOption {
+        SeedData.supportOptions.first { $0.id == "human-company" }
+            ?? SupportOption(
+                id: "mission-shared-help",
+                reason: "請老師與志工協助今日任務",
+                studentText: "我想請老師或志工看今天任務裡這一題。",
+                platformAction: "請老師與志工查看學生今日任務題目、答案與 AI 提示。",
+                route: .humanHandoff
+            )
     }
 
     private func missionSupportMessage(
         for item: QuestionBankItem,
-        attempt: MissionAttempt,
-        target: MissionSupportTarget
+        attempt: MissionAttempt
     ) -> String {
         """
-        我在今日任務這題卡住，想請\(target.displayName)看一下。
+        我在今日任務這題卡住，想請老師或志工看一下。
         題型：\(item.question.type.title)
         難度：\(item.level.uiTitle)
         題目：\(item.question.prompt)
@@ -552,8 +533,8 @@ struct StudentHomeView: View {
         """
     }
 
-    private func missionSupportSentKey(for item: QuestionBankItem, target: MissionSupportTarget) -> String {
-        "\(item.id)-\(target.rawValue)"
+    private func missionSupportSentKey(for item: QuestionBankItem) -> String {
+        "\(item.id)-shared"
     }
 
     private func openPracticeFromAI() {
@@ -781,42 +762,17 @@ private struct AnswerOptionButton: View {
     }
 }
 
-private enum MissionSupportTarget: String {
-    case teacher
-    case volunteer
-
-    var displayName: String {
-        switch self {
-        case .teacher:
-            return "老師"
-        case .volunteer:
-            return "志工"
-        }
-    }
-
-    var confirmationText: String {
-        switch self {
-        case .teacher:
-            return "已送給老師，老師端會看到這一題與你的答案。"
-        case .volunteer:
-            return "已送給志工，志工端會看到這一題與你的答案。"
-        }
-    }
-}
-
 private struct FeedbackCard: View {
     let attempt: MissionAttempt
     let questionItem: QuestionBankItem?
     let aiResponse: AiProxyResponse?
     let supportConfirmation: String?
-    let teacherRequestSent: Bool
-    let volunteerRequestSent: Bool
+    let supportRequestSent: Bool
     let isLoadingAI: Bool
     let onOpenPractice: () -> Void
     let onOpenSupport: () -> Void
     let onAskAI: () -> Void
-    let onSendTeacher: () -> Void
-    let onSendVolunteer: () -> Void
+    let onSendSupport: () -> Void
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
@@ -863,13 +819,11 @@ private struct FeedbackCard: View {
                 MissionQuestionSupportPanel(
                     aiResponse: aiResponse,
                     supportConfirmation: supportConfirmation,
-                    teacherRequestSent: teacherRequestSent,
-                    volunteerRequestSent: volunteerRequestSent,
+                    supportRequestSent: supportRequestSent,
                     isLoadingAI: isLoadingAI,
                     onOpenSupport: onOpenSupport,
                     onAskAI: onAskAI,
-                    onSendTeacher: onSendTeacher,
-                    onSendVolunteer: onSendVolunteer
+                    onSendSupport: onSendSupport
                 )
             }
         }
@@ -882,13 +836,11 @@ private struct FeedbackCard: View {
 private struct MissionQuestionSupportPanel: View {
     let aiResponse: AiProxyResponse?
     let supportConfirmation: String?
-    let teacherRequestSent: Bool
-    let volunteerRequestSent: Bool
+    let supportRequestSent: Bool
     let isLoadingAI: Bool
     let onOpenSupport: () -> Void
     let onAskAI: () -> Void
-    let onSendTeacher: () -> Void
-    let onSendVolunteer: () -> Void
+    let onSendSupport: () -> Void
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
@@ -910,21 +862,13 @@ private struct MissionQuestionSupportPanel: View {
                 .buttonStyle(PrimaryActionButtonStyle())
                 .disabled(isLoadingAI)
 
-                Button(action: onSendTeacher) {
-                    Label(teacherRequestSent ? "已送老師" : "送給老師", systemImage: "person.text.rectangle")
+                Button(action: onSendSupport) {
+                    Label(supportRequestSent ? "已送出" : "送給老師與志工", systemImage: "paperplane.fill")
                         .font(.caption.bold())
                         .frame(maxWidth: .infinity, minHeight: 44)
                 }
                 .buttonStyle(SecondaryActionButtonStyle())
-                .disabled(teacherRequestSent)
-
-                Button(action: onSendVolunteer) {
-                    Label(volunteerRequestSent ? "已送志工" : "送給志工", systemImage: "hands.sparkles")
-                        .font(.caption.bold())
-                        .frame(maxWidth: .infinity, minHeight: 44)
-                }
-                .buttonStyle(SecondaryActionButtonStyle())
-                .disabled(volunteerRequestSent)
+                .disabled(supportRequestSent)
             }
 
             if isLoadingAI {

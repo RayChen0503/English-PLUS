@@ -18,8 +18,6 @@ struct VolunteerHomeView: View {
                         } else {
                             VolunteerEmptyQueueCard()
                         }
-
-                        VolunteerCompanionScriptCard(compact: true)
                     }
                     .padding(EPTheme.pagePadding)
                 }
@@ -61,15 +59,15 @@ struct VolunteerHandoffWorkspaceView: View {
                             .font(.title.bold())
                             .foregroundStyle(EPTheme.ink)
 
-                        Text("先接住，再陪一題。志工只需要看卡住原因、題目脈絡，留下學生看得懂的一段回覆。")
+                        Text("看同一批學生求助，先讀題目卡，再留下學生看得懂的一段回覆。")
                             .font(.subheadline)
                             .foregroundStyle(EPTheme.secondaryInk)
                             .fixedSize(horizontal: false, vertical: true)
 
                         StaffSupportQueueHeaderCard(
                             title: "待接力",
-                            subtitle: "學生需要陪伴、閱讀提示或題目拆解時會出現在這裡。未處理紅點代表待接力數，回覆、已讀不回或收起後會從待辦移除。",
-                            waitingCount: learningRepository.volunteerQueue.count,
+                            subtitle: "學生把卡住的題目送出後，老師與志工都會收到同一筆接力。任何一端回覆都會消除雙方紅點；你仍可選擇補充陪伴或收起。",
+                            waitingCount: learningRepository.volunteerDashboardMetrics.waitingCount,
                             highPriorityCount: learningRepository.volunteerQueue.filter { $0.priority == .high }.count,
                             handledCount: learningRepository.volunteerDashboardMetrics.repliedByVolunteerCount,
                             tint: EPTheme.support
@@ -83,7 +81,7 @@ struct VolunteerHandoffWorkspaceView: View {
                         if let selectedRequest {
                             VolunteerSelectedSupportPanel(request: selectedRequest)
                             VolunteerQuestionContextCard(request: selectedRequest)
-                            VolunteerCompanionScriptCard(compact: false)
+                            VolunteerCleanGuidanceCard(request: selectedRequest)
                             VolunteerStaffReplyComposerCard(request: selectedRequest)
                         } else {
                             VolunteerEmptyQueueCard()
@@ -117,7 +115,7 @@ private struct VolunteerStaffReplyComposerCard: View {
                 .font(.headline)
                 .foregroundStyle(EPTheme.ink)
 
-            Text("志工可以先用 AI 整理陪伴語氣，再送出給學生；如果這筆已經不需要回覆，也可以標記已讀不回或收起。")
+            Text("先看題目卡與學生答案，再回一段能讓學生重試的小提示；如果這筆不需要你處理，也可以消除提醒或收起。")
                 .font(.subheadline)
                 .foregroundStyle(EPTheme.secondaryInk)
                 .fixedSize(horizontal: false, vertical: true)
@@ -139,15 +137,15 @@ private struct VolunteerStaffReplyComposerCard: View {
                 sendReply: {
                     learningRepository.addVolunteerReply(to: request.id, body: replyDraft)
                     replyDraft = ""
-                    confirmationText = "已送出給學生，待接力數會同步更新。"
+                    confirmationText = "已送出給學生，老師與志工端的紅點會同步更新。"
                 },
                 markHandledWithoutReply: {
                     learningRepository.markSupportThreadHandledWithoutReply(request.id, by: appState.currentUser)
-                    confirmationText = "已標記為已讀不回。"
+                    confirmationText = "已消除你的提醒；另一端仍可回覆。"
                 },
                 archiveThread: {
                     learningRepository.archiveSupportThreadForStaff(request.id, by: appState.currentUser)
-                    confirmationText = "已從待接力列表收起。"
+                    confirmationText = "已從你的待接力列表收起。"
                 }
             )
 
@@ -333,12 +331,17 @@ private struct VolunteerTodayPriorityCard: View {
                     .clipShape(RoundedRectangle(cornerRadius: 10))
             }
 
-            Text(request.studentMessage)
-                .font(.subheadline)
-                .foregroundStyle(EPTheme.ink)
-                .fixedSize(horizontal: false, vertical: true)
+            if let snapshot = request.questionSnapshot {
+                Text(snapshot.prompt)
+                    .font(.subheadline.bold())
+                    .foregroundStyle(EPTheme.ink)
+                    .lineLimit(3)
+                    .fixedSize(horizontal: false, vertical: true)
+            } else {
+                VolunteerMissingQuestionSnapshotLabel()
+            }
 
-            Text("到「接力」頁面後，可以用 AI 產生草稿，再送出學生看得到的回覆。")
+            Text("到「接力」頁面後，只看題目卡與卡點，再送出學生看得懂的回覆。")
                 .font(.footnote)
                 .foregroundStyle(EPTheme.secondaryInk)
                 .fixedSize(horizontal: false, vertical: true)
@@ -423,6 +426,10 @@ private struct VolunteerQueuePickerCard: View {
 private struct VolunteerSelectedSupportPanel: View {
     let request: StudentSupportRequest
 
+    private var staffReplies: [SupportReply] {
+        request.staffReplies
+    }
+
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             Text("2. 看懂卡點")
@@ -435,10 +442,19 @@ private struct VolunteerSelectedSupportPanel: View {
                 VolunteerStatusTile(title: "路線", value: reasonTitle)
             }
 
-            Text(request.studentMessage)
-                .font(.subheadline)
-                .foregroundStyle(EPTheme.ink)
-                .fixedSize(horizontal: false, vertical: true)
+            if !staffReplies.isEmpty {
+                VStack(alignment: .leading, spacing: 8) {
+                    Text("已有回覆")
+                        .font(.caption.bold())
+                        .foregroundStyle(EPTheme.secondaryInk)
+                    ForEach(staffReplies) { reply in
+                        Text("\(reply.authorName)：\(reply.body)")
+                            .font(.footnote)
+                            .foregroundStyle(EPTheme.secondaryInk)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                }
+            }
 
             Text(nextStep)
                 .font(.footnote.bold())
@@ -497,16 +513,8 @@ private struct VolunteerQuestionContextCard: View {
                     title: "學生答案與正解",
                     showsExplanation: true
                 )
-            } else if request.latestQuestionId?.isEmpty == false {
-                Label("這筆求助有題目紀錄，但目前缺少完整題目快照。", systemImage: "doc.text.magnifyingglass")
-                    .font(.subheadline.bold())
-                    .foregroundStyle(EPTheme.secondaryInk)
-                    .fixedSize(horizontal: false, vertical: true)
             } else {
-                Label("這次求助沒有綁定單一題目", systemImage: "text.bubble")
-                    .font(.subheadline.bold())
-                    .foregroundStyle(EPTheme.secondaryInk)
-                    .fixedSize(horizontal: false, vertical: true)
+                VolunteerMissingQuestionSnapshotLabel()
             }
 
             Text("回覆時不要直接給長篇答案，先給一個能讓學生重試的提示。送出後學生會在支援紀錄看到這段回覆。")
@@ -521,35 +529,50 @@ private struct VolunteerQuestionContextCard: View {
     }
 }
 
-private struct VolunteerCompanionScriptCard: View {
-    let compact: Bool
+private struct VolunteerCleanGuidanceCard: View {
+    let request: StudentSupportRequest
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            Label("陪伴順序", systemImage: "text.bubble")
+        VStack(alignment: .leading, spacing: 8) {
+            Label("回覆重點", systemImage: "sparkles")
                 .font(.headline)
-                .foregroundStyle(EPTheme.ink)
+                .foregroundStyle(EPTheme.support)
 
-            ForEach(VolunteerScriptTemplate.defaults.prefix(compact ? 2 : 3)) { template in
-                VStack(alignment: .leading, spacing: 4) {
-                    Text(template.title)
-                        .font(.subheadline.bold())
-                        .foregroundStyle(EPTheme.ink)
-                    Text(template.body)
-                        .font(.footnote)
-                        .foregroundStyle(EPTheme.secondaryInk)
-                        .fixedSize(horizontal: false, vertical: true)
-                }
-                .padding(10)
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .background(EPTheme.secondarySurface)
-                .clipShape(RoundedRectangle(cornerRadius: 10))
-            }
+            Text(guidance)
+                .font(.subheadline)
+                .foregroundStyle(EPTheme.secondaryInk)
+                .fixedSize(horizontal: false, vertical: true)
         }
         .padding(16)
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(EPTheme.card)
         .clipShape(RoundedRectangle(cornerRadius: EPTheme.cardRadius))
+    }
+
+    private var guidance: String {
+        switch request.reason {
+        case .readingHelp:
+            return "先陪學生圈出看不懂的句子，再給一個閱讀線索。不要重複題目全文。"
+        case .emotionalSupport:
+            return "先接住情緒，再把任務縮小成一個可完成的小步驟。"
+        case .teacherRequested:
+            return "依老師交代補一段學生看得懂的鼓勵或提示，保留可接續的線索。"
+        case .stuckOnQuestion:
+            return "先指出學生答案卡在哪個概念，再給一個能重試的提示。"
+        }
+    }
+}
+
+private struct VolunteerMissingQuestionSnapshotLabel: View {
+    var body: some View {
+        Label("這筆接力缺少完整題目快照，請優先處理有題目卡的求助。", systemImage: "doc.text.magnifyingglass")
+            .font(.caption.bold())
+            .foregroundStyle(EPTheme.secondaryInk)
+            .fixedSize(horizontal: false, vertical: true)
+            .padding(10)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(EPTheme.secondarySurface)
+            .clipShape(RoundedRectangle(cornerRadius: 10))
     }
 }
 
@@ -614,12 +637,17 @@ private struct VolunteerRecordRequestCard: View {
                     .foregroundStyle(EPTheme.support)
             }
 
-            Text(request.studentMessage)
-                .font(.footnote)
-                .foregroundStyle(EPTheme.secondaryInk)
-                .fixedSize(horizontal: false, vertical: true)
+            if let snapshot = request.questionSnapshot {
+                SupportQuestionSnapshotCard(
+                    snapshot: snapshot,
+                    title: "已處理題目",
+                    showsExplanation: true
+                )
+            } else {
+                VolunteerMissingQuestionSnapshotLabel()
+            }
 
-            ForEach(request.replies.filter { $0.authorRole == .volunteer }) { reply in
+            ForEach(request.staffReplies.filter { $0.authorRole == .volunteer }) { reply in
                 Text(reply.body)
                     .font(.subheadline)
                     .foregroundStyle(EPTheme.ink)
@@ -671,28 +699,4 @@ private struct EmptyRecordCard: View {
         .background(EPTheme.card)
         .clipShape(RoundedRectangle(cornerRadius: EPTheme.cardRadius))
     }
-}
-
-struct VolunteerScriptTemplate: Identifiable {
-    let id: String
-    let title: String
-    let body: String
-
-    static let defaults = [
-        VolunteerScriptTemplate(
-            id: "affirm",
-            title: "先接住情緒",
-            body: "你不是完全不會，是卡在其中一小段。我們先只看這一句，不急著做完全部。"
-        ),
-        VolunteerScriptTemplate(
-            id: "retry",
-            title: "再陪一個卡點",
-            body: "剛剛那題錯得有線索。你先告訴我你排除了哪個選項，我們再一起看剩下的。"
-        ),
-        VolunteerScriptTemplate(
-            id: "finish",
-            title: "最後留下接續線索",
-            body: "今天先到這裡就很好。你已經完成一小步，我會把下一步留給老師接續。"
-        ),
-    ]
 }

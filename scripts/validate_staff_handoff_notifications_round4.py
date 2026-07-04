@@ -1,5 +1,6 @@
 from pathlib import Path
 
+
 ROOT = Path(__file__).resolve().parents[1]
 
 
@@ -17,13 +18,10 @@ repository_store = read("ios/EnglishPlus/EnglishPlus/Services/LearningRepository
 required_teacher_markers = [
     "StaffSupportQueueHeaderCard",
     "StaffSupportActionBar",
-    "待回覆",
-    "未處理",
-    "已讀不回",
-    "收起",
     "markSupportThreadHandledWithoutReply(request.id, by: appState.currentUser)",
     "archiveSupportThreadForStaff(request.id, by: appState.currentUser)",
     "learningRepository.teacherQueue",
+    "waitingCount: learningRepository.staffDashboardMetrics.waitingHelpCount",
 ]
 
 required_teacher_shell_markers = [
@@ -34,13 +32,10 @@ required_teacher_shell_markers = [
 required_volunteer_markers = [
     "StaffSupportQueueHeaderCard",
     "StaffSupportActionBar",
-    "待接力",
-    "未處理",
-    "已讀不回",
-    "收起",
     "markSupportThreadHandledWithoutReply(request.id, by: appState.currentUser)",
     "archiveSupportThreadForStaff(request.id, by: appState.currentUser)",
     "learningRepository.volunteerQueue",
+    "waitingCount: learningRepository.volunteerDashboardMetrics.waitingCount",
 ]
 
 required_volunteer_shell_markers = [
@@ -49,8 +44,10 @@ required_volunteer_shell_markers = [
 ]
 
 required_repository_markers = [
-    "supportRequests.filter(\\.countsTowardStaffBadge).count",
-    "volunteerQueue.count",
+    "countsTowardSharedStaffBadge(for: .teacher)",
+    "countsTowardSharedStaffBadge(for: .volunteer)",
+    "isVisibleInStaffQueue(for: .teacher)",
+    "isVisibleInStaffQueue(for: .volunteer)",
     "staffHandledNoReply",
 ]
 

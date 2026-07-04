@@ -327,11 +327,7 @@ final class FirebaseLearningRepository: LearningRepositoryBackend {
             return
         }
         let date = Date()
-        currentSnapshot.supportRequests[index].status = .staffHandledNoReply
-        currentSnapshot.supportRequests[index].handledWithoutReplyAt = date
-        currentSnapshot.supportRequests[index].handledByUid = staffUser?.id
-        currentSnapshot.supportRequests[index].handledByName = staffUser?.displayName
-        currentSnapshot.supportRequests[index].handledByRole = staffUser?.role
+        markStaffThreadHandled(at: index, date: date, by: staffUser)
         currentSnapshot.supportRequests[index].updatedAt = date
         mirrorSupportRequestIfPossible(currentSnapshot.supportRequests[index])
     }
@@ -341,13 +337,49 @@ final class FirebaseLearningRepository: LearningRepositoryBackend {
             return
         }
         let date = Date()
-        currentSnapshot.supportRequests[index].status = .archived
-        currentSnapshot.supportRequests[index].staffArchivedAt = date
+        archiveStaffThread(at: index, date: date, by: staffUser)
+        currentSnapshot.supportRequests[index].updatedAt = date
+        mirrorSupportRequestIfPossible(currentSnapshot.supportRequests[index])
+    }
+
+    private func markStaffThreadHandled(at index: Int, date: Date, by staffUser: DemoUser?) {
+        currentSnapshot.supportRequests[index].status = .staffHandledNoReply
+        currentSnapshot.supportRequests[index].handledWithoutReplyAt = date
         currentSnapshot.supportRequests[index].handledByUid = staffUser?.id
         currentSnapshot.supportRequests[index].handledByName = staffUser?.displayName
         currentSnapshot.supportRequests[index].handledByRole = staffUser?.role
-        currentSnapshot.supportRequests[index].updatedAt = date
-        mirrorSupportRequestIfPossible(currentSnapshot.supportRequests[index])
+
+        switch staffUser?.role {
+        case .teacher?:
+            currentSnapshot.supportRequests[index].teacherHandledWithoutReplyAt = date
+        case .volunteer?:
+            currentSnapshot.supportRequests[index].volunteerHandledWithoutReplyAt = date
+        default:
+            currentSnapshot.supportRequests[index].teacherHandledWithoutReplyAt = date
+            currentSnapshot.supportRequests[index].volunteerHandledWithoutReplyAt = date
+        }
+    }
+
+    private func archiveStaffThread(at index: Int, date: Date, by staffUser: DemoUser?) {
+        currentSnapshot.supportRequests[index].handledByUid = staffUser?.id
+        currentSnapshot.supportRequests[index].handledByName = staffUser?.displayName
+        currentSnapshot.supportRequests[index].handledByRole = staffUser?.role
+
+        switch staffUser?.role {
+        case .teacher?:
+            currentSnapshot.supportRequests[index].teacherArchivedAt = date
+        case .volunteer?:
+            currentSnapshot.supportRequests[index].volunteerArchivedAt = date
+        default:
+            currentSnapshot.supportRequests[index].teacherArchivedAt = date
+            currentSnapshot.supportRequests[index].volunteerArchivedAt = date
+        }
+
+        if currentSnapshot.supportRequests[index].teacherArchivedAt != nil
+            && currentSnapshot.supportRequests[index].volunteerArchivedAt != nil {
+            currentSnapshot.supportRequests[index].status = .archived
+            currentSnapshot.supportRequests[index].staffArchivedAt = date
+        }
     }
 
     func assignPracticeSet(_ set: QuestionPracticeSet, to student: StaffStudentSummary, by teacher: DemoUser?) {
@@ -800,7 +832,11 @@ final class FirebaseLearningRepository: LearningRepositoryBackend {
             "questionSnapshot": request.questionSnapshot.map(firestoreData(from:)) ?? NSNull(),
             "studentArchivedAt": nullable(request.studentArchivedAt),
             "staffArchivedAt": nullable(request.staffArchivedAt),
+            "teacherArchivedAt": nullable(request.teacherArchivedAt),
+            "volunteerArchivedAt": nullable(request.volunteerArchivedAt),
             "handledWithoutReplyAt": nullable(request.handledWithoutReplyAt),
+            "teacherHandledWithoutReplyAt": nullable(request.teacherHandledWithoutReplyAt),
+            "volunteerHandledWithoutReplyAt": nullable(request.volunteerHandledWithoutReplyAt),
             "handledByUid": nullable(request.handledByUid),
             "handledByName": nullable(request.handledByName),
             "handledByRole": request.handledByRole?.rawValue ?? NSNull(),
@@ -1027,7 +1063,11 @@ final class FirebaseLearningRepository: LearningRepositoryBackend {
             questionSnapshot: supportQuestionSnapshot(from: data),
             studentArchivedAt: firestoreDate(data["studentArchivedAt"]),
             staffArchivedAt: firestoreDate(data["staffArchivedAt"]),
+            teacherArchivedAt: firestoreDate(data["teacherArchivedAt"]),
+            volunteerArchivedAt: firestoreDate(data["volunteerArchivedAt"]),
             handledWithoutReplyAt: firestoreDate(data["handledWithoutReplyAt"]),
+            teacherHandledWithoutReplyAt: firestoreDate(data["teacherHandledWithoutReplyAt"]),
+            volunteerHandledWithoutReplyAt: firestoreDate(data["volunteerHandledWithoutReplyAt"]),
             handledByUid: data["handledByUid"] as? String,
             handledByName: data["handledByName"] as? String,
             handledByRole: handledRoleRaw.flatMap(UserRole.init(rawValue:)),

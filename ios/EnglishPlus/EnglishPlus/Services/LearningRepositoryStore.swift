@@ -180,17 +180,13 @@ final class LearningRepositoryStore: ObservableObject {
 
     var teacherQueue: [StudentSupportRequest] {
         supportRequests
-            .filter(\.isWaitingForStaffAction)
-            .filter(\.requiresStaffTeachingResponse)
+            .filter { $0.isVisibleInStaffQueue(for: .teacher) }
             .sorted { priorityScore($0.priority) > priorityScore($1.priority) }
     }
 
     var volunteerQueue: [StudentSupportRequest] {
         supportRequests
-            .filter { request in
-                request.isWaitingForStaffAction
-                    && (request.route == .humanHandoff || request.reason == .emotionalSupport || request.reason == .readingHelp)
-            }
+            .filter { $0.isVisibleInStaffQueue(for: .volunteer) }
             .sorted { priorityScore($0.priority) > priorityScore($1.priority) }
     }
 
@@ -219,7 +215,7 @@ final class LearningRepositoryStore: ObservableObject {
         return StaffDashboardMetrics(
             studentCount: max(staffStudentSummaries.count, 1),
             highRiskCount: supportRequests.filter { $0.priority == .high }.count,
-            waitingHelpCount: supportRequests.filter(\.countsTowardStaffBadge).count,
+            waitingHelpCount: supportRequests.filter { $0.countsTowardSharedStaffBadge(for: .teacher) }.count,
             repliedCount: supportRequests.filter { $0.status == .replied || $0.status == .readByStudent || $0.status == .staffHandledNoReply }.count,
             questionCount: SeedData.approvedQuestionBankItems.count,
             averageMoodText: averageMood
@@ -228,7 +224,7 @@ final class LearningRepositoryStore: ObservableObject {
 
     var volunteerDashboardMetrics: VolunteerDashboardMetrics {
         VolunteerDashboardMetrics(
-            waitingCount: volunteerQueue.count,
+            waitingCount: supportRequests.filter { $0.countsTowardSharedStaffBadge(for: .volunteer) }.count,
             highPriorityCount: volunteerQueue.filter { $0.priority == .high }.count,
             repliedByVolunteerCount: visibleVolunteerReplies.count,
             syncRecordCount: supportRequests.reduce(0) { count, request in

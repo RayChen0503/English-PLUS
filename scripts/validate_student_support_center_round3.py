@@ -4,6 +4,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 SUPPORT_VIEW = ROOT / "ios" / "EnglishPlus" / "EnglishPlus" / "Features" / "Support" / "SupportView.swift"
 PRACTICE_VIEW = ROOT / "ios" / "EnglishPlus" / "EnglishPlus" / "Features" / "Practice" / "PracticeCenterView.swift"
+STUDENT_VIEW = ROOT / "ios" / "EnglishPlus" / "EnglishPlus" / "Features" / "Student" / "StudentHomeView.swift"
 
 
 def require(text: str, needle: str, label: str) -> None:
@@ -19,33 +20,35 @@ def reject(text: str, needle: str, label: str) -> None:
 def main() -> None:
     support = SUPPORT_VIEW.read_text(encoding="utf-8")
     practice = PRACTICE_VIEW.read_text(encoding="utf-8")
+    student = STUDENT_VIEW.read_text(encoding="utf-8")
 
-    require(support, "SupportInboxHeaderCard", "support inbox header component")
-    require(support, "SupportMoodAICard", "single emotional AI support entry")
     require(support, "SupportReplyCenterSummaryCard", "reply center summary")
     require(support, "SupportRequestInboxCard", "support request record card")
     require(support, "SupportReplyTimeline", "reply timeline")
     require(support, "SupportEmptyStateCard", "empty state")
-    require(support, "回覆中心", "support reply center title")
-    require(support, "練習題送出後", "practice-first support guidance")
     require(support, "SupportQuestionSnapshotCard", "question snapshot context card")
-    require(support, "你送出的題目", "student question context label")
     require(support, "SupportThreadActionRow", "student archive action row")
-    require(support, "我看懂了，收起這筆", "student archive action")
-    require(support, "老師/志工回覆", "visible staff reply label")
     require(support, "markSupportThreadReadByStudent(request.id)", "read-state update")
     require(support, "archiveSupportThreadForStudent(request.id)", "student archive-state update")
     require(support, "supportRequests(forStudentUid: appState.currentUser?.id)", "student scoped support query")
-    require(support, "sendEmotionalSupportRequest()", "single support creation action")
-    require(support, "provideEmotionalSupportWithAI", "AI emotional support call")
-    require(support, "onOpenPractice()", "practice navigation from support")
+    require(support, "已送給老師與志工，回覆後會出現在這裡。", "shared waiting text")
 
     reject(support, "ForEach(supportOptions)", "old support option menu")
     reject(support, "supportRow(", "old support row component")
+    reject(support, "已送給老師，回覆後會出現在這裡。", "old teacher-only waiting text")
+    reject(support, "已送給志工，回覆後會出現在這裡。", "old volunteer-only waiting text")
 
     require(practice, "PracticeInlineSupportPanel", "inline practice support remains connected")
-    require(practice, "送給老師", "teacher inline support remains connected")
-    require(practice, "送給志工", "volunteer inline support remains connected")
+    require(practice, "送給老師與志工", "shared practice support action")
+    require(practice, "sendPracticeSupportRequest(for: item)", "practice shared support send")
+    reject(practice, "onSendTeacher", "split teacher practice action")
+    reject(practice, "onSendVolunteer", "split volunteer practice action")
+
+    require(student, "MissionQuestionSupportPanel", "daily mission support panel")
+    require(student, "送給老師與志工", "shared daily mission support action")
+    require(student, "sendMissionSupportRequest(for: item, attempt: attempt)", "daily shared support send")
+    reject(student, "onSendTeacher", "split teacher daily action")
+    reject(student, "onSendVolunteer", "split volunteer daily action")
 
     print("student support center round 3 contract passed")
 

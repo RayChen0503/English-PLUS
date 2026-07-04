@@ -13,6 +13,11 @@ def require(label: str, text: str, markers: list[str]) -> None:
     assert not missing, f"Missing {label}: {missing}"
 
 
+def reject(label: str, text: str, markers: list[str]) -> None:
+    present = [marker for marker in markers if marker in text]
+    assert not present, f"Unexpected {label}: {present}"
+
+
 practice_center = read("ios/EnglishPlus/EnglishPlus/Features/Practice/PracticeCenterView.swift")
 store = read("ios/EnglishPlus/EnglishPlus/Services/LearningRepositoryStore.swift")
 mock_repo = read("ios/EnglishPlus/EnglishPlus/Services/MockLearningRepository.swift")
@@ -20,17 +25,29 @@ firebase_repo = read("ios/EnglishPlus/EnglishPlus/Services/FirebaseLearningRepos
 
 
 require(
-    "inline practice support UI",
+    "inline practice shared support UI",
     practice_center,
     [
         "PracticeInlineSupportPanel",
-        "問 AI 解題",
-        "送給老師",
-        "送給志工",
         "askPracticeAI(for: item)",
-        "sendPracticeSupportRequest(for: item, target: .teacher)",
-        "sendPracticeSupportRequest(for: item, target: .volunteer)",
+        "sendPracticeSupportRequest(for: item)",
+        "practiceSupportSentKey(for item: QuestionBankItem)",
+        "supportRequestSent",
+        "onSendSupport",
         "practiceSupportConfirmation",
+    ],
+)
+
+reject(
+    "split practice support targets",
+    practice_center,
+    [
+        "PracticeSupportTarget",
+        "onSendTeacher",
+        "onSendVolunteer",
+        "sendPracticeSupportRequest(for: item, target:",
+        "practiceSupportOption(for target:",
+        "practiceSupportMessage(for: item, target:",
     ],
 )
 
@@ -51,10 +68,10 @@ require(
     "practice support message includes question context",
     practice_center,
     [
-        "題目：\\(item.question.prompt)",
-        "我的答案：\\(answerText)",
-        "正確答案：\\(item.question.answer)",
-        "解析：\\(item.question.explanation)",
+        "item.question.prompt",
+        "answerText",
+        "item.question.answer",
+        "item.question.explanation",
     ],
 )
 

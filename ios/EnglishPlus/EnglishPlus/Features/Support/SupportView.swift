@@ -26,7 +26,7 @@ struct SupportView: View {
                 Text("回覆中心")
                     .font(.title3.bold())
                     .foregroundStyle(EPTheme.ink)
-                Text("練習題送出後，老師、志工或 AI 的回覆都會集中在這裡。看懂後可以收起，列表就不會越堆越亂。")
+                Text("練習題送出後，老師與志工的回覆會集中在這裡。看懂後可以收起，列表就不會越堆越亂。")
                     .font(.subheadline)
                     .foregroundStyle(EPTheme.secondaryInk)
                     .fixedSize(horizontal: false, vertical: true)
@@ -70,7 +70,7 @@ struct SupportView: View {
         studentRequests.filter { request in
             request.status == .replied
                 || request.status == .readByStudent
-                || !request.replies.filter(\.visibleToStudent).isEmpty
+                || !request.visibleStaffRepliesToStudent.isEmpty
         }.count
     }
 
@@ -83,7 +83,7 @@ private struct SupportEmptyStateCard: View {
                 .font(.headline)
                 .foregroundStyle(EPTheme.ink)
 
-            Text("開始練習後，如果某一題看不懂，可以在題目下方直接問 AI，或把那一題送給老師/志工。")
+            Text("開始練習後，如果某一題看不懂，可以在題目下方直接問 AI，或把那一題送給老師與志工。")
                 .font(.subheadline)
                 .foregroundStyle(EPTheme.secondaryInk)
                 .fixedSize(horizontal: false, vertical: true)
@@ -157,6 +157,27 @@ private struct SupportInboxMetricPill: View {
     }
 }
 
+private struct SupportOriginalStudentMessageCard: View {
+    let message: String
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text("你的補充")
+                .font(.caption.bold())
+                .foregroundStyle(EPTheme.secondaryInk)
+
+            Text(message)
+                .font(.subheadline)
+                .foregroundStyle(EPTheme.ink)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        .padding(10)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(EPTheme.secondarySurface)
+        .clipShape(RoundedRectangle(cornerRadius: 10))
+    }
+}
+
 private struct SupportRequestInboxCard: View {
     @EnvironmentObject private var learningRepository: LearningRepositoryStore
 
@@ -164,7 +185,7 @@ private struct SupportRequestInboxCard: View {
     let onArchive: () -> Void
 
     private var visibleReplies: [SupportReply] {
-        request.replies.filter(\.visibleToStudent)
+        request.visibleStaffRepliesToStudent
     }
 
     var body: some View {
@@ -219,10 +240,9 @@ private struct SupportRequestInboxCard: View {
                     .clipShape(RoundedRectangle(cornerRadius: 8))
             }
 
-            Text(request.studentMessage)
-                .font(.subheadline)
-                .foregroundStyle(EPTheme.ink)
-                .fixedSize(horizontal: false, vertical: true)
+            if request.questionSnapshot == nil {
+                SupportOriginalStudentMessageCard(message: request.studentMessage)
+            }
 
             if visibleReplies.isEmpty {
                 SupportWaitingReplyCard(route: request.route)
@@ -249,9 +269,9 @@ private struct SupportRequestInboxCard: View {
         case .aiCoach:
             return "AI 解題紀錄"
         case .humanHandoff:
-            return "老師協助"
+            return "老師/志工協助"
         case .readingBreakdown:
-            return "志工陪伴"
+            return "老師/志工協助"
         case .recovery:
             return "情緒支持"
         }
@@ -337,9 +357,9 @@ private struct SupportWaitingReplyCard: View {
     private var waitingText: String {
         switch route {
         case .humanHandoff:
-            return "已送給老師，回覆後會出現在這裡。"
+            return "已送給老師與志工，回覆後會出現在這裡。"
         case .readingBreakdown:
-            return "已送給志工，回覆後會出現在這裡。"
+            return "已送給老師與志工，回覆後會出現在這裡。"
         case .aiCoach:
             return "AI 建議會顯示在這裡。"
         case .recovery:

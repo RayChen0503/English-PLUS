@@ -312,7 +312,11 @@ struct StudentSupportRequest: Identifiable, Codable, Equatable {
     var questionSnapshot: SupportQuestionSnapshot?
     var studentArchivedAt: Date? = nil
     var staffArchivedAt: Date? = nil
+    var teacherArchivedAt: Date? = nil
+    var volunteerArchivedAt: Date? = nil
     var handledWithoutReplyAt: Date? = nil
+    var teacherHandledWithoutReplyAt: Date? = nil
+    var volunteerHandledWithoutReplyAt: Date? = nil
     var handledByUid: String? = nil
     var handledByName: String? = nil
     var handledByRole: UserRole? = nil
@@ -326,8 +330,7 @@ struct StudentSupportRequest: Identifiable, Codable, Equatable {
     }
 
     var isWaitingForStaffAction: Bool {
-        staffArchivedAt == nil
-            && handledWithoutReplyAt == nil
+        !hasAnyStaffAction
             && (status == .open || status == .waitingForStaff)
     }
 
@@ -339,11 +342,40 @@ struct StudentSupportRequest: Identifiable, Codable, Equatable {
     }
 
     var requiresStaffTeachingResponse: Bool {
-        isWaitingForStaffAction && hasCompleteQuestionSnapshotForStaff
+        countsTowardSharedStaffBadge(for: .teacher)
+            || countsTowardSharedStaffBadge(for: .volunteer)
     }
 
     var countsTowardStaffBadge: Bool {
         requiresStaffTeachingResponse
+    }
+
+    var hasAnyStaffAction: Bool {
+        !staffReplies.isEmpty
+            || handledWithoutReplyAt != nil
+            || teacherHandledWithoutReplyAt != nil
+            || volunteerHandledWithoutReplyAt != nil
+    }
+
+    func isVisibleInStaffQueue(for role: UserRole) -> Bool {
+        guard role != .student else { return false }
+        guard status != .archived else { return false }
+        guard hasCompleteQuestionSnapshotForStaff else { return false }
+        return !isArchivedForStaffRole(role)
+    }
+
+    func countsTowardSharedStaffBadge(for role: UserRole) -> Bool {
+        isVisibleInStaffQueue(for: role)
+            && !hasAnyStaffAction
+            && (status == .open || status == .waitingForStaff)
+    }
+
+    var staffReplies: [SupportReply] {
+        replies.filter(\.isStaffReply)
+    }
+
+    var visibleStaffRepliesToStudent: [SupportReply] {
+        staffReplies.filter(\.visibleToStudent)
     }
 
     var hasStudentUnreadReply: Bool {
@@ -353,6 +385,19 @@ struct StudentSupportRequest: Identifiable, Codable, Equatable {
     var isPendingOnStudentLearningMap: Bool {
         isVisibleToStudent
             && (status == .open || status == .waitingForStaff || hasStudentUnreadReply)
+    }
+
+    private func isArchivedForStaffRole(_ role: UserRole) -> Bool {
+        switch role {
+        case .student:
+            return false
+        case .teacher:
+            return teacherArchivedAt != nil
+                || (staffArchivedAt != nil && handledByRole != .volunteer)
+        case .volunteer:
+            return volunteerArchivedAt != nil
+                || (staffArchivedAt != nil && handledByRole != .teacher)
+        }
     }
 }
 
@@ -446,6 +491,10 @@ struct SupportReply: Identifiable, Codable, Equatable {
     let body: String
     let visibleToStudent: Bool
     let createdAt: Date
+
+    var isStaffReply: Bool {
+        authorRole == .teacher || authorRole == .volunteer
+    }
 }
 
 struct StaffStudentSummary: Identifiable, Equatable {

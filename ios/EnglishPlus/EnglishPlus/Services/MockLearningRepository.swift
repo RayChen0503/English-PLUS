@@ -97,17 +97,13 @@ final class MockLearningRepository: ObservableObject {
 
     var teacherQueue: [StudentSupportRequest] {
         supportRequests
-            .filter(\.isWaitingForStaffAction)
-            .filter(\.requiresStaffTeachingResponse)
+            .filter { $0.isVisibleInStaffQueue(for: .teacher) }
             .sorted { priorityScore($0.priority) > priorityScore($1.priority) }
     }
 
     var volunteerQueue: [StudentSupportRequest] {
         supportRequests
-            .filter { request in
-                request.isWaitingForStaffAction
-                    && (request.route == .humanHandoff || request.reason == .emotionalSupport || request.reason == .readingHelp)
-            }
+            .filter { $0.isVisibleInStaffQueue(for: .volunteer) }
             .sorted { priorityScore($0.priority) > priorityScore($1.priority) }
     }
 
@@ -524,11 +520,7 @@ final class MockLearningRepository: ObservableObject {
     func markSupportThreadHandledWithoutReply(_ requestId: String, by staffUser: DemoUser?) {
         guard let index = supportRequests.firstIndex(where: { $0.id == requestId }) else { return }
         let date = now()
-        supportRequests[index].status = .staffHandledNoReply
-        supportRequests[index].handledWithoutReplyAt = date
-        supportRequests[index].handledByUid = staffUser?.id
-        supportRequests[index].handledByName = staffUser?.displayName
-        supportRequests[index].handledByRole = staffUser?.role
+        markStaffThreadHandled(at: index, date: date, by: staffUser)
         supportRequests[index].updatedAt = date
         persistSnapshot()
     }
@@ -536,13 +528,48 @@ final class MockLearningRepository: ObservableObject {
     func archiveSupportThreadForStaff(_ requestId: String, by staffUser: DemoUser?) {
         guard let index = supportRequests.firstIndex(where: { $0.id == requestId }) else { return }
         let date = now()
-        supportRequests[index].status = .archived
-        supportRequests[index].staffArchivedAt = date
+        archiveStaffThread(at: index, date: date, by: staffUser)
+        supportRequests[index].updatedAt = date
+        persistSnapshot()
+    }
+
+    private func markStaffThreadHandled(at index: Int, date: Date, by staffUser: DemoUser?) {
+        supportRequests[index].status = .staffHandledNoReply
+        supportRequests[index].handledWithoutReplyAt = date
         supportRequests[index].handledByUid = staffUser?.id
         supportRequests[index].handledByName = staffUser?.displayName
         supportRequests[index].handledByRole = staffUser?.role
-        supportRequests[index].updatedAt = date
-        persistSnapshot()
+
+        switch staffUser?.role {
+        case .teacher?:
+            supportRequests[index].teacherHandledWithoutReplyAt = date
+        case .volunteer?:
+            supportRequests[index].volunteerHandledWithoutReplyAt = date
+        default:
+            supportRequests[index].teacherHandledWithoutReplyAt = date
+            supportRequests[index].volunteerHandledWithoutReplyAt = date
+        }
+    }
+
+    private func archiveStaffThread(at index: Int, date: Date, by staffUser: DemoUser?) {
+        supportRequests[index].handledByUid = staffUser?.id
+        supportRequests[index].handledByName = staffUser?.displayName
+        supportRequests[index].handledByRole = staffUser?.role
+
+        switch staffUser?.role {
+        case .teacher?:
+            supportRequests[index].teacherArchivedAt = date
+        case .volunteer?:
+            supportRequests[index].volunteerArchivedAt = date
+        default:
+            supportRequests[index].teacherArchivedAt = date
+            supportRequests[index].volunteerArchivedAt = date
+        }
+
+        if supportRequests[index].teacherArchivedAt != nil && supportRequests[index].volunteerArchivedAt != nil {
+            supportRequests[index].status = .archived
+            supportRequests[index].staffArchivedAt = date
+        }
     }
 
     private var uniqueCorrectQuestionIds: Set<String> {

@@ -17,6 +17,7 @@ struct PracticeCenterView: View {
     @State private var practiceQuestionAIResponse: AiProxyResponse?
     @State private var wrongAnswerAIResponse: AiProxyResponse?
     @State private var practiceSupportConfirmation: String?
+    @State private var practiceSupportSentQuestionIds: Set<String> = []
     @State private var activePracticeSourceTitle: String?
     @State private var practiceSelectionNote: String?
     @State private var practiceOptionOrderByQuestionId: [String: [String]] = [:]
@@ -222,6 +223,7 @@ struct PracticeCenterView: View {
                 PracticeInlineSupportPanel(
                     aiResponse: practiceQuestionAIResponse,
                     supportConfirmation: practiceSupportConfirmation,
+                    supportRequestSent: practiceSupportSentQuestionIds.contains(practiceSupportSentKey(for: item)),
                     isLoadingAI: isLoadingPracticeQuestionAI,
                     onOpenSupport: onOpenSupport,
                     onAskAI: {
@@ -229,11 +231,8 @@ struct PracticeCenterView: View {
                             await askPracticeAI(for: item)
                         }
                     },
-                    onSendTeacher: {
-                        sendPracticeSupportRequest(for: item, target: .teacher)
-                    },
-                    onSendVolunteer: {
-                        sendPracticeSupportRequest(for: item, target: .volunteer)
+                    onSendSupport: {
+                        sendPracticeSupportRequest(for: item)
                     }
                 )
 
@@ -419,6 +418,7 @@ struct PracticeCenterView: View {
         wrongAnswerAIResponse = nil
         practiceQuestionAIResponse = nil
         practiceSupportConfirmation = nil
+        practiceSupportSentQuestionIds = []
         activePracticeSourceTitle = nil
         practiceSelectionNote = nil
         practiceOptionOrderByQuestionId = [:]
@@ -452,6 +452,7 @@ struct PracticeCenterView: View {
         wrongAnswerAIResponse = nil
         practiceQuestionAIResponse = nil
         practiceSupportConfirmation = nil
+        practiceSupportSentQuestionIds = []
         freePracticeAnsweredCount = 0
         freePracticeCorrectCount = 0
         didCountCurrentPracticeAnswer = false
@@ -854,47 +855,36 @@ struct PracticeCenterView: View {
         practiceQuestionAIResponse = await appState.explainWrongAnswerWithAI(context: context)
     }
 
-    private func sendPracticeSupportRequest(for item: QuestionBankItem, target: PracticeSupportTarget) {
+    private func sendPracticeSupportRequest(for item: QuestionBankItem) {
         let selectedAnswer = normalizedPracticeAnswer(practiceAnswer).isEmpty ? nil : practiceAnswer
-        let option = practiceSupportOption(for: target)
+        let option = practiceSupportOption()
         learningRepository.sendQuestionSupportRequest(
             from: appState.currentUser,
             profile: appState.currentProfile,
             option: option,
             questionItem: item,
             selectedAnswer: selectedAnswer,
-            message: practiceSupportMessage(for: item, target: target)
+            message: practiceSupportMessage(for: item)
         )
-        practiceSupportConfirmation = target.confirmationText
+        practiceSupportSentQuestionIds.insert(practiceSupportSentKey(for: item))
+        practiceSupportConfirmation = "已送給老師與志工，兩邊都會看到這一題與你的答案。"
     }
 
-    private func practiceSupportOption(for target: PracticeSupportTarget) -> SupportOption {
-        switch target {
-        case .teacher:
-            return SeedData.supportOptions.first { $0.id == "human-company" }
-                ?? SupportOption(
-                    id: "practice-teacher-help",
-                    reason: "請老師協助",
-                    studentText: "我想請老師看這題。",
-                    platformAction: "請老師查看學生題目與答案。",
-                    route: .humanHandoff
-                )
-        case .volunteer:
-            return SeedData.supportOptions.first { $0.id == "reading-too-long" }
-                ?? SupportOption(
-                    id: "practice-volunteer-help",
-                    reason: "請志工陪伴",
-                    studentText: "我想請志工陪我看這題。",
-                    platformAction: "請志工陪學生拆解題目。",
-                    route: .readingBreakdown
-                )
-        }
+    private func practiceSupportOption() -> SupportOption {
+        SeedData.supportOptions.first { $0.id == "human-company" }
+            ?? SupportOption(
+                id: "practice-shared-help",
+                reason: "請老師與志工協助",
+                studentText: "我想請老師或志工看這題。",
+                platformAction: "請老師與志工查看學生題目與答案。",
+                route: .humanHandoff
+            )
     }
 
-    private func practiceSupportMessage(for item: QuestionBankItem, target: PracticeSupportTarget) -> String {
+    private func practiceSupportMessage(for item: QuestionBankItem) -> String {
         let answerText = normalizedPracticeAnswer(practiceAnswer).isEmpty ? "尚未作答" : practiceAnswer
         return """
-        我在自由練習這題卡住，想請\(target.displayName)看一下。
+        我在自由練習這題卡住，想請老師或志工看一下。
         題型：\(item.question.type.title)
         難度：\(item.level.uiTitle)
         題目：\(item.question.prompt)
@@ -902,6 +892,10 @@ struct PracticeCenterView: View {
         正確答案：\(item.question.answer)
         解析：\(item.question.explanation)
         """
+    }
+
+    private func practiceSupportSentKey(for item: QuestionBankItem) -> String {
+        "\(item.id)-shared"
     }
 
     private func nextPracticeQuestion() {
@@ -991,29 +985,6 @@ private struct AIPracticeRecommendationPlan: Identifiable, Equatable {
 
     var estimatedMinutes: Int {
         max(3, min(18, items.count * 2))
-    }
-}
-
-private enum PracticeSupportTarget {
-    case teacher
-    case volunteer
-
-    var displayName: String {
-        switch self {
-        case .teacher:
-            return "老師"
-        case .volunteer:
-            return "志工"
-        }
-    }
-
-    var confirmationText: String {
-        switch self {
-        case .teacher:
-            return "已送給老師，老師端會看到這一題與你的答案。"
-        case .volunteer:
-            return "已送給志工，志工端會看到這一題與你的答案。"
-        }
     }
 }
 
@@ -1269,11 +1240,11 @@ private struct FreePracticeSessionSummaryCard: View {
 private struct PracticeInlineSupportPanel: View {
     let aiResponse: AiProxyResponse?
     let supportConfirmation: String?
+    let supportRequestSent: Bool
     let isLoadingAI: Bool
     let onOpenSupport: () -> Void
     let onAskAI: () -> Void
-    let onSendTeacher: () -> Void
-    let onSendVolunteer: () -> Void
+    let onSendSupport: () -> Void
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
@@ -1295,19 +1266,13 @@ private struct PracticeInlineSupportPanel: View {
                 .buttonStyle(PrimaryActionButtonStyle())
                 .disabled(isLoadingAI)
 
-                Button(action: onSendTeacher) {
-                    Label("送給老師", systemImage: "person.text.rectangle")
+                Button(action: onSendSupport) {
+                    Label(supportRequestSent ? "已送出" : "送給老師與志工", systemImage: "paperplane.fill")
                         .font(.caption.bold())
                         .frame(maxWidth: .infinity, minHeight: 44)
                 }
                 .buttonStyle(SecondaryActionButtonStyle())
-
-                Button(action: onSendVolunteer) {
-                    Label("送給志工", systemImage: "hands.sparkles")
-                        .font(.caption.bold())
-                        .frame(maxWidth: .infinity, minHeight: 44)
-                }
-                .buttonStyle(SecondaryActionButtonStyle())
+                .disabled(supportRequestSent)
             }
 
             if isLoadingAI {

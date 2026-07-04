@@ -60,7 +60,7 @@ def main() -> int:
         "VolunteerSelectedSupportPanel",
         "VolunteerQuestionContextCard",
         "VolunteerStaffReplyComposerCard",
-        "VolunteerCompanionScriptCard",
+        "VolunteerCleanGuidanceCard",
         "StaffSupportQueueHeaderCard",
         "StaffSupportActionBar",
         "selectedRequestId",
@@ -85,8 +85,8 @@ def main() -> int:
 
     required_store_tokens = [
         "visibleVolunteerReplies",
-        "request.isWaitingForStaffAction",
-        "volunteerQueue.count",
+        "isVisibleInStaffQueue(for: .volunteer)",
+        "countsTowardSharedStaffBadge(for: .volunteer)",
     ]
     for token in required_store_tokens:
         require(token in store, f"Repository missing volunteer queue token: {token}", errors)

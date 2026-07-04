@@ -67,8 +67,8 @@ struct TeacherHandoffView: View {
 
                         StaffSupportQueueHeaderCard(
                             title: "待回覆接力",
-                            subtitle: "學生把卡住的題目送出後會集中在這裡。紅點代表未處理，回覆、已讀不回或收起後會自動消除。",
-                            waitingCount: learningRepository.teacherQueue.count,
+                            subtitle: "學生把卡住的題目送出後，老師與志工都會收到同一筆接力。任何一端回覆都會消除雙方紅點；收起只影響自己的待辦。",
+                            waitingCount: learningRepository.staffDashboardMetrics.waitingHelpCount,
                             highPriorityCount: learningRepository.teacherQueue.filter { $0.priority == .high }.count,
                             handledCount: learningRepository.staffDashboardMetrics.repliedCount,
                             tint: EPTheme.primary
@@ -100,6 +100,10 @@ struct TeacherSupportRequestCard: View {
         !replyDraft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
     }
 
+    private var staffReplies: [SupportReply] {
+        request.staffReplies
+    }
+
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             HStack(alignment: .top, spacing: 12) {
@@ -123,21 +127,14 @@ struct TeacherSupportRequestCard: View {
                     .clipShape(Capsule())
             }
 
-            Text(request.studentMessage)
-                .font(.subheadline)
-                .foregroundStyle(EPTheme.ink)
-                .fixedSize(horizontal: false, vertical: true)
-
             if let snapshot = request.questionSnapshot {
                 SupportQuestionSnapshotCard(
                     snapshot: snapshot,
                     title: "學生卡住的題目",
                     showsExplanation: true
                 )
-            } else if request.latestQuestionId?.isEmpty == false {
-                Label("學生有題目紀錄，但目前缺少完整題目快照。", systemImage: "doc.text")
-                    .font(.caption.bold())
-                    .foregroundStyle(EPTheme.secondaryInk)
+            } else {
+                StaffMissingQuestionSnapshotLabel()
             }
 
             if let moodScore = request.moodScore {
@@ -146,12 +143,12 @@ struct TeacherSupportRequestCard: View {
                     .foregroundStyle(EPTheme.secondaryInk)
             }
 
-            if !request.replies.isEmpty {
+            if !staffReplies.isEmpty {
                 VStack(alignment: .leading, spacing: 8) {
                     Text("已有回覆")
                         .font(.caption.bold())
                         .foregroundStyle(EPTheme.secondaryInk)
-                    ForEach(request.replies) { reply in
+                    ForEach(staffReplies) { reply in
                         Text("\(reply.authorName)：\(reply.body)")
                             .font(.footnote)
                             .foregroundStyle(EPTheme.secondaryInk)
@@ -202,6 +199,19 @@ struct TeacherSupportRequestCard: View {
             ?? response.output.teacherSummary
             ?? response.output.summary
             ?? replyDraft
+    }
+}
+
+private struct StaffMissingQuestionSnapshotLabel: View {
+    var body: some View {
+        Label("這筆接力缺少完整題目快照，請優先處理有題目卡的求助。", systemImage: "doc.text.magnifyingglass")
+            .font(.caption.bold())
+            .foregroundStyle(EPTheme.secondaryInk)
+            .fixedSize(horizontal: false, vertical: true)
+            .padding(10)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(EPTheme.secondarySurface)
+            .clipShape(RoundedRectangle(cornerRadius: 10))
     }
 }
 
@@ -1162,7 +1172,7 @@ private struct TeacherHandoffSummaryCard: View {
                 .font(.headline)
                 .foregroundStyle(EPTheme.ink)
 
-            Text("老師先看求助與風險，再決定要直接回覆、交給志工陪練，或放進本週追蹤。")
+            Text("老師先看求助與風險，再決定要直接回覆、消除提醒或收起；志工端仍可獨立補充陪伴。")
                 .font(.subheadline)
                 .foregroundStyle(EPTheme.secondaryInk)
                 .fixedSize(horizontal: false, vertical: true)

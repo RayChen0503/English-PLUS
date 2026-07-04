@@ -114,7 +114,7 @@ struct StaffSupportActionBar: View {
             }
             .buttonStyle(SecondaryActionButtonStyle())
 
-            Text("已讀不回會把紅點消掉，但不會傳訊息給學生；收起會從老師/志工待辦中移除。")
+            Text("已讀不回只會消除你的紅點，不會傳訊息給學生；收起只會從你的待辦移除，另一端仍可看見並可回覆。")
                 .font(.caption)
                 .foregroundStyle(EPTheme.secondaryInk)
                 .fixedSize(horizontal: false, vertical: true)
