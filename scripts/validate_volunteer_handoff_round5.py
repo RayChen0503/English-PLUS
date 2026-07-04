@@ -56,15 +56,12 @@ def main() -> int:
 
     required_volunteer_tokens = [
         "VolunteerHandoffWorkspaceView",
-        "VolunteerQueuePickerCard",
-        "VolunteerSelectedSupportPanel",
-        "VolunteerQuestionContextCard",
-        "VolunteerStaffReplyComposerCard",
-        "VolunteerCleanGuidanceCard",
+        'Text("接力優先序")',
+        "VolunteerHandoffSummaryCard",
+        "VolunteerSupportRequestCard",
         "StaffSupportQueueHeaderCard",
         "StaffSupportActionBar",
-        "selectedRequestId",
-        "selectedRequest",
+        "ForEach(learningRepository.volunteerQueue) { request in",
         "learningRepository.addVolunteerReply(to: request.id, body: replyDraft)",
         "learningRepository.markSupportThreadHandledWithoutReply(request.id, by: appState.currentUser)",
         "learningRepository.archiveSupportThreadForStaff(request.id, by: appState.currentUser)",
@@ -73,6 +70,18 @@ def main() -> int:
     ]
     for token in required_volunteer_tokens:
         require(token in volunteer_home, f"Volunteer handoff flow missing token: {token}", errors)
+
+    forbidden_volunteer_call_tokens = [
+        "VolunteerQueuePickerCard(",
+        "VolunteerSelectedSupportPanel(request:",
+        "VolunteerQuestionContextCard(request:",
+        "VolunteerStaffReplyComposerCard(request:",
+        "VolunteerCleanGuidanceCard(request:",
+        "@State private var selectedRequestId",
+        "private var selectedRequest:",
+    ]
+    for token in forbidden_volunteer_call_tokens:
+        require(token not in volunteer_home, f"Volunteer handoff still uses old selected-card flow: {token}", errors)
 
     required_support_tokens = [
         "回覆中心",

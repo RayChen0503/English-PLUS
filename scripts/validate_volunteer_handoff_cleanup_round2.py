@@ -85,10 +85,62 @@ def main() -> int:
     )
     require(
         volunteer,
-        "VolunteerCleanGuidanceCard(request:",
-        "volunteer concise guidance card",
+        'Text("接力優先序")',
+        "volunteer handoff mirrors teacher handoff title",
         errors,
     )
+    require(
+        volunteer,
+        "StaffSupportQueueHeaderCard(",
+        "volunteer handoff uses shared staff queue header",
+        errors,
+    )
+    require(
+        volunteer,
+        "VolunteerHandoffSummaryCard()",
+        "volunteer handoff uses teacher-style summary card",
+        errors,
+    )
+    require(
+        volunteer,
+        "ForEach(learningRepository.volunteerQueue) { request in",
+        "volunteer handoff lists all queue requests like teacher handoff",
+        errors,
+    )
+    require(
+        volunteer,
+        "VolunteerSupportRequestCard(request: request)",
+        "volunteer handoff uses teacher-style request cards",
+        errors,
+    )
+    require(
+        volunteer,
+        "StaffSupportActionBar(",
+        "volunteer handoff uses shared staff action bar",
+        errors,
+    )
+    require(
+        volunteer,
+        "learningRepository.addVolunteerReply(to: request.id, body: replyDraft)",
+        "volunteer request card persists volunteer replies",
+        errors,
+    )
+    require(
+        volunteer,
+        "appState.coachVolunteerReplyWithAI(context: SupportAIContext(request: request))",
+        "volunteer request card keeps volunteer AI drafting",
+        errors,
+    )
+    for old_call in [
+        "VolunteerQueuePickerCard(",
+        "VolunteerSelectedSupportPanel(request:",
+        "VolunteerQuestionContextCard(request:",
+        "VolunteerCleanGuidanceCard(request:",
+        "VolunteerStaffReplyComposerCard(request:",
+        "@State private var selectedRequestId",
+        "private var selectedRequest:",
+    ]:
+        forbid(volunteer, old_call, "old volunteer handoff flow call/state", errors)
 
     if errors:
         for error in errors:
