@@ -80,7 +80,6 @@ private struct StaffSupportMetricPill: View {
 struct StaffSupportActionBar: View {
     let canReply: Bool
     let sendReply: () -> Void
-    let markHandledWithoutReply: () -> Void
     let archiveThread: () -> Void
 
     var body: some View {
@@ -89,23 +88,14 @@ struct StaffSupportActionBar: View {
                 .font(.subheadline.bold())
                 .foregroundStyle(EPTheme.ink)
 
-            HStack(spacing: 10) {
-                Button(action: sendReply) {
-                    Label("送出回覆", systemImage: "paperplane.fill")
-                        .font(.subheadline.bold())
-                        .frame(maxWidth: .infinity, minHeight: 44)
-                }
-                .buttonStyle(PrimaryActionButtonStyle())
-                .disabled(!canReply)
-                .opacity(canReply ? 1 : 0.45)
-
-                Button(action: markHandledWithoutReply) {
-                    Label("已讀不回", systemImage: "checkmark.circle")
-                        .font(.subheadline.bold())
-                        .frame(maxWidth: .infinity, minHeight: 44)
-                }
-                .buttonStyle(SecondaryActionButtonStyle())
+            Button(action: sendReply) {
+                Label("送出回覆", systemImage: "paperplane.fill")
+                    .font(.subheadline.bold())
+                    .frame(maxWidth: .infinity, minHeight: 44)
             }
+            .buttonStyle(PrimaryActionButtonStyle())
+            .disabled(!canReply)
+            .opacity(canReply ? 1 : 0.45)
 
             Button(action: archiveThread) {
                 Label("收起", systemImage: "archivebox")
@@ -114,7 +104,7 @@ struct StaffSupportActionBar: View {
             }
             .buttonStyle(SecondaryActionButtonStyle())
 
-            Text("已讀不回只會消除你的紅點，不會傳訊息給學生；收起只會從你的待辦移除，另一端仍可看見並可回覆。")
+            Text("收起只會從你的待辦移除，不會刪除學生資料；另一端仍可看見並選擇是否補充回覆。")
                 .font(.caption)
                 .foregroundStyle(EPTheme.secondaryInk)
                 .fixedSize(horizontal: false, vertical: true)

@@ -311,6 +311,7 @@ struct StudentSupportRequest: Identifiable, Codable, Equatable {
     var latestQuestionId: String?
     var questionSnapshot: SupportQuestionSnapshot?
     var studentArchivedAt: Date? = nil
+    var withdrawnAt: Date? = nil
     var staffArchivedAt: Date? = nil
     var teacherArchivedAt: Date? = nil
     var volunteerArchivedAt: Date? = nil
@@ -326,7 +327,24 @@ struct StudentSupportRequest: Identifiable, Codable, Equatable {
     var replies: [SupportReply]
 
     var isVisibleToStudent: Bool {
-        studentArchivedAt == nil
+        studentArchivedAt == nil && withdrawnAt == nil
+    }
+
+    var isWithdrawn: Bool {
+        withdrawnAt != nil
+    }
+
+    var canStudentWithdrawBeforeReply: Bool {
+        isVisibleToStudent
+            && !isWithdrawn
+            && visibleStaffRepliesToStudent.isEmpty
+            && (status == .open || status == .waitingForStaff)
+    }
+
+    var canStudentArchiveAfterStaffArchivedWithoutReply: Bool {
+        isVisibleToStudent
+            && visibleStaffRepliesToStudent.isEmpty
+            && status == .archived
     }
 
     var isWaitingForStaffAction: Bool {
@@ -359,7 +377,8 @@ struct StudentSupportRequest: Identifiable, Codable, Equatable {
 
     func isVisibleInStaffQueue(for role: UserRole) -> Bool {
         guard role != .student else { return false }
-        guard status != .archived else { return false }
+        guard !isWithdrawn else { return false }
+        guard status != .archived && status != .closed else { return false }
         guard hasCompleteQuestionSnapshotForStaff else { return false }
         return !isArchivedForStaffRole(role)
     }

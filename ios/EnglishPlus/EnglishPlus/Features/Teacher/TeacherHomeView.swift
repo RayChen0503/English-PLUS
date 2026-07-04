@@ -175,9 +175,6 @@ struct TeacherSupportRequestCard: View {
                     learningRepository.addTeacherReply(to: request.id, body: replyDraft)
                     replyDraft = ""
                 },
-                markHandledWithoutReply: {
-                    learningRepository.markSupportThreadHandledWithoutReply(request.id, by: appState.currentUser)
-                },
                 archiveThread: {
                     learningRepository.archiveSupportThreadForStaff(request.id, by: appState.currentUser)
                 }

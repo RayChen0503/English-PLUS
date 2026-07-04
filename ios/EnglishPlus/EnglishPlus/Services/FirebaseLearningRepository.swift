@@ -322,6 +322,18 @@ final class FirebaseLearningRepository: LearningRepositoryBackend {
         mirrorSupportRequestIfPossible(currentSnapshot.supportRequests[index])
     }
 
+    func withdrawSupportRequest(_ requestId: String) {
+        guard let index = currentSnapshot.supportRequests.firstIndex(where: { $0.id == requestId }) else {
+            return
+        }
+        let date = Date()
+        currentSnapshot.supportRequests[index].withdrawnAt = date
+        currentSnapshot.supportRequests[index].studentArchivedAt = date
+        currentSnapshot.supportRequests[index].status = .closed
+        currentSnapshot.supportRequests[index].updatedAt = date
+        mirrorSupportRequestIfPossible(currentSnapshot.supportRequests[index])
+    }
+
     func markSupportThreadHandledWithoutReply(_ requestId: String, by staffUser: DemoUser?) {
         guard let index = currentSnapshot.supportRequests.firstIndex(where: { $0.id == requestId }) else {
             return
@@ -825,12 +837,13 @@ final class FirebaseLearningRepository: LearningRepositoryBackend {
             "priority": request.priority.rawValue,
             "assignedToUid": NSNull(),
             "assignedRole": NSNull(),
-            "studentVisible": true,
+            "studentVisible": request.isVisibleToStudent,
             "studentMessage": request.studentMessage,
             "moodScore": nullable(request.moodScore),
             "latestQuestionId": nullable(request.latestQuestionId),
             "questionSnapshot": request.questionSnapshot.map(firestoreData(from:)) ?? NSNull(),
             "studentArchivedAt": nullable(request.studentArchivedAt),
+            "withdrawnAt": nullable(request.withdrawnAt),
             "staffArchivedAt": nullable(request.staffArchivedAt),
             "teacherArchivedAt": nullable(request.teacherArchivedAt),
             "volunteerArchivedAt": nullable(request.volunteerArchivedAt),
@@ -1062,6 +1075,7 @@ final class FirebaseLearningRepository: LearningRepositoryBackend {
             latestQuestionId: data["latestQuestionId"] as? String,
             questionSnapshot: supportQuestionSnapshot(from: data),
             studentArchivedAt: firestoreDate(data["studentArchivedAt"]),
+            withdrawnAt: firestoreDate(data["withdrawnAt"]),
             staffArchivedAt: firestoreDate(data["staffArchivedAt"]),
             teacherArchivedAt: firestoreDate(data["teacherArchivedAt"]),
             volunteerArchivedAt: firestoreDate(data["volunteerArchivedAt"]),

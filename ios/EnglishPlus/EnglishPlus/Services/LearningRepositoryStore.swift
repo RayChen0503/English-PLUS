@@ -82,6 +82,7 @@ protocol LearningRepositoryBackend: AnyObject {
     func addVolunteerReply(to requestId: String, body: String)
     func markSupportThreadReadByStudent(_ requestId: String)
     func archiveSupportThreadForStudent(_ requestId: String)
+    func withdrawSupportRequest(_ requestId: String)
     func markSupportThreadHandledWithoutReply(_ requestId: String, by staffUser: DemoUser?)
     func archiveSupportThreadForStaff(_ requestId: String, by staffUser: DemoUser?)
     func assignPracticeSet(_ set: QuestionPracticeSet, to student: StaffStudentSummary, by teacher: DemoUser?)
@@ -456,6 +457,11 @@ final class LearningRepositoryStore: ObservableObject {
 
     func archiveSupportThreadForStudent(_ requestId: String) {
         backend.archiveSupportThreadForStudent(requestId)
+        apply(backend.snapshot)
+    }
+
+    func withdrawSupportRequest(_ requestId: String) {
+        backend.withdrawSupportRequest(requestId)
         apply(backend.snapshot)
     }
 

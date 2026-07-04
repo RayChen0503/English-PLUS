@@ -517,6 +517,16 @@ final class MockLearningRepository: ObservableObject {
         persistSnapshot()
     }
 
+    func withdrawSupportRequest(_ requestId: String) {
+        guard let index = supportRequests.firstIndex(where: { $0.id == requestId }) else { return }
+        let date = now()
+        supportRequests[index].withdrawnAt = date
+        supportRequests[index].studentArchivedAt = date
+        supportRequests[index].status = .closed
+        supportRequests[index].updatedAt = date
+        persistSnapshot()
+    }
+
     func markSupportThreadHandledWithoutReply(_ requestId: String, by staffUser: DemoUser?) {
         guard let index = supportRequests.firstIndex(where: { $0.id == requestId }) else { return }
         let date = now()

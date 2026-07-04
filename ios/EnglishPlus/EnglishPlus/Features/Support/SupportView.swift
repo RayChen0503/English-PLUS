@@ -246,6 +246,19 @@ private struct SupportRequestInboxCard: View {
 
             if visibleReplies.isEmpty {
                 SupportWaitingReplyCard(route: request.route)
+                if request.canStudentWithdrawBeforeReply {
+                    SupportWithdrawRequestRow {
+                        learningRepository.withdrawSupportRequest(request.id)
+                    }
+                } else if request.canStudentArchiveAfterStaffArchivedWithoutReply {
+                    SupportThreadActionRow(
+                        title: "這筆目前沒有回覆",
+                        message: "老師與志工都已把這筆從待辦收起；你也可以把它收起，避免回覆中心一直累積。",
+                        buttonTitle: "收起這筆",
+                        systemImage: "archivebox",
+                        onArchive: onArchive
+                    )
+                }
             } else {
                 SupportReplyTimeline(replies: visibleReplies)
                 SupportThreadActionRow(
@@ -313,21 +326,25 @@ private struct SupportRequestInboxCard: View {
 }
 
 private struct SupportThreadActionRow: View {
+    var title: String = "看完回覆後的下一步"
+    var message: String = "收起後不會刪除資料，只是不再顯示在你的回覆中心。需要繼續練習時，直接用下方分頁切回練習中心。"
+    var buttonTitle: String = "我看懂了，收起這筆"
+    var systemImage: String = "archivebox"
     let onArchive: () -> Void
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
-            Label("看完回覆後的下一步", systemImage: "checkmark.seal.fill")
+            Label(title, systemImage: "checkmark.seal.fill")
                 .font(.subheadline.bold())
                 .foregroundStyle(EPTheme.support)
 
-            Text("收起後不會刪除資料，只是不再顯示在你的回覆中心。需要繼續練習時，直接用下方分頁切回練習中心。")
+            Text(message)
                 .font(.footnote)
                 .foregroundStyle(EPTheme.secondaryInk)
                 .fixedSize(horizontal: false, vertical: true)
 
             Button(action: onArchive) {
-                Label("我看懂了，收起這筆", systemImage: "archivebox")
+                Label(buttonTitle, systemImage: systemImage)
                     .font(.caption.bold())
                     .frame(maxWidth: .infinity, minHeight: 44)
             }
@@ -336,6 +353,34 @@ private struct SupportThreadActionRow: View {
         .padding(12)
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(EPTheme.support.opacity(0.10))
+        .clipShape(RoundedRectangle(cornerRadius: EPTheme.cardRadius))
+    }
+}
+
+private struct SupportWithdrawRequestRow: View {
+    let onWithdraw: () -> Void
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Label("還沒有人回覆", systemImage: "arrow.uturn.backward.circle.fill")
+                .font(.subheadline.bold())
+                .foregroundStyle(EPTheme.warning)
+
+            Text("如果這題已經不需要協助，可以先收回。收回後老師與志工端會同步消失，紅點提醒也會移除。")
+                .font(.footnote)
+                .foregroundStyle(EPTheme.secondaryInk)
+                .fixedSize(horizontal: false, vertical: true)
+
+            Button(action: onWithdraw) {
+                Label("收回這題", systemImage: "arrow.uturn.backward")
+                    .font(.caption.bold())
+                    .frame(maxWidth: .infinity, minHeight: 44)
+            }
+            .buttonStyle(SecondaryActionButtonStyle())
+        }
+        .padding(12)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(EPTheme.warning.opacity(0.10))
         .clipShape(RoundedRectangle(cornerRadius: EPTheme.cardRadius))
     }
 }
