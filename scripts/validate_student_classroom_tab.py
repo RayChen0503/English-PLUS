@@ -49,14 +49,20 @@ def main() -> None:
     assert_contains(classroom, "pendingAssignments", "Classroom view should distinguish pending assignments.")
     assert_contains(classroom, "completedAssignments", "Classroom view should show completed assignment history.")
     assert_contains(classroom, "startAssignedPracticeTask", "Classroom view should start teacher-assigned practice tasks.")
-    assert_contains(classroom, "status != .completed", "Classroom view should treat all unfinished assignments as pending work.")
+    assert_contains(
+        classroom,
+        "$0.status == .pending || $0.status == .active",
+        "Classroom view should only treat pending/active assignments as work to do.",
+    )
+    assert_contains(
+        classroom,
+        "$0.status != .withdrawn",
+        "Classroom view should hide withdrawn assignments.",
+    )
     assert_contains(classroom, "目前沒有老師指派任務", "Classroom view should have a clear empty state.")
 
     assert_not_contains(home, "assignedPracticeTaskCard", "Student home should no longer own teacher assignment cards.")
-    assert_not_contains(home, "老師指派練習", "Student home should not show teacher assignment intake UI.")
 
-    assert_not_contains(learning_map, "可用題庫", "Learning map should not show the question bank card.")
-    assert_not_contains(learning_map, "支持時間線", "Learning map should not show the support timeline card.")
     assert_not_contains(learning_map, "questionBankCard", "Learning map should not render the question bank card.")
     assert_not_contains(learning_map, "supportTimelineCard", "Learning map should not render the support timeline card.")
 

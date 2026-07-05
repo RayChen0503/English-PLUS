@@ -71,6 +71,7 @@ final class FirebaseLearningRepository: LearningRepositoryBackend {
 
         removeRealtimeRegistrations()
         listenSupportThreads(classId: classId, user: user, onChange: onChange, onError: onError)
+        listenPracticeAssignments(classId: classId, user: user, onChange: onChange, onError: onError)
         listenStudentMissions(classId: classId, user: user, onChange: onChange, onError: onError)
 
         return AnyLearningRepositoryListenerToken { [weak self] in
@@ -403,7 +404,11 @@ final class FirebaseLearningRepository: LearningRepositoryBackend {
             preservingAssignedPracticeTasks: preservingAssignedPracticeTasks
         )
         currentSnapshot.assignedPracticeTasks
-            .first { $0.studentUid == student.studentUid && $0.setId == set.id && $0.status != .completed }
+            .first {
+                $0.studentUid == student.studentUid
+                    && $0.setId == set.id
+                    && ($0.status == .pending || $0.status == .active)
+            }
             .map(mirrorPracticeAssignmentIfPossible)
     }
 
@@ -419,6 +424,19 @@ final class FirebaseLearningRepository: LearningRepositoryBackend {
             .first { $0.id == assignment.id }
             .map(mirrorPracticeAssignmentIfPossible)
         mirrorMissionIfPossible()
+    }
+
+    func withdrawAssignedPracticeTask(_ assignmentId: String) {
+        let preservingSupportRequests = currentSnapshot.supportRequests
+        let preservingAssignedPracticeTasks = currentSnapshot.assignedPracticeTasks
+        fallback.withdrawAssignedPracticeTask(assignmentId)
+        currentSnapshot = fallbackSnapshot(
+            preservingSupportRequests: preservingSupportRequests,
+            preservingAssignedPracticeTasks: preservingAssignedPracticeTasks
+        )
+        currentSnapshot.assignedPracticeTasks
+            .first { $0.id == assignmentId }
+            .map(mirrorPracticeAssignmentIfPossible)
     }
 
     private func mirrorCheckInAndMissionIfPossible(profile: AppUserProfile?) {
@@ -700,6 +718,39 @@ final class FirebaseLearningRepository: LearningRepositoryBackend {
             }
             supportMessageRegistrations[request.id] = registration
         }
+    }
+
+    private func listenPracticeAssignments(
+        classId: String,
+        user: DemoUser?,
+        onChange: @escaping @MainActor (LearningRepositorySnapshot) -> Void,
+        onError: @escaping @MainActor (Error) -> Void
+    ) {
+        guard let db else { return }
+
+        let assignmentsCollection = db.collection("\(FirestorePath.classDocument(classId: classId))/practiceAssignments")
+        let assignmentsQuery: Query
+        if user?.role == .student {
+            assignmentsQuery = assignmentsCollection.whereField("studentUid", isEqualTo: user?.id ?? "")
+        } else {
+            assignmentsQuery = assignmentsCollection
+        }
+
+        let registration = assignmentsQuery.addSnapshotListener { [weak self] snapshot, error in
+            if let error {
+                Task { @MainActor in onError(error) }
+                return
+            }
+            guard let documents = snapshot?.documents else { return }
+
+            Task { @MainActor in
+                guard let self else { return }
+                let assignments = documents.compactMap { self.practiceAssignment(from: $0) }
+                self.mergePracticeAssignments(assignments)
+                onChange(self.currentSnapshot)
+            }
+        }
+        registrations.append(registration)
     }
 
     private func listenStudentMissions(
@@ -1028,6 +1079,31 @@ final class FirebaseLearningRepository: LearningRepositoryBackend {
         .sorted { $0.updatedAt > $1.updatedAt }
     }
 
+    private func mergePracticeAssignments(_ syncedAssignments: [TeacherAssignedPracticeTask]) {
+        let existingById = Dictionary(
+            currentSnapshot.assignedPracticeTasks.map { ($0.id, $0) },
+            uniquingKeysWith: { existing, _ in existing }
+        )
+        currentSnapshot.assignedPracticeTasks = syncedAssignments.map { assignment in
+            var merged = assignment
+            if let existing = existingById[assignment.id],
+               assignment.questionResults == nil || assignment.questionResults?.isEmpty == true {
+                merged.questionResults = existing.questionResults
+            }
+            return merged
+        }
+        .sorted { $0.updatedAt > $1.updatedAt }
+
+        if let mission = currentSnapshot.currentMission,
+           currentSnapshot.assignedPracticeTasks.contains(where: {
+               $0.id == mission.sourceCheckInId && $0.status == .withdrawn
+           }) {
+            currentSnapshot.currentMission = nil
+            currentSnapshot.missionAttempts = []
+            currentSnapshot.learningFlow = .initial(dateKey: Self.dateKeyFormatter.string(from: Date()))
+        }
+    }
+
     private func replaceMission(_ mission: DailyMission?) {
         currentSnapshot.currentMission = mission
         normalizeCurrentSnapshotForToday()
@@ -1054,6 +1130,67 @@ final class FirebaseLearningRepository: LearningRepositoryBackend {
             return timestamp.dateValue()
         }
         return nil
+    }
+
+    private func practiceAssignment(from document: QueryDocumentSnapshot) -> TeacherAssignedPracticeTask? {
+        let data = document.data()
+        guard
+            let classId = data["classId"] as? String,
+            let studentUid = data["studentUid"] as? String,
+            let setId = data["setId"] as? String,
+            let setTitle = data["setTitle"] as? String,
+            let questionIds = data["questionIds"] as? [String],
+            let assignedByUid = data["assignedByUid"] as? String,
+            let assignedByName = data["assignedByName"] as? String
+        else {
+            return nil
+        }
+
+        let statusRaw = data["status"] as? String
+        return TeacherAssignedPracticeTask(
+            id: data["assignmentId"] as? String ?? document.documentID,
+            classId: classId,
+            studentUid: studentUid,
+            studentName: data["studentName"] as? String ?? "學生",
+            setId: setId,
+            setTitle: setTitle,
+            questionIds: questionIds,
+            assignedByUid: assignedByUid,
+            assignedByName: assignedByName,
+            status: statusRaw.flatMap(PracticeAssignmentStatus.init(rawValue:)) ?? .pending,
+            createdAt: firestoreDate(data["createdAt"]) ?? Date(),
+            updatedAt: firestoreDate(data["updatedAt"]) ?? Date(),
+            questionResults: practiceAssignmentResults(from: data["questionResults"])
+        )
+    }
+
+    private func practiceAssignmentResults(from value: Any?) -> [PracticeAssignmentQuestionResult]? {
+        guard let rawResults = value as? [[String: Any]] else { return nil }
+        return rawResults.compactMap { rawResult in
+            guard
+                let questionId = rawResult["questionId"] as? String,
+                let prompt = rawResult["prompt"] as? String,
+                let selectedAnswer = rawResult["selectedAnswer"] as? String,
+                let acceptedAnswer = rawResult["acceptedAnswer"] as? String,
+                let isCorrect = rawResult["isCorrect"] as? Bool,
+                let explanation = rawResult["explanation"] as? String,
+                let repairHint = rawResult["repairHint"] as? String
+            else {
+                return nil
+            }
+
+            return PracticeAssignmentQuestionResult(
+                id: rawResult["id"] as? String ?? questionId,
+                questionId: questionId,
+                prompt: prompt,
+                selectedAnswer: selectedAnswer,
+                acceptedAnswer: acceptedAnswer,
+                isCorrect: isCorrect,
+                explanation: explanation,
+                repairHint: repairHint,
+                answeredAt: firestoreDate(rawResult["answeredAt"]) ?? Date()
+            )
+        }
     }
 
     private func supportRequest(from document: QueryDocumentSnapshot) -> StudentSupportRequest? {

@@ -485,6 +485,7 @@ enum PracticeAssignmentStatus: String, Codable, Equatable {
     case pending
     case active
     case completed
+    case withdrawn
 }
 
 struct PracticeAssignmentQuestionResult: Identifiable, Codable, Equatable {

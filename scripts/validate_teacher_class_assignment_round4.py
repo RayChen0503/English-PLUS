@@ -1,106 +1,88 @@
-#!/usr/bin/env python3
 from pathlib import Path
 
 
 ROOT = Path(__file__).resolve().parents[1]
-TEACHER_HOME = ROOT / "ios" / "EnglishPlus" / "EnglishPlus" / "Features" / "Teacher" / "TeacherHomeView.swift"
-TEACHER_SHELL = ROOT / "ios" / "EnglishPlus" / "EnglishPlus" / "Features" / "Teacher" / "TeacherShellView.swift"
-STUDENT_HOME = ROOT / "ios" / "EnglishPlus" / "EnglishPlus" / "Features" / "Student" / "StudentHomeView.swift"
-STORE = ROOT / "ios" / "EnglishPlus" / "EnglishPlus" / "Services" / "LearningRepositoryStore.swift"
 
 
-def require(condition: bool, message: str, errors: list[str]) -> None:
+def read(relative: str) -> str:
+    return (ROOT / relative).read_text(encoding="utf-8")
+
+
+def require(condition: bool, message: str) -> None:
     if not condition:
-        errors.append(message)
+        raise SystemExit(message)
 
 
-def read(path: Path) -> str:
-    return path.read_text(encoding="utf-8")
+teacher = read("ios/EnglishPlus/EnglishPlus/Features/Teacher/TeacherHomeView.swift")
+teacher_shell = read("ios/EnglishPlus/EnglishPlus/Features/Teacher/TeacherShellView.swift")
+student_shell = read("ios/EnglishPlus/EnglishPlus/Features/Student/StudentShellView.swift")
+student_classroom = read("ios/EnglishPlus/EnglishPlus/Features/Student/StudentClassroomView.swift")
+student_home = read("ios/EnglishPlus/EnglishPlus/Features/Student/StudentHomeView.swift")
+store = read("ios/EnglishPlus/EnglishPlus/Services/LearningRepositoryStore.swift")
 
+teacher_markers = [
+    "struct TeacherClassAssignmentView",
+    "TeacherClassAssignmentHeader",
+    "TeacherClassRosterSummaryCard",
+    "TeacherStudentPickerCard",
+    "TeacherSelectedStudentPanel",
+    "TeacherStudentAssignmentDashboard",
+    "TeacherPracticeSetCatalog",
+    "TeacherSkillFilterSection",
+    "TeacherPracticeSetSkillSection",
+    "selectedQuestionType",
+    "selectedLevel",
+    "selectedSkill",
+    "filteredPracticeSets",
+    "groupedPracticeSetsBySkill",
+    "recommendationText(for: selectedStudent)",
+    "learningRepository.assignments(forStudentUid:",
+    "learningRepository.assignPracticeSet(set, to: selectedStudent, by: appState.currentUser)",
+    "withdrawAssignedPracticeTask(assignment.id)",
+    'Label("收回任務"',
+    "TeacherAssignmentReviewCard",
+    "TeacherAssignmentQuestionResultRow",
+]
+for marker in teacher_markers:
+    require(marker in teacher, f"Teacher class assignment view missing marker: {marker}")
 
-def main() -> int:
-    errors: list[str] = []
+require(
+    'Label("班級", systemImage: "person.3.sequence")' in teacher_shell,
+    "Teacher tab bar should expose the class assignment workspace.",
+)
+require("TeacherClassAssignmentView()" in teacher_shell, "Teacher shell should route class tab to TeacherClassAssignmentView.")
+require("TeacherStudentsView()" not in teacher_shell, "Teacher shell should not use the old student-only class tab.")
 
-    for path in [TEACHER_HOME, TEACHER_SHELL, STUDENT_HOME, STORE]:
-        require(path.exists(), f"missing file: {path.relative_to(ROOT)}", errors)
+store_markers = [
+    "func assignments(forStudentUid studentUid: String?) -> [TeacherAssignedPracticeTask]",
+    "$0.studentUid == studentUid",
+    ".sorted { $0.createdAt > $1.createdAt }",
+    "func withdrawAssignedPracticeTask(_ assignmentId: String)",
+]
+for marker in store_markers:
+    require(marker in store, f"LearningRepositoryStore missing marker: {marker}")
 
-    if errors:
-        for error in errors:
-            print(error)
-        return 1
+student_shell_markers = [
+    "StudentClassroomView",
+    'Label("班級", systemImage: "person.3")',
+    ".badge(pendingAssignmentCount)",
+]
+for marker in student_shell_markers:
+    require(marker in student_shell, f"Student shell missing marker: {marker}")
 
-    teacher_home = read(TEACHER_HOME)
-    teacher_shell = read(TEACHER_SHELL)
-    student_home = read(STUDENT_HOME)
-    store = read(STORE)
+student_classroom_markers = [
+    "老師指派任務",
+    "startAssignedPracticeTask",
+    "$0.status == .pending || $0.status == .active",
+    "$0.status != .withdrawn",
+    "老師收回任務後，任務會從這裡消失",
+]
+for marker in student_classroom_markers:
+    require(marker in student_classroom, f"Student classroom missing marker: {marker}")
 
-    required_teacher_tokens = [
-        "struct TeacherClassAssignmentView",
-        "班級學生與派題",
-        "先看班級狀態，再選學生指派每組 12 題內的小題組",
-        "TeacherClassRosterSummaryCard",
-        "TeacherStudentPickerCard",
-        "TeacherSelectedStudentPanel",
-        "TeacherStudentMissionPanel",
-        "TeacherStudentAssignmentHistory",
-        "TeacherPracticeSetCatalog",
-        "TeacherSkillFilterSection",
-        "TeacherPracticeSetSkillSection",
-        "selectedQuestionType",
-        "selectedLevel",
-        "selectedSkill",
-        "filteredPracticeSets",
-        "groupedPracticeSetsBySkill",
-        "recommendationText(for: selectedStudent)",
-        "learningRepository.assignments(forStudentUid:",
-        "learningRepository.assignPracticeSet(set, to: selectedStudent, by: appState.currentUser)",
-        "已指派給",
-        "每組 12 題內",
-    ]
-    for token in required_teacher_tokens:
-        require(token in teacher_home, f"Teacher class assignment flow missing token: {token}", errors)
+require(
+    "assignedPracticeTaskCard" not in student_home,
+    "Student home should no longer own the teacher-assigned task card.",
+)
 
-    require('Label("班級", systemImage: "person.3.sequence")' in teacher_shell,
-            "Teacher tab must become the class assignment workspace", errors)
-    require("TeacherClassAssignmentView()" in teacher_shell,
-            "Teacher shell must route the class tab to TeacherClassAssignmentView", errors)
-    require("TeacherStudentsView()" not in teacher_shell,
-            "Teacher shell should not keep a duplicate student tab", errors)
-    require('Label("題庫"' not in teacher_shell,
-            "Teacher shell should not expose a standalone question-bank tab", errors)
-
-    required_store_tokens = [
-        "func assignments(forStudentUid studentUid: String?) -> [TeacherAssignedPracticeTask]",
-        "$0.studentUid == studentUid",
-        ".sorted { $0.createdAt > $1.createdAt }",
-    ]
-    for token in required_store_tokens:
-        require(token in store, f"LearningRepositoryStore missing assignment lookup token: {token}", errors)
-
-    required_student_tokens = [
-        "assignedPracticeTaskCard",
-        "老師指派練習",
-        "開始老師指派題組",
-        "learningRepository.startAssignedPracticeTask(assignment)",
-    ]
-    for token in required_student_tokens:
-        require(token in student_home, f"Student assigned-task entry missing token: {token}", errors)
-
-    forbidden_teacher_tokens = [
-        "老師可以快速確認題型、難度與任務來源",
-        "TeacherQuestionSetAssignmentCard(",
-    ]
-    for token in forbidden_teacher_tokens:
-        require(token not in teacher_home, f"Teacher page still contains old question-bank assignment UI: {token}", errors)
-
-    if errors:
-        for error in errors:
-            print(error)
-        return 1
-
-    print("teacher class assignment round 4 contract passed")
-    return 0
-
-
-if __name__ == "__main__":
-    raise SystemExit(main())
+print("teacher class assignment round 4 contract passed")

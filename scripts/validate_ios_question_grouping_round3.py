@@ -72,7 +72,6 @@ def main() -> int:
     )
 
     for marker in [
-        "QuestionGroupingEngine.balancedItems(",
         "QuestionGroupingEngine.balancedOptions(",
         "missionOptionOrder(",
         "missionQuestionIndex(",

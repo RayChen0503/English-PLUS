@@ -14,6 +14,7 @@ struct StudentClassroomView: View {
         NavigationStack {
             ZStack {
                 EPTheme.background.ignoresSafeArea()
+
                 ScrollView {
                     VStack(alignment: .leading, spacing: 16) {
                         headerCard
@@ -36,17 +37,20 @@ struct StudentClassroomView: View {
     }
 
     private var headerCard: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            HStack(spacing: 10) {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack(spacing: 12) {
                 Image(systemName: "person.3.fill")
                     .font(.title2)
                     .foregroundStyle(EPTheme.primary)
+                    .frame(width: 38, height: 38)
+                    .background(EPTheme.primary.opacity(0.12))
+                    .clipShape(RoundedRectangle(cornerRadius: 12))
 
                 VStack(alignment: .leading, spacing: 4) {
                     Text("老師指派任務")
                         .font(.title3.bold())
                         .foregroundStyle(EPTheme.ink)
-                    Text("這裡只放老師指定給你的練習。收到新任務時，班級欄位會出現提醒；完成後提醒會自動消失。")
+                    Text("這裡只放老師派給你的題組。老師收回任務後，任務會從這裡消失；完成後會移到完成紀錄。")
                         .font(.subheadline)
                         .foregroundStyle(EPTheme.secondaryInk)
                         .fixedSize(horizontal: false, vertical: true)
@@ -65,12 +69,12 @@ struct StudentClassroomView: View {
     }
 
     private var emptyStateCard: some View {
-        VStack(alignment: .leading, spacing: 12) {
+        VStack(alignment: .leading, spacing: 10) {
             Label("目前沒有老師指派任務", systemImage: "checkmark.seal")
                 .font(.headline)
                 .foregroundStyle(EPTheme.ink)
 
-            Text("你可以先去練習中心自由練習。之後老師派新的任務時，這裡會直接出現，不會混在首頁或學習地圖裡。")
+            Text("你可以先完成今日任務或自由練習。老師派發新題組時，這一頁會出現提醒。")
                 .font(.subheadline)
                 .foregroundStyle(EPTheme.secondaryInk)
                 .fixedSize(horizontal: false, vertical: true)
@@ -83,14 +87,14 @@ struct StudentClassroomView: View {
 
     private var pendingSection: some View {
         VStack(alignment: .leading, spacing: 12) {
-            Text("待完成")
+            Text("待完成題組")
                 .font(.headline)
                 .foregroundStyle(EPTheme.ink)
 
             ForEach(pendingAssignments) { assignment in
                 ClassroomAssignmentCard(
                     assignment: assignment,
-                    primaryActionTitle: assignment.status == .active ? "繼續任務" : "開始任務",
+                    primaryActionTitle: assignment.status == .active ? "繼續練習" : "開始題組",
                     primaryActionIcon: assignment.status == .active ? "arrow.right.circle.fill" : "play.circle.fill"
                 ) {
                     if assignment.status == .pending {
@@ -128,7 +132,7 @@ struct StudentClassroomView: View {
     }
 
     private var pendingAssignments: [TeacherAssignedPracticeTask] {
-        assignments.filter { $0.status != .completed }
+        assignments.filter { $0.status == .pending || $0.status == .active }
     }
 
     private var completedAssignments: [TeacherAssignedPracticeTask] {
@@ -137,6 +141,7 @@ struct StudentClassroomView: View {
 
     private var assignments: [TeacherAssignedPracticeTask] {
         learningRepository.assignments(forStudentUid: currentStudentUid)
+            .filter { $0.status != .withdrawn }
     }
 
     private var currentStudentUid: String? {
@@ -179,7 +184,9 @@ private struct ClassroomAssignmentCard: View {
                 ClassroomStatPill(title: "班級", value: assignment.classId)
             }
 
-            Text("完成這組任務後，老師就能更清楚看到你的練習進度。卡住時也可以在題目下方送出求助。")
+            Text(assignment.status == .completed
+                 ? "這組題目已完成，老師可以在班級端查看作答結果。"
+                 : "完成後老師會看到你的作答情況。若老師收回任務，這張卡片會自動消失。")
                 .font(.footnote)
                 .foregroundStyle(EPTheme.secondaryInk)
                 .fixedSize(horizontal: false, vertical: true)
@@ -231,9 +238,11 @@ private extension PracticeAssignmentStatus {
         case .pending:
             return "待開始"
         case .active:
-            return "進行中"
+            return "練習中"
         case .completed:
-            return "完成"
+            return "已完成"
+        case .withdrawn:
+            return "已收回"
         }
     }
 
@@ -245,6 +254,8 @@ private extension PracticeAssignmentStatus {
             return EPTheme.primary
         case .completed:
             return EPTheme.support
+        case .withdrawn:
+            return EPTheme.secondaryInk
         }
     }
 }

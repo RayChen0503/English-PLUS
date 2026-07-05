@@ -240,6 +240,7 @@ final class MockLearningRepository: ObservableObject {
 
     func assignPracticeSet(_ set: QuestionPracticeSet, to student: StaffStudentSummary, by teacher: DemoUser?) {
         let date = now()
+        let assignmentQuestions = balancedAssignmentQuestions(for: set)
         let assignment = TeacherAssignedPracticeTask(
             id: "practice-assignment-\(date.timeIntervalSince1970)-\(student.studentUid)-\(set.id)",
             classId: student.classCode,
@@ -247,7 +248,7 @@ final class MockLearningRepository: ObservableObject {
             studentName: student.studentName,
             setId: set.id,
             setTitle: set.title,
-            questionIds: set.questionIds,
+            questionIds: assignmentQuestions.map(\.id),
             assignedByUid: teacher?.id ?? "demo-teacher-1",
             assignedByName: teacher?.displayName ?? "Teacher",
             status: .pending,
@@ -257,16 +258,20 @@ final class MockLearningRepository: ObservableObject {
         assignedPracticeTasks.removeAll {
             $0.studentUid == student.studentUid
                 && $0.setId == set.id
-                && $0.status != .completed
+                && ($0.status == .pending || $0.status == .active)
         }
         assignedPracticeTasks.insert(assignment, at: 0)
         persistSnapshot()
     }
 
     func startAssignedPracticeTask(_ assignment: TeacherAssignedPracticeTask) {
+        guard assignment.status != .withdrawn else { return }
         let date = now()
         let dateKey = todayKey(from: date)
-        let questions = questionBankItems(for: assignment.questionIds)
+        let questions = QuestionGroupingEngine.balancedItems(
+            from: questionBankItems(for: assignment.questionIds),
+            limit: 12
+        )
         guard !questions.isEmpty else { return }
         let targetCount = max(1, min(questions.count, 12))
         let track: MissionTrack = questions.contains { $0.level == .b1 || $0.level == .b2 } ? .challenge : .steady
@@ -298,6 +303,20 @@ final class MockLearningRepository: ObservableObject {
             continuation: nil,
             updatedAt: date
         )
+        persistSnapshot()
+    }
+
+    func withdrawAssignedPracticeTask(_ assignmentId: String) {
+        guard let index = assignedPracticeTasks.firstIndex(where: { $0.id == assignmentId }) else { return }
+        assignedPracticeTasks[index].status = .withdrawn
+        assignedPracticeTasks[index].updatedAt = now()
+
+        if currentMission?.sourceCheckInId == assignmentId {
+            currentMission = nil
+            missionAttempts = []
+            learningFlow = .initial(dateKey: todayKey(from: now()))
+        }
+
         persistSnapshot()
     }
 
@@ -656,6 +675,52 @@ final class MockLearningRepository: ObservableObject {
 
     private func questionBankItems(for questionIds: [String]) -> [QuestionBankItem] {
         questionIds.compactMap { cachedQuestionBankItemById[$0] }
+    }
+
+    private func balancedAssignmentQuestions(
+        for set: QuestionPracticeSet,
+        targetCount: Int = 12
+    ) -> [QuestionBankItem] {
+        let target = max(1, targetCount)
+        let normalizedSetSkill = normalizedAssignmentSkill(set.skill)
+        let exactSkillMatches = cachedQuestionBankItems.filter { item in
+            item.question.type == set.type
+                && item.level == set.level
+                && normalizedAssignmentSkill(item.skill.isEmpty ? item.question.concept : item.skill) == normalizedSetSkill
+        }
+        let sameTypeLevelMatches = cachedQuestionBankItems.filter { item in
+            item.question.type == set.type && item.level == set.level
+        }
+        let sameTypeMatches = cachedQuestionBankItems.filter { item in
+            item.question.type == set.type
+        }
+        let candidateWindow = missionCandidateWindow(
+            from: (set.items + exactSkillMatches + sameTypeLevelMatches).uniqued(by: \.id),
+            limit: max(24, target * 5)
+        )
+        let fallbackWindow = missionCandidateWindow(
+            from: (sameTypeMatches + cachedQuestionBankItems).uniqued(by: \.id),
+            limit: max(48, target * 7)
+        )
+        let selection = QuestionGroupingEngine.practiceSelection(
+            from: candidateWindow,
+            fallbackCandidates: QuestionGroupingEngine.balancedFallbackCandidates(
+                preferredTypes: [set.type],
+                preferredLevels: [set.level],
+                from: fallbackWindow
+            ),
+            limit: target
+        )
+        return selection.items.isEmpty
+            ? QuestionGroupingEngine.balancedItems(from: set.items, limit: min(target, set.items.count))
+            : selection.items
+    }
+
+    private func normalizedAssignmentSkill(_ value: String) -> String {
+        value
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .folding(options: [.caseInsensitive, .diacriticInsensitive], locale: .current)
+            .lowercased()
     }
 
     private func selectMissionQuestions(

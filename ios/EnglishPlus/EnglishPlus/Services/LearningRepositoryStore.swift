@@ -87,6 +87,7 @@ protocol LearningRepositoryBackend: AnyObject {
     func archiveSupportThreadForStaff(_ requestId: String, by staffUser: DemoUser?)
     func assignPracticeSet(_ set: QuestionPracticeSet, to student: StaffStudentSummary, by teacher: DemoUser?)
     func startAssignedPracticeTask(_ assignment: TeacherAssignedPracticeTask)
+    func withdrawAssignedPracticeTask(_ assignmentId: String)
 }
 
 @MainActor
@@ -496,6 +497,11 @@ final class LearningRepositoryStore: ObservableObject {
 
     func startAssignedPracticeTask(_ assignment: TeacherAssignedPracticeTask) {
         backend.startAssignedPracticeTask(assignment)
+        apply(backend.snapshot)
+    }
+
+    func withdrawAssignedPracticeTask(_ assignmentId: String) {
+        backend.withdrawAssignedPracticeTask(assignmentId)
         apply(backend.snapshot)
     }
 

@@ -441,7 +441,7 @@ struct TeacherClassAssignmentView: View {
                         TeacherClassAssignmentHeader(
                             studentCount: learningRepository.staffStudentSummaries.count,
                             waitingHelpCount: learningRepository.staffDashboardMetrics.waitingHelpCount,
-                            assignmentCount: learningRepository.assignedPracticeTasks.count
+                            assignmentCount: learningRepository.assignedPracticeTasks.filter { $0.status != .withdrawn }.count
                         )
 
                         TeacherClassRosterSummaryCard(
@@ -461,7 +461,10 @@ struct TeacherClassAssignmentView: View {
                                 missionAttempts: learningRepository.missionAttempts,
                                 questionBankItems: learningRepository.questionBankItems,
                                 recommendationText: recommendationText(for: selectedStudent)
-                            )
+                            ) { assignment in
+                                learningRepository.withdrawAssignedPracticeTask(assignment.id)
+                                assignmentConfirmation = "已收回 \(selectedStudent.studentName) 的任務：\(assignment.setTitle)"
+                            }
 
                             if let assignmentConfirmation {
                                 TeacherAssignmentConfirmationCard(message: assignmentConfirmation)
@@ -704,6 +707,7 @@ private struct TeacherSelectedStudentPanel: View {
     let missionAttempts: [MissionAttempt]
     let questionBankItems: [QuestionBankItem]
     let recommendationText: String
+    let withdrawAssignment: (TeacherAssignedPracticeTask) -> Void
 
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
@@ -719,7 +723,8 @@ private struct TeacherSelectedStudentPanel: View {
             TeacherStudentAssignmentDashboard(
                 assignments: assignments,
                 missionAttempts: missionAttempts,
-                questionBankItems: questionBankItems
+                questionBankItems: questionBankItems,
+                withdrawAssignment: withdrawAssignment
             )
         }
         .padding(16)
@@ -732,6 +737,7 @@ private struct TeacherStudentAssignmentDashboard: View {
     let assignments: [TeacherAssignedPracticeTask]
     let missionAttempts: [MissionAttempt]
     let questionBankItems: [QuestionBankItem]
+    let withdrawAssignment: (TeacherAssignedPracticeTask) -> Void
     @State private var collapsedAssignmentIds: Set<String> = []
 
     var body: some View {
@@ -755,7 +761,7 @@ private struct TeacherStudentAssignmentDashboard: View {
                     .clipShape(Capsule())
             }
 
-            if assignments.isEmpty {
+            if displayableAssignments.isEmpty {
                 TeacherAssignmentEmptyCard(
                     title: "還沒有派發紀錄",
                     message: "下方指派題組後，這位學生的任務會先出現在未完成任務；完成後會移到完成紀錄。"
@@ -769,7 +775,8 @@ private struct TeacherStudentAssignmentDashboard: View {
                     questionsById: questionsById,
                     emptyTitle: "沒有未完成任務",
                     emptyMessage: "目前沒有等待學生完成的派發題組。",
-                    collapseAssignment: collapseAssignment
+                    collapseAssignment: collapseAssignment,
+                    withdrawAssignment: withdrawAssignment
                 )
 
                 TeacherAssignmentSection(
@@ -780,7 +787,8 @@ private struct TeacherStudentAssignmentDashboard: View {
                     questionsById: questionsById,
                     emptyTitle: "還沒有完成紀錄",
                     emptyMessage: "學生完成派發任務後，會在這裡留下結果。",
-                    collapseAssignment: collapseAssignment
+                    collapseAssignment: collapseAssignment,
+                    withdrawAssignment: nil
                 )
 
                 if !collapsedAssignmentIds.isEmpty {
@@ -799,11 +807,15 @@ private struct TeacherStudentAssignmentDashboard: View {
     }
 
     private var visibleAssignments: [TeacherAssignedPracticeTask] {
-        assignments.filter { !collapsedAssignmentIds.contains($0.id) }
+        displayableAssignments.filter { !collapsedAssignmentIds.contains($0.id) }
+    }
+
+    private var displayableAssignments: [TeacherAssignedPracticeTask] {
+        assignments.filter { $0.status != .withdrawn }
     }
 
     private var activeAssignments: [TeacherAssignedPracticeTask] {
-        visibleAssignments.filter { $0.status != .completed }
+        visibleAssignments.filter { $0.status == .pending || $0.status == .active }
     }
 
     private var completedAssignments: [TeacherAssignedPracticeTask] {
@@ -835,6 +847,7 @@ private struct TeacherAssignmentSection: View {
     let emptyTitle: String
     let emptyMessage: String
     let collapseAssignment: (TeacherAssignedPracticeTask) -> Void
+    let withdrawAssignment: ((TeacherAssignedPracticeTask) -> Void)?
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
@@ -857,6 +870,9 @@ private struct TeacherAssignmentSection: View {
                         questionsById: questionsById,
                         collapse: {
                             collapseAssignment(assignment)
+                        },
+                        withdraw: withdrawAssignment == nil ? nil : {
+                            withdrawAssignment?(assignment)
                         }
                     )
                 }
@@ -870,6 +886,7 @@ private struct TeacherAssignmentReviewCard: View {
     let attemptsByQuestionId: [String: MissionAttempt]
     let questionsById: [String: QuestionBankItem]
     let collapse: () -> Void
+    let withdraw: (() -> Void)?
     @State private var showsQuestionResults = false
 
     var body: some View {
@@ -921,13 +938,25 @@ private struct TeacherAssignmentReviewCard: View {
                     .foregroundStyle(EPTheme.secondaryInk)
             }
 
-            Button(action: collapse) {
-                Label("收起這筆", systemImage: "archivebox")
-                    .font(.caption.bold())
-                    .frame(maxWidth: .infinity, minHeight: 38)
+            HStack(spacing: 10) {
+                if let withdraw {
+                    Button(role: .destructive, action: withdraw) {
+                        Label("收回任務", systemImage: "arrow.uturn.backward")
+                            .font(.caption.bold())
+                            .frame(maxWidth: .infinity, minHeight: 38)
+                    }
+                    .buttonStyle(.bordered)
+                    .tint(EPTheme.warning)
+                }
+
+                Button(action: collapse) {
+                    Label("收起這筆", systemImage: "archivebox")
+                        .font(.caption.bold())
+                        .frame(maxWidth: .infinity, minHeight: 38)
+                }
+                .buttonStyle(.bordered)
+                .tint(EPTheme.primary)
             }
-            .buttonStyle(.bordered)
-            .tint(EPTheme.primary)
         }
         .padding(12)
         .background(EPTheme.secondarySurface)
@@ -947,6 +976,8 @@ private struct TeacherAssignmentReviewCard: View {
             return EPTheme.primary
         case .completed:
             return EPTheme.support
+        case .withdrawn:
+            return EPTheme.secondaryInk
         }
     }
 
@@ -1430,6 +1461,8 @@ private extension PracticeAssignmentStatus {
             return "學生練習中"
         case .completed:
             return "已完成"
+        case .withdrawn:
+            return "已收回"
         }
     }
 }
