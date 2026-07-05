@@ -458,6 +458,8 @@ struct TeacherClassAssignmentView: View {
                             TeacherSelectedStudentPanel(
                                 student: selectedStudent,
                                 assignments: learningRepository.assignments(forStudentUid: selectedStudent.studentUid),
+                                missionAttempts: learningRepository.missionAttempts,
+                                questionBankItems: learningRepository.questionBankItems,
                                 recommendationText: recommendationText(for: selectedStudent)
                             )
 
@@ -605,20 +607,40 @@ private struct TeacherStudentPickerCard: View {
                     .foregroundStyle(EPTheme.secondaryInk)
                     .fixedSize(horizontal: false, vertical: true)
             } else {
-                VStack(spacing: 10) {
-                    ForEach(students) { student in
-                        studentButton(student)
+                ScrollView(.horizontal, showsIndicators: false) {
+                    HStack(spacing: 10) {
+                        ForEach(sortedStudents) { student in
+                            studentButton(student)
+                        }
                     }
+                    .padding(.vertical, 2)
                 }
+                Text("先選學生，再查看未完成任務、完成紀錄與可指派題組。")
+                    .font(.caption)
+                    .foregroundStyle(EPTheme.secondaryInk)
             }
         }
         .padding(16)
         .background(EPTheme.card)
         .clipShape(RoundedRectangle(cornerRadius: EPTheme.cardRadius))
+        .onAppear {
+            if selectedStudentUid == nil {
+                selectedStudentUid = sortedStudents.first?.studentUid
+            }
+        }
+    }
+
+    private var sortedStudents: [StaffStudentSummary] {
+        students.sorted { lhs, rhs in
+            if riskScore(lhs.riskLevel) != riskScore(rhs.riskLevel) {
+                return riskScore(lhs.riskLevel) > riskScore(rhs.riskLevel)
+            }
+            return lhs.studentName < rhs.studentName
+        }
     }
 
     private var selectedStudent: StaffStudentSummary? {
-        students.first { $0.studentUid == selectedStudentUid } ?? students.first
+        sortedStudents.first { $0.studentUid == selectedStudentUid } ?? sortedStudents.first
     }
 
     private func studentButton(_ student: StaffStudentSummary) -> some View {
@@ -626,43 +648,66 @@ private struct TeacherStudentPickerCard: View {
         return Button {
             selectedStudentUid = student.studentUid
         } label: {
-            HStack(alignment: .center, spacing: 12) {
-                VStack(alignment: .leading, spacing: 4) {
+            VStack(alignment: .leading, spacing: 7) {
+                HStack(spacing: 6) {
                     Text(student.studentName)
                         .font(.subheadline.bold())
-                    Text(student.classCode)
-                        .font(.caption)
-                        .foregroundStyle(isSelected ? .white.opacity(0.86) : EPTheme.secondaryInk)
-                }
-
-                Spacer()
-
-                VStack(alignment: .trailing, spacing: 4) {
-                    Text(student.riskLevel.uiTitle)
-                        .font(.caption.bold())
-                    Text(student.missionProgress)
-                        .font(.caption2)
                         .lineLimit(1)
+                    Text(student.riskLevel.uiTitle)
+                        .font(.caption2.bold())
+                        .padding(.horizontal, 7)
+                        .padding(.vertical, 4)
+                        .background(isSelected ? .white.opacity(0.18) : riskColor(for: student.riskLevel).opacity(0.14))
+                        .clipShape(Capsule())
                 }
+
+                Text(student.missionProgress)
+                    .font(.caption)
+                    .foregroundStyle(isSelected ? .white.opacity(0.86) : EPTheme.secondaryInk)
+                    .lineLimit(1)
             }
             .foregroundStyle(isSelected ? .white : EPTheme.ink)
+            .frame(width: 156, alignment: .leading)
             .padding(12)
-            .frame(maxWidth: .infinity, alignment: .leading)
             .background(isSelected ? EPTheme.primary : EPTheme.secondarySurface)
             .clipShape(RoundedRectangle(cornerRadius: EPTheme.cardRadius))
         }
         .buttonStyle(.plain)
+    }
+
+    private func riskScore(_ risk: RiskLevel) -> Int {
+        switch risk {
+        case .low:
+            return 1
+        case .medium:
+            return 2
+        case .high:
+            return 3
+        }
+    }
+
+    private func riskColor(for risk: RiskLevel) -> Color {
+        switch risk {
+        case .low:
+            return EPTheme.support
+        case .medium:
+            return EPTheme.primary
+        case .high:
+            return EPTheme.warning
+        }
     }
 }
 
 private struct TeacherSelectedStudentPanel: View {
     let student: StaffStudentSummary
     let assignments: [TeacherAssignedPracticeTask]
+    let missionAttempts: [MissionAttempt]
+    let questionBankItems: [QuestionBankItem]
     let recommendationText: String
 
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
-            Label("2. 看學生狀態", systemImage: "list.clipboard")
+            Label("2. 看學生狀態與作業", systemImage: "list.clipboard")
                 .font(.headline)
                 .foregroundStyle(EPTheme.ink)
 
@@ -671,10 +716,356 @@ private struct TeacherSelectedStudentPanel: View {
                 recommendationText: recommendationText
             )
 
-            TeacherStudentAssignmentHistory(assignments: assignments)
+            TeacherStudentAssignmentDashboard(
+                assignments: assignments,
+                missionAttempts: missionAttempts,
+                questionBankItems: questionBankItems
+            )
         }
         .padding(16)
         .background(EPTheme.card)
+        .clipShape(RoundedRectangle(cornerRadius: EPTheme.cardRadius))
+    }
+}
+
+private struct TeacherStudentAssignmentDashboard: View {
+    let assignments: [TeacherAssignedPracticeTask]
+    let missionAttempts: [MissionAttempt]
+    let questionBankItems: [QuestionBankItem]
+    @State private var collapsedAssignmentIds: Set<String> = []
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            HStack(alignment: .firstTextBaseline) {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("作業紀錄")
+                        .font(.subheadline.bold())
+                        .foregroundStyle(EPTheme.ink)
+                    Text("未完成任務、完成紀錄與每題對錯都會集中在這裡。")
+                        .font(.caption)
+                        .foregroundStyle(EPTheme.secondaryInk)
+                }
+                Spacer()
+                Text("\(visibleAssignments.count) 筆")
+                    .font(.caption.bold())
+                    .foregroundStyle(EPTheme.primary)
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 6)
+                    .background(EPTheme.primary.opacity(0.10))
+                    .clipShape(Capsule())
+            }
+
+            if assignments.isEmpty {
+                TeacherAssignmentEmptyCard(
+                    title: "還沒有派發紀錄",
+                    message: "下方指派題組後，這位學生的任務會先出現在未完成任務；完成後會移到完成紀錄。"
+                )
+            } else {
+                TeacherAssignmentSection(
+                    title: "未完成任務",
+                    subtitle: "學生尚未完成的派發題組。",
+                    assignments: activeAssignments,
+                    attemptsByQuestionId: latestAttemptsByQuestionId,
+                    questionsById: questionsById,
+                    emptyTitle: "沒有未完成任務",
+                    emptyMessage: "目前沒有等待學生完成的派發題組。",
+                    collapseAssignment: collapseAssignment
+                )
+
+                TeacherAssignmentSection(
+                    title: "完成紀錄",
+                    subtitle: "完成後可查看每題答對或答錯。",
+                    assignments: completedAssignments,
+                    attemptsByQuestionId: latestAttemptsByQuestionId,
+                    questionsById: questionsById,
+                    emptyTitle: "還沒有完成紀錄",
+                    emptyMessage: "學生完成派發任務後，會在這裡留下結果。",
+                    collapseAssignment: collapseAssignment
+                )
+
+                if !collapsedAssignmentIds.isEmpty {
+                    Button {
+                        collapsedAssignmentIds.removeAll()
+                    } label: {
+                        Label("顯示已收起 \(collapsedAssignmentIds.count) 筆", systemImage: "tray.and.arrow.up")
+                            .font(.caption.bold())
+                            .frame(maxWidth: .infinity, minHeight: 40)
+                    }
+                    .buttonStyle(.bordered)
+                    .tint(EPTheme.primary)
+                }
+            }
+        }
+    }
+
+    private var visibleAssignments: [TeacherAssignedPracticeTask] {
+        assignments.filter { !collapsedAssignmentIds.contains($0.id) }
+    }
+
+    private var activeAssignments: [TeacherAssignedPracticeTask] {
+        visibleAssignments.filter { $0.status != .completed }
+    }
+
+    private var completedAssignments: [TeacherAssignedPracticeTask] {
+        visibleAssignments.filter { $0.status == .completed }
+    }
+
+    private var latestAttemptsByQuestionId: [String: MissionAttempt] {
+        Dictionary(grouping: missionAttempts, by: \.questionId)
+            .compactMapValues { attempts in
+                attempts.max { $0.createdAt < $1.createdAt }
+            }
+    }
+
+    private var questionsById: [String: QuestionBankItem] {
+        Dictionary(questionBankItems.map { ($0.id, $0) }, uniquingKeysWith: { existing, _ in existing })
+    }
+
+    private func collapseAssignment(_ assignment: TeacherAssignedPracticeTask) {
+        collapsedAssignmentIds.insert(assignment.id)
+    }
+}
+
+private struct TeacherAssignmentSection: View {
+    let title: String
+    let subtitle: String
+    let assignments: [TeacherAssignedPracticeTask]
+    let attemptsByQuestionId: [String: MissionAttempt]
+    let questionsById: [String: QuestionBankItem]
+    let emptyTitle: String
+    let emptyMessage: String
+    let collapseAssignment: (TeacherAssignedPracticeTask) -> Void
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            VStack(alignment: .leading, spacing: 3) {
+                Text(title)
+                    .font(.headline)
+                    .foregroundStyle(EPTheme.ink)
+                Text(subtitle)
+                    .font(.caption)
+                    .foregroundStyle(EPTheme.secondaryInk)
+            }
+
+            if assignments.isEmpty {
+                TeacherAssignmentEmptyCard(title: emptyTitle, message: emptyMessage)
+            } else {
+                ForEach(assignments) { assignment in
+                    TeacherAssignmentReviewCard(
+                        assignment: assignment,
+                        attemptsByQuestionId: attemptsByQuestionId,
+                        questionsById: questionsById,
+                        collapse: {
+                            collapseAssignment(assignment)
+                        }
+                    )
+                }
+            }
+        }
+    }
+}
+
+private struct TeacherAssignmentReviewCard: View {
+    let assignment: TeacherAssignedPracticeTask
+    let attemptsByQuestionId: [String: MissionAttempt]
+    let questionsById: [String: QuestionBankItem]
+    let collapse: () -> Void
+    @State private var showsQuestionResults = false
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack(alignment: .top, spacing: 12) {
+                VStack(alignment: .leading, spacing: 5) {
+                    Text(assignment.setTitle)
+                        .font(.subheadline.bold())
+                        .foregroundStyle(EPTheme.ink)
+                        .fixedSize(horizontal: false, vertical: true)
+                    Text("指派者：\(assignment.assignedByName) · \(assignment.createdAt.formatted(date: .abbreviated, time: .shortened))")
+                        .font(.caption)
+                        .foregroundStyle(EPTheme.secondaryInk)
+                }
+
+                Spacer()
+
+                Text(assignment.status.displayTitle)
+                    .font(.caption.bold())
+                    .foregroundStyle(statusColor)
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 6)
+                    .background(statusColor.opacity(0.12))
+                    .clipShape(Capsule())
+            }
+
+            HStack(spacing: 10) {
+                TeacherStatusTile(title: "題數", value: "\(assignment.questionIds.count)", color: EPTheme.primary)
+                TeacherStatusTile(title: "已答", value: "\(answeredCount)", color: EPTheme.support)
+                TeacherStatusTile(title: "答對", value: "\(correctCount)", color: EPTheme.warning)
+            }
+
+            if assignment.status == .completed {
+                DisclosureGroup(isExpanded: $showsQuestionResults) {
+                    VStack(spacing: 8) {
+                        ForEach(resultRows) { row in
+                            TeacherAssignmentQuestionResultRow(row: row)
+                        }
+                    }
+                    .padding(.top, 8)
+                } label: {
+                    Label("查看每題對錯", systemImage: "checklist")
+                        .font(.caption.bold())
+                        .foregroundStyle(EPTheme.primary)
+                }
+            } else {
+                Text("學生完成後，這裡會顯示每一題的作答結果。")
+                    .font(.caption)
+                    .foregroundStyle(EPTheme.secondaryInk)
+            }
+
+            Button(action: collapse) {
+                Label("收起這筆", systemImage: "archivebox")
+                    .font(.caption.bold())
+                    .frame(maxWidth: .infinity, minHeight: 38)
+            }
+            .buttonStyle(.bordered)
+            .tint(EPTheme.primary)
+        }
+        .padding(12)
+        .background(EPTheme.secondarySurface)
+        .clipShape(RoundedRectangle(cornerRadius: EPTheme.cardRadius))
+        .onAppear {
+            if assignment.status == .completed {
+                showsQuestionResults = true
+            }
+        }
+    }
+
+    private var statusColor: Color {
+        switch assignment.status {
+        case .pending:
+            return EPTheme.warning
+        case .active:
+            return EPTheme.primary
+        case .completed:
+            return EPTheme.support
+        }
+    }
+
+    private var resultRows: [TeacherAssignmentQuestionResult] {
+        assignment.questionIds.enumerated().map { index, questionId in
+            let snapshot = assignment.questionResults?.first { $0.questionId == questionId }
+            let attempt = attemptsByQuestionId[questionId]
+            let question = questionsById[questionId]
+            return TeacherAssignmentQuestionResult(
+                id: "\(assignment.id)-\(questionId)-\(index)",
+                number: index + 1,
+                prompt: snapshot?.prompt ?? attempt?.prompt ?? question?.question.prompt ?? "題目資料已不在本機",
+                selectedAnswer: snapshot?.selectedAnswer ?? attempt?.selectedAnswer,
+                acceptedAnswer: snapshot?.acceptedAnswer ?? attempt?.acceptedAnswer ?? question?.question.answer,
+                isCorrect: snapshot?.isCorrect ?? attempt?.isCorrect,
+                explanation: snapshot?.explanation ?? attempt?.explanation ?? question?.question.explanation
+            )
+        }
+    }
+
+    private var answeredCount: Int {
+        resultRows.filter { $0.selectedAnswer != nil }.count
+    }
+
+    private var correctCount: Int {
+        resultRows.filter { $0.isCorrect == true }.count
+    }
+}
+
+private struct TeacherAssignmentQuestionResult: Identifiable {
+    let id: String
+    let number: Int
+    let prompt: String
+    let selectedAnswer: String?
+    let acceptedAnswer: String?
+    let isCorrect: Bool?
+    let explanation: String?
+}
+
+private struct TeacherAssignmentQuestionResultRow: View {
+    let row: TeacherAssignmentQuestionResult
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(alignment: .firstTextBaseline, spacing: 8) {
+                Text("\(row.number)")
+                    .font(.caption.bold())
+                    .foregroundStyle(.white)
+                    .frame(width: 24, height: 24)
+                    .background(statusColor)
+                    .clipShape(Circle())
+                Text(row.prompt)
+                    .font(.caption.bold())
+                    .foregroundStyle(EPTheme.ink)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+
+            HStack(spacing: 10) {
+                resultPill(title: "學生", value: row.selectedAnswer ?? "未作答", color: row.isCorrect == false ? EPTheme.warning : EPTheme.secondaryInk)
+                resultPill(title: "正解", value: row.acceptedAnswer ?? "未提供", color: EPTheme.support)
+            }
+
+            if let explanation = row.explanation, !explanation.isEmpty {
+                Text(explanation)
+                    .font(.caption2)
+                    .foregroundStyle(EPTheme.secondaryInk)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        }
+        .padding(10)
+        .background(EPTheme.card)
+        .clipShape(RoundedRectangle(cornerRadius: 10))
+    }
+
+    private var statusColor: Color {
+        switch row.isCorrect {
+        case .some(true):
+            return EPTheme.support
+        case .some(false):
+            return EPTheme.warning
+        case .none:
+            return EPTheme.secondaryInk
+        }
+    }
+
+    private func resultPill(title: String, value: String, color: Color) -> some View {
+        VStack(alignment: .leading, spacing: 3) {
+            Text(title)
+                .font(.caption2.bold())
+                .foregroundStyle(EPTheme.secondaryInk)
+            Text(value)
+                .font(.caption.bold())
+                .foregroundStyle(color)
+                .lineLimit(1)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(8)
+        .background(color.opacity(0.08))
+        .clipShape(RoundedRectangle(cornerRadius: 8))
+    }
+}
+
+private struct TeacherAssignmentEmptyCard: View {
+    let title: String
+    let message: String
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 5) {
+            Text(title)
+                .font(.caption.bold())
+                .foregroundStyle(EPTheme.ink)
+            Text(message)
+                .font(.caption)
+                .foregroundStyle(EPTheme.secondaryInk)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        .padding(12)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(EPTheme.secondarySurface)
         .clipShape(RoundedRectangle(cornerRadius: EPTheme.cardRadius))
     }
 }
@@ -731,44 +1122,6 @@ private struct TeacherStudentMissionPanel: View {
     private var moodText: String {
         guard let moodScore = student.moodScore else { return "未填" }
         return "\(moodScore)/5"
-    }
-}
-
-private struct TeacherStudentAssignmentHistory: View {
-    let assignments: [TeacherAssignedPracticeTask]
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            Text("已指派任務")
-                .font(.subheadline.bold())
-                .foregroundStyle(EPTheme.ink)
-
-            if assignments.isEmpty {
-                Text("這位學生目前沒有老師指派題組。")
-                    .font(.caption)
-                    .foregroundStyle(EPTheme.secondaryInk)
-            } else {
-                ForEach(assignments.prefix(3)) { assignment in
-                    HStack(alignment: .top, spacing: 10) {
-                        Image(systemName: assignment.status == .completed ? "checkmark.circle.fill" : "clock")
-                            .foregroundStyle(assignment.status == .completed ? EPTheme.support : EPTheme.primary)
-                        VStack(alignment: .leading, spacing: 3) {
-                            Text(assignment.setTitle)
-                                .font(.caption.bold())
-                                .foregroundStyle(EPTheme.ink)
-                                .fixedSize(horizontal: false, vertical: true)
-                            Text("\(assignment.questionIds.count) 題 / \(assignment.status.displayTitle)")
-                                .font(.caption2)
-                                .foregroundStyle(EPTheme.secondaryInk)
-                        }
-                        Spacer()
-                    }
-                    .padding(10)
-                    .background(EPTheme.card)
-                    .clipShape(RoundedRectangle(cornerRadius: 10))
-                }
-            }
-        }
     }
 }
 

@@ -627,6 +627,29 @@ final class MockLearningRepository: ObservableObject {
 
     private func markAssignmentCompletedIfNeeded(sourceId: String) {
         guard let index = assignedPracticeTasks.firstIndex(where: { $0.id == sourceId }) else { return }
+        let assignment = assignedPracticeTasks[index]
+        let questionIdSet = Set(assignment.questionIds)
+        let latestAttemptsByQuestionId = Dictionary(
+            grouping: missionAttempts.filter { questionIdSet.contains($0.questionId) },
+            by: \.questionId
+        )
+        .compactMapValues { attempts in
+            attempts.max { $0.createdAt < $1.createdAt }
+        }
+        assignedPracticeTasks[index].questionResults = assignment.questionIds.compactMap { questionId in
+            guard let attempt = latestAttemptsByQuestionId[questionId] else { return nil }
+            return PracticeAssignmentQuestionResult(
+                id: "assignment-result-\(assignment.id)-\(questionId)",
+                questionId: questionId,
+                prompt: attempt.prompt,
+                selectedAnswer: attempt.selectedAnswer,
+                acceptedAnswer: attempt.acceptedAnswer,
+                isCorrect: attempt.isCorrect,
+                explanation: attempt.explanation,
+                repairHint: attempt.repairHint,
+                answeredAt: attempt.createdAt
+            )
+        }
         assignedPracticeTasks[index].status = .completed
         assignedPracticeTasks[index].updatedAt = now()
     }

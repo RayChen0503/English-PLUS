@@ -487,6 +487,18 @@ enum PracticeAssignmentStatus: String, Codable, Equatable {
     case completed
 }
 
+struct PracticeAssignmentQuestionResult: Identifiable, Codable, Equatable {
+    let id: String
+    let questionId: String
+    let prompt: String
+    let selectedAnswer: String
+    let acceptedAnswer: String
+    let isCorrect: Bool
+    let explanation: String
+    let repairHint: String
+    let answeredAt: Date
+}
+
 struct TeacherAssignedPracticeTask: Identifiable, Codable, Equatable {
     let id: String
     let classId: String
@@ -500,6 +512,7 @@ struct TeacherAssignedPracticeTask: Identifiable, Codable, Equatable {
     var status: PracticeAssignmentStatus
     let createdAt: Date
     var updatedAt: Date
+    var questionResults: [PracticeAssignmentQuestionResult]? = nil
 }
 
 struct SupportReply: Identifiable, Codable, Equatable {

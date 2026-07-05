@@ -905,6 +905,19 @@ final class FirebaseLearningRepository: LearningRepositoryBackend {
             "assignedByUid": assignment.assignedByUid,
             "assignedByName": assignment.assignedByName,
             "status": assignment.status.rawValue,
+            "questionResults": (assignment.questionResults ?? []).map { result in
+                [
+                    "id": result.id,
+                    "questionId": result.questionId,
+                    "prompt": result.prompt,
+                    "selectedAnswer": result.selectedAnswer,
+                    "acceptedAnswer": result.acceptedAnswer,
+                    "isCorrect": result.isCorrect,
+                    "explanation": result.explanation,
+                    "repairHint": result.repairHint,
+                    "answeredAt": result.answeredAt,
+                ]
+            },
             "createdAt": assignment.createdAt,
             "updatedAt": assignment.updatedAt,
         ]
