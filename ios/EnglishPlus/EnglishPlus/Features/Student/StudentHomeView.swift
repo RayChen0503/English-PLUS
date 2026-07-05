@@ -38,10 +38,6 @@ struct StudentHomeView: View {
                             progress: learningRepository.progressSnapshot
                         )
 
-                        if let assignment = learningRepository.pendingAssignments(forStudentUid: currentStudentUid).first {
-                            assignedPracticeTaskCard(assignment)
-                        }
-
                         studentFlowContent
 
                         freePracticeCard
@@ -303,36 +299,6 @@ struct StudentHomeView: View {
         .clipShape(RoundedRectangle(cornerRadius: EPTheme.cardRadius))
     }
 
-    private func assignedPracticeTaskCard(_ assignment: TeacherAssignedPracticeTask) -> some View {
-        VStack(alignment: .leading, spacing: 12) {
-            Label("老師指派練習", systemImage: "person.crop.rectangle.badge.plus")
-                .font(.headline)
-                .foregroundStyle(EPTheme.ink)
-
-            Text(assignment.setTitle)
-                .font(.title3.bold())
-                .foregroundStyle(EPTheme.ink)
-                .fixedSize(horizontal: false, vertical: true)
-
-            Text("\(assignment.questionIds.count) 題?答對才會推進任務進度。")
-                .font(.subheadline)
-                .foregroundStyle(EPTheme.secondaryInk)
-
-            Button {
-                learningRepository.startAssignedPracticeTask(assignment)
-                selectedAnswer = ""
-                latestWrongAnswerAIResponse = nil
-            } label: {
-                Label("開始老師指派題組", systemImage: "play.circle.fill")
-                    .frame(maxWidth: .infinity)
-            }
-            .buttonStyle(PrimaryActionButtonStyle())
-        }
-        .padding(16)
-        .background(EPTheme.support.opacity(0.12))
-        .clipShape(RoundedRectangle(cornerRadius: EPTheme.cardRadius))
-    }
-
     private func missionQuestionView(_ item: QuestionBankItem) -> some View {
         VStack(alignment: .leading, spacing: 12) {
             HStack {
@@ -381,10 +347,6 @@ struct StudentHomeView: View {
 
     private var currentClassId: String {
         appState.currentProfile?.classId ?? "YILAN-CHENGZHI-8A"
-    }
-
-    private var currentStudentUid: String? {
-        appState.currentUser?.id ?? appState.currentProfile?.id
     }
 
     private func missionQuestionIndex(for item: QuestionBankItem) -> Int {

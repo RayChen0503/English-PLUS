@@ -6,8 +6,6 @@ struct StudentLearningMapView: View {
 
     let onOpenHome: () -> Void
 
-    private let questionBankItems = SeedData.approvedQuestionBankItems
-
     init(onOpenHome: @escaping () -> Void = {}) {
         self.onOpenHome = onOpenHome
     }
@@ -24,8 +22,6 @@ struct StudentLearningMapView: View {
                         }
                         flowActionCard
                         todayRouteCard
-                        questionBankCard
-                        supportTimelineCard
                     }
                     .padding(EPTheme.pagePadding)
                 }
@@ -147,75 +143,6 @@ struct StudentLearningMapView: View {
 
             ForEach(learningMapNodes) { node in
                 LearningMapNodeRow(node: node)
-            }
-        }
-        .padding(16)
-        .background(EPTheme.card)
-        .clipShape(RoundedRectangle(cornerRadius: EPTheme.cardRadius))
-    }
-
-    private var questionBankCard: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            Text("可用題庫")
-                .font(.headline)
-                .foregroundStyle(EPTheme.ink)
-
-            Text("自由練習與每日任務會從不同題型抽題，完成今日任務後也可以再挑戰。")
-                .font(.subheadline)
-                .foregroundStyle(EPTheme.secondaryInk)
-
-            LazyVGrid(columns: [GridItem(.adaptive(minimum: 126), spacing: 8)], spacing: 8) {
-                ForEach(QuestionType.allCases) { type in
-                    VStack(alignment: .leading, spacing: 6) {
-                        Text(type.title)
-                            .font(.caption.bold())
-                            .foregroundStyle(EPTheme.secondaryInk)
-                        Text("\(count(for: type)) 題")
-                            .font(.headline)
-                            .foregroundStyle(EPTheme.ink)
-                    }
-                    .padding(12)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .background(EPTheme.secondarySurface)
-                    .clipShape(RoundedRectangle(cornerRadius: EPTheme.cardRadius))
-                }
-            }
-        }
-        .padding(16)
-        .background(EPTheme.card)
-        .clipShape(RoundedRectangle(cornerRadius: EPTheme.cardRadius))
-    }
-
-    private var supportTimelineCard: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            Text("支持時間線")
-                .font(.headline)
-                .foregroundStyle(EPTheme.ink)
-
-            if studentSupportRequests.isEmpty {
-                Text("目前沒有新的求助紀錄。卡住時可以到支持頁請老師或志工陪你。")
-                    .font(.subheadline)
-                    .foregroundStyle(EPTheme.secondaryInk)
-            } else {
-                ForEach(studentSupportRequests.prefix(3)) { request in
-                    VStack(alignment: .leading, spacing: 6) {
-                        HStack {
-                            Text(request.reason.uiTitle)
-                                .font(.subheadline.bold())
-                            Spacer()
-                            Text(request.status.uiTitle)
-                                .font(.caption.bold())
-                                .foregroundStyle(request.status == .replied ? EPTheme.support : EPTheme.warning)
-                        }
-                        Text(request.studentMessage)
-                            .font(.caption)
-                            .foregroundStyle(EPTheme.secondaryInk)
-                            .lineLimit(2)
-                    }
-                    .padding(12)
-                    .background(EPTheme.secondarySurface)
-                    .clipShape(RoundedRectangle(cornerRadius: EPTheme.cardRadius))
-                }
             }
         }
         .padding(16)
@@ -434,10 +361,6 @@ struct StudentLearningMapView: View {
 
     private var studentSupportRequests: [StudentSupportRequest] {
         learningRepository.supportRequests(forStudentUid: appState.currentUser?.id)
-    }
-
-    private func count(for type: QuestionType) -> Int {
-        questionBankItems.filter { $0.question.type == type }.count
     }
 }
 

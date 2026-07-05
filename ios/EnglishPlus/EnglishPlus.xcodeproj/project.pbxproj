@@ -23,6 +23,7 @@
 		100000000000000000000113 /* DemoLoginView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 100000000000000000000013 /* DemoLoginView.swift */; };
 		100000000000000000000114 /* StudentShellView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 100000000000000000000014 /* StudentShellView.swift */; };
 		100000000000000000000115 /* StudentHomeView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 100000000000000000000015 /* StudentHomeView.swift */; };
+		100000000000000000000217 /* StudentClassroomView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 100000000000000000000216 /* StudentClassroomView.swift */; };
 		100000000000000000000116 /* PracticeCenterView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 100000000000000000000016 /* PracticeCenterView.swift */; };
 		100000000000000000000117 /* SupportView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 100000000000000000000017 /* SupportView.swift */; };
 		100000000000000000000118 /* TeacherShellView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 100000000000000000000018 /* TeacherShellView.swift */; };
@@ -82,6 +83,7 @@
 		100000000000000000000013 /* DemoLoginView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DemoLoginView.swift; sourceTree = "<group>"; };
 		100000000000000000000014 /* StudentShellView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StudentShellView.swift; sourceTree = "<group>"; };
 		100000000000000000000015 /* StudentHomeView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StudentHomeView.swift; sourceTree = "<group>"; };
+		100000000000000000000216 /* StudentClassroomView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StudentClassroomView.swift; sourceTree = "<group>"; };
 		100000000000000000000016 /* PracticeCenterView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PracticeCenterView.swift; sourceTree = "<group>"; };
 		100000000000000000000017 /* SupportView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SupportView.swift; sourceTree = "<group>"; };
 		100000000000000000000018 /* TeacherShellView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TeacherShellView.swift; sourceTree = "<group>"; };
@@ -278,6 +280,7 @@
 			children = (
 				100000000000000000000014 /* StudentShellView.swift */,
 				100000000000000000000015 /* StudentHomeView.swift */,
+				100000000000000000000216 /* StudentClassroomView.swift */,
 				100000000000000000000050 /* StudentLearningMapView.swift */,
 			);
 			path = Student;
@@ -461,6 +464,7 @@
 				100000000000000000000137 /* ConsentView.swift in Sources */,
 				100000000000000000000114 /* StudentShellView.swift in Sources */,
 				100000000000000000000115 /* StudentHomeView.swift in Sources */,
+				100000000000000000000217 /* StudentClassroomView.swift in Sources */,
 				100000000000000000000148 /* StudentLearningMapView.swift in Sources */,
 				100000000000000000000116 /* PracticeCenterView.swift in Sources */,
 				100000000000000000000117 /* SupportView.swift in Sources */,
