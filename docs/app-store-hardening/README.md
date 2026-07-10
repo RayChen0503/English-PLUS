@@ -3,6 +3,17 @@
 This directory records the production-hardening work that starts from the
 current iOS baseline without changing `main` on every round.
 
+## Read order
+
+1. [Current state](CURRENT_STATE.md) for the compact source of truth.
+2. [Decision register](DECISIONS.md) for confirmed and pending product choices.
+3. The relevant `round-*.md` report only when its implementation or evidence
+   is needed.
+
+The current-state document is intentionally short. It prevents each new round
+from repeatedly re-reading the full project history while keeping the detailed
+evidence in the round reports.
+
 ## Working agreement
 
 - Baseline branch: `main`
