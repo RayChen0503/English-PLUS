@@ -28,18 +28,22 @@ struct RootView: View {
         .onChange(of: appState.route) { _, _ in
             startRealtimeSyncIfNeeded()
         }
+        .onChange(of: appState.currentProfile?.activeClassId) { _, _ in
+            startRealtimeSyncIfNeeded()
+        }
     }
 
     private func startRealtimeSyncIfNeeded() {
         guard case .home = appState.route,
-              let currentProfile = appState.currentProfile
+              let currentProfile = appState.currentProfile,
+              let activeClassId = currentProfile.activeClassId
         else {
             learningRepository.stopRealtimeSync()
             return
         }
 
         learningRepository.startRealtimeSync(
-            classId: currentProfile.classId,
+            classId: activeClassId,
             user: appState.currentUser
         )
     }

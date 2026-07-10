@@ -7,6 +7,20 @@ enum FirebaseBackendConfig {
     static let bundleId = "com.englishplus"
     static let configFileName = "GoogleService-Info.plist"
     static let firstClassId = "YILAN-CHENGZHI-8A"
+
+    static func personalScopeId(uid: String) -> String {
+        let normalized = uid.uppercased().unicodeScalars.map { scalar -> Character in
+            CharacterSet.alphanumerics.contains(scalar) ? Character(String(scalar)) : "-"
+        }
+        let compact = String(normalized)
+            .split(separator: "-", omittingEmptySubsequences: true)
+            .joined(separator: "-")
+        return "PERSONAL-\(String(compact.prefix(48)))"
+    }
+
+    static func isPersonalScopeId(_ value: String) -> Bool {
+        value.hasPrefix("PERSONAL-")
+    }
 }
 
 enum MissionTrack: String, Codable {
@@ -83,14 +97,29 @@ struct FirestoreUserDocument: Codable, Equatable {
     let createdAt: Date
     let lastLoginAt: Date
     let active: Bool
+    let activeClassId: String?
 }
 
 struct FirestoreMemberDocument: Codable, Equatable {
     let uid: String
+    let classId: String
     let role: UserRole
     let displayName: String
-    let active: Bool
+    let status: ClassMembershipStatus
     let joinedAt: Date
+    let visibilityStartsAt: Date
+    let leftAt: Date?
+}
+
+struct FirestoreUserMembershipDocument: Codable, Equatable {
+    let classId: String
+    let className: String?
+    let role: UserRole
+    let groupId: String?
+    let status: ClassMembershipStatus
+    let joinedAt: Date
+    let visibilityStartsAt: Date
+    let leftAt: Date?
 }
 
 struct FirestoreStudentDocument: Codable, Equatable {

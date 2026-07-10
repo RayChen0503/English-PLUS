@@ -134,6 +134,28 @@ final class AppState: ObservableObject {
         route = .roleSelection
     }
 
+    func selectActiveClass(_ classId: String?) async {
+        guard let currentUser, let currentProfile else { return }
+        signInErrorMessage = nil
+
+        do {
+            let session = try await authService.selectActiveClass(
+                classId,
+                in: AuthSession(user: currentUser, profile: currentProfile)
+            )
+            self.currentUser = session.user
+            self.currentProfile = session.profile
+            selectedRole = session.user.role
+            runtimeDiagnostics = runtimeDiagnostics.withSession(
+                user: session.user,
+                profile: session.profile
+            )
+            route = .home(session.user.role)
+        } catch {
+            signInErrorMessage = "無法切換班級，請確認你仍是該班級的成員。"
+        }
+    }
+
     func generateDailyMissionWithAI(context: DailyMissionAIContext) async -> AiProxyResponse {
         let response = await aiService.generateDailyMission(context: context, currentUser: currentUser)
         recordAIResponse(response)

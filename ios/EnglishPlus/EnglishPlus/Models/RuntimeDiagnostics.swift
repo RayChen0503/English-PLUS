@@ -45,7 +45,7 @@ struct RuntimeDiagnosticsSnapshot: Equatable {
         var copy = self
         copy.signedInUserId = user.id
         copy.signedInRole = user.role
-        copy.signedInClassId = profile.classId
+        copy.signedInClassId = profile.activeClassId
         return copy
     }
 

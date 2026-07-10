@@ -147,8 +147,11 @@ than the presence of old view names or exact copy.
 
 ### P1 - runtime correctness and maintainability
 
-1. `AppState.restoreSessionIfPossible()` exists, but `RootView` never calls it.
-   A cold launch therefore cannot reliably restore the signed-in session.
+1. `AppState.restoreSessionIfPossible()` exists, but `RootView` intentionally
+   does not call it. Round 2 full-regression review confirmed that automatic
+   restoration would bypass role selection and explicit sign-in, reproducing
+   a previously fixed student-entry bug. This is no longer classified as a
+   blocker; a future explicit "continue session" UX may use the method safely.
 2. Student account creation is the only self-service registration flow.
    Google Sign-In and Sign in with Apple are not implemented.
 3. The UI still contains implementation-oriented copy such as Firebase and

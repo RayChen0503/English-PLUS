@@ -8,7 +8,8 @@ import FirebaseFirestore
 final class FirebaseLearningRepository: LearningRepositoryBackend {
     private let fallback: MockLearningRepository
     private var currentSnapshot: LearningRepositorySnapshot
-    private var activeClassId = FirebaseBackendConfig.firstClassId
+    private var activeClassId: String?
+    private var activeUserUid: String?
 
     #if canImport(FirebaseFirestore)
     private let db: Firestore?
@@ -61,6 +62,7 @@ final class FirebaseLearningRepository: LearningRepositoryBackend {
         onError: @escaping @MainActor (Error) -> Void
     ) -> LearningRepositoryListenerToken {
         activeClassId = classId
+        activeUserUid = user?.id
         normalizeCurrentSnapshotForToday()
         onChange(currentSnapshot)
 
@@ -76,6 +78,8 @@ final class FirebaseLearningRepository: LearningRepositoryBackend {
 
         return AnyLearningRepositoryListenerToken { [weak self] in
             self?.removeRealtimeRegistrations()
+            self?.activeClassId = nil
+            self?.activeUserUid = nil
         }
         #else
         return AnyLearningRepositoryListenerToken {}
@@ -441,14 +445,24 @@ final class FirebaseLearningRepository: LearningRepositoryBackend {
 
     private func mirrorCheckInAndMissionIfPossible(profile: AppUserProfile?) {
         guard let profile else { return }
-        activeClassId = profile.classId
+        activeClassId = profile.activeClassId
+        activeUserUid = profile.id
         if let checkIn = currentSnapshot.currentCheckIn {
-            setDocumentIfPossible(
-                path: FirestorePath.checkIn(
-                    classId: profile.classId,
+            let path: String
+            if let classId = profile.activeClassId {
+                path = FirestorePath.checkIn(
+                    classId: classId,
                     studentUid: checkIn.studentUid,
                     dateKey: checkIn.dateKey
-                ),
+                )
+            } else {
+                path = FirestorePath.personalCheckIn(
+                    uid: profile.id,
+                    dateKey: checkIn.dateKey
+                )
+            }
+            setDocumentIfPossible(
+                path: path,
                 data: firestoreData(from: checkIn)
             )
         }
@@ -457,24 +471,46 @@ final class FirebaseLearningRepository: LearningRepositoryBackend {
 
     private func mirrorMissionIfPossible() {
         guard let mission = currentSnapshot.currentMission else { return }
-        setDocumentIfPossible(
-            path: FirestorePath.dailyMission(
+        let path: String
+        if let activeClassId {
+            path = FirestorePath.dailyMission(
                 classId: activeClassId,
                 studentUid: mission.studentUid,
                 missionId: mission.id
-            ),
+            )
+        } else if let activeUserUid {
+            path = FirestorePath.personalDailyMission(
+                uid: activeUserUid,
+                missionId: mission.id
+            )
+        } else {
+            return
+        }
+        setDocumentIfPossible(
+            path: path,
             data: firestoreData(from: mission)
         )
     }
 
     private func mirrorAttemptIfPossible(_ attempt: MissionAttempt) {
         let studentUid = currentSnapshot.currentMission?.studentUid ?? "missing"
-        setDocumentIfPossible(
-            path: FirestorePath.answerEvent(
+        let path: String
+        if let activeClassId {
+            path = FirestorePath.answerEvent(
                 classId: activeClassId,
                 studentUid: studentUid,
                 eventId: attempt.id
-            ),
+            )
+        } else if let activeUserUid {
+            path = FirestorePath.personalAnswerEvent(
+                uid: activeUserUid,
+                eventId: attempt.id
+            )
+        } else {
+            return
+        }
+        setDocumentIfPossible(
+            path: path,
             data: firestoreData(from: attempt)
         )
     }
@@ -483,6 +519,7 @@ final class FirebaseLearningRepository: LearningRepositoryBackend {
         guard let request = currentSnapshot.supportRequests.first(where: { $0.id == requestId }) else {
             return
         }
+        guard !FirebaseBackendConfig.isPersonalScopeId(request.classCode) else { return }
         mirrorSupportRequestIfPossible(request)
         request.replies.forEach { reply in
             setDocumentIfPossible(
@@ -497,6 +534,7 @@ final class FirebaseLearningRepository: LearningRepositoryBackend {
     }
 
     private func mirrorSupportRequestIfPossible(_ request: StudentSupportRequest) {
+        guard !FirebaseBackendConfig.isPersonalScopeId(request.classCode) else { return }
         setDocumentIfPossible(
             path: FirestorePath.supportThread(
                 classId: request.classCode,
@@ -507,6 +545,7 @@ final class FirebaseLearningRepository: LearningRepositoryBackend {
     }
 
     private func mirrorStudentSupportMessageIfPossible(_ request: StudentSupportRequest) {
+        guard !FirebaseBackendConfig.isPersonalScopeId(request.classCode) else { return }
         setDocumentIfPossible(
             path: FirestorePath.supportMessage(
                 classId: request.classCode,
@@ -519,7 +558,10 @@ final class FirebaseLearningRepository: LearningRepositoryBackend {
 
     private func mirrorPracticeAssignmentIfPossible(_ assignment: TeacherAssignedPracticeTask) {
         setDocumentIfPossible(
-            path: "\(FirestorePath.classDocument(classId: assignment.classId))/practiceAssignments/\(assignment.id)",
+            path: FirestorePath.practiceAssignment(
+                classId: assignment.classId,
+                assignmentId: assignment.id
+            ),
             data: firestoreData(from: assignment)
         )
     }
@@ -825,7 +867,7 @@ final class FirebaseLearningRepository: LearningRepositoryBackend {
     private func firestoreData(from checkIn: MoodCheckIn) -> [String: Any] {
         [
             "dateKey": checkIn.dateKey,
-            "classId": activeClassId,
+            "classId": activeClassId.map { $0 as Any } ?? NSNull(),
             "studentUid": checkIn.studentUid,
             "moodScore": checkIn.moodScore,
             "availableTimeLevel": checkIn.availableTimeLevel,
@@ -845,7 +887,7 @@ final class FirebaseLearningRepository: LearningRepositoryBackend {
         return [
             "missionId": mission.id,
             "dateKey": mission.dateKey,
-            "classId": activeClassId,
+            "classId": activeClassId.map { $0 as Any } ?? NSNull(),
             "studentUid": mission.studentUid,
             "sourceCheckInId": mission.sourceCheckInId,
             "status": mission.status.rawValue,

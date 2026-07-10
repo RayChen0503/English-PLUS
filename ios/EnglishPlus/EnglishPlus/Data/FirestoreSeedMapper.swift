@@ -9,6 +9,7 @@ struct FirestoreSeedWritePlan: Identifiable, Equatable {
 struct FirestoreSeedExport: Equatable {
     let writePlan: [FirestoreSeedWritePlan]
     let users: [String: FirestoreUserDocument]
+    let userMemberships: [String: FirestoreUserMembershipDocument]
     let members: [String: FirestoreMemberDocument]
     let students: [String: FirestoreStudentDocument]
     let questionBankItems: [String: FirestoreQuestionBankDocument]
@@ -24,21 +25,21 @@ struct FirestoreSeedMapper {
     func makeExport(from snapshot: SeedDataSnapshot = SeedData.current) -> FirestoreSeedExport {
         var writePlan: [FirestoreSeedWritePlan] = []
         var users: [String: FirestoreUserDocument] = [:]
+        var userMemberships: [String: FirestoreUserMembershipDocument] = [:]
         var members: [String: FirestoreMemberDocument] = [:]
         var students: [String: FirestoreStudentDocument] = [:]
         var questionBankItems: [String: FirestoreQuestionBankDocument] = [:]
 
         for account in snapshot.accounts {
             let uid = account.id
-            let classId = account.classId
-
             users[uid] = FirestoreUserDocument(
                 displayName: account.displayName,
                 preferredName: account.displayName,
                 primaryRole: account.role,
                 createdAt: account.createdAt,
                 lastLoginAt: generatedAt,
-                active: true
+                active: true,
+                activeClassId: account.activeClassId
             )
             writePlan.append(.init(
                 id: FirestorePath.user(uid: uid),
@@ -46,32 +47,64 @@ struct FirestoreSeedMapper {
                 documentKind: "user"
             ))
 
-            let memberPath = FirestorePath.member(classId: classId, uid: uid)
-            members[memberPath] = FirestoreMemberDocument(
-                uid: uid,
-                role: account.role,
-                displayName: account.displayName,
-                active: true,
-                joinedAt: account.createdAt
-            )
-            writePlan.append(.init(id: memberPath, path: memberPath, documentKind: "member"))
-
-            if account.role == .student {
-                let studentPath = FirestorePath.student(classId: classId, studentUid: uid)
-                students[studentPath] = FirestoreStudentDocument(
+            for membership in account.memberships {
+                let userMembershipPath = FirestorePath.userMembership(
                     uid: uid,
-                    displayName: account.displayName,
-                    gradeBand: "junior-high",
-                    classCode: classId,
-                    currentLevel: "foundation",
-                    recommendedTrack: .repair,
-                    lastMoodScore: nil,
-                    lastMissionStatus: .active,
-                    lastActivityAt: nil,
-                    riskLevel: .low,
-                    legacyAndroidId: account.id
+                    classId: membership.classId
                 )
-                writePlan.append(.init(id: studentPath, path: studentPath, documentKind: "student"))
+                userMemberships[userMembershipPath] = FirestoreUserMembershipDocument(
+                    classId: membership.classId,
+                    className: membership.className,
+                    role: membership.role,
+                    groupId: membership.groupId,
+                    status: membership.status,
+                    joinedAt: membership.joinedAt,
+                    visibilityStartsAt: membership.visibilityStartsAt,
+                    leftAt: membership.leftAt
+                )
+                writePlan.append(.init(
+                    id: userMembershipPath,
+                    path: userMembershipPath,
+                    documentKind: "userMembership"
+                ))
+
+                let memberPath = FirestorePath.member(classId: membership.classId, uid: uid)
+                members[memberPath] = FirestoreMemberDocument(
+                    uid: uid,
+                    classId: membership.classId,
+                    role: membership.role,
+                    displayName: account.displayName,
+                    status: membership.status,
+                    joinedAt: membership.joinedAt,
+                    visibilityStartsAt: membership.visibilityStartsAt,
+                    leftAt: membership.leftAt
+                )
+                writePlan.append(.init(id: memberPath, path: memberPath, documentKind: "member"))
+
+                if membership.role == .student {
+                    let studentPath = FirestorePath.student(
+                        classId: membership.classId,
+                        studentUid: uid
+                    )
+                    students[studentPath] = FirestoreStudentDocument(
+                        uid: uid,
+                        displayName: account.displayName,
+                        gradeBand: "junior-high",
+                        classCode: membership.classId,
+                        currentLevel: "foundation",
+                        recommendedTrack: .repair,
+                        lastMoodScore: nil,
+                        lastMissionStatus: .active,
+                        lastActivityAt: nil,
+                        riskLevel: .low,
+                        legacyAndroidId: account.id
+                    )
+                    writePlan.append(.init(
+                        id: studentPath,
+                        path: studentPath,
+                        documentKind: "student"
+                    ))
+                }
             }
         }
 
@@ -104,6 +137,7 @@ struct FirestoreSeedMapper {
         return FirestoreSeedExport(
             writePlan: writePlan,
             users: users,
+            userMemberships: userMemberships,
             members: members,
             students: students,
             questionBankItems: questionBankItems

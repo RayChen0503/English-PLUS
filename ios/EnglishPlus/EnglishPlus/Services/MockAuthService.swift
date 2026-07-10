@@ -37,10 +37,24 @@ struct MockAuthService: AuthService {
             throw DemoAuthError.invalidCredential
         }
 
-        let profile = Self.profile(
-            id: cleanedEmail.replacingOccurrences(of: "@", with: "-"),
+        guard role == .student else {
+            throw DemoAuthError.accountCreationUnavailable
+        }
+
+        let profileId = cleanedEmail.replacingOccurrences(of: "@", with: "-")
+        let now = Date()
+        let profile = AppUserProfile(
+            id: profileId,
             displayName: cleanedName,
-            role: role
+            role: role,
+            classId: FirebaseBackendConfig.personalScopeId(uid: profileId),
+            groupId: nil,
+            consentStatus: .pending,
+            isDemo: false,
+            createdAt: now,
+            updatedAt: now,
+            memberships: [],
+            activeClassId: nil
         )
         return AuthSession(
             user: DemoUser(id: profile.id, displayName: profile.displayName, role: profile.role),

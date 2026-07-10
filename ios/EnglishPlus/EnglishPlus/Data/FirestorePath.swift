@@ -11,6 +11,34 @@ enum FirestorePath {
         "\(user(uid: uid))/consents/\(segment(consentVersion))"
     }
 
+    static func userMemberships(uid: String) -> String {
+        "\(user(uid: uid))/classMemberships"
+    }
+
+    static func userMembership(uid: String, classId: String) -> String {
+        "\(userMemberships(uid: uid))/\(segment(classId))"
+    }
+
+    static func userLearningSettings(uid: String) -> String {
+        "\(user(uid: uid))/settings/learning"
+    }
+
+    static func personalCheckIn(uid: String, dateKey: String) -> String {
+        "\(user(uid: uid))/personalCheckIns/\(segment(dateKey))"
+    }
+
+    static func personalDailyMission(uid: String, missionId: String) -> String {
+        "\(user(uid: uid))/personalDailyMissions/\(segment(missionId))"
+    }
+
+    static func personalAnswerEvent(uid: String, eventId: String) -> String {
+        "\(user(uid: uid))/personalAnswerEvents/\(segment(eventId))"
+    }
+
+    static func personalLearningEvent(uid: String, eventId: String) -> String {
+        "\(user(uid: uid))/personalLearningEvents/\(segment(eventId))"
+    }
+
     static func classDocument(classId: String) -> String {
         "classes/\(segment(classId))"
     }
@@ -57,6 +85,10 @@ enum FirestorePath {
 
     static func staffAssignment(classId: String, assignmentId: String) -> String {
         "\(classDocument(classId: classId))/staffAssignments/\(segment(assignmentId))"
+    }
+
+    static func practiceAssignment(classId: String, assignmentId: String) -> String {
+        "\(classDocument(classId: classId))/practiceAssignments/\(segment(assignmentId))"
     }
 
     static func questionBankItem(classId: String, questionId: String) -> String {

@@ -13,10 +13,9 @@ enum FirebaseAuthServiceError: Error, Equatable {
     case notConfigured
     case noAuthenticatedUser
     case missingSeedProfile(String)
-    case missingMembership(uid: String, classId: String)
-    case inactiveMembership(uid: String, classId: String)
     case invalidMembership(uid: String, classId: String)
     case roleMismatch(expected: UserRole, actual: UserRole)
+    case selfServiceRoleNotAllowed(UserRole)
 }
 
 struct FirebaseAuthService: AuthService {
@@ -46,8 +45,9 @@ struct FirebaseAuthService: AuthService {
         }
 
         let result = try await signInWithFirebase(email: email, password: password)
-        return try await membershipSession(
+        return try await accountSession(
             uid: result.user.uid,
+            fallbackDisplayName: result.user.displayName ?? result.user.email ?? email,
             expectedRole: expectedRole
         )
         #else
@@ -65,20 +65,25 @@ struct FirebaseAuthService: AuthService {
         guard FirebaseAppConfigurator.hasBundledConfig else {
             throw FirebaseAuthServiceError.notConfigured
         }
+        guard role == .student else {
+            throw FirebaseAuthServiceError.selfServiceRoleNotAllowed(role)
+        }
 
         let cleanedName = displayName.trimmingCharacters(in: .whitespacesAndNewlines)
-        let result = try await createUserWithFirebase(
-            email: email.trimmingCharacters(in: .whitespacesAndNewlines),
-            password: password
-        )
+        let cleanedEmail = email.trimmingCharacters(in: .whitespacesAndNewlines)
+        let result = try await createUserWithFirebase(email: cleanedEmail, password: password)
         try? await updateFirebaseDisplayName(cleanedName, for: result.user)
-        try await createInitialProfileDocuments(
+        try await createInitialProfileDocument(
             uid: result.user.uid,
-            email: email,
+            email: cleanedEmail,
             displayName: cleanedName,
             role: role
         )
-        return try await membershipSession(uid: result.user.uid, expectedRole: role)
+        return try await accountSession(
+            uid: result.user.uid,
+            fallbackDisplayName: cleanedName,
+            expectedRole: role
+        )
         #else
         throw FirebaseAuthServiceError.firebaseSDKUnavailable
         #endif
@@ -86,6 +91,42 @@ struct FirebaseAuthService: AuthService {
 
     func restorePreviousSession() async throws -> AuthSession? {
         try await currentSession()
+    }
+
+    func selectActiveClass(_ classId: String?, in session: AuthSession) async throws -> AuthSession {
+        #if canImport(FirebaseAuth) && canImport(FirebaseFirestore)
+        guard FirebaseAppConfigurator.hasBundledConfig else {
+            throw FirebaseAuthServiceError.notConfigured
+        }
+        guard Auth.auth().currentUser?.uid == session.user.id else {
+            throw FirebaseAuthServiceError.noAuthenticatedUser
+        }
+        guard let profile = session.profile.selectingClass(classId) else {
+            throw FirebaseAuthServiceError.invalidMembership(
+                uid: session.user.id,
+                classId: classId ?? "personal"
+            )
+        }
+
+        try await setDocument(
+            path: FirestorePath.user(uid: session.user.id),
+            data: [
+                "activeClassId": classId.map { $0 as Any } ?? NSNull(),
+                "updatedAt": Date(),
+            ],
+            merge: true
+        )
+        return AuthSession(
+            user: DemoUser(
+                id: session.user.id,
+                displayName: session.user.displayName,
+                role: profile.role
+            ),
+            profile: profile
+        )
+        #else
+        return try await fallback.selectActiveClass(classId, in: session)
+        #endif
     }
 
     func signOut() {
@@ -110,7 +151,11 @@ struct FirebaseAuthService: AuthService {
         guard let user = Auth.auth().currentUser else {
             return nil
         }
-        return try await membershipSession(uid: user.uid, expectedRole: nil)
+        return try await accountSession(
+            uid: user.uid,
+            fallbackDisplayName: user.displayName ?? user.email ?? "English+",
+            expectedRole: nil
+        )
         #else
         throw FirebaseAuthServiceError.firebaseSDKUnavailable
         #endif
@@ -124,12 +169,11 @@ struct FirebaseAuthService: AuthService {
                     continuation.resume(throwing: error)
                     return
                 }
-
-                if let result {
-                    continuation.resume(returning: result)
-                } else {
+                guard let result else {
                     continuation.resume(throwing: FirebaseAuthServiceError.noAuthenticatedUser)
+                    return
                 }
+                continuation.resume(returning: result)
             }
         }
     }
@@ -141,12 +185,11 @@ struct FirebaseAuthService: AuthService {
                     continuation.resume(throwing: error)
                     return
                 }
-
-                if let result {
-                    continuation.resume(returning: result)
-                } else {
+                guard let result else {
                     continuation.resume(throwing: FirebaseAuthServiceError.noAuthenticatedUser)
+                    return
                 }
+                continuation.resume(returning: result)
             }
         }
     }
@@ -168,15 +211,16 @@ struct FirebaseAuthService: AuthService {
     #endif
 
     #if canImport(FirebaseFirestore)
-    private func createInitialProfileDocuments(
+    private func createInitialProfileDocument(
         uid: String,
         email: String,
         displayName: String,
         role: UserRole
     ) async throws {
-        let classId = FirebaseBackendConfig.firstClassId
         let now = Date()
-        let name = displayName.isEmpty ? email.components(separatedBy: "@").first ?? "English+ Student" : displayName
+        let name = displayName.isEmpty
+            ? email.components(separatedBy: "@").first ?? "English+ Student"
+            : displayName
 
         try await setDocument(
             path: FirestorePath.user(uid: uid),
@@ -184,45 +228,138 @@ struct FirebaseAuthService: AuthService {
                 "displayName": name,
                 "preferredName": name,
                 "primaryRole": role.rawValue,
+                "activeClassId": NSNull(),
                 "createdAt": now,
+                "updatedAt": now,
                 "lastLoginAt": now,
                 "active": true,
             ],
             merge: true
         )
+    }
 
-        try await setDocument(
-            path: FirestorePath.member(classId: classId, uid: uid),
-            data: [
-                "uid": uid,
-                "role": role.rawValue,
-                "displayName": name,
-                "active": true,
-                "joinedAt": now,
-                "updatedAt": now,
-                "consentStatus": ConsentStatus.pending.rawValue,
-            ],
-            merge: true
-        )
+    private func accountSession(
+        uid: String,
+        fallbackDisplayName: String,
+        expectedRole: UserRole?
+    ) async throws -> AuthSession {
+        let userSnapshot = try await documentSnapshot(path: FirestorePath.user(uid: uid))
+        var userData = userSnapshot.data() ?? [:]
+        var memberships = try await userMemberships(uid: uid)
 
-        if role == .student {
-            try await setDocument(
-                path: FirestorePath.student(classId: classId, studentUid: uid),
-                data: [
-                    "uid": uid,
-                    "displayName": name,
-                    "gradeBand": "8A",
-                    "classCode": classId,
-                    "currentLevel": "A2",
-                    "recommendedTrack": MissionTrack.steady.rawValue,
-                    "lastMissionStatus": MissionStatus.active.rawValue,
-                    "riskLevel": RiskLevel.low.rawValue,
-                    "legacyAndroidId": NSNull(),
-                    "lastActivityAt": now,
-                ],
+        if memberships.isEmpty,
+           let legacyMembership = try await legacyMembershipIfPresent(uid: uid) {
+            memberships = [legacyMembership]
+        }
+
+        guard userSnapshot.exists || !memberships.isEmpty else {
+            throw FirebaseAuthServiceError.missingSeedProfile(uid)
+        }
+
+        let hasExplicitActiveClass = userData.keys.contains("activeClassId")
+        let requestedActiveClassId = userData["activeClassId"] as? String
+        let requestedMembership = requestedActiveClassId.flatMap { classId in
+            memberships.first { $0.classId == classId && $0.isActive }
+        }
+        let membershipRole = requestedMembership?.role
+            ?? memberships.first(where: \.isActive)?.role
+        let primaryRole = (userData["primaryRole"] as? String)
+            .flatMap(UserRole.init(rawValue:))
+            ?? membershipRole
+            ?? expectedRole
+            ?? .student
+        let selectedRole = expectedRole ?? requestedMembership?.role ?? primaryRole
+        let selectedRoleIsAllowed = selectedRole == primaryRole
+            || memberships.contains { $0.isActive && $0.role == selectedRole }
+        guard selectedRoleIsAllowed else {
+            throw FirebaseAuthServiceError.roleMismatch(expected: selectedRole, actual: primaryRole)
+        }
+
+        let activeMembership: ClassMembership?
+        if let requestedMembership, requestedMembership.role == selectedRole {
+            activeMembership = requestedMembership
+        } else if hasExplicitActiveClass {
+            activeMembership = nil
+        } else {
+            activeMembership = memberships.first { $0.isActive && $0.role == selectedRole }
+        }
+
+        let now = Date()
+        let displayName = (userData["displayName"] as? String)
+            .flatMap { $0.isEmpty ? nil : $0 }
+            ?? fallbackDisplayName
+        let createdAt = firestoreDate(userData["createdAt"])
+            ?? activeMembership?.joinedAt
+            ?? now
+        let updatedAt = firestoreDate(userData["updatedAt"])
+            ?? firestoreDate(userData["lastLoginAt"])
+            ?? createdAt
+
+        if userSnapshot.exists {
+            userData["lastLoginAt"] = now
+            try? await setDocument(
+                path: FirestorePath.user(uid: uid),
+                data: ["lastLoginAt": now],
                 merge: true
             )
         }
+
+        let profile = AppUserProfile(
+            id: uid,
+            displayName: displayName,
+            role: selectedRole,
+            classId: activeMembership?.classId ?? FirebaseBackendConfig.personalScopeId(uid: uid),
+            groupId: activeMembership?.groupId,
+            consentStatus: .pending,
+            isDemo: false,
+            createdAt: createdAt,
+            updatedAt: updatedAt,
+            memberships: memberships,
+            activeClassId: activeMembership?.classId
+        )
+        return AuthSession(
+            user: DemoUser(id: uid, displayName: displayName, role: selectedRole),
+            profile: profile
+        )
+    }
+
+    private func userMemberships(uid: String) async throws -> [ClassMembership] {
+        let snapshots = try await collectionSnapshots(path: FirestorePath.userMemberships(uid: uid))
+        return snapshots.compactMap { snapshot in
+            membership(classId: snapshot.documentID, data: snapshot.data())
+        }
+        .sorted { $0.joinedAt < $1.joinedAt }
+    }
+
+    private func legacyMembershipIfPresent(uid: String) async throws -> ClassMembership? {
+        let classId = FirebaseBackendConfig.firstClassId
+        let snapshot = try await documentSnapshot(path: FirestorePath.member(classId: classId, uid: uid))
+        guard snapshot.exists, let data = snapshot.data() else { return nil }
+        return membership(classId: classId, data: data)
+    }
+
+    private func membership(classId: String, data: [String: Any]) -> ClassMembership? {
+        guard
+            let roleRaw = data["role"] as? String,
+            let role = UserRole(rawValue: roleRaw)
+        else {
+            return nil
+        }
+
+        let joinedAt = firestoreDate(data["joinedAt"]) ?? Date()
+        let status = (data["status"] as? String)
+            .flatMap(ClassMembershipStatus.init(rawValue:))
+            ?? ((data["active"] as? Bool ?? false) ? .active : .suspended)
+        return ClassMembership(
+            classId: classId,
+            className: data["className"] as? String,
+            role: role,
+            groupId: data["groupId"] as? String,
+            status: status,
+            joinedAt: joinedAt,
+            visibilityStartsAt: firestoreDate(data["visibilityStartsAt"]) ?? joinedAt,
+            leftAt: firestoreDate(data["leftAt"])
+        )
     }
 
     private func setDocument(path: String, data: [String: Any], merge: Bool) async throws {
@@ -237,31 +374,6 @@ struct FirebaseAuthService: AuthService {
         }
     }
 
-    private func membershipSession(uid: String, expectedRole: UserRole?) async throws -> AuthSession {
-        let classId = FirebaseBackendConfig.firstClassId
-        let path = FirestorePath.member(classId: classId, uid: uid)
-        let snapshot = try await documentSnapshot(path: path)
-
-        guard snapshot.exists, let data = snapshot.data() else {
-            throw FirebaseAuthServiceError.missingMembership(uid: uid, classId: classId)
-        }
-
-        let profile = try profile(
-            uid: uid,
-            classId: classId,
-            data: data,
-            expectedRole: expectedRole
-        )
-        return AuthSession(
-            user: DemoUser(
-                id: uid,
-                displayName: profile.displayName,
-                role: profile.role
-            ),
-            profile: profile
-        )
-    }
-
     private func documentSnapshot(path: String) async throws -> DocumentSnapshot {
         try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<DocumentSnapshot, Error>) in
             Firestore.firestore().document(path).getDocument { snapshot, error in
@@ -269,55 +381,25 @@ struct FirebaseAuthService: AuthService {
                     continuation.resume(throwing: error)
                     return
                 }
-
-                if let snapshot {
-                    continuation.resume(returning: snapshot)
-                } else {
+                guard let snapshot else {
                     continuation.resume(throwing: FirebaseAuthServiceError.noAuthenticatedUser)
+                    return
                 }
+                continuation.resume(returning: snapshot)
             }
         }
     }
 
-    private func profile(
-        uid: String,
-        classId: String,
-        data: [String: Any],
-        expectedRole: UserRole?
-    ) throws -> AppUserProfile {
-        guard
-            let roleRaw = data["role"] as? String,
-            let role = UserRole(rawValue: roleRaw),
-            let displayName = data["displayName"] as? String
-        else {
-            throw FirebaseAuthServiceError.invalidMembership(uid: uid, classId: classId)
+    private func collectionSnapshots(path: String) async throws -> [QueryDocumentSnapshot] {
+        try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<[QueryDocumentSnapshot], Error>) in
+            Firestore.firestore().collection(path).getDocuments { snapshot, error in
+                if let error {
+                    continuation.resume(throwing: error)
+                    return
+                }
+                continuation.resume(returning: snapshot?.documents ?? [])
+            }
         }
-
-        if let expectedRole, expectedRole != role {
-            throw FirebaseAuthServiceError.roleMismatch(expected: expectedRole, actual: role)
-        }
-
-        let active = data["active"] as? Bool ?? false
-        guard active else {
-            throw FirebaseAuthServiceError.inactiveMembership(uid: uid, classId: classId)
-        }
-
-        let joinedAt = firestoreDate(data["joinedAt"]) ?? Date()
-        let updatedAt = firestoreDate(data["updatedAt"]) ?? joinedAt
-        let consentStatus = (data["consentStatus"] as? String)
-            .flatMap(ConsentStatus.init(rawValue:)) ?? .pending
-
-        return AppUserProfile(
-            id: uid,
-            displayName: displayName,
-            role: role,
-            classId: classId,
-            groupId: data["groupId"] as? String,
-            consentStatus: consentStatus,
-            isDemo: false,
-            createdAt: joinedAt,
-            updatedAt: updatedAt
-        )
     }
 
     private func firestoreDate(_ value: Any?) -> Date? {

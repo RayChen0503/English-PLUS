@@ -18,7 +18,7 @@ current iOS baseline without changing `main` on every round.
 | Round | Status | Evidence |
 | --- | --- | --- |
 | 1 - Baseline audit and freeze | Complete | `round-01-baseline-audit.md` |
-| 2 - Personal mode and class-mode domain model | Waiting for decisions | - |
+| 2 - Personal mode and class-mode domain model | Complete | `round-02-personal-and-class-domain.md` |
 
 ## Main-branch safety
 

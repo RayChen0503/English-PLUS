@@ -16,6 +16,7 @@ protocol AuthService {
         role: UserRole
     ) async throws -> AuthSession
     func restorePreviousSession() async throws -> AuthSession?
+    func selectActiveClass(_ classId: String?, in session: AuthSession) async throws -> AuthSession
     func signOut()
 }
 
@@ -53,12 +54,27 @@ extension AuthService {
         nil
     }
 
+    func selectActiveClass(_ classId: String?, in session: AuthSession) async throws -> AuthSession {
+        guard let profile = session.profile.selectingClass(classId) else {
+            throw DemoAuthError.invalidClassSelection
+        }
+        return AuthSession(
+            user: DemoUser(
+                id: session.user.id,
+                displayName: session.user.displayName,
+                role: profile.role
+            ),
+            profile: profile
+        )
+    }
+
     func signOut() {}
 }
 
 enum DemoAuthError: Error, Equatable {
     case invalidCredential
     case accountCreationUnavailable
+    case invalidClassSelection
 }
 
 struct DemoAccountCredential: Equatable {

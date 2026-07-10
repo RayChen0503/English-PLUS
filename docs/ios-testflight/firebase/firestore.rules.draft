@@ -15,7 +15,17 @@ service cloud.firestore {
     }
 
     function isClassMember(classId) {
-      return signedIn() && exists(memberPath(classId, request.auth.uid));
+      return signedIn()
+        && exists(memberPath(classId, request.auth.uid))
+        && membershipIsActive(get(memberPath(classId, request.auth.uid)).data);
+    }
+
+    function membershipIsActive(membership) {
+      return (
+          ("status" in membership && membership.status == "active")
+          || (!("status" in membership) && membership.active == true)
+        )
+        && (!("leftAt" in membership) || membership.leftAt == null);
     }
 
     function memberData(classId) {
@@ -42,6 +52,48 @@ service cloud.firestore {
       return isSelf(studentUid);
     }
 
+    function isActiveStudentMember(classId, studentUid) {
+      return exists(memberPath(classId, studentUid))
+        && membershipIsActive(get(memberPath(classId, studentUid)).data)
+        && get(memberPath(classId, studentUid)).data.role == "student";
+    }
+
+    function studentVisibilityStartsAt(classId, studentUid) {
+      let membership = get(memberPath(classId, studentUid)).data;
+      return "visibilityStartsAt" in membership
+        ? membership.visibilityStartsAt
+        : membership.joinedAt;
+    }
+
+    function staffCanReadStudentTimeline(classId, studentUid, createdAt) {
+      return isActiveStudentMember(classId, studentUid)
+        && createdAt is timestamp
+        && createdAt >= studentVisibilityStartsAt(classId, studentUid)
+        && (
+          isClassTeacher(classId)
+          || assignedToStudent(classId, studentUid)
+        );
+    }
+
+    function classStaffCanReadSupportTimeline(classId, studentUid, createdAt) {
+      return isActiveStudentMember(classId, studentUid)
+        && createdAt is timestamp
+        && createdAt >= studentVisibilityStartsAt(classId, studentUid)
+        && (isClassTeacher(classId) || isClassVolunteer(classId));
+    }
+
+    function validActiveClassSelection(uid) {
+      return !("activeClassId" in request.resource.data)
+        || request.resource.data.activeClassId == null
+        || (
+          request.resource.data.activeClassId is string
+          && exists(memberPath(request.resource.data.activeClassId, uid))
+          && membershipIsActive(
+            get(memberPath(request.resource.data.activeClassId, uid)).data
+          )
+        );
+    }
+
     function assignedToStudent(classId, studentUid) {
       return isClassVolunteer(classId)
         && exists(/databases/$(database)/documents/classes/$(classId)/staffAssignments/$(request.auth.uid + "_" + studentUid));
@@ -53,21 +105,33 @@ service cloud.firestore {
 
     function canReadStudentRecord(classId, studentUid) {
       return isOwnerStudent(studentUid)
-        || isClassTeacher(classId)
-        || assignedToStudent(classId, studentUid);
+        || (
+          isActiveStudentMember(classId, studentUid)
+          && (
+            isClassTeacher(classId)
+            || assignedToStudent(classId, studentUid)
+          )
+        );
     }
 
     function canReadThread(classId, threadId) {
       let thread = get(threadPath(classId, threadId)).data;
-      return isClassTeacher(classId)
+      return classStaffCanReadSupportTimeline(
+          classId,
+          thread.studentUid,
+          thread.createdAt
+        )
         || (isSelf(thread.studentUid) && thread.studentVisible == true)
-        || (isClassVolunteer(classId) && thread.assignedToUid == request.auth.uid);
+        ;
     }
 
     function canWriteStaffReply(classId, threadId) {
       let thread = get(threadPath(classId, threadId)).data;
-      return isClassTeacher(classId)
-        || (isClassVolunteer(classId) && thread.assignedToUid == request.auth.uid);
+      return classStaffCanReadSupportTimeline(
+        classId,
+        thread.studentUid,
+        thread.createdAt
+      );
     }
 
     match /appConfig/{docId} {
@@ -77,10 +141,50 @@ service cloud.firestore {
 
     match /users/{uid} {
       allow read: if isSelf(uid);
-      allow create: if isSelf(uid);
+      allow create: if isSelf(uid)
+        && request.resource.data.primaryRole == "student"
+        && request.resource.data.activeClassId == null;
       allow update: if isSelf(uid)
-        && !request.resource.data.diff(resource.data).affectedKeys().hasAny(["primaryRole"]);
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+          "displayName",
+          "preferredName",
+          "lastLoginAt",
+          "updatedAt",
+          "activeClassId",
+          "active"
+        ])
+        && request.resource.data.primaryRole == resource.data.primaryRole
+        && validActiveClassSelection(uid);
       allow delete: if false;
+
+      match /classMemberships/{classId} {
+        allow read: if isSelf(uid);
+        allow create, update, delete: if false;
+      }
+
+      match /settings/{settingId} {
+        allow read, create, update, delete: if isSelf(uid);
+      }
+
+      match /personalCheckIns/{dateKey} {
+        allow read, create, update: if isSelf(uid);
+        allow delete: if false;
+      }
+
+      match /personalDailyMissions/{missionId} {
+        allow read, create, update: if isSelf(uid);
+        allow delete: if false;
+      }
+
+      match /personalAnswerEvents/{eventId} {
+        allow read, create: if isSelf(uid);
+        allow update, delete: if false;
+      }
+
+      match /personalLearningEvents/{eventId} {
+        allow read, create: if isSelf(uid);
+        allow update, delete: if false;
+      }
 
       match /consents/{consentVersion} {
         allow read: if isSelf(uid);
@@ -97,40 +201,41 @@ service cloud.firestore {
 
       match /members/{uid} {
         allow read: if isSelf(uid) || isClassTeacher(classId);
-        allow create: if isClassTeacher(classId)
-          || (
-            isSelf(uid)
-            && request.resource.data.uid == request.auth.uid
-            && request.resource.data.role == "student"
-            && request.resource.data.active == true
-          );
-        allow update: if isClassTeacher(classId);
-        allow delete: if false;
+        allow create, update, delete: if false;
       }
 
       match /students/{studentUid} {
         allow read: if canReadStudentRecord(classId, studentUid);
-        allow create, update: if isOwnerStudent(studentUid) || isClassTeacher(classId);
+        allow create: if isOwnerStudent(studentUid) && isClassStudent(classId);
+        allow update: if (
+            isOwnerStudent(studentUid) && isClassStudent(classId)
+          ) || isClassTeacher(classId);
         allow delete: if false;
 
         match /checkIns/{dateKey} {
-          allow read: if canReadStudentRecord(classId, studentUid);
-          allow create: if isOwnerStudent(studentUid);
-          allow update: if isOwnerStudent(studentUid) || isClassTeacher(classId);
+          allow read: if isOwnerStudent(studentUid)
+            || staffCanReadStudentTimeline(classId, studentUid, resource.data.createdAt);
+          allow create: if isOwnerStudent(studentUid) && isClassStudent(classId);
+          allow update: if isOwnerStudent(studentUid)
+            || staffCanReadStudentTimeline(classId, studentUid, resource.data.createdAt);
           allow delete: if false;
         }
 
         match /consents/{consentVersion} {
-          allow read: if canReadStudentRecord(classId, studentUid);
+          allow read: if isOwnerStudent(studentUid)
+            || staffCanReadStudentTimeline(classId, studentUid, resource.data.acceptedAt);
           allow create: if isOwnerStudent(studentUid)
+            && isClassStudent(classId)
             && request.resource.data.acceptedByUid == request.auth.uid
             && request.resource.data.accepted == true;
           allow update, delete: if false;
         }
 
         match /deletionRequests/{requestId} {
-          allow read: if isOwnerStudent(studentUid) || isClassTeacher(classId);
+          allow read: if isOwnerStudent(studentUid)
+            || (isClassTeacher(classId) && isActiveStudentMember(classId, studentUid));
           allow create: if isOwnerStudent(studentUid)
+            && isClassStudent(classId)
             && request.resource.data.requestedByUid == request.auth.uid
             && request.resource.data.studentUid == studentUid
             && request.resource.data.status == "requested";
@@ -139,20 +244,25 @@ service cloud.firestore {
         }
 
         match /dailyMissions/{missionId} {
-          allow read: if canReadStudentRecord(classId, studentUid);
-          allow create, update: if isOwnerStudent(studentUid) || isClassTeacher(classId);
+          allow read: if isOwnerStudent(studentUid)
+            || staffCanReadStudentTimeline(classId, studentUid, resource.data.createdAt);
+          allow create: if isOwnerStudent(studentUid) && isClassStudent(classId);
+          allow update: if isOwnerStudent(studentUid)
+            || staffCanReadStudentTimeline(classId, studentUid, resource.data.createdAt);
           allow delete: if false;
         }
 
         match /answerEvents/{eventId} {
-          allow read: if canReadStudentRecord(classId, studentUid);
-          allow create: if isOwnerStudent(studentUid);
+          allow read: if isOwnerStudent(studentUid)
+            || staffCanReadStudentTimeline(classId, studentUid, resource.data.createdAt);
+          allow create: if isOwnerStudent(studentUid) && isClassStudent(classId);
           allow update, delete: if false;
         }
 
         match /learningEvents/{eventId} {
-          allow read: if canReadStudentRecord(classId, studentUid);
-          allow create: if isOwnerStudent(studentUid);
+          allow read: if isOwnerStudent(studentUid)
+            || staffCanReadStudentTimeline(classId, studentUid, resource.data.createdAt);
+          allow create: if isOwnerStudent(studentUid) && isClassStudent(classId);
           allow update, delete: if false;
         }
       }
@@ -207,6 +317,18 @@ service cloud.firestore {
           || isSelf(resource.data.studentUid);
 
         allow create, update: if isClassTeacher(classId);
+        allow delete: if false;
+      }
+
+      match /practiceAssignments/{assignmentId} {
+        allow read: if isSelf(resource.data.studentUid)
+          || staffCanReadStudentTimeline(
+            classId,
+            resource.data.studentUid,
+            resource.data.createdAt
+          );
+        allow create, update: if isClassTeacher(classId)
+          && isActiveStudentMember(classId, request.resource.data.studentUid);
         allow delete: if false;
       }
 

@@ -79,14 +79,16 @@ final class FirebaseFirestoreService: FirestoreService {
             uid: record.acceptedByUid,
             consentVersion: record.version
         )
-        let studentPath = FirestorePath.studentConsent(
-            classId: record.classId,
-            studentUid: record.acceptedByUid,
-            consentVersion: record.version
-        )
         let data = firestoreConsentData(from: record)
         db.document(userPath).setData(data, merge: true)
-        db.document(studentPath).setData(data, merge: true)
+        if !FirebaseBackendConfig.isPersonalScopeId(record.classId) {
+            let studentPath = FirestorePath.studentConsent(
+                classId: record.classId,
+                studentUid: record.acceptedByUid,
+                consentVersion: record.version
+            )
+            db.document(studentPath).setData(data, merge: true)
+        }
         #endif
     }
 
@@ -202,7 +204,7 @@ private extension PrivacyConsentRecord {
             acceptedAt: acceptedAt,
             acceptedByUid: uid,
             actorRole: actorRole,
-            classId: data["classId"] as? String ?? FirebaseBackendConfig.firstClassId,
+            classId: data["classId"] as? String ?? FirebaseBackendConfig.personalScopeId(uid: uid),
             consentSource: source,
             schoolApprovalRef: data["schoolApprovalRef"] as? String ?? "",
             guardianConsentStatus: guardian,
