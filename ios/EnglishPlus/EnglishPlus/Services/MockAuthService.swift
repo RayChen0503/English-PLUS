@@ -30,15 +30,18 @@ struct MockAuthService: AuthService {
         password: String,
         displayName: String,
         role: UserRole
-    ) async throws -> AuthSession {
+    ) async throws -> AccountCreationOutcome {
         let cleanedEmail = email.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
         let cleanedName = displayName.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !cleanedEmail.isEmpty, password.count >= 6, !cleanedName.isEmpty else {
-            throw DemoAuthError.invalidCredential
+        guard cleanedEmail.contains("@"), cleanedEmail.contains("."), !cleanedName.isEmpty else {
+            throw AuthServiceError.invalidEmail
+        }
+        guard password.count >= 8 else {
+            throw AuthServiceError.weakPassword
         }
 
         guard role == .student else {
-            throw DemoAuthError.accountCreationUnavailable
+            throw AuthServiceError.staffSelfServiceUnavailable
         }
 
         let profileId = cleanedEmail.replacingOccurrences(of: "@", with: "-")
@@ -56,9 +59,11 @@ struct MockAuthService: AuthService {
             memberships: [],
             activeClassId: nil
         )
-        return AuthSession(
-            user: DemoUser(id: profile.id, displayName: profile.displayName, role: profile.role),
-            profile: profile
+        return .authenticated(
+            AuthSession(
+                user: DemoUser(id: profile.id, displayName: profile.displayName, role: profile.role),
+                profile: profile
+            )
         )
     }
 

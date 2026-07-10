@@ -60,8 +60,8 @@ def main():
         errors,
     )
     require(
-        ".task" in root_text and "restoreSessionIfPossible" in root_text,
-        "RootView must attempt session restore on launch",
+        "restoreSessionIfPossible" not in root_text,
+        "RootView must require explicit role selection and sign-in on cold launch",
         errors,
     )
     require(

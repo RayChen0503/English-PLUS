@@ -81,6 +81,20 @@ enum DeletionRequestScope: String, Codable {
     case fullAccount
 }
 
+enum AccountProvisioningStatus: String, Codable {
+    case active
+    case pendingApproval
+    case suspended
+    case disabled
+}
+
+enum StaffInvitationStatus: String, Codable {
+    case pending
+    case accepted
+    case revoked
+    case expired
+}
+
 enum SupportMessageType: String, Codable {
     case studentRequest
     case aiSuggestion
@@ -98,6 +112,20 @@ struct FirestoreUserDocument: Codable, Equatable {
     let lastLoginAt: Date
     let active: Bool
     let activeClassId: String?
+    let accountStatus: AccountProvisioningStatus
+    let emailVerificationRequired: Bool
+    let provisioningSource: String
+}
+
+struct FirestoreStaffInvitationDocument: Codable, Equatable {
+    let normalizedEmail: String
+    let role: UserRole
+    let status: StaffInvitationStatus
+    let invitedByUid: String
+    let createdAt: Date
+    let expiresAt: Date
+    let acceptedByUid: String?
+    let acceptedAt: Date?
 }
 
 struct FirestoreMemberDocument: Codable, Equatable {

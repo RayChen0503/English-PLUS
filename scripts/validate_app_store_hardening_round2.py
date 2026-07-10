@@ -64,7 +64,7 @@ def main() -> int:
             '"activeClassId": NSNull()',
             "FirestorePath.userMemberships(uid: uid)",
             "legacyMembershipIfPresent",
-            "selfServiceRoleNotAllowed",
+            "staffSelfServiceUnavailable",
         ],
         errors,
     )

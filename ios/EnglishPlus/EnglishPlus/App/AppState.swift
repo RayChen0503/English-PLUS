@@ -9,6 +9,9 @@ final class AppState: ObservableObject {
     @Published var hasAcceptedConsent = false
     @Published private(set) var signingInRole: UserRole?
     @Published private(set) var signInErrorMessage: String?
+    @Published private(set) var authNoticeMessage: String?
+    @Published private(set) var verificationEmailAddress: String?
+    @Published private(set) var isManagingAccount = false
     @Published private(set) var latestAIResponse: AiProxyResponse?
     @Published private(set) var runtimeDiagnostics: RuntimeDiagnosticsSnapshot
 
@@ -31,12 +34,10 @@ final class AppState: ObservableObject {
 
     func chooseRole(_ role: UserRole) {
         selectedRole = role
+        signInErrorMessage = nil
+        authNoticeMessage = nil
+        verificationEmailAddress = nil
         route = .demoLogin(role)
-    }
-
-    func signIn(role: UserRole) async {
-        let credential = DemoAccountCredential.credential(for: role)
-        await signIn(email: credential.email, password: credential.password, role: role)
     }
 
     func signIn(email: String, password: String, role: UserRole) async {
@@ -44,6 +45,8 @@ final class AppState: ObservableObject {
         selectedRole = role
         signingInRole = role
         signInErrorMessage = nil
+        authNoticeMessage = nil
+        verificationEmailAddress = nil
 
         do {
             let session = try await authService.signIn(
@@ -55,7 +58,11 @@ final class AppState: ObservableObject {
             signingInRole = nil
         } catch {
             clearFailedAuthenticationState()
-            signInErrorMessage = "登入失敗。請確認帳號、密碼、身分與班級資料是否正確。"
+            if let authError = error as? AuthServiceError,
+               case .emailNotVerified = authError {
+                verificationEmailAddress = email.trimmingCharacters(in: .whitespacesAndNewlines)
+            }
+            signInErrorMessage = userMessage(for: error)
         }
     }
 
@@ -69,31 +76,74 @@ final class AppState: ObservableObject {
         selectedRole = role
         signingInRole = role
         signInErrorMessage = nil
+        authNoticeMessage = nil
+        verificationEmailAddress = nil
 
         do {
-            let session = try await authService.createAccount(
+            let outcome = try await authService.createAccount(
                 email: email.trimmingCharacters(in: .whitespacesAndNewlines),
                 password: password,
                 displayName: displayName.trimmingCharacters(in: .whitespacesAndNewlines),
                 role: role
             )
-            await finishAuthenticatedSession(session)
+            switch outcome {
+            case .authenticated(let session):
+                await finishAuthenticatedSession(session)
+            case .emailVerificationRequired(let email):
+                clearFailedAuthenticationState()
+                verificationEmailAddress = email
+                authNoticeMessage = "驗證信已寄出。完成信箱驗證後，就可以回來登入。"
+            }
             signingInRole = nil
         } catch {
             clearFailedAuthenticationState()
-            signInErrorMessage = "建立帳號失敗。請確認 email 格式、密碼至少 6 碼，或稍後再試。"
+            signInErrorMessage = userMessage(for: error)
         }
     }
 
-    func signInForSelectedRole() async {
-        guard let selectedRole else { return }
-        await signIn(role: selectedRole)
+    func sendPasswordReset(email: String) async {
+        guard !isManagingAccount else { return }
+        isManagingAccount = true
+        signInErrorMessage = nil
+        authNoticeMessage = nil
+
+        do {
+            try await authService.sendPasswordReset(
+                email: email.trimmingCharacters(in: .whitespacesAndNewlines)
+            )
+            authNoticeMessage = "如果這個 email 已有帳號，重設密碼信會寄到該信箱。"
+        } catch {
+            signInErrorMessage = userMessage(for: error)
+        }
+        isManagingAccount = false
+    }
+
+    func resendVerification(email: String, password: String) async {
+        guard !isManagingAccount else { return }
+        isManagingAccount = true
+        signInErrorMessage = nil
+        authNoticeMessage = nil
+
+        do {
+            try await authService.resendVerification(
+                email: email.trimmingCharacters(in: .whitespacesAndNewlines),
+                password: password
+            )
+            verificationEmailAddress = email.trimmingCharacters(in: .whitespacesAndNewlines)
+            authNoticeMessage = "新的驗證信已寄出，請到信箱完成驗證。"
+        } catch {
+            signInErrorMessage = userMessage(for: error)
+        }
+        isManagingAccount = false
     }
 
     func restoreSessionIfPossible() async {
         guard !didAttemptSessionRestore else { return }
         didAttemptSessionRestore = true
         signInErrorMessage = nil
+        authNoticeMessage = nil
+        verificationEmailAddress = nil
+        isManagingAccount = false
 
         do {
             guard let session = try await authService.restorePreviousSession() else {
@@ -129,6 +179,9 @@ final class AppState: ObservableObject {
         hasAcceptedConsent = false
         signingInRole = nil
         signInErrorMessage = nil
+        authNoticeMessage = nil
+        verificationEmailAddress = nil
+        isManagingAccount = false
         latestAIResponse = nil
         runtimeDiagnostics = runtimeDiagnostics.clearingSession()
         route = .roleSelection
@@ -214,6 +267,13 @@ final class AppState: ObservableObject {
         hasAcceptedConsent = false
         signingInRole = nil
         runtimeDiagnostics = runtimeDiagnostics.clearingSession()
+    }
+
+    private func userMessage(for error: Error) -> String {
+        if let authError = error as? AuthServiceError {
+            return authError.userMessage
+        }
+        return "目前無法完成這個操作，請稍後再試。"
     }
 
     private func recordAIResponse(_ response: AiProxyResponse) {

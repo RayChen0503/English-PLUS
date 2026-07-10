@@ -5,6 +5,61 @@ struct AuthSession: Equatable {
     let profile: AppUserProfile
 }
 
+enum AccountCreationOutcome: Equatable {
+    case authenticated(AuthSession)
+    case emailVerificationRequired(email: String)
+}
+
+enum AuthServiceError: Error, Equatable {
+    case invalidEmail
+    case invalidCredentials
+    case weakPassword
+    case emailAlreadyInUse
+    case emailNotVerified(email: String)
+    case accountDisabled
+    case accountPendingApproval
+    case profileUnavailable
+    case roleMismatch(expected: UserRole, actual: UserRole)
+    case staffSelfServiceUnavailable
+    case invalidClassSelection
+    case networkUnavailable
+    case tooManyRequests
+    case operationUnavailable
+
+    var userMessage: String {
+        switch self {
+        case .invalidEmail:
+            return "請輸入有效的 email。"
+        case .invalidCredentials:
+            return "帳號或密碼不正確，請再確認一次。"
+        case .weakPassword:
+            return "密碼至少需要 8 碼。"
+        case .emailAlreadyInUse:
+            return "這個 email 已經建立過帳號，請直接登入或重設密碼。"
+        case .emailNotVerified:
+            return "請先到信箱完成驗證，再回來登入。"
+        case .accountDisabled:
+            return "這個帳號目前無法使用，請聯絡管理者。"
+        case .accountPendingApproval:
+            return "這個工作端帳號仍在等待管理者核准。"
+        case .profileUnavailable:
+            return "帳號資料尚未準備完成，請聯絡管理者。"
+        case .roleMismatch(_, let actual):
+            return "這個帳號屬於\(actual.title)端，請返回並選擇\(actual.title)。"
+        case .staffSelfServiceUnavailable:
+            return "老師與志工帳號需由管理者核發。"
+        case .invalidClassSelection:
+            return "無法切換班級，請確認你仍是該班級成員。"
+        case .networkUnavailable:
+            return "目前無法連線，請檢查網路後再試。"
+        case .tooManyRequests:
+            return "嘗試次數過多，請稍後再試。"
+        case .operationUnavailable:
+            return "目前無法完成這個操作，請稍後再試。"
+        }
+    }
+}
+
 protocol AuthService {
     func demoSession(for role: UserRole) -> AuthSession
     func signInDemoAccount(for role: UserRole) async throws -> AuthSession
@@ -14,7 +69,9 @@ protocol AuthService {
         password: String,
         displayName: String,
         role: UserRole
-    ) async throws -> AuthSession
+    ) async throws -> AccountCreationOutcome
+    func sendPasswordReset(email: String) async throws
+    func resendVerification(email: String, password: String) async throws
     func restorePreviousSession() async throws -> AuthSession?
     func selectActiveClass(_ classId: String?, in session: AuthSession) async throws -> AuthSession
     func signOut()
@@ -36,7 +93,7 @@ extension AuthService {
             email.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() == credential.email,
             password == credential.password
         else {
-            throw DemoAuthError.invalidCredential
+            throw AuthServiceError.invalidCredentials
         }
         return demoSession(for: expectedRole)
     }
@@ -46,9 +103,13 @@ extension AuthService {
         password: String,
         displayName: String,
         role: UserRole
-    ) async throws -> AuthSession {
-        throw DemoAuthError.accountCreationUnavailable
+    ) async throws -> AccountCreationOutcome {
+        throw AuthServiceError.staffSelfServiceUnavailable
     }
+
+    func sendPasswordReset(email: String) async throws {}
+
+    func resendVerification(email: String, password: String) async throws {}
 
     func restorePreviousSession() async throws -> AuthSession? {
         nil
@@ -56,7 +117,7 @@ extension AuthService {
 
     func selectActiveClass(_ classId: String?, in session: AuthSession) async throws -> AuthSession {
         guard let profile = session.profile.selectingClass(classId) else {
-            throw DemoAuthError.invalidClassSelection
+            throw AuthServiceError.invalidClassSelection
         }
         return AuthSession(
             user: DemoUser(

@@ -10,12 +10,42 @@ service cloud.firestore {
       return signedIn() && request.auth.uid == uid;
     }
 
+    function userPath(uid) {
+      return /databases/$(database)/documents/users/$(uid);
+    }
+
+    function accountIsActive(uid) {
+      let profile = get(userPath(uid)).data;
+      return (
+          ("accountStatus" in profile && profile.accountStatus == "active")
+          || (!("accountStatus" in profile) && profile.active == true)
+        );
+    }
+
+    function emailAccessAllowed(uid) {
+      let profile = get(userPath(uid)).data;
+      return (
+          "email_verified" in request.auth.token
+          && request.auth.token.email_verified == true
+        )
+        || !("emailVerificationRequired" in profile)
+        || profile.emailVerificationRequired != true;
+    }
+
+    function hasAccountAccess(uid) {
+      return signedIn()
+        && request.auth.uid == uid
+        && exists(userPath(uid))
+        && accountIsActive(uid)
+        && emailAccessAllowed(uid);
+    }
+
     function memberPath(classId, uid) {
       return /databases/$(database)/documents/classes/$(classId)/members/$(uid);
     }
 
     function isClassMember(classId) {
-      return signedIn()
+      return hasAccountAccess(request.auth.uid)
         && exists(memberPath(classId, request.auth.uid))
         && membershipIsActive(get(memberPath(classId, request.auth.uid)).data);
     }
@@ -49,7 +79,7 @@ service cloud.firestore {
     }
 
     function isOwnerStudent(studentUid) {
-      return isSelf(studentUid);
+      return hasAccountAccess(studentUid);
     }
 
     function isActiveStudentMember(classId, studentUid) {
@@ -135,23 +165,45 @@ service cloud.firestore {
     }
 
     match /appConfig/{docId} {
-      allow read: if signedIn();
+      allow read: if hasAccountAccess(request.auth.uid);
       allow write: if false;
+    }
+
+    match /staffInvitations/{invitationId} {
+      allow read, write: if false;
     }
 
     match /users/{uid} {
       allow read: if isSelf(uid);
       allow create: if isSelf(uid)
+        && request.resource.data.keys().hasOnly([
+          "displayName",
+          "preferredName",
+          "primaryRole",
+          "activeClassId",
+          "createdAt",
+          "updatedAt",
+          "lastLoginAt",
+          "active",
+          "accountStatus",
+          "emailVerificationRequired",
+          "provisioningSource"
+        ])
+        && request.resource.data.displayName is string
+        && request.resource.data.preferredName is string
         && request.resource.data.primaryRole == "student"
-        && request.resource.data.activeClassId == null;
-      allow update: if isSelf(uid)
+        && request.resource.data.activeClassId == null
+        && request.resource.data.active == true
+        && request.resource.data.accountStatus == "active"
+        && request.resource.data.emailVerificationRequired == true
+        && request.resource.data.provisioningSource == "selfServiceStudent";
+      allow update: if hasAccountAccess(uid)
         && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
           "displayName",
           "preferredName",
           "lastLoginAt",
           "updatedAt",
-          "activeClassId",
-          "active"
+          "activeClassId"
         ])
         && request.resource.data.primaryRole == resource.data.primaryRole
         && validActiveClassSelection(uid);
@@ -163,32 +215,32 @@ service cloud.firestore {
       }
 
       match /settings/{settingId} {
-        allow read, create, update, delete: if isSelf(uid);
+        allow read, create, update, delete: if hasAccountAccess(uid);
       }
 
       match /personalCheckIns/{dateKey} {
-        allow read, create, update: if isSelf(uid);
+        allow read, create, update: if hasAccountAccess(uid);
         allow delete: if false;
       }
 
       match /personalDailyMissions/{missionId} {
-        allow read, create, update: if isSelf(uid);
+        allow read, create, update: if hasAccountAccess(uid);
         allow delete: if false;
       }
 
       match /personalAnswerEvents/{eventId} {
-        allow read, create: if isSelf(uid);
+        allow read, create: if hasAccountAccess(uid);
         allow update, delete: if false;
       }
 
       match /personalLearningEvents/{eventId} {
-        allow read, create: if isSelf(uid);
+        allow read, create: if hasAccountAccess(uid);
         allow update, delete: if false;
       }
 
       match /consents/{consentVersion} {
-        allow read: if isSelf(uid);
-        allow create: if isSelf(uid)
+        allow read: if hasAccountAccess(uid);
+        allow create: if hasAccountAccess(uid)
           && request.resource.data.acceptedByUid == request.auth.uid
           && request.resource.data.accepted == true;
         allow update, delete: if false;

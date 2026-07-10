@@ -70,7 +70,7 @@ def validate_firebase_ready(errors):
         "struct FirebaseAuthService",
         "currentIdToken",
         "currentSession",
-        "FirebaseAuthServiceError",
+        "AuthServiceError",
         "MockAuthService",
     ]:
         require(token in auth, f"FirebaseAuthService missing {token}", errors)

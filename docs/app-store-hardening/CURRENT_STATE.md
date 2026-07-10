@@ -19,9 +19,10 @@ learning must remain usable without joining a class.
 - Repository: `RayChen0503/English-PLUS`
 - Stable baseline: `main` at `cf5381fea1c595632a897b2fa38076358870ff39`
 - Active hardening branch: `codex/app-store-hardening`
-- Completed hardening commits:
-  - `fdb4d7f` - Round 1 baseline audit
-  - `ebfff09` - Round 2 personal and multi-class domain
+- Completed hardening rounds:
+  - Round 1 - baseline audit (`round-01-baseline-audit.md`)
+  - Round 2 - personal and multi-class domain (`round-02-personal-and-class-domain.md`)
+  - Round 3 - email identity and staff provisioning (`round-03-email-identity-and-staff-provisioning.md`)
 - Do not merge to `main` or trigger Xcode Cloud until the end of a four-round
   block: 4, 8, 12, 16, and 20.
 - Never reset, overwrite, or silently discard user work.
@@ -56,6 +57,8 @@ learning must remain usable without joining a class.
   Cloudflare Worker boundary for Groq-powered AI tasks.
 - Round 2 has added account-owned personal learning paths, class membership
   lifecycle data, active-class selection, and draft access rules.
+- Round 3 has added email verification, password recovery, account-state
+  enforcement, and a server-only staff invitation contract.
 
 ## Current technical constraints
 
@@ -90,15 +93,12 @@ learning must remain usable without joining a class.
 | Question data | `Resources/SeedData/question_bank_seed.json`, `Data/SeedData.swift` |
 | Hardening evidence | `docs/app-store-hardening/round-*.md`, `scripts/validate_*.py` |
 
-## Next decision gate: Round 3
+## Next gate: Round 4
 
-The next round is identity and staff provisioning. User decision is required
-before implementation:
-
-1. Identity providers: Google + Sign in with Apple + email/password (recommended),
-   Apple + email/password, or email/password only.
-2. Staff provisioning: invitation/admin approval only (recommended), or
-   self-registration followed by approval.
+Round 4 completes the first hardening block. At the end of Round 4, run the
+full audit before any deliberate `main` merge or Xcode Cloud build. Confirm
+the Round 4 product scope before editing; no unresolved Round 3 identity
+decision remains.
 
 ## Maintenance rule
 

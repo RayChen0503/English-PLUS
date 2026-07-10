@@ -13,10 +13,8 @@ already depend on.
 | D-05 | 2026-07-10 | Staff accounts are not self-created in the current product. | Teacher and volunteer provisioning needs an invitation or approval boundary. |
 | D-06 | 2026-07-10 | TestFlight/Xcode Cloud releases are gated by four-round blocks. | Reduces unnecessary cloud builds while preserving deliberate release checks. |
 | D-07 | 2026-07-10 | Internal provider, mock, diagnostic, and key language stays out of role-facing UI. | The app must present learning actions, not implementation details. |
+| D-08 | 2026-07-10 | Production identity uses email/password only in Round 3. | This is the confirmed `3.C` scope; Google and Apple providers are not added in this round. |
 
 ## Pending decisions
 
-| ID | Required before | Options |
-| --- | --- | --- |
-| P-01 | Round 3 identity | Google + Apple + email/password (recommended); Apple + email/password; email/password only |
-| P-02 | Round 3 staff setup | Invitation/admin approval only (recommended); self-register then approval |
+No unresolved product decision remains for Round 3.

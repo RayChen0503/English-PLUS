@@ -8,21 +8,16 @@ import FirebaseAuth
 import FirebaseFirestore
 #endif
 
-enum FirebaseAuthServiceError: Error, Equatable {
-    case firebaseSDKUnavailable
-    case notConfigured
-    case noAuthenticatedUser
-    case missingSeedProfile(String)
-    case invalidMembership(uid: String, classId: String)
-    case roleMismatch(expected: UserRole, actual: UserRole)
-    case selfServiceRoleNotAllowed(UserRole)
-}
-
 struct FirebaseAuthService: AuthService {
     private let fallback: MockAuthService
 
     init(fallback: MockAuthService = MockAuthService()) {
         self.fallback = fallback
+    }
+
+    private static func isPlausibleEmail(_ email: String) -> Bool {
+        let parts = email.split(separator: "@", omittingEmptySubsequences: false)
+        return parts.count == 2 && !parts[0].isEmpty && parts[1].contains(".")
     }
 
     func demoSession(for role: UserRole) -> AuthSession {
@@ -41,17 +36,34 @@ struct FirebaseAuthService: AuthService {
     func signIn(email: String, password: String, expectedRole: UserRole) async throws -> AuthSession {
         #if canImport(FirebaseAuth) && canImport(FirebaseFirestore)
         guard FirebaseAppConfigurator.hasBundledConfig else {
-            throw FirebaseAuthServiceError.notConfigured
+            throw AuthServiceError.operationUnavailable
         }
 
-        let result = try await signInWithFirebase(email: email, password: password)
-        return try await accountSession(
-            uid: result.user.uid,
-            fallbackDisplayName: result.user.displayName ?? result.user.email ?? email,
-            expectedRole: expectedRole
-        )
+        let cleanedEmail = email.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        guard Self.isPlausibleEmail(cleanedEmail) else {
+            throw AuthServiceError.invalidEmail
+        }
+
+        do {
+            let result = try await signInWithFirebase(email: cleanedEmail, password: password)
+            do {
+                return try await accountSession(
+                    uid: result.user.uid,
+                    fallbackDisplayName: result.user.displayName ?? result.user.email ?? cleanedEmail,
+                    expectedRole: expectedRole,
+                    emailVerified: result.user.isEmailVerified
+                )
+            } catch {
+                try? Auth.auth().signOut()
+                throw error
+            }
+        } catch let error as AuthServiceError {
+            throw error
+        } catch {
+            throw Self.normalizedFirebaseError(error)
+        }
         #else
-        throw FirebaseAuthServiceError.firebaseSDKUnavailable
+        throw AuthServiceError.operationUnavailable
         #endif
     }
 
@@ -60,32 +72,110 @@ struct FirebaseAuthService: AuthService {
         password: String,
         displayName: String,
         role: UserRole
-    ) async throws -> AuthSession {
+    ) async throws -> AccountCreationOutcome {
         #if canImport(FirebaseAuth) && canImport(FirebaseFirestore)
         guard FirebaseAppConfigurator.hasBundledConfig else {
-            throw FirebaseAuthServiceError.notConfigured
+            throw AuthServiceError.operationUnavailable
         }
         guard role == .student else {
-            throw FirebaseAuthServiceError.selfServiceRoleNotAllowed(role)
+            throw AuthServiceError.staffSelfServiceUnavailable
         }
 
         let cleanedName = displayName.trimmingCharacters(in: .whitespacesAndNewlines)
-        let cleanedEmail = email.trimmingCharacters(in: .whitespacesAndNewlines)
-        let result = try await createUserWithFirebase(email: cleanedEmail, password: password)
-        try? await updateFirebaseDisplayName(cleanedName, for: result.user)
-        try await createInitialProfileDocument(
-            uid: result.user.uid,
-            email: cleanedEmail,
-            displayName: cleanedName,
-            role: role
-        )
-        return try await accountSession(
-            uid: result.user.uid,
-            fallbackDisplayName: cleanedName,
-            expectedRole: role
-        )
+        let cleanedEmail = email.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        guard Self.isPlausibleEmail(cleanedEmail) else {
+            throw AuthServiceError.invalidEmail
+        }
+        guard password.count >= 8 else {
+            throw AuthServiceError.weakPassword
+        }
+        guard !cleanedName.isEmpty else {
+            throw AuthServiceError.profileUnavailable
+        }
+
+        do {
+            let result = try await createUserWithFirebase(email: cleanedEmail, password: password)
+            do {
+                try await updateFirebaseDisplayName(cleanedName, for: result.user)
+                try await createInitialProfileDocument(
+                    uid: result.user.uid,
+                    email: cleanedEmail,
+                    displayName: cleanedName,
+                    role: role
+                )
+            } catch {
+                try? await deleteFirebaseUser(result.user)
+                throw error
+            }
+
+            do {
+                try await sendVerificationEmail(to: result.user)
+            } catch {
+                try? Auth.auth().signOut()
+                throw error
+            }
+            try? Auth.auth().signOut()
+            return .emailVerificationRequired(email: cleanedEmail)
+        } catch let error as AuthServiceError {
+            throw error
+        } catch {
+            throw Self.normalizedFirebaseError(error)
+        }
         #else
-        throw FirebaseAuthServiceError.firebaseSDKUnavailable
+        throw AuthServiceError.operationUnavailable
+        #endif
+    }
+
+    func sendPasswordReset(email: String) async throws {
+        #if canImport(FirebaseAuth)
+        guard FirebaseAppConfigurator.hasBundledConfig else {
+            throw AuthServiceError.operationUnavailable
+        }
+        let cleanedEmail = email.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        guard Self.isPlausibleEmail(cleanedEmail) else {
+            throw AuthServiceError.invalidEmail
+        }
+
+        do {
+            try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
+                Auth.auth().sendPasswordReset(withEmail: cleanedEmail) { error in
+                    if let error {
+                        continuation.resume(throwing: error)
+                    } else {
+                        continuation.resume()
+                    }
+                }
+            }
+        } catch {
+            throw Self.normalizedFirebaseError(error)
+        }
+        #else
+        throw AuthServiceError.operationUnavailable
+        #endif
+    }
+
+    func resendVerification(email: String, password: String) async throws {
+        #if canImport(FirebaseAuth)
+        guard FirebaseAppConfigurator.hasBundledConfig else {
+            throw AuthServiceError.operationUnavailable
+        }
+        let cleanedEmail = email.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        guard Self.isPlausibleEmail(cleanedEmail) else {
+            throw AuthServiceError.invalidEmail
+        }
+
+        do {
+            let result = try await signInWithFirebase(email: cleanedEmail, password: password)
+            defer { try? Auth.auth().signOut() }
+            guard !result.user.isEmailVerified else { return }
+            try await sendVerificationEmail(to: result.user)
+        } catch let error as AuthServiceError {
+            throw error
+        } catch {
+            throw Self.normalizedFirebaseError(error)
+        }
+        #else
+        throw AuthServiceError.operationUnavailable
         #endif
     }
 
@@ -96,16 +186,13 @@ struct FirebaseAuthService: AuthService {
     func selectActiveClass(_ classId: String?, in session: AuthSession) async throws -> AuthSession {
         #if canImport(FirebaseAuth) && canImport(FirebaseFirestore)
         guard FirebaseAppConfigurator.hasBundledConfig else {
-            throw FirebaseAuthServiceError.notConfigured
+            throw AuthServiceError.operationUnavailable
         }
         guard Auth.auth().currentUser?.uid == session.user.id else {
-            throw FirebaseAuthServiceError.noAuthenticatedUser
+            throw AuthServiceError.invalidCredentials
         }
         guard let profile = session.profile.selectingClass(classId) else {
-            throw FirebaseAuthServiceError.invalidMembership(
-                uid: session.user.id,
-                classId: classId ?? "personal"
-            )
+            throw AuthServiceError.invalidClassSelection
         }
 
         try await setDocument(
@@ -138,11 +225,11 @@ struct FirebaseAuthService: AuthService {
     func currentIdToken() async throws -> String? {
         #if canImport(FirebaseAuth)
         guard let user = Auth.auth().currentUser else {
-            throw FirebaseAuthServiceError.noAuthenticatedUser
+            throw AuthServiceError.invalidCredentials
         }
         return try await user.getIDToken()
         #else
-        throw FirebaseAuthServiceError.firebaseSDKUnavailable
+        throw AuthServiceError.operationUnavailable
         #endif
     }
 
@@ -154,10 +241,11 @@ struct FirebaseAuthService: AuthService {
         return try await accountSession(
             uid: user.uid,
             fallbackDisplayName: user.displayName ?? user.email ?? "English+",
-            expectedRole: nil
+            expectedRole: nil,
+            emailVerified: user.isEmailVerified
         )
         #else
-        throw FirebaseAuthServiceError.firebaseSDKUnavailable
+        throw AuthServiceError.operationUnavailable
         #endif
     }
 
@@ -170,7 +258,7 @@ struct FirebaseAuthService: AuthService {
                     return
                 }
                 guard let result else {
-                    continuation.resume(throwing: FirebaseAuthServiceError.noAuthenticatedUser)
+                    continuation.resume(throwing: AuthServiceError.invalidCredentials)
                     return
                 }
                 continuation.resume(returning: result)
@@ -186,7 +274,7 @@ struct FirebaseAuthService: AuthService {
                     return
                 }
                 guard let result else {
-                    continuation.resume(throwing: FirebaseAuthServiceError.noAuthenticatedUser)
+                    continuation.resume(throwing: AuthServiceError.operationUnavailable)
                     return
                 }
                 continuation.resume(returning: result)
@@ -206,6 +294,56 @@ struct FirebaseAuthService: AuthService {
                     continuation.resume()
                 }
             }
+        }
+    }
+
+    private func sendVerificationEmail(to user: User) async throws {
+        Auth.auth().languageCode = "zh-TW"
+        try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
+            user.sendEmailVerification { error in
+                if let error {
+                    continuation.resume(throwing: error)
+                } else {
+                    continuation.resume()
+                }
+            }
+        }
+    }
+
+    private func deleteFirebaseUser(_ user: User) async throws {
+        try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
+            user.delete { error in
+                if let error {
+                    continuation.resume(throwing: error)
+                } else {
+                    continuation.resume()
+                }
+            }
+        }
+    }
+
+    private static func normalizedFirebaseError(_ error: Error) -> AuthServiceError {
+        guard let code = AuthErrorCode(rawValue: (error as NSError).code) else {
+            return .operationUnavailable
+        }
+
+        switch code {
+        case .invalidEmail:
+            return .invalidEmail
+        case .invalidCredential, .wrongPassword, .userNotFound:
+            return .invalidCredentials
+        case .weakPassword:
+            return .weakPassword
+        case .emailAlreadyInUse:
+            return .emailAlreadyInUse
+        case .userDisabled:
+            return .accountDisabled
+        case .networkError:
+            return .networkUnavailable
+        case .tooManyRequests:
+            return .tooManyRequests
+        default:
+            return .operationUnavailable
         }
     }
     #endif
@@ -233,6 +371,9 @@ struct FirebaseAuthService: AuthService {
                 "updatedAt": now,
                 "lastLoginAt": now,
                 "active": true,
+                "accountStatus": AccountProvisioningStatus.active.rawValue,
+                "emailVerificationRequired": true,
+                "provisioningSource": "selfServiceStudent",
             ],
             merge: true
         )
@@ -241,7 +382,8 @@ struct FirebaseAuthService: AuthService {
     private func accountSession(
         uid: String,
         fallbackDisplayName: String,
-        expectedRole: UserRole?
+        expectedRole: UserRole?,
+        emailVerified: Bool
     ) async throws -> AuthSession {
         let userSnapshot = try await documentSnapshot(path: FirestorePath.user(uid: uid))
         var userData = userSnapshot.data() ?? [:]
@@ -253,7 +395,25 @@ struct FirebaseAuthService: AuthService {
         }
 
         guard userSnapshot.exists || !memberships.isEmpty else {
-            throw FirebaseAuthServiceError.missingSeedProfile(uid)
+            throw AuthServiceError.profileUnavailable
+        }
+
+        let accountStatus = (userData["accountStatus"] as? String)
+            .flatMap(AccountProvisioningStatus.init(rawValue:))
+            ?? ((userData["active"] as? Bool ?? true) ? .active : .disabled)
+        switch accountStatus {
+        case .active:
+            break
+        case .pendingApproval:
+            throw AuthServiceError.accountPendingApproval
+        case .suspended, .disabled:
+            throw AuthServiceError.accountDisabled
+        }
+
+        if userData["emailVerificationRequired"] as? Bool == true, !emailVerified {
+            throw AuthServiceError.emailNotVerified(
+                email: fallbackDisplayName.contains("@") ? fallbackDisplayName : ""
+            )
         }
 
         let hasExplicitActiveClass = userData.keys.contains("activeClassId")
@@ -272,7 +432,7 @@ struct FirebaseAuthService: AuthService {
         let selectedRoleIsAllowed = selectedRole == primaryRole
             || memberships.contains { $0.isActive && $0.role == selectedRole }
         guard selectedRoleIsAllowed else {
-            throw FirebaseAuthServiceError.roleMismatch(expected: selectedRole, actual: primaryRole)
+            throw AuthServiceError.roleMismatch(expected: selectedRole, actual: primaryRole)
         }
 
         let activeMembership: ClassMembership?
@@ -382,7 +542,7 @@ struct FirebaseAuthService: AuthService {
                     return
                 }
                 guard let snapshot else {
-                    continuation.resume(throwing: FirebaseAuthServiceError.noAuthenticatedUser)
+                    continuation.resume(throwing: AuthServiceError.operationUnavailable)
                     return
                 }
                 continuation.resume(returning: snapshot)

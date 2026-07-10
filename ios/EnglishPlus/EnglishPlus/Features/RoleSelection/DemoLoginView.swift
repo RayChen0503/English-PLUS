@@ -13,9 +13,8 @@ struct DemoLoginView: View {
 
     init(role: UserRole) {
         self.role = role
-        let credential = DemoAccountCredential.credential(for: role)
-        _email = State(initialValue: credential.email)
-        _password = State(initialValue: credential.password)
+        _email = State(initialValue: "")
+        _password = State(initialValue: "")
     }
 
     var body: some View {
@@ -46,6 +45,16 @@ struct DemoLoginView: View {
                             .fixedSize(horizontal: false, vertical: true)
                     }
 
+                    if let message = appState.authNoticeMessage {
+                        Label(message, systemImage: "checkmark.circle.fill")
+                            .font(.footnote.weight(.semibold))
+                            .foregroundStyle(EPTheme.support)
+                            .padding(12)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .background(EPTheme.support.opacity(0.10))
+                            .clipShape(RoundedRectangle(cornerRadius: EPTheme.cardRadius))
+                    }
+
                     primaryButton
                 }
                 .padding(EPTheme.pagePadding)
@@ -53,6 +62,12 @@ struct DemoLoginView: View {
         }
         .onChange(of: mode) { _, newMode in
             applyDefaults(for: newMode)
+        }
+        .onChange(of: appState.verificationEmailAddress) { _, address in
+            guard let address, !address.isEmpty else { return }
+            mode = .signIn
+            email = address
+            password = ""
         }
     }
 
@@ -117,8 +132,12 @@ struct DemoLoginView: View {
 
             passwordField
 
+            if mode == .signIn {
+                accountRecoveryActions
+            }
+
             if role != .student {
-                Label("老師與志工帳號目前由管理者或 Firebase 後台建立，避免學生誤建成工作端帳號。", systemImage: "lock.shield")
+                Label("老師與志工帳號由管理者核發。若尚未收到帳號，請聯絡單位管理者。", systemImage: "lock.shield")
                     .font(.footnote)
                     .foregroundStyle(EPTheme.secondaryInk)
                     .fixedSize(horizontal: false, vertical: true)
@@ -155,11 +174,11 @@ struct DemoLoginView: View {
                 .foregroundStyle(EPTheme.secondaryInk)
             HStack {
                 if showsPassword {
-                    TextField("password", text: $password)
+                    TextField("輸入密碼", text: $password)
                         .textInputAutocapitalization(.never)
                         .autocorrectionDisabled()
                 } else {
-                    SecureField("password", text: $password)
+                    SecureField("輸入密碼", text: $password)
                         .textInputAutocapitalization(.never)
                         .autocorrectionDisabled()
                 }
@@ -176,6 +195,29 @@ struct DemoLoginView: View {
             .background(EPTheme.secondarySurface)
             .clipShape(RoundedRectangle(cornerRadius: 8))
         }
+    }
+
+    private var accountRecoveryActions: some View {
+        HStack(spacing: 16) {
+            Button("忘記密碼？") {
+                Task {
+                    await appState.sendPasswordReset(email: email)
+                }
+            }
+            .disabled(email.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || appState.isManagingAccount)
+
+            if appState.verificationEmailAddress != nil {
+                Button("重新寄送驗證信") {
+                    Task {
+                        await appState.resendVerification(email: email, password: password)
+                    }
+                }
+                .disabled(password.isEmpty || appState.isManagingAccount)
+            }
+        }
+        .font(.footnote.weight(.semibold))
+        .foregroundStyle(EPTheme.primary)
+        .buttonStyle(.plain)
     }
 
     private var primaryButton: some View {
@@ -207,11 +249,11 @@ struct DemoLoginView: View {
     }
 
     private var isPrimaryButtonDisabled: Bool {
-        if appState.signingInRole != nil { return true }
+        if appState.signingInRole != nil || appState.isManagingAccount { return true }
         if email.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty { return true }
         if password.isEmpty { return true }
         if mode == .createStudent {
-            return displayName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || password.count < 6
+            return displayName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || password.count < 8
         }
         return false
     }
@@ -219,9 +261,7 @@ struct DemoLoginView: View {
     private func applyDefaults(for mode: LoginMode) {
         switch mode {
         case .signIn:
-            let credential = DemoAccountCredential.credential(for: role)
-            email = credential.email
-            password = credential.password
+            password = ""
         case .createStudent:
             email = ""
             password = ""
@@ -255,9 +295,9 @@ private enum LoginMode: Equatable {
     func cardDescription(for role: UserRole) -> String {
         switch self {
         case .signIn:
-            return "請使用測試帳號或已建立的正式帳號登入。系統會檢查帳號、密碼、角色與班級資料；未通過就不會進入 App。"
+            return "使用已建立的帳號登入。系統會確認帳號身分與使用權限。"
         case .createStudent:
-            return "測試階段可先建立學生帳號。建立後會進入資料使用確認；同一帳號確認過後，下次登入就不會重複跳出。"
+            return "學生可以先建立個人帳號，不需要加入班級。完成信箱驗證後即可開始使用。"
         }
     }
 }
