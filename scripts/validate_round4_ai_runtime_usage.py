@@ -80,10 +80,10 @@ def main():
         errors,
     )
     require(
-        "provideEmotionalSupportWithAI" in texts["support"]
-        and "latestSupportAIResponse" in texts["support"]
-        and "SupportAIResponseCard" in texts["support"],
-        "SupportView must call AI for immediate emotional/support guidance",
+        "provideEmotionalSupportWithAI" not in texts["support"]
+        and "SupportAIResponseCard" not in texts["support"]
+        and "SupportRequestInboxCard" in texts["support"],
+        "SupportView must stay a focused human-reply inbox; question AI belongs inline in practice",
         errors,
     )
     require(

@@ -65,6 +65,14 @@
 		100000000000000000000155 /* SupportQuestionSnapshotCard.swift in Sources */ = {isa = PBXBuildFile; fileRef = 100000000000000000000054 /* SupportQuestionSnapshotCard.swift */; };
 		100000000000000000000156 /* StaffSupportActionBar.swift in Sources */ = {isa = PBXBuildFile; fileRef = 100000000000000000000055 /* StaffSupportActionBar.swift */; };
 		100000000000000000000158 /* IdentityModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = 100000000000000000000057 /* IdentityModels.swift */; };
+		100000000000000000000159 /* FederatedSignInCoordinator.swift in Sources */ = {isa = PBXBuildFile; fileRef = 100000000000000000000058 /* FederatedSignInCoordinator.swift */; };
+		100000000000000000000160 /* GoogleSignIn in Frameworks */ = {isa = PBXBuildFile; productRef = 100000000000000000000706 /* GoogleSignIn */; };
+		100000000000000000000161 /* EvidenceUploadService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 100000000000000000000060 /* EvidenceUploadService.swift */; };
+		100000000000000000000162 /* InstitutionPickerView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 100000000000000000000061 /* InstitutionPickerView.swift */; };
+		100000000000000000000163 /* VolunteerApplicationView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 100000000000000000000062 /* VolunteerApplicationView.swift */; };
+		100000000000000000000164 /* VolunteerReviewService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 100000000000000000000063 /* VolunteerReviewService.swift */; };
+		100000000000000000000165 /* VolunteerReviewView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 100000000000000000000064 /* VolunteerReviewView.swift */; };
+		100000000000000000000166 /* GoogleSignInSwift in Frameworks */ = {isa = PBXBuildFile; productRef = 100000000000000000000707 /* GoogleSignInSwift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -125,6 +133,13 @@
 		100000000000000000000054 /* SupportQuestionSnapshotCard.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SupportQuestionSnapshotCard.swift; sourceTree = "<group>"; };
 		100000000000000000000055 /* StaffSupportActionBar.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StaffSupportActionBar.swift; sourceTree = "<group>"; };
 		100000000000000000000057 /* IdentityModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = IdentityModels.swift; sourceTree = "<group>"; };
+		100000000000000000000058 /* FederatedSignInCoordinator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FederatedSignInCoordinator.swift; sourceTree = "<group>"; };
+		100000000000000000000059 /* EnglishPlus.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = EnglishPlus.entitlements; sourceTree = "<group>"; };
+		100000000000000000000060 /* EvidenceUploadService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EvidenceUploadService.swift; sourceTree = "<group>"; };
+		100000000000000000000061 /* InstitutionPickerView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = InstitutionPickerView.swift; sourceTree = "<group>"; };
+		100000000000000000000062 /* VolunteerApplicationView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VolunteerApplicationView.swift; sourceTree = "<group>"; };
+		100000000000000000000063 /* VolunteerReviewService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VolunteerReviewService.swift; sourceTree = "<group>"; };
+		100000000000000000000064 /* VolunteerReviewView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VolunteerReviewView.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -135,6 +150,8 @@
 				100000000000000000000149 /* FirebaseCore in Frameworks */,
 				100000000000000000000150 /* FirebaseAuth in Frameworks */,
 				100000000000000000000151 /* FirebaseFirestore in Frameworks */,
+				100000000000000000000160 /* GoogleSignIn in Frameworks */,
+				100000000000000000000166 /* GoogleSignInSwift in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -153,6 +170,7 @@
 			isa = PBXGroup;
 			children = (
 				0AE2ED742FF14DA700F77676 /* GoogleService-Info.plist */,
+				100000000000000000000059 /* EnglishPlus.entitlements */,
 				100000000000000000000023 /* Info.plist */,
 				100000000000000000000051 /* Assets.xcassets */,
 				100000000000000000000304 /* App */,
@@ -218,6 +236,9 @@
 				100000000000000000000009 /* AuthService.swift */,
 				100000000000000000000010 /* MockAuthService.swift */,
 				100000000000000000000046 /* FirebaseAuthService.swift */,
+				100000000000000000000058 /* FederatedSignInCoordinator.swift */,
+				100000000000000000000060 /* EvidenceUploadService.swift */,
+				100000000000000000000063 /* VolunteerReviewService.swift */,
 				100000000000000000000045 /* FirebaseAppConfigurator.swift */,
 				100000000000000000000034 /* AiProxyService.swift */,
 				100000000000000000000035 /* MockAiProxyService.swift */,
@@ -274,6 +295,7 @@
 			children = (
 				100000000000000000000012 /* RoleSelectionView.swift */,
 				100000000000000000000013 /* DemoLoginView.swift */,
+				100000000000000000000061 /* InstitutionPickerView.swift */,
 			);
 			path = RoleSelection;
 			sourceTree = "<group>";
@@ -294,6 +316,7 @@
 			children = (
 				100000000000000000000018 /* TeacherShellView.swift */,
 				100000000000000000000019 /* TeacherHomeView.swift */,
+				100000000000000000000064 /* VolunteerReviewView.swift */,
 			);
 			path = Teacher;
 			sourceTree = "<group>";
@@ -303,6 +326,7 @@
 			children = (
 				100000000000000000000020 /* VolunteerShellView.swift */,
 				100000000000000000000021 /* VolunteerHomeView.swift */,
+				100000000000000000000062 /* VolunteerApplicationView.swift */,
 			);
 			path = Volunteer;
 			sourceTree = "<group>";
@@ -368,6 +392,8 @@
 				100000000000000000000702 /* FirebaseCore */,
 				100000000000000000000703 /* FirebaseAuth */,
 				100000000000000000000704 /* FirebaseFirestore */,
+				100000000000000000000706 /* GoogleSignIn */,
+				100000000000000000000707 /* GoogleSignInSwift */,
 			);
 			productName = EnglishPlus;
 			productReference = 100000000000000000000024 /* EnglishPlus.app */;
@@ -385,6 +411,11 @@
 				TargetAttributes = {
 					100000000000000000000401 = {
 						CreatedOnToolsVersion = 26.5;
+						SystemCapabilities = {
+							com.apple.SignInWithApple = {
+								enabled = 1;
+							};
+						};
 					};
 				};
 			};
@@ -399,6 +430,7 @@
 			mainGroup = 100000000000000000000301;
 			packageReferences = (
 				100000000000000000000701 /* XCRemoteSwiftPackageReference "firebase-ios-sdk" */,
+				100000000000000000000705 /* XCRemoteSwiftPackageReference "GoogleSignIn-iOS" */,
 			);
 			productRefGroup = 100000000000000000000303 /* Products */;
 			projectDirPath = "";
@@ -453,6 +485,12 @@
 				100000000000000000000142 /* RemoteAIService.swift in Sources */,
 				100000000000000000000143 /* FirebaseAppConfigurator.swift in Sources */,
 				100000000000000000000144 /* FirebaseAuthService.swift in Sources */,
+				100000000000000000000159 /* FederatedSignInCoordinator.swift in Sources */,
+				100000000000000000000161 /* EvidenceUploadService.swift in Sources */,
+				100000000000000000000162 /* InstitutionPickerView.swift in Sources */,
+				100000000000000000000163 /* VolunteerApplicationView.swift in Sources */,
+				100000000000000000000164 /* VolunteerReviewService.swift in Sources */,
+				100000000000000000000165 /* VolunteerReviewView.swift in Sources */,
 				100000000000000000000134 /* PrivacyConsent.swift in Sources */,
 				100000000000000000000138 /* LearningModels.swift in Sources */,
 				100000000000000000000153 /* RuntimeDiagnostics.swift in Sources */,
@@ -491,6 +529,7 @@
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				CODE_SIGN_STYLE = Automatic;
+				CODE_SIGN_ENTITLEMENTS = EnglishPlus/EnglishPlus.entitlements;
 				CURRENT_PROJECT_VERSION = 3;
 				DEVELOPMENT_TEAM = X7Y2V4D87G;
 				GENERATE_INFOPLIST_FILE = NO;
@@ -517,6 +556,7 @@
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				CODE_SIGN_STYLE = Automatic;
+				CODE_SIGN_ENTITLEMENTS = EnglishPlus/EnglishPlus.entitlements;
 				CURRENT_PROJECT_VERSION = 3;
 				DEVELOPMENT_TEAM = X7Y2V4D87G;
 				GENERATE_INFOPLIST_FILE = NO;
@@ -680,6 +720,14 @@
 				minimumVersion = 12.0.0;
 			};
 		};
+		100000000000000000000705 /* XCRemoteSwiftPackageReference "GoogleSignIn-iOS" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/google/GoogleSignIn-iOS";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 9.1.0;
+			};
+		};
 /* End XCRemoteSwiftPackageReference section */
 
 /* Begin XCSwiftPackageProductDependency section */
@@ -697,6 +745,16 @@
 			isa = XCSwiftPackageProductDependency;
 			package = 100000000000000000000701 /* XCRemoteSwiftPackageReference "firebase-ios-sdk" */;
 			productName = FirebaseFirestore;
+		};
+		100000000000000000000706 /* GoogleSignIn */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 100000000000000000000705 /* XCRemoteSwiftPackageReference "GoogleSignIn-iOS" */;
+			productName = GoogleSignIn;
+		};
+		100000000000000000000707 /* GoogleSignInSwift */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 100000000000000000000705 /* XCRemoteSwiftPackageReference "GoogleSignIn-iOS" */;
+			productName = GoogleSignInSwift;
 		};
 /* End XCSwiftPackageProductDependency section */
 	};

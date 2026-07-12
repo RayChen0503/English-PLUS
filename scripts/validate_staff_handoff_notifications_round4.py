@@ -18,7 +18,6 @@ repository_store = read("ios/EnglishPlus/EnglishPlus/Services/LearningRepository
 required_teacher_markers = [
     "StaffSupportQueueHeaderCard",
     "StaffSupportActionBar",
-    "markSupportThreadHandledWithoutReply(request.id, by: appState.currentUser)",
     "archiveSupportThreadForStaff(request.id, by: appState.currentUser)",
     "learningRepository.teacherQueue",
     "waitingCount: learningRepository.staffDashboardMetrics.waitingHelpCount",
@@ -32,7 +31,6 @@ required_teacher_shell_markers = [
 required_volunteer_markers = [
     "StaffSupportQueueHeaderCard",
     "StaffSupportActionBar",
-    "markSupportThreadHandledWithoutReply(request.id, by: appState.currentUser)",
     "archiveSupportThreadForStaff(request.id, by: appState.currentUser)",
     "learningRepository.volunteerQueue",
     "waitingCount: learningRepository.volunteerDashboardMetrics.waitingCount",

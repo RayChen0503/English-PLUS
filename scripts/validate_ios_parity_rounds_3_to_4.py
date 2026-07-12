@@ -78,7 +78,6 @@ def validate_teacher_parity(errors: list[str]) -> None:
             "StaffSupportQueueHeaderCard",
             "TeacherSupportRequestCard",
             "StaffSupportActionBar",
-            "markSupportThreadHandledWithoutReply(request.id, by: appState.currentUser)",
             "archiveSupportThreadForStaff(request.id, by: appState.currentUser)",
         ],
     )
@@ -93,7 +92,7 @@ def validate_teacher_parity(errors: list[str]) -> None:
             "QuestionBankTypeOverview",
             "assignments(forStudentUid",
             "assignPracticeSet",
-            "supportRequests.filter(\\.countsTowardStaffBadge).count",
+            "countsTowardSharedStaffBadge(for: .teacher)",
         ],
     )
 
@@ -135,16 +134,15 @@ def validate_volunteer_parity(errors: list[str]) -> None:
         home,
         [
             "VolunteerHandoffWorkspaceView",
-            "VolunteerQueuePickerCard",
-            "VolunteerSelectedSupportPanel",
-            "VolunteerQuestionContextCard",
-            "VolunteerStaffReplyComposerCard",
+            "VolunteerHandoffSummaryCard",
+            "VolunteerSupportRequestCard",
+            "VolunteerTodayPriorityCard",
+            "VolunteerEmptyQueueCard",
             "VolunteerRecordView",
-            "VolunteerScriptTemplate",
+            "VolunteerRecordView",
             "StaffSupportQueueHeaderCard",
             "StaffSupportActionBar",
             "SupportQuestionSnapshotCard",
-            "markSupportThreadHandledWithoutReply(request.id, by: appState.currentUser)",
             "archiveSupportThreadForStaff(request.id, by: appState.currentUser)",
         ],
     )
@@ -156,7 +154,7 @@ def validate_volunteer_parity(errors: list[str]) -> None:
             "volunteerDashboardMetrics",
             "VolunteerDashboardMetrics",
             "visibleVolunteerReplies",
-            "volunteerQueue.count",
+            "countsTowardSharedStaffBadge(for: .volunteer)",
         ],
     )
 

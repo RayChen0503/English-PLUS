@@ -102,29 +102,16 @@ require(
     "submitPracticeAnswer must delegate wrong-answer AI to the MainActor helper.",
 )
 
-require(
-    "@MainActor\n    private func loadSupportAI(for request: StudentSupportRequest) async" in support_view,
-    "Support AI request must run through a MainActor helper.",
-)
-load_support_body = function_body(
-    support_view,
-    "private func loadSupportAI(for request: StudentSupportRequest) async",
-)
-require(
-    "defer { isLoadingSupportAI = false }" in load_support_body,
-    "Support AI loading state must be cleared with defer.",
-)
-
 header_match = re.search(
-    r"private struct SupportInboxHeaderCard: View \{(?P<body>.*?)\n\}",
+    r"private struct SupportReplyCenterSummaryCard: View \{(?P<body>.*?)\n\}",
     support_view,
     flags=re.S,
 )
-require(header_match is not None, "SupportInboxHeaderCard is missing.")
+require(header_match is not None, "SupportReplyCenterSummaryCard is missing.")
 header_body = header_match.group("body")
 require(
     "onOpenPractice" not in header_body and "onOpenHome" not in header_body,
-    "SupportInboxHeaderCard must not own navigation callbacks.",
+    "Support summary must not own navigation callbacks.",
 )
 require(
     "Label(\"去練習\"" not in header_body and "Label(\"回今日任務\"" not in header_body,
@@ -137,6 +124,11 @@ require(
 require(
     "private struct SupportAIActionCard" not in support_view,
     "Removed support navigation action card should not remain in the file.",
+)
+require(
+    "provideEmotionalSupportWithAI" not in support_view
+    and "SupportAIResponseCard" not in support_view,
+    "The reply inbox must not restore the removed standalone AI branch.",
 )
 
 require_main_actor_async_cleanup(

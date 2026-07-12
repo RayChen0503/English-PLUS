@@ -12,6 +12,8 @@ struct EnglishPlusApp: App {
                 authService: services.authService,
                 firestoreService: services.firestoreService,
                 aiService: services.aiService,
+                evidenceUploadService: services.evidenceUploadService,
+                volunteerReviewService: services.volunteerReviewService,
                 runtimeDiagnostics: services.runtimeDiagnostics
             )
         )
@@ -25,6 +27,7 @@ struct EnglishPlusApp: App {
             RootView()
                 .environmentObject(appState)
                 .environmentObject(learningRepository)
+                .onOpenURL(perform: FederatedSignInCoordinator.handleOpenURL)
         }
     }
 }

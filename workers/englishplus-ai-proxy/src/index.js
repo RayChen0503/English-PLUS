@@ -1,4 +1,19 @@
 const GROQ_CHAT_COMPLETIONS_URL = "https://api.groq.com/openai/v1/chat/completions";
+const FIREBASE_JWKS_URL =
+  "https://www.googleapis.com/service_accounts/v1/jwk/securetoken@system.gserviceaccount.com";
+const MAX_EVIDENCE_BYTES = 10 * 1024 * 1024;
+const ALLOWED_EVIDENCE_MIME_TYPES = new Set([
+  "application/pdf",
+  "image/jpeg",
+  "image/png",
+]);
+const VOLUNTEER_QUALIFICATIONS = new Set([
+  "universityEnrollment",
+  "englishProficiency",
+  "educatorCredential",
+  "nonprofitOrVolunteerService",
+  "other",
+]);
 
 const TASKS = new Set([
   "dailyMission",
@@ -11,7 +26,7 @@ const TASKS = new Set([
 
 const CORS_HEADERS = {
   "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Methods": "GET,POST,OPTIONS",
+  "Access-Control-Allow-Methods": "GET,POST,PUT,DELETE,OPTIONS",
   "Access-Control-Allow-Headers": "Authorization,Content-Type",
   "Access-Control-Max-Age": "86400",
 };
@@ -32,6 +47,33 @@ export default {
       return handleAi(request, env);
     }
 
+    if (url.pathname === "/evidence/upload-ticket" && request.method === "POST") {
+      return handleEvidenceUploadTicket(request, env);
+    }
+
+    if (url.pathname === "/evidence/upload" && request.method === "PUT") {
+      return handleEvidenceUpload(request, env);
+    }
+
+    if (url.pathname === "/evidence/object" && request.method === "DELETE") {
+      return handleEvidenceDelete(request, env);
+    }
+
+    if (
+      url.pathname.startsWith("/admin/volunteer-review/") &&
+      request.method === "POST"
+    ) {
+      return handleVolunteerReview(request, env, url);
+    }
+
+    if (url.pathname === "/admin/volunteer-applications" && request.method === "GET") {
+      return handleVolunteerApplicationList(request, env);
+    }
+
+    if (url.pathname === "/admin/evidence" && request.method === "GET") {
+      return handleAdminEvidence(request, env, url);
+    }
+
     return jsonResponse({ ok: false, error: "NOT_FOUND" }, 404);
   },
 };
@@ -47,6 +89,12 @@ function handleHealth(env) {
 
 async function handleAi(request, env) {
   let normalized;
+
+  try {
+    await requireFirebaseUser(request, env);
+  } catch (error) {
+    return authOrValidationError(error);
+  }
 
   try {
     const body = await request.json();
@@ -95,6 +143,600 @@ async function handleAi(request, env) {
       result: buildFallbackResponse(normalized, "GROQ_UNAVAILABLE"),
     });
   }
+}
+
+async function handleEvidenceUploadTicket(request, env) {
+  if (!env.EVIDENCE_UPLOAD_SIGNING_SECRET || !env.VOLUNTEER_EVIDENCE) {
+    return jsonResponse({ ok: false, error: "EVIDENCE_STORAGE_NOT_CONFIGURED" }, 503);
+  }
+
+  let user;
+  let input;
+  try {
+    user = await requireFirebaseUser(request, env);
+    await requireVolunteerApplicant(user, env, ["pendingApplication"]);
+    input = normalizeEvidenceTicketRequest(await request.json());
+  } catch (error) {
+    return authOrValidationError(error);
+  }
+
+  const evidenceId = crypto.randomUUID();
+  const extension = extensionForMimeType(input.mimeType);
+  const objectKey = `volunteer-evidence/${user.sub}/${evidenceId}.${extension}`;
+  const expiresAtSeconds = Math.floor(Date.now() / 1000) + 5 * 60;
+  const ticket = await signUploadTicket(
+    {
+      uid: user.sub,
+      evidenceId,
+      objectKey,
+      mimeType: input.mimeType,
+      sizeBytes: input.sizeBytes,
+      qualificationKind: input.qualificationKind,
+      exp: expiresAtSeconds,
+    },
+    env.EVIDENCE_UPLOAD_SIGNING_SECRET
+  );
+  const uploadURL = new URL("/evidence/upload", request.url);
+  uploadURL.searchParams.set("ticket", ticket);
+
+  return jsonResponse({
+    evidenceId,
+    objectKey,
+    uploadURL: uploadURL.toString(),
+    expiresAt: new Date(expiresAtSeconds * 1000).toISOString(),
+  });
+}
+
+async function handleEvidenceUpload(request, env) {
+  if (!env.EVIDENCE_UPLOAD_SIGNING_SECRET || !env.VOLUNTEER_EVIDENCE) {
+    return jsonResponse({ ok: false, error: "EVIDENCE_STORAGE_NOT_CONFIGURED" }, 503);
+  }
+
+  let ticket;
+  try {
+    ticket = await verifyUploadTicket(
+      new URL(request.url).searchParams.get("ticket"),
+      env.EVIDENCE_UPLOAD_SIGNING_SECRET
+    );
+  } catch (error) {
+    return authOrValidationError(error);
+  }
+
+  const contentType = request.headers.get("Content-Type")?.split(";", 1)[0] || "";
+  const contentLength = Number(request.headers.get("Content-Length"));
+  if (
+    contentType !== ticket.mimeType ||
+    !Number.isInteger(contentLength) ||
+    contentLength !== ticket.sizeBytes ||
+    contentLength < 1 ||
+    contentLength > MAX_EVIDENCE_BYTES
+  ) {
+    return jsonResponse({ ok: false, error: "UPLOAD_METADATA_MISMATCH" }, 400);
+  }
+  if (!ticket.objectKey.startsWith(`volunteer-evidence/${ticket.uid}/`)) {
+    return jsonResponse({ ok: false, error: "INVALID_OBJECT_KEY" }, 400);
+  }
+
+  const stored = await env.VOLUNTEER_EVIDENCE.put(ticket.objectKey, request.body, {
+    httpMetadata: { contentType },
+    customMetadata: {
+      ownerUid: ticket.uid,
+      evidenceId: ticket.evidenceId,
+      qualificationKind: ticket.qualificationKind,
+    },
+  });
+  if (!stored) {
+    return jsonResponse({ ok: false, error: "UPLOAD_FAILED" }, 500);
+  }
+
+  return jsonResponse({
+    ok: true,
+    evidenceId: ticket.evidenceId,
+    objectKey: ticket.objectKey,
+    etag: stored.etag,
+  });
+}
+
+async function handleEvidenceDelete(request, env) {
+  if (!env.VOLUNTEER_EVIDENCE) {
+    return jsonResponse({ ok: false, error: "EVIDENCE_STORAGE_NOT_CONFIGURED" }, 503);
+  }
+  let user;
+  let body;
+  try {
+    user = await requireFirebaseUser(request, env);
+    await requireVolunteerApplicant(user, env, ["pendingApplication"]);
+    body = await request.json();
+  } catch (error) {
+    return authOrValidationError(error);
+  }
+  const objectKey = safeString(body?.objectKey);
+  if (!objectKey || !objectKey.startsWith(`volunteer-evidence/${user.sub}/`)) {
+    return jsonResponse({ ok: false, error: "INVALID_OBJECT_KEY" }, 403);
+  }
+  await env.VOLUNTEER_EVIDENCE.delete(objectKey);
+  return jsonResponse({ ok: true });
+}
+
+async function handleVolunteerReview(request, env, url) {
+  let admin;
+  try {
+    admin = await requireFirebaseUser(request, env);
+    if (admin.admin !== true) {
+      throw httpError(403, "ADMIN_REQUIRED");
+    }
+  } catch (error) {
+    return authOrValidationError(error);
+  }
+
+  const uid = decodeURIComponent(url.pathname.split("/").pop() || "").trim();
+  if (!/^[A-Za-z0-9_-]{8,128}$/.test(uid)) {
+    return jsonResponse({ ok: false, error: "INVALID_UID" }, 400);
+  }
+
+  let body;
+  try {
+    body = await request.json();
+  } catch {
+    return jsonResponse({ ok: false, error: "INVALID_JSON" }, 400);
+  }
+  const actions = {
+    approved: { applicationStatus: "approved", accountStatus: "active", active: true },
+    rejected: { applicationStatus: "rejected", accountStatus: "disabled", active: false },
+    needsMoreInformation: {
+      applicationStatus: "needsMoreInformation",
+      accountStatus: "pendingApplication",
+      active: false,
+    },
+    suspended: { applicationStatus: "suspended", accountStatus: "suspended", active: false },
+  };
+  const decision = actions[body?.action];
+  if (!decision) {
+    return jsonResponse({ ok: false, error: "INVALID_REVIEW_ACTION" }, 400);
+  }
+
+  try {
+    await commitVolunteerReview(env, {
+      uid,
+      reviewerUid: admin.sub,
+      note: safeString(body?.note)?.slice(0, 1000) || "",
+      ...decision,
+    });
+    return jsonResponse({ ok: true, uid, status: decision.applicationStatus });
+  } catch {
+    return jsonResponse({ ok: false, error: "REVIEW_COMMIT_FAILED" }, 502);
+  }
+}
+
+async function handleVolunteerApplicationList(request, env) {
+  try {
+    const admin = await requireFirebaseUser(request, env);
+    if (admin.admin !== true) throw httpError(403, "ADMIN_REQUIRED");
+    const applications = await listVolunteerApplications(env);
+    return jsonResponse({ ok: true, applications });
+  } catch (error) {
+    if (error?.status) return authOrValidationError(error);
+    return jsonResponse({ ok: false, error: "APPLICATION_LIST_FAILED" }, 502);
+  }
+}
+
+async function handleAdminEvidence(request, env, url) {
+  if (!env.VOLUNTEER_EVIDENCE) {
+    return jsonResponse({ ok: false, error: "EVIDENCE_STORAGE_NOT_CONFIGURED" }, 503);
+  }
+  try {
+    const admin = await requireFirebaseUser(request, env);
+    if (admin.admin !== true) throw httpError(403, "ADMIN_REQUIRED");
+    const objectKey = safeString(url.searchParams.get("objectKey"));
+    if (!objectKey || !objectKey.startsWith("volunteer-evidence/")) {
+      throw httpError(400, "INVALID_OBJECT_KEY");
+    }
+    const object = await env.VOLUNTEER_EVIDENCE.get(objectKey);
+    if (!object?.body) throw httpError(404, "EVIDENCE_NOT_FOUND");
+    const headers = new Headers({
+      "Cache-Control": "private, no-store",
+      "Content-Type": object.httpMetadata?.contentType || "application/octet-stream",
+      "Content-Disposition": "attachment",
+      "X-Content-Type-Options": "nosniff",
+    });
+    return new Response(object.body, { status: 200, headers });
+  } catch (error) {
+    return authOrValidationError(error);
+  }
+}
+
+function normalizeEvidenceTicketRequest(raw) {
+  const filename = safeString(raw?.filename);
+  const mimeType = safeString(raw?.mimeType);
+  const sizeBytes = Number(raw?.sizeBytes);
+  const qualificationKind = safeString(raw?.qualificationKind);
+  if (!filename || filename.length > 180) {
+    throw httpError(400, "INVALID_FILENAME");
+  }
+  if (!mimeType || !ALLOWED_EVIDENCE_MIME_TYPES.has(mimeType)) {
+    throw httpError(400, "UNSUPPORTED_FILE_TYPE");
+  }
+  if (!Number.isInteger(sizeBytes) || sizeBytes < 1 || sizeBytes > MAX_EVIDENCE_BYTES) {
+    throw httpError(400, "INVALID_FILE_SIZE");
+  }
+  if (!qualificationKind || !VOLUNTEER_QUALIFICATIONS.has(qualificationKind)) {
+    throw httpError(400, "INVALID_QUALIFICATION_KIND");
+  }
+  return { filename, mimeType, sizeBytes, qualificationKind };
+}
+
+function extensionForMimeType(mimeType) {
+  switch (mimeType) {
+    case "application/pdf":
+      return "pdf";
+    case "image/jpeg":
+      return "jpg";
+    case "image/png":
+      return "png";
+    default:
+      throw httpError(400, "UNSUPPORTED_FILE_TYPE");
+  }
+}
+
+async function requireFirebaseUser(request, env) {
+  const authorization = request.headers.get("Authorization") || "";
+  const match = authorization.match(/^Bearer\s+(.+)$/i);
+  if (!match) {
+    throw httpError(401, "AUTH_REQUIRED");
+  }
+  const claims = await verifyFirebaseIdToken(
+    match[1],
+    env.FIREBASE_PROJECT_ID || "englishplus-testflight"
+  );
+  return { ...claims, firebaseIdToken: match[1] };
+}
+
+async function requireVolunteerApplicant(
+  user,
+  env,
+  allowedStatuses = ["pendingApplication", "pendingApproval"]
+) {
+  const projectId = env.FIREBASE_PROJECT_ID || "englishplus-testflight";
+  const response = await fetch(
+    `https://firestore.googleapis.com/v1/projects/${projectId}/databases/(default)/documents/users/${encodeURIComponent(user.sub)}`,
+    { headers: { Authorization: `Bearer ${user.firebaseIdToken}` } }
+  );
+  if (!response.ok) {
+    throw httpError(403, "VOLUNTEER_PROFILE_REQUIRED");
+  }
+  const document = await response.json();
+  const role = document.fields?.primaryRole?.stringValue;
+  const status = document.fields?.accountStatus?.stringValue;
+  if (
+    role !== "volunteer" ||
+    !allowedStatuses.includes(status)
+  ) {
+    throw httpError(403, "VOLUNTEER_APPLICATION_NOT_EDITABLE");
+  }
+}
+
+async function verifyFirebaseIdToken(token, projectId) {
+  const segments = token.split(".");
+  if (segments.length !== 3) {
+    throw httpError(401, "INVALID_TOKEN");
+  }
+  const header = decodeJsonSegment(segments[0]);
+  const claims = decodeJsonSegment(segments[1]);
+  const now = Math.floor(Date.now() / 1000);
+  if (
+    header.alg !== "RS256" ||
+    !header.kid ||
+    claims.aud !== projectId ||
+    claims.iss !== `https://securetoken.google.com/${projectId}` ||
+    typeof claims.sub !== "string" ||
+    claims.sub.length < 1 ||
+    claims.sub.length > 128 ||
+    typeof claims.exp !== "number" ||
+    claims.exp <= now - 30 ||
+    typeof claims.iat !== "number" ||
+    claims.iat > now + 30
+  ) {
+    throw httpError(401, "INVALID_TOKEN_CLAIMS");
+  }
+
+  const response = await fetch(FIREBASE_JWKS_URL, {
+    cf: { cacheEverything: true, cacheTtl: 3600 },
+  });
+  if (!response.ok) {
+    throw httpError(503, "AUTH_KEYS_UNAVAILABLE");
+  }
+  const jwks = await response.json();
+  const jwk = jwks.keys?.find((candidate) => candidate.kid === header.kid);
+  if (!jwk) {
+    throw httpError(401, "UNKNOWN_TOKEN_KEY");
+  }
+
+  const key = await crypto.subtle.importKey(
+    "jwk",
+    jwk,
+    { name: "RSASSA-PKCS1-v1_5", hash: "SHA-256" },
+    false,
+    ["verify"]
+  );
+  const verified = await crypto.subtle.verify(
+    "RSASSA-PKCS1-v1_5",
+    key,
+    decodeBase64Url(segments[2]),
+    new TextEncoder().encode(`${segments[0]}.${segments[1]}`)
+  );
+  if (!verified) {
+    throw httpError(401, "INVALID_TOKEN_SIGNATURE");
+  }
+  return claims;
+}
+
+async function signUploadTicket(payload, secret) {
+  const encodedPayload = encodeBase64Url(
+    new TextEncoder().encode(JSON.stringify(payload))
+  );
+  const key = await hmacKey(secret, ["sign"]);
+  const signature = await crypto.subtle.sign(
+    "HMAC",
+    key,
+    new TextEncoder().encode(encodedPayload)
+  );
+  return `${encodedPayload}.${encodeBase64Url(new Uint8Array(signature))}`;
+}
+
+async function verifyUploadTicket(ticket, secret) {
+  if (!ticket) {
+    throw httpError(401, "UPLOAD_TICKET_REQUIRED");
+  }
+  const segments = ticket.split(".");
+  if (segments.length !== 2) {
+    throw httpError(401, "INVALID_UPLOAD_TICKET");
+  }
+  const key = await hmacKey(secret, ["verify"]);
+  const verified = await crypto.subtle.verify(
+    "HMAC",
+    key,
+    decodeBase64Url(segments[1]),
+    new TextEncoder().encode(segments[0])
+  );
+  if (!verified) {
+    throw httpError(401, "INVALID_UPLOAD_TICKET");
+  }
+  const payload = JSON.parse(
+    new TextDecoder().decode(decodeBase64Url(segments[0]))
+  );
+  if (
+    typeof payload.exp !== "number" ||
+    payload.exp <= Math.floor(Date.now() / 1000) ||
+    typeof payload.uid !== "string" ||
+    typeof payload.objectKey !== "string" ||
+    typeof payload.evidenceId !== "string" ||
+    !ALLOWED_EVIDENCE_MIME_TYPES.has(payload.mimeType) ||
+    !VOLUNTEER_QUALIFICATIONS.has(payload.qualificationKind)
+  ) {
+    throw httpError(401, "EXPIRED_OR_INVALID_UPLOAD_TICKET");
+  }
+  return payload;
+}
+
+async function hmacKey(secret, usages) {
+  return crypto.subtle.importKey(
+    "raw",
+    new TextEncoder().encode(secret),
+    { name: "HMAC", hash: "SHA-256" },
+    false,
+    usages
+  );
+}
+
+async function commitVolunteerReview(env, review) {
+  const projectId = env.FIREBASE_PROJECT_ID || "englishplus-testflight";
+  const accessToken = await serviceAccountAccessToken(env);
+  const now = new Date().toISOString();
+  const root = `projects/${projectId}/databases/(default)/documents`;
+  const response = await fetch(
+    `https://firestore.googleapis.com/v1/projects/${projectId}/databases/(default)/documents:commit`,
+    {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        writes: [
+          {
+            update: {
+              name: `${root}/volunteerApplications/${review.uid}`,
+              fields: {
+                status: { stringValue: review.applicationStatus },
+                reviewedByUid: { stringValue: review.reviewerUid },
+                reviewedAt: { timestampValue: now },
+                reviewNote: { stringValue: review.note },
+                updatedAt: { timestampValue: now },
+              },
+            },
+            updateMask: {
+              fieldPaths: [
+                "status",
+                "reviewedByUid",
+                "reviewedAt",
+                "reviewNote",
+                "updatedAt",
+              ],
+            },
+            currentDocument: { exists: true },
+          },
+          {
+            update: {
+              name: `${root}/users/${review.uid}`,
+              fields: {
+                accountStatus: { stringValue: review.accountStatus },
+                active: { booleanValue: review.active },
+                updatedAt: { timestampValue: now },
+              },
+            },
+            updateMask: {
+              fieldPaths: ["accountStatus", "active", "updatedAt"],
+            },
+            currentDocument: { exists: true },
+          },
+        ],
+      }),
+    }
+  );
+  if (!response.ok) {
+    throw new Error("Firestore review commit failed.");
+  }
+}
+
+async function listVolunteerApplications(env) {
+  const projectId = env.FIREBASE_PROJECT_ID || "englishplus-testflight";
+  const accessToken = await serviceAccountAccessToken(env);
+  const documents = [];
+  let pageToken = "";
+
+  do {
+    const endpoint = new URL(
+      `https://firestore.googleapis.com/v1/projects/${projectId}/databases/(default)/documents/volunteerApplications`
+    );
+    endpoint.searchParams.set("pageSize", "100");
+    if (pageToken) endpoint.searchParams.set("pageToken", pageToken);
+    const response = await fetch(endpoint, {
+      headers: { Authorization: `Bearer ${accessToken}` },
+    });
+    if (!response.ok) throw new Error("Unable to list volunteer applications.");
+    const payload = await response.json();
+    documents.push(...(payload.documents || []));
+    pageToken = safeString(payload.nextPageToken);
+  } while (pageToken);
+
+  return documents
+    .map(normalizeVolunteerApplicationDocument)
+    .filter((item) => ["pendingReview", "needsMoreInformation"].includes(item.status))
+    .sort((left, right) => right.submittedAt.localeCompare(left.submittedAt));
+}
+
+function normalizeVolunteerApplicationDocument(document) {
+  const fields = document.fields || {};
+  const evidenceValues = fields.evidence?.arrayValue?.values || [];
+  return {
+    uid: firestoreString(fields.uid),
+    displayName: firestoreString(fields.displayName) || "志工申請者",
+    status: firestoreString(fields.status),
+    motivation: firestoreString(fields.motivation),
+    submittedAt:
+      fields.submittedAt?.timestampValue || fields.updatedAt?.timestampValue || "",
+    evidence: evidenceValues.map((value) => {
+      const item = value.mapValue?.fields || {};
+      return {
+        id: firestoreString(item.id),
+        kind: firestoreString(item.kind),
+        objectKey: firestoreString(item.storageObjectKey),
+        filename: firestoreString(item.originalFilename),
+        mimeType: firestoreString(item.mimeType),
+        sizeBytes: Number(item.sizeBytes?.integerValue || 0),
+      };
+    }),
+  };
+}
+
+function firestoreString(value) {
+  return value?.stringValue || "";
+}
+
+async function serviceAccountAccessToken(env) {
+  if (!env.FIREBASE_SERVICE_ACCOUNT_EMAIL || !env.FIREBASE_SERVICE_ACCOUNT_PRIVATE_KEY) {
+    throw new Error("Firebase service account is not configured.");
+  }
+  const now = Math.floor(Date.now() / 1000);
+  const assertion = await signServiceAccountJwt(
+    {
+      iss: env.FIREBASE_SERVICE_ACCOUNT_EMAIL,
+      scope: "https://www.googleapis.com/auth/datastore",
+      aud: "https://oauth2.googleapis.com/token",
+      iat: now,
+      exp: now + 3600,
+    },
+    env.FIREBASE_SERVICE_ACCOUNT_PRIVATE_KEY
+  );
+  const response = await fetch("https://oauth2.googleapis.com/token", {
+    method: "POST",
+    headers: { "Content-Type": "application/x-www-form-urlencoded" },
+    body: new URLSearchParams({
+      grant_type: "urn:ietf:params:oauth:grant-type:jwt-bearer",
+      assertion,
+    }),
+  });
+  const payload = await response.json();
+  if (!response.ok || !payload.access_token) {
+    throw new Error("Unable to authorize Firestore review.");
+  }
+  return payload.access_token;
+}
+
+async function signServiceAccountJwt(claims, privateKeyPem) {
+  const header = encodeBase64Url(
+    new TextEncoder().encode(JSON.stringify({ alg: "RS256", typ: "JWT" }))
+  );
+  const body = encodeBase64Url(
+    new TextEncoder().encode(JSON.stringify(claims))
+  );
+  const input = `${header}.${body}`;
+  const key = await crypto.subtle.importKey(
+    "pkcs8",
+    pemToArrayBuffer(privateKeyPem),
+    { name: "RSASSA-PKCS1-v1_5", hash: "SHA-256" },
+    false,
+    ["sign"]
+  );
+  const signature = await crypto.subtle.sign(
+    "RSASSA-PKCS1-v1_5",
+    key,
+    new TextEncoder().encode(input)
+  );
+  return `${input}.${encodeBase64Url(new Uint8Array(signature))}`;
+}
+
+function pemToArrayBuffer(pem) {
+  const normalized = pem.replace(/\\n/g, "\n");
+  const base64 = normalized
+    .replace("-----BEGIN PRIVATE KEY-----", "")
+    .replace("-----END PRIVATE KEY-----", "")
+    .replace(/\s/g, "");
+  return decodeBase64(base64).buffer;
+}
+
+function decodeJsonSegment(segment) {
+  try {
+    return JSON.parse(new TextDecoder().decode(decodeBase64Url(segment)));
+  } catch {
+    throw httpError(401, "INVALID_TOKEN");
+  }
+}
+
+function encodeBase64Url(bytes) {
+  let binary = "";
+  for (const byte of bytes) binary += String.fromCharCode(byte);
+  return btoa(binary).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/g, "");
+}
+
+function decodeBase64Url(value) {
+  const base64 = value.replace(/-/g, "+").replace(/_/g, "/");
+  return decodeBase64(base64.padEnd(Math.ceil(base64.length / 4) * 4, "="));
+}
+
+function decodeBase64(value) {
+  const binary = atob(value);
+  return Uint8Array.from(binary, (character) => character.charCodeAt(0));
+}
+
+function httpError(status, code) {
+  return Object.assign(new Error(code), { status, code });
+}
+
+function authOrValidationError(error) {
+  const status = Number(error?.status) || 400;
+  const code = safeString(error?.code) || "INVALID_REQUEST";
+  return jsonResponse({ ok: false, error: code }, status);
 }
 
 function normalizeRequest(raw) {
@@ -398,3 +1040,10 @@ function jsonResponse(body, status = 200) {
     },
   });
 }
+
+export {
+  normalizeEvidenceTicketRequest,
+  normalizeRequest,
+  signUploadTicket,
+  verifyUploadTicket,
+};

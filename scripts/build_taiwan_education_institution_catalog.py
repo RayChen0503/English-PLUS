@@ -12,6 +12,7 @@ import argparse
 import csv
 import hashlib
 import json
+import re
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Iterable
@@ -28,7 +29,7 @@ KIND_MAP = {
 HEADER_ALIASES = {
     "code": ("代碼", "學校代碼", "學校統計處代碼", "school_code"),
     "name": ("學校名稱", "校名", "機構名稱", "school_name"),
-    "city": ("縣市名稱", "縣市別", "縣市", "city"),
+    "city": ("縣市名稱", "縣市別", "縣市", "主管機關(縣市)", "city"),
     "district": ("行政區", "鄉鎮市區", "district"),
 }
 
@@ -46,6 +47,11 @@ def read_rows(path: Path) -> list[dict[str, str]]:
     for encoding in ("utf-8-sig", "utf-8", "cp950"):
         try:
             with path.open("r", encoding=encoding, newline="") as handle:
+                if path.suffix.lower() == ".json":
+                    payload = json.load(handle)
+                    if isinstance(payload, dict):
+                        payload = payload.get("data") or payload.get("records") or []
+                    return [dict(row) for row in payload if isinstance(row, dict)]
                 return [dict(row) for row in csv.DictReader(handle)]
         except UnicodeDecodeError as error:
             last_error = error
@@ -56,7 +62,7 @@ def read_rows(path: Path) -> list[dict[str, str]]:
 
 def value(row: dict[str, str], field: str) -> str:
     for alias in HEADER_ALIASES[field]:
-        candidate = (row.get(alias) or "").strip()
+        candidate = str(row.get(alias) or "").strip()
         if candidate:
             return candidate
     return ""
@@ -76,8 +82,9 @@ def normalize_source(source: SourceSpec) -> Iterable[dict[str, object]]:
         if not name:
             continue
         code = value(row, "code")
-        city = value(row, "city")
+        city = re.sub(r"^\[[^\]]+\]", "", value(row, "city")).strip()
         district = value(row, "district")
+        academic_year = str(row.get("學年度") or source.academic_year).strip()
         yield {
             "id": stable_id(code, name, city, output_kind),
             "officialCode": code or None,
@@ -87,7 +94,7 @@ def normalize_source(source: SourceSpec) -> Iterable[dict[str, object]]:
             "kind": output_kind,
             "source": "ministryOfEducation",
             "sourceDatasetId": source.dataset_id,
-            "sourceAcademicYear": source.academic_year,
+            "sourceAcademicYear": academic_year,
             "isActive": True,
         }
 

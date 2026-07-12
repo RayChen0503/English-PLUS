@@ -127,7 +127,7 @@ struct TeacherAffiliation: Codable, Equatable {
     }
 }
 
-enum VolunteerQualificationKind: String, Codable, CaseIterable {
+enum VolunteerQualificationKind: String, Codable, CaseIterable, Hashable {
     case universityEnrollment
     case englishProficiency
     case educatorCredential
@@ -170,11 +170,15 @@ struct VolunteerApplicationInput: Codable, Equatable {
     let evidence: [VolunteerEvidenceReference]
 
     var isReadyToSubmit: Bool {
+        hasRequiredIdentityDetails
+            && !evidence.isEmpty
+            && evidence.allSatisfy(\.hasUsableReference)
+    }
+
+    var hasRequiredIdentityDetails: Bool {
         confirmsAge18OrOlder
             && !acceptedConductVersion.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
             && !motivation.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-            && !evidence.isEmpty
-            && evidence.allSatisfy(\.hasUsableReference)
     }
 }
 
@@ -197,7 +201,7 @@ struct RoleOnboardingProfile: Equatable {
                 && volunteerApplication == nil
         case .volunteer:
             return teacherAffiliation == nil
-                && volunteerApplication?.isReadyToSubmit == true
+                && volunteerApplication?.hasRequiredIdentityDetails == true
         }
     }
 }
@@ -244,4 +248,12 @@ enum FederatedIdentityCredential: Equatable {
             return .apple
         }
     }
+}
+
+struct EducationInstitutionCatalogSeed: SeedLoadable, Equatable {
+    static let seedFileName = "education_institutions_seed"
+
+    let schemaVersion: Int
+    let academicYear: String
+    let institutions: [EducationInstitution]
 }

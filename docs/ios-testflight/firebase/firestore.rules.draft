@@ -64,7 +64,7 @@ service cloud.firestore {
         || (
           profile.primaryRole == "volunteer"
           && profile.active == false
-          && profile.accountStatus == "pendingApproval"
+          && profile.accountStatus in ["pendingApplication", "pendingApproval"]
           && profile.provisioningSource == "selfServiceVolunteer"
         );
     }
@@ -79,8 +79,53 @@ service cloud.firestore {
     function isPendingVolunteerAfter(uid) {
       let profile = getAfter(userPath(uid)).data;
       return profile.primaryRole == "volunteer"
-        && profile.accountStatus == "pendingApproval"
+        && profile.accountStatus in ["pendingApplication", "pendingApproval"]
         && profile.provisioningSource == "selfServiceVolunteer";
+    }
+
+    function volunteerApplicationPath(uid) {
+      return /databases/$(database)/documents/volunteerApplications/$(uid);
+    }
+
+    function validVolunteerSubmission(uid) {
+      let currentProfile = resource.data;
+      let nextProfile = request.resource.data;
+      let application = getAfter(volunteerApplicationPath(uid)).data;
+      return currentProfile.primaryRole == "volunteer"
+        && currentProfile.accountStatus == "pendingApplication"
+        && nextProfile.primaryRole == "volunteer"
+        && nextProfile.accountStatus == "pendingApproval"
+        && nextProfile.active == false
+        && nextProfile.provisioningSource == currentProfile.provisioningSource
+        && nextProfile.diff(currentProfile).affectedKeys().hasOnly([
+          "accountStatus",
+          "active",
+          "updatedAt"
+        ])
+        && application.status == "pendingReview"
+        && application.evidence is list
+        && application.evidence.size() > 0;
+    }
+
+    function validIdentityProviderUpdate(uid) {
+      return isSelf(uid)
+        && resource.data.accountStatus in ["active", "pendingApplication"]
+        && request.resource.data.accountStatus == resource.data.accountStatus
+        && request.resource.data.primaryRole == resource.data.primaryRole
+        && request.resource.data.identityProviders is list
+        && request.resource.data.identityProviders.size() <= 3
+        && request.resource.data.identityProviders.hasOnly([
+          "emailPassword",
+          "google",
+          "apple"
+        ])
+        && request.resource.data.identityProviders.hasAll(
+          resource.data.identityProviders
+        )
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+          "identityProviders",
+          "updatedAt"
+        ]);
     }
 
     function memberPath(classId, uid) {
@@ -277,14 +322,23 @@ service cloud.firestore {
           "updatedAt"
         ])
         && request.resource.data.uid == uid
-        && request.resource.data.status == "pendingReview"
+        && request.resource.data.status in ["draft", "pendingReview"]
         && request.resource.data.confirmsAge18OrOlder == true
         && request.resource.data.acceptedConductVersion is string
         && request.resource.data.motivation is string
         && request.resource.data.evidence is list
-        && request.resource.data.evidence.size() > 0;
+        && (
+          (
+            request.resource.data.status == "draft"
+            && request.resource.data.evidence.size() == 0
+          )
+          || (
+            request.resource.data.status == "pendingReview"
+            && request.resource.data.evidence.size() > 0
+          )
+        );
       allow update: if isSelf(uid)
-        && resource.data.status == "needsMoreInformation"
+        && resource.data.status in ["draft", "needsMoreInformation"]
         && request.resource.data.status == "pendingReview"
         && request.resource.data.uid == uid
         && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
@@ -321,16 +375,23 @@ service cloud.firestore {
         && request.resource.data.identityProviders.size() > 0
         && validInitialEmailPolicy(request.resource.data)
         && validSelfServiceProfile(request.resource.data);
-      allow update: if hasAccountAccess(uid)
-        && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
-          "displayName",
-          "preferredName",
-          "lastLoginAt",
-          "updatedAt",
-          "activeClassId"
-        ])
-        && request.resource.data.primaryRole == resource.data.primaryRole
-        && validActiveClassSelection(uid);
+      allow update: if (
+          hasAccountAccess(uid)
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+            "displayName",
+            "preferredName",
+            "lastLoginAt",
+            "updatedAt",
+            "activeClassId"
+          ])
+          && request.resource.data.primaryRole == resource.data.primaryRole
+          && validActiveClassSelection(uid)
+        ) || (
+          isSelf(uid)
+          && validVolunteerSubmission(uid)
+        ) || (
+          validIdentityProviderUpdate(uid)
+        );
       allow delete: if false;
 
       match /classMemberships/{classId} {

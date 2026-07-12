@@ -24,6 +24,7 @@ store = read("ios/EnglishPlus/EnglishPlus/Services/LearningRepositoryStore.swift
 mock_repo = read("ios/EnglishPlus/EnglishPlus/Services/MockLearningRepository.swift")
 firebase_repo = read("ios/EnglishPlus/EnglishPlus/Services/FirebaseLearningRepository.swift")
 student_home = read("ios/EnglishPlus/EnglishPlus/Features/Student/StudentHomeView.swift")
+student_classroom = read("ios/EnglishPlus/EnglishPlus/Features/Student/StudentClassroomView.swift")
 practice_center = read("ios/EnglishPlus/EnglishPlus/Features/Practice/PracticeCenterView.swift")
 teacher_home = read("ios/EnglishPlus/EnglishPlus/Features/Teacher/TeacherHomeView.swift")
 
@@ -90,10 +91,11 @@ require_markers(
 
 require_markers(
     "student assignment entry",
-    student_home,
+    student_classroom,
     [
-        "assignedPracticeTaskCard",
-        "pendingAssignments(forStudentUid:",
+        "StudentClassroomView",
+        "pendingAssignments",
+        "ClassroomAssignmentCard",
         "startAssignedPracticeTask(",
     ],
 )

@@ -143,7 +143,7 @@ def main() -> int:
         'profile.provisioningSource == "selfServiceStudent"',
         'profile.provisioningSource == "selfServiceTeacher"',
         'profile.provisioningSource == "selfServiceVolunteer"',
-        'profile.accountStatus == "pendingApproval"',
+        'profile.accountStatus in ["pendingApplication", "pendingApproval"]',
         "match /educationInstitutions/{institutionId}",
         "match /teacherProfiles/{uid}",
         'request.resource.data.claimStatus == "selfDeclared"',

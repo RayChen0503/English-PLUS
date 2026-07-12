@@ -989,7 +989,7 @@ private struct TeacherAssignmentReviewCard: View {
             return TeacherAssignmentQuestionResult(
                 id: "\(assignment.id)-\(questionId)-\(index)",
                 number: index + 1,
-                prompt: snapshot?.prompt ?? attempt?.prompt ?? question?.question.prompt ?? "題目資料已不在本機",
+                prompt: snapshot?.prompt ?? attempt?.prompt ?? question?.question.prompt ?? "題目內容目前無法載入",
                 selectedAnswer: snapshot?.selectedAnswer ?? attempt?.selectedAnswer,
                 acceptedAnswer: snapshot?.acceptedAnswer ?? attempt?.acceptedAnswer ?? question?.question.answer,
                 isCorrect: snapshot?.isCorrect ?? attempt?.isCorrect,

@@ -55,13 +55,26 @@ struct MockAuthService: AuthService {
             groupId: nil,
             consentStatus: .pending,
             isDemo: false,
+            accountStatus: registration.role == .volunteer ? .pendingApplication : .active,
             createdAt: now,
             updatedAt: now,
             memberships: [],
             activeClassId: nil
         )
         if registration.role == .volunteer {
-            return .approvalPending(email: cleanedEmail, role: .volunteer)
+            if registration.volunteerApplication?.isReadyToSubmit == true {
+                return .approvalPending(email: cleanedEmail, role: .volunteer)
+            }
+            return .authenticated(
+                AuthSession(
+                    user: DemoUser(
+                        id: profile.id,
+                        displayName: profile.displayName,
+                        role: profile.role
+                    ),
+                    profile: profile
+                )
+            )
         }
 
         return .authenticated(
@@ -71,6 +84,30 @@ struct MockAuthService: AuthService {
             )
         )
     }
+
+    func submitVolunteerApplication(
+        _ application: VolunteerApplicationInput,
+        in session: AuthSession
+    ) async throws -> AccountCreationOutcome {
+        guard session.user.role == .volunteer, application.isReadyToSubmit else {
+            throw AuthServiceError.invalidVolunteerApplication
+        }
+        return .approvalPending(email: "", role: .volunteer)
+    }
+
+    func loadVolunteerApplication(
+        in session: AuthSession
+    ) async throws -> VolunteerApplicationInput? {
+        guard session.user.role == .volunteer else { return nil }
+        return VolunteerApplicationInput(
+            confirmsAge18OrOlder: true,
+            acceptedConductVersion: "volunteer-conduct-v1",
+            motivation: "",
+            evidence: []
+        )
+    }
+
+    func currentUserIsAdministrator() async -> Bool { false }
 
     private static func profile(id: String, displayName: String, role: UserRole) -> AppUserProfile {
         let now = Date(timeIntervalSince1970: 1_718_668_800)

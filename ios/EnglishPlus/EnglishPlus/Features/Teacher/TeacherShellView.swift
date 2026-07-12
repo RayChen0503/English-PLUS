@@ -1,6 +1,7 @@
 import SwiftUI
 
 struct TeacherShellView: View {
+    @EnvironmentObject private var appState: AppState
     @EnvironmentObject private var learningRepository: LearningRepositoryStore
 
     var body: some View {
@@ -25,6 +26,14 @@ struct TeacherShellView: View {
                 .tabItem {
                     Label("報告", systemImage: "doc.text.magnifyingglass")
                 }
+
+            if appState.isAdministrator {
+                VolunteerReviewView()
+                    .tabItem {
+                        Label("志工審核", systemImage: "person.badge.shield.checkmark")
+                    }
+                    .badge(appState.volunteerReviewApplications.count)
+            }
         }
     }
 }

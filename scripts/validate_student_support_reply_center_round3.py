@@ -40,14 +40,14 @@ require(
 )
 
 require(
-    "support page preserves learning loop actions",
+    "support page stays a focused reply inbox",
     support_view,
     [
-        "onOpenPractice",
-        "SupportEmptyStateCard(onOpenPractice: openPracticeFromSupport)",
+        "SupportEmptyStateCard()",
         "SupportQuestionSnapshotCard",
         "SupportReplyTimeline",
     ],
 )
+assert "onOpenPractice" not in support_view
 
 print("student support reply center round 3 contract passed")

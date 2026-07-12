@@ -71,11 +71,11 @@ def main() -> int:
             "AppState.chooseRole must open DemoLoginView instead of signing in directly", errors)
     require("authService.signIn(" in app_state and "email:" in app_state and "password:" in app_state,
             "AppState.signIn(email:password:role:) must call AuthService credential sign-in", errors)
-    require("placeholder: \"email\"" in demo_login and "SecureField(\"輸入密碼\"" in demo_login,
+    require('title: "Email"' in demo_login and 'SecureField("至少 8 個字元"' in demo_login,
             "DemoLoginView must render visible email and password fields", errors)
     require("await appState.signIn(email: email, password: password, role: role)" in demo_login,
             "DemoLoginView must submit typed credentials through AppState", errors)
-    require("使用帳號登入" in demo_login and "退回本機展示帳號" not in demo_login,
+    require("登入後繼續你的每日任務" in demo_login and "本機展示帳號" not in demo_login,
             "DemoLoginView copy must describe real account login, not local fallback", errors)
     require("Auth.auth().signIn(withEmail: email, password: password)" in firebase_auth,
             "FirebaseAuthService must call Firebase Auth signIn(withEmail:password:)", errors)

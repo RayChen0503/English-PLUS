@@ -52,6 +52,7 @@ struct AppUserProfile: Identifiable, Codable, Equatable {
     let groupId: String?
     let consentStatus: ConsentStatus
     let isDemo: Bool
+    let accountStatus: AccountProvisioningStatus
     let createdAt: Date
     let updatedAt: Date
     let memberships: [ClassMembership]
@@ -89,6 +90,7 @@ struct AppUserProfile: Identifiable, Codable, Equatable {
         groupId: String?,
         consentStatus: ConsentStatus,
         isDemo: Bool,
+        accountStatus: AccountProvisioningStatus = .active,
         createdAt: Date,
         updatedAt: Date,
         memberships: [ClassMembership]? = nil,
@@ -128,6 +130,7 @@ struct AppUserProfile: Identifiable, Codable, Equatable {
         self.groupId = groupId
         self.consentStatus = consentStatus
         self.isDemo = isDemo
+        self.accountStatus = accountStatus
         self.createdAt = createdAt
         self.updatedAt = updatedAt
         self.memberships = resolvedMemberships
@@ -146,6 +149,7 @@ struct AppUserProfile: Identifiable, Codable, Equatable {
                 groupId: nil,
                 consentStatus: consentStatus,
                 isDemo: isDemo,
+                accountStatus: accountStatus,
                 createdAt: createdAt,
                 updatedAt: Date(),
                 memberships: memberships,
@@ -167,6 +171,7 @@ struct AppUserProfile: Identifiable, Codable, Equatable {
             groupId: membership.groupId,
             consentStatus: consentStatus,
             isDemo: isDemo,
+            accountStatus: accountStatus,
             createdAt: createdAt,
             updatedAt: Date(),
             memberships: memberships,
@@ -182,6 +187,7 @@ struct AppUserProfile: Identifiable, Codable, Equatable {
         case groupId
         case consentStatus
         case isDemo
+        case accountStatus
         case createdAt
         case updatedAt
         case memberships
@@ -204,6 +210,10 @@ struct AppUserProfile: Identifiable, Codable, Equatable {
             groupId: try container.decodeIfPresent(String.self, forKey: .groupId),
             consentStatus: try container.decode(ConsentStatus.self, forKey: .consentStatus),
             isDemo: try container.decode(Bool.self, forKey: .isDemo),
+            accountStatus: try container.decodeIfPresent(
+                AccountProvisioningStatus.self,
+                forKey: .accountStatus
+            ) ?? .active,
             createdAt: createdAt,
             updatedAt: try container.decode(Date.self, forKey: .updatedAt),
             memberships: try container.decodeIfPresent([ClassMembership].self, forKey: .memberships),
@@ -220,6 +230,7 @@ struct AppUserProfile: Identifiable, Codable, Equatable {
         try container.encodeIfPresent(groupId, forKey: .groupId)
         try container.encode(consentStatus, forKey: .consentStatus)
         try container.encode(isDemo, forKey: .isDemo)
+        try container.encode(accountStatus, forKey: .accountStatus)
         try container.encode(createdAt, forKey: .createdAt)
         try container.encode(updatedAt, forKey: .updatedAt)
         try container.encode(memberships, forKey: .memberships)

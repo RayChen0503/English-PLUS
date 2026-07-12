@@ -62,11 +62,11 @@ def main() -> None:
         and "requiresStaffTeachingResponse" in models,
         "Support requests must expose whether they contain a complete question snapshot for staff.",
     )
-    for label, source in [("store", store), ("mock repo", mock_repo)]:
-        require(
-            ".filter(\\.requiresStaffTeachingResponse)" in source,
-            f"{label} teacher queue must filter out meaningless requests without question snapshots.",
-        )
+    require(
+        ".filter { $0.isVisibleInStaffQueue(for: .teacher) }" in store
+        and ".filter { $0.isVisibleInStaffQueue(for: .volunteer) }" in store,
+        "Role queues must use the shared visibility helper that rejects incomplete snapshots.",
+    )
 
     for token in [
         "allLearningMapNodesCompleted",

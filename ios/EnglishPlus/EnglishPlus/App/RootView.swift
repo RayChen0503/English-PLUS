@@ -11,6 +11,8 @@ struct RootView: View {
                 RoleSelectionView()
             case .demoLogin(let role):
                 DemoLoginView(role: role)
+            case .volunteerApplication:
+                VolunteerApplicationView()
             case .privacyConsent(let role):
                 ConsentView(role: role)
             case .home(let role):

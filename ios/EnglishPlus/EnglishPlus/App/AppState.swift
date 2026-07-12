@@ -1,4 +1,5 @@
 import Foundation
+import UniformTypeIdentifiers
 
 @MainActor
 final class AppState: ObservableObject {
@@ -13,26 +14,43 @@ final class AppState: ObservableObject {
     @Published private(set) var verificationEmailAddress: String?
     @Published private(set) var isManagingAccount = false
     @Published private(set) var latestAIResponse: AiProxyResponse?
+    @Published private(set) var volunteerApplicationDraft: VolunteerApplicationInput?
+    @Published private(set) var isAdministrator = false
+    @Published private(set) var volunteerReviewApplications: [VolunteerReviewApplication] = []
+    @Published private(set) var volunteerReviewErrorMessage: String?
+    @Published private(set) var isLoadingVolunteerReviews = false
     @Published private(set) var runtimeDiagnostics: RuntimeDiagnosticsSnapshot
 
     private let authService: AuthService
     private let firestoreService: FirestoreService
     private let aiService: AIService
+    private let evidenceUploadService: EvidenceUploadService
+    private let volunteerReviewService: VolunteerReviewService
     private var didAttemptSessionRestore = false
+    private var pendingIdentityCredential: FederatedIdentityCredential?
+    private var pendingIdentityRole: UserRole?
 
     init(
         authService: AuthService,
         firestoreService: FirestoreService,
         aiService: AIService,
+        evidenceUploadService: EvidenceUploadService,
+        volunteerReviewService: VolunteerReviewService,
         runtimeDiagnostics: RuntimeDiagnosticsSnapshot
     ) {
         self.authService = authService
         self.firestoreService = firestoreService
         self.aiService = aiService
+        self.evidenceUploadService = evidenceUploadService
+        self.volunteerReviewService = volunteerReviewService
         self.runtimeDiagnostics = runtimeDiagnostics
     }
 
     func chooseRole(_ role: UserRole) {
+        if let pendingIdentityRole, pendingIdentityRole != role {
+            pendingIdentityCredential = nil
+            self.pendingIdentityRole = nil
+        }
         selectedRole = role
         signInErrorMessage = nil
         authNoticeMessage = nil
@@ -66,6 +84,38 @@ final class AppState: ObservableObject {
         }
     }
 
+    var canUseFederatedSignIn: Bool {
+        runtimeDiagnostics.backendMode == .firebase
+            && runtimeDiagnostics.hasFirebaseConfig
+    }
+
+    func signIn(
+        with credential: FederatedIdentityCredential,
+        role: UserRole
+    ) async {
+        guard signingInRole == nil else { return }
+        selectedRole = role
+        signingInRole = role
+        clearAuthFeedback()
+
+        do {
+            let session = try await authService.signIn(
+                with: credential,
+                expectedRole: role
+            )
+            await finishAuthenticatedSession(session)
+            signingInRole = nil
+        } catch {
+            clearFailedAuthenticationState()
+            if let authError = error as? AuthServiceError,
+               authError == .accountLinkRequired {
+                pendingIdentityCredential = credential
+                pendingIdentityRole = role
+            }
+            signInErrorMessage = userMessage(for: error)
+        }
+    }
+
     func createAccount(
         email: String,
         password: String,
@@ -94,24 +144,139 @@ final class AppState: ObservableObject {
 
         do {
             let outcome = try await authService.createAccount(registration)
-            switch outcome {
-            case .authenticated(let session):
-                await finishAuthenticatedSession(session)
-            case .emailVerificationRequired(let email):
-                clearFailedAuthenticationState()
-                verificationEmailAddress = email
-                authNoticeMessage = "驗證信已寄出。完成信箱驗證後，就可以回來登入。"
-            case .approvalPending(_, let role):
-                clearFailedAuthenticationState()
-                authNoticeMessage = role == .volunteer
-                    ? "志工申請已送出，審核通過後即可登入。"
-                    : "帳號申請已送出，請等待審核。"
-            }
+            await handleCreationOutcome(outcome)
             signingInRole = nil
         } catch {
             clearFailedAuthenticationState()
             signInErrorMessage = userMessage(for: error)
         }
+    }
+
+    func createAccount(
+        with credential: FederatedIdentityCredential,
+        profile: RoleOnboardingProfile
+    ) async {
+        guard signingInRole == nil else { return }
+        selectedRole = profile.role
+        signingInRole = profile.role
+        clearAuthFeedback()
+
+        do {
+            let outcome = try await authService.createAccount(
+                with: credential,
+                profile: profile
+            )
+            await handleCreationOutcome(outcome)
+            signingInRole = nil
+        } catch {
+            clearFailedAuthenticationState()
+            signInErrorMessage = userMessage(for: error)
+        }
+    }
+
+    func presentAuthenticationError(_ error: Error) {
+        if let localizedError = error as? LocalizedError,
+           let description = localizedError.errorDescription {
+            signInErrorMessage = description
+        } else {
+            signInErrorMessage = "登入沒有完成，請再試一次。"
+        }
+    }
+
+    func clearAuthFeedback() {
+        signInErrorMessage = nil
+        authNoticeMessage = nil
+        verificationEmailAddress = nil
+    }
+
+    func uploadVolunteerEvidence(
+        from fileURL: URL,
+        kind: VolunteerQualificationKind
+    ) async throws -> VolunteerEvidenceReference {
+        let accessingSecurityScopedResource = fileURL.startAccessingSecurityScopedResource()
+        defer {
+            if accessingSecurityScopedResource {
+                fileURL.stopAccessingSecurityScopedResource()
+            }
+        }
+
+        let values = try fileURL.resourceValues(forKeys: [.fileSizeKey, .nameKey])
+        if let fileSize = values.fileSize, fileSize > 10 * 1024 * 1024 {
+            throw EvidenceUploadError.fileTooLarge
+        }
+        let data = try Data(contentsOf: fileURL, options: [.mappedIfSafe])
+        let mimeType = UTType(filenameExtension: fileURL.pathExtension)?.preferredMIMEType
+            ?? "application/octet-stream"
+        return try await evidenceUploadService.upload(
+            data: data,
+            filename: values.name ?? fileURL.lastPathComponent,
+            mimeType: mimeType,
+            kind: kind
+        )
+    }
+
+    func deleteVolunteerEvidence(_ reference: VolunteerEvidenceReference) async throws {
+        try await evidenceUploadService.delete(reference)
+    }
+
+    func submitVolunteerApplication(_ application: VolunteerApplicationInput) async {
+        guard let currentUser, let currentProfile, signingInRole == nil else { return }
+        signingInRole = .volunteer
+        clearAuthFeedback()
+        do {
+            let outcome = try await authService.submitVolunteerApplication(
+                application,
+                in: AuthSession(user: currentUser, profile: currentProfile)
+            )
+            await handleCreationOutcome(outcome)
+            route = .demoLogin(.volunteer)
+            signingInRole = nil
+        } catch {
+            signingInRole = nil
+            signInErrorMessage = userMessage(for: error)
+        }
+    }
+
+    func loadVolunteerApplicationDraft() async {
+        guard let currentUser, let currentProfile else { return }
+        volunteerApplicationDraft = try? await authService.loadVolunteerApplication(
+            in: AuthSession(user: currentUser, profile: currentProfile)
+        )
+    }
+
+    func loadVolunteerReviewApplications() async {
+        guard isAdministrator, !isLoadingVolunteerReviews else { return }
+        isLoadingVolunteerReviews = true
+        volunteerReviewErrorMessage = nil
+        do {
+            volunteerReviewApplications = try await volunteerReviewService.listApplications()
+        } catch {
+            volunteerReviewErrorMessage = (error as? LocalizedError)?.errorDescription
+                ?? "無法載入志工申請。"
+        }
+        isLoadingVolunteerReviews = false
+    }
+
+    func reviewVolunteer(
+        uid: String,
+        action: VolunteerReviewAction,
+        note: String
+    ) async -> Bool {
+        guard isAdministrator else { return false }
+        volunteerReviewErrorMessage = nil
+        do {
+            try await volunteerReviewService.review(uid: uid, action: action, note: note)
+            await loadVolunteerReviewApplications()
+            return true
+        } catch {
+            volunteerReviewErrorMessage = (error as? LocalizedError)?.errorDescription
+                ?? "審核沒有完成。"
+            return false
+        }
+    }
+
+    func downloadVolunteerEvidence(_ evidence: VolunteerReviewEvidence) async throws -> URL {
+        try await volunteerReviewService.downloadEvidence(evidence)
     }
 
     func sendPasswordReset(email: String) async {
@@ -196,6 +361,13 @@ final class AppState: ObservableObject {
         verificationEmailAddress = nil
         isManagingAccount = false
         latestAIResponse = nil
+        volunteerApplicationDraft = nil
+        isAdministrator = false
+        volunteerReviewApplications = []
+        volunteerReviewErrorMessage = nil
+        isLoadingVolunteerReviews = false
+        pendingIdentityCredential = nil
+        pendingIdentityRole = nil
         runtimeDiagnostics = runtimeDiagnostics.clearingSession()
         route = .roleSelection
     }
@@ -258,11 +430,56 @@ final class AppState: ObservableObject {
         return response
     }
 
-    private func finishAuthenticatedSession(_ session: AuthSession) async {
+    private func handleCreationOutcome(_ outcome: AccountCreationOutcome) async {
+        switch outcome {
+        case .authenticated(let session):
+            await finishAuthenticatedSession(session)
+        case .emailVerificationRequired(let email):
+            clearFailedAuthenticationState()
+            verificationEmailAddress = email
+            authNoticeMessage = "驗證信已寄出。完成信箱驗證後，就可以回來登入。"
+        case .approvalPending(_, let role):
+            clearFailedAuthenticationState()
+            authNoticeMessage = role == .volunteer
+                ? "志工申請已送出，審核通過後即可登入。"
+                : "帳號申請已送出，請等待審核。"
+        }
+    }
+
+    private func finishAuthenticatedSession(_ initialSession: AuthSession) async {
+        var session = initialSession
+        if let pendingIdentityCredential,
+           pendingIdentityRole == session.user.role {
+            do {
+                session = try await authService.linkIdentity(
+                    pendingIdentityCredential,
+                    to: session
+                )
+                authNoticeMessage = "登入方式已安全連結；之後可使用任一方式登入同一個帳號。"
+                self.pendingIdentityCredential = nil
+                pendingIdentityRole = nil
+            } catch AuthServiceError.identityAlreadyLinked {
+                self.pendingIdentityCredential = nil
+                pendingIdentityRole = nil
+            } catch {
+                authNoticeMessage = "帳號已登入，但新的登入方式尚未連結。你可以稍後再試一次。"
+            }
+        }
+
         currentUser = session.user
         currentProfile = session.profile
         selectedRole = session.user.role
         runtimeDiagnostics = runtimeDiagnostics.withSession(user: session.user, profile: session.profile)
+        isAdministrator = await authService.currentUserIsAdministrator()
+        if session.user.role == .volunteer,
+           session.profile.accountStatus == .pendingApplication {
+            hasAcceptedConsent = false
+            volunteerApplicationDraft = try? await authService.loadVolunteerApplication(
+                in: session
+            )
+            route = .volunteerApplication
+            return
+        }
         hasAcceptedConsent = await acceptedConsentStatus(for: session.user.id)
         route = hasAcceptedConsent ? .home(session.user.role) : .privacyConsent(session.user.role)
     }

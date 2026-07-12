@@ -129,6 +129,257 @@ struct FirebaseAuthService: AuthService {
         #endif
     }
 
+    func signIn(
+        with credential: FederatedIdentityCredential,
+        expectedRole: UserRole
+    ) async throws -> AuthSession {
+        #if canImport(FirebaseAuth) && canImport(FirebaseFirestore)
+        guard FirebaseAppConfigurator.hasBundledConfig else {
+            throw AuthServiceError.operationUnavailable
+        }
+
+        do {
+            let result = try await signInWithFirebase(
+                credential: firebaseCredential(from: credential)
+            )
+            do {
+                return try await accountSession(
+                    uid: result.user.uid,
+                    fallbackDisplayName: result.user.displayName ?? result.user.email ?? "English+",
+                    expectedRole: expectedRole,
+                    emailVerified: result.user.isEmailVerified
+                )
+            } catch {
+                try? Auth.auth().signOut()
+                throw error
+            }
+        } catch let error as AuthServiceError {
+            throw error
+        } catch {
+            throw Self.normalizedFirebaseError(error)
+        }
+        #else
+        throw AuthServiceError.identityProviderUnavailable
+        #endif
+    }
+
+    func createAccount(
+        with credential: FederatedIdentityCredential,
+        profile: RoleOnboardingProfile
+    ) async throws -> AccountCreationOutcome {
+        #if canImport(FirebaseAuth) && canImport(FirebaseFirestore)
+        guard FirebaseAppConfigurator.hasBundledConfig else {
+            throw AuthServiceError.operationUnavailable
+        }
+        guard !profile.normalizedDisplayName.isEmpty else {
+            throw AuthServiceError.profileUnavailable
+        }
+        guard profile.hasRequiredRoleDetails else {
+            switch profile.role {
+            case .student:
+                throw AuthServiceError.profileUnavailable
+            case .teacher:
+                throw AuthServiceError.missingTeacherAffiliation
+            case .volunteer:
+                throw AuthServiceError.invalidVolunteerApplication
+            }
+        }
+
+        do {
+            let result = try await signInWithFirebase(
+                credential: firebaseCredential(from: credential)
+            )
+            let snapshot = try await documentSnapshot(
+                path: FirestorePath.user(uid: result.user.uid)
+            )
+            if snapshot.exists {
+                return .authenticated(
+                    try await accountSession(
+                        uid: result.user.uid,
+                        fallbackDisplayName: result.user.displayName ?? profile.normalizedDisplayName,
+                        expectedRole: profile.role,
+                        emailVerified: result.user.isEmailVerified
+                    )
+                )
+            }
+
+            do {
+                try await updateFirebaseDisplayName(profile.normalizedDisplayName, for: result.user)
+                try await createInitialRegistrationDocuments(
+                    uid: result.user.uid,
+                    profile: profile,
+                    fallbackEmail: result.user.email ?? "",
+                    emailVerificationRequired: false,
+                    identityProviders: [credential.provider]
+                )
+            } catch {
+                if result.additionalUserInfo?.isNewUser == true {
+                    try? await deleteFirebaseUser(result.user)
+                } else {
+                    try? Auth.auth().signOut()
+                }
+                throw error
+            }
+
+            if profile.role == .volunteer,
+               profile.volunteerApplication?.isReadyToSubmit == true {
+                try? Auth.auth().signOut()
+                return .approvalPending(
+                    email: result.user.email ?? "",
+                    role: .volunteer
+                )
+            }
+
+            return .authenticated(
+                try await accountSession(
+                    uid: result.user.uid,
+                    fallbackDisplayName: profile.normalizedDisplayName,
+                    expectedRole: profile.role,
+                    emailVerified: result.user.isEmailVerified
+                )
+            )
+        } catch let error as AuthServiceError {
+            throw error
+        } catch {
+            throw Self.normalizedFirebaseError(error)
+        }
+        #else
+        throw AuthServiceError.identityProviderUnavailable
+        #endif
+    }
+
+    func linkIdentity(
+        _ credential: FederatedIdentityCredential,
+        to session: AuthSession
+    ) async throws -> AuthSession {
+        #if canImport(FirebaseAuth) && canImport(FirebaseFirestore)
+        guard let user = Auth.auth().currentUser, user.uid == session.user.id else {
+            throw AuthServiceError.invalidCredentials
+        }
+
+        do {
+            _ = try await linkFirebaseUser(
+                user,
+                credential: firebaseCredential(from: credential)
+            )
+            try await setDocument(
+                path: FirestorePath.user(uid: user.uid),
+                data: [
+                    "identityProviders": FieldValue.arrayUnion([credential.provider.rawValue]),
+                    "updatedAt": Date(),
+                ],
+                merge: true
+            )
+            return try await accountSession(
+                uid: user.uid,
+                fallbackDisplayName: user.displayName ?? session.user.displayName,
+                expectedRole: session.user.role,
+                emailVerified: user.isEmailVerified
+            )
+        } catch let error as AuthServiceError {
+            throw error
+        } catch {
+            throw Self.normalizedFirebaseError(error)
+        }
+        #else
+        throw AuthServiceError.identityProviderUnavailable
+        #endif
+    }
+
+    func submitVolunteerApplication(
+        _ application: VolunteerApplicationInput,
+        in session: AuthSession
+    ) async throws -> AccountCreationOutcome {
+        #if canImport(FirebaseAuth) && canImport(FirebaseFirestore)
+        guard application.isReadyToSubmit,
+              session.user.role == .volunteer,
+              session.profile.accountStatus == .pendingApplication,
+              let user = Auth.auth().currentUser,
+              user.uid == session.user.id else {
+            throw AuthServiceError.invalidVolunteerApplication
+        }
+
+        let now = Date()
+        let firestore = Firestore.firestore()
+        let batch = firestore.batch()
+        batch.setData(
+            [
+                "accountStatus": AccountProvisioningStatus.pendingApproval.rawValue,
+                "active": false,
+                "updatedAt": now,
+            ],
+            forDocument: firestore.document(FirestorePath.user(uid: user.uid)),
+            merge: true
+        )
+        batch.setData(
+            [
+                "status": VolunteerApplicationStatus.pendingReview.rawValue,
+                "confirmsAge18OrOlder": application.confirmsAge18OrOlder,
+                "acceptedConductVersion": application.acceptedConductVersion,
+                "motivation": application.motivation,
+                "evidence": application.evidence.map { evidence in
+                    [
+                        "id": evidence.id,
+                        "kind": evidence.kind.rawValue,
+                        "storageObjectKey": evidence.storageObjectKey,
+                        "originalFilename": evidence.originalFilename,
+                        "mimeType": evidence.mimeType,
+                        "sizeBytes": evidence.sizeBytes,
+                        "uploadedAt": evidence.uploadedAt,
+                    ] as [String: Any]
+                },
+                "submittedAt": now,
+                "updatedAt": now,
+            ],
+            forDocument: firestore.document(FirestorePath.volunteerApplication(uid: user.uid)),
+            merge: true
+        )
+        try await commit(batch)
+        try? Auth.auth().signOut()
+        return .approvalPending(email: user.email ?? "", role: .volunteer)
+        #else
+        throw AuthServiceError.operationUnavailable
+        #endif
+    }
+
+    func loadVolunteerApplication(
+        in session: AuthSession
+    ) async throws -> VolunteerApplicationInput? {
+        #if canImport(FirebaseAuth) && canImport(FirebaseFirestore)
+        guard session.user.role == .volunteer,
+              Auth.auth().currentUser?.uid == session.user.id else {
+            return nil
+        }
+        let snapshot = try await documentSnapshot(
+            path: FirestorePath.volunteerApplication(uid: session.user.id)
+        )
+        guard let data = snapshot.data() else { return nil }
+        let evidence = (data["evidence"] as? [[String: Any]] ?? []).compactMap {
+            evidenceReference(data: $0)
+        }
+        return VolunteerApplicationInput(
+            confirmsAge18OrOlder: data["confirmsAge18OrOlder"] as? Bool ?? false,
+            acceptedConductVersion: data["acceptedConductVersion"] as? String ?? "",
+            motivation: data["motivation"] as? String ?? "",
+            evidence: evidence
+        )
+        #else
+        return nil
+        #endif
+    }
+
+    func currentUserIsAdministrator() async -> Bool {
+        #if canImport(FirebaseAuth)
+        guard let user = Auth.auth().currentUser,
+              let result = try? await user.getIDTokenResult() else {
+            return false
+        }
+        return result.claims["admin"] as? Bool == true
+        #else
+        return false
+        #endif
+    }
+
     func sendPasswordReset(email: String) async throws {
         #if canImport(FirebaseAuth)
         guard FirebaseAppConfigurator.hasBundledConfig else {
@@ -253,6 +504,59 @@ struct FirebaseAuthService: AuthService {
     }
 
     #if canImport(FirebaseAuth)
+    private func firebaseCredential(
+        from credential: FederatedIdentityCredential
+    ) -> AuthCredential {
+        switch credential {
+        case .google(let idToken, let accessToken):
+            return GoogleAuthProvider.credential(
+                withIDToken: idToken,
+                accessToken: accessToken
+            )
+        case .apple(let idToken, let rawNonce):
+            return OAuthProvider.appleCredential(
+                withIDToken: idToken,
+                rawNonce: rawNonce,
+                fullName: nil
+            )
+        }
+    }
+
+    private func signInWithFirebase(credential: AuthCredential) async throws -> AuthDataResult {
+        try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<AuthDataResult, Error>) in
+            Auth.auth().signIn(with: credential) { result, error in
+                if let error {
+                    continuation.resume(throwing: error)
+                    return
+                }
+                guard let result else {
+                    continuation.resume(throwing: AuthServiceError.invalidCredentials)
+                    return
+                }
+                continuation.resume(returning: result)
+            }
+        }
+    }
+
+    private func linkFirebaseUser(
+        _ user: User,
+        credential: AuthCredential
+    ) async throws -> AuthDataResult {
+        try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<AuthDataResult, Error>) in
+            user.link(with: credential) { result, error in
+                if let error {
+                    continuation.resume(throwing: error)
+                    return
+                }
+                guard let result else {
+                    continuation.resume(throwing: AuthServiceError.operationUnavailable)
+                    return
+                }
+                continuation.resume(returning: result)
+            }
+        }
+    }
+
     private func signInWithFirebase(email: String, password: String) async throws -> AuthDataResult {
         try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<AuthDataResult, Error>) in
             Auth.auth().signIn(withEmail: email, password: password) { result, error in
@@ -339,6 +643,10 @@ struct FirebaseAuthService: AuthService {
             return .weakPassword
         case .emailAlreadyInUse:
             return .emailAlreadyInUse
+        case .accountExistsWithDifferentCredential:
+            return .accountLinkRequired
+        case .providerAlreadyLinked, .credentialAlreadyInUse:
+            return .identityAlreadyLinked
         case .userDisabled:
             return .accountDisabled
         case .networkError:
@@ -356,15 +664,36 @@ struct FirebaseAuthService: AuthService {
         uid: String,
         registration: AccountRegistration
     ) async throws {
+        try await createInitialRegistrationDocuments(
+            uid: uid,
+            profile: registration.onboardingProfile,
+            fallbackEmail: registration.normalizedEmail,
+            emailVerificationRequired: true,
+            identityProviders: [.emailPassword]
+        )
+    }
+
+    private func createInitialRegistrationDocuments(
+        uid: String,
+        profile: RoleOnboardingProfile,
+        fallbackEmail: String,
+        emailVerificationRequired: Bool,
+        identityProviders: [AccountIdentityProvider]
+    ) async throws {
         let now = Date()
-        let name = registration.normalizedDisplayName.isEmpty
-            ? registration.normalizedEmail.components(separatedBy: "@").first ?? "English+"
-            : registration.normalizedDisplayName
-        let accountStatus: AccountProvisioningStatus = registration.role == .volunteer
-            ? .pendingApproval
-            : .active
+        let name = profile.normalizedDisplayName.isEmpty
+            ? fallbackEmail.components(separatedBy: "@").first ?? "English+"
+            : profile.normalizedDisplayName
+        let accountStatus: AccountProvisioningStatus
+        if profile.role == .volunteer {
+            accountStatus = profile.volunteerApplication?.isReadyToSubmit == true
+                ? .pendingApproval
+                : .pendingApplication
+        } else {
+            accountStatus = .active
+        }
         let provisioningSource: AccountProvisioningSource
-        switch registration.role {
+        switch profile.role {
         case .student:
             provisioningSource = .selfServiceStudent
         case .teacher:
@@ -379,22 +708,22 @@ struct FirebaseAuthService: AuthService {
             [
                 "displayName": name,
                 "preferredName": name,
-                "primaryRole": registration.role.rawValue,
+                "primaryRole": profile.role.rawValue,
                 "activeClassId": NSNull(),
                 "createdAt": now,
                 "updatedAt": now,
                 "lastLoginAt": now,
                 "active": accountStatus == .active,
                 "accountStatus": accountStatus.rawValue,
-                "emailVerificationRequired": true,
+                "emailVerificationRequired": emailVerificationRequired,
                 "provisioningSource": provisioningSource.rawValue,
-                "identityProviders": [AccountIdentityProvider.emailPassword.rawValue],
+                "identityProviders": identityProviders.map(\.rawValue),
             ],
             forDocument: firestore.document(FirestorePath.user(uid: uid)),
             merge: false
         )
 
-        if let affiliation = registration.teacherAffiliation {
+        if let affiliation = profile.teacherAffiliation {
             batch.setData(
                 [
                     "uid": uid,
@@ -412,12 +741,16 @@ struct FirebaseAuthService: AuthService {
             )
         }
 
-        if let application = registration.volunteerApplication {
+        if let application = profile.volunteerApplication {
             batch.setData(
                 [
                     "uid": uid,
                     "displayName": name,
-                    "status": VolunteerApplicationStatus.pendingReview.rawValue,
+                    "status": (
+                        application.isReadyToSubmit
+                            ? VolunteerApplicationStatus.pendingReview
+                            : VolunteerApplicationStatus.draft
+                    ).rawValue,
                     "confirmsAge18OrOlder": application.confirmsAge18OrOlder,
                     "acceptedConductVersion": application.acceptedConductVersion,
                     "motivation": application.motivation,
@@ -487,6 +820,8 @@ struct FirebaseAuthService: AuthService {
         switch accountStatus {
         case .active:
             break
+        case .pendingApplication:
+            break
         case .pendingApproval:
             throw AuthServiceError.accountPendingApproval
         case .suspended, .disabled:
@@ -549,6 +884,7 @@ struct FirebaseAuthService: AuthService {
             groupId: activeMembership?.groupId,
             consentStatus: .pending,
             isDemo: false,
+            accountStatus: accountStatus,
             createdAt: createdAt,
             updatedAt: updatedAt,
             memberships: memberships,
@@ -647,6 +983,29 @@ struct FirebaseAuthService: AuthService {
             return timestamp.dateValue()
         }
         return nil
+    }
+
+    private func evidenceReference(data: [String: Any]) -> VolunteerEvidenceReference? {
+        guard
+            let id = data["id"] as? String,
+            let kindRaw = data["kind"] as? String,
+            let kind = VolunteerQualificationKind(rawValue: kindRaw),
+            let storageObjectKey = data["storageObjectKey"] as? String,
+            let originalFilename = data["originalFilename"] as? String,
+            let mimeType = data["mimeType"] as? String,
+            let sizeBytes = data["sizeBytes"] as? Int
+        else {
+            return nil
+        }
+        return VolunteerEvidenceReference(
+            id: id,
+            kind: kind,
+            storageObjectKey: storageObjectKey,
+            originalFilename: originalFilename,
+            mimeType: mimeType,
+            sizeBytes: sizeBytes,
+            uploadedAt: firestoreDate(data["uploadedAt"]) ?? Date()
+        )
     }
     #endif
 }

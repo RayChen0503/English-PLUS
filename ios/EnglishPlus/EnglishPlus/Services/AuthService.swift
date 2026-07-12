@@ -25,6 +25,7 @@ enum AuthServiceError: Error, Equatable {
     case missingTeacherAffiliation
     case invalidVolunteerApplication
     case identityAlreadyLinked
+    case accountLinkRequired
     case identityProviderUnavailable
     case invalidClassSelection
     case networkUnavailable
@@ -59,6 +60,8 @@ enum AuthServiceError: Error, Equatable {
             return "志工申請資料尚未完整，請確認年齡、守則與證明資料。"
         case .identityAlreadyLinked:
             return "這個登入方式已連結到其他帳號。"
+        case .accountLinkRequired:
+            return "這個信箱已經有帳號，請先用原本方式登入，再到帳號設定連結新的登入方式。"
         case .identityProviderUnavailable:
             return "這個登入方式目前無法使用，請稍後再試或改用其他方式。"
         case .invalidClassSelection:
@@ -90,6 +93,14 @@ protocol AuthService {
         _ credential: FederatedIdentityCredential,
         to session: AuthSession
     ) async throws -> AuthSession
+    func submitVolunteerApplication(
+        _ application: VolunteerApplicationInput,
+        in session: AuthSession
+    ) async throws -> AccountCreationOutcome
+    func loadVolunteerApplication(
+        in session: AuthSession
+    ) async throws -> VolunteerApplicationInput?
+    func currentUserIsAdministrator() async -> Bool
     func sendPasswordReset(email: String) async throws
     func resendVerification(email: String, password: String) async throws
     func restorePreviousSession() async throws -> AuthSession?
@@ -156,6 +167,21 @@ extension AuthService {
     ) async throws -> AuthSession {
         throw AuthServiceError.identityProviderUnavailable
     }
+
+    func submitVolunteerApplication(
+        _ application: VolunteerApplicationInput,
+        in session: AuthSession
+    ) async throws -> AccountCreationOutcome {
+        throw AuthServiceError.invalidVolunteerApplication
+    }
+
+    func loadVolunteerApplication(
+        in session: AuthSession
+    ) async throws -> VolunteerApplicationInput? {
+        nil
+    }
+
+    func currentUserIsAdministrator() async -> Bool { false }
 
     func sendPasswordReset(email: String) async throws {}
 

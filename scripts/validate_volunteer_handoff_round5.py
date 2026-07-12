@@ -63,7 +63,6 @@ def main() -> int:
         "StaffSupportActionBar",
         "ForEach(learningRepository.volunteerQueue) { request in",
         "learningRepository.addVolunteerReply(to: request.id, body: replyDraft)",
-        "learningRepository.markSupportThreadHandledWithoutReply(request.id, by: appState.currentUser)",
         "learningRepository.archiveSupportThreadForStaff(request.id, by: appState.currentUser)",
         "appState.coachVolunteerReplyWithAI(context: SupportAIContext(request: request))",
         "SupportQuestionSnapshotCard",
@@ -79,6 +78,7 @@ def main() -> int:
         "VolunteerCleanGuidanceCard(request:",
         "@State private var selectedRequestId",
         "private var selectedRequest:",
+        "markSupportThreadHandledWithoutReply(request.id",
     ]
     for token in forbidden_volunteer_call_tokens:
         require(token not in volunteer_home, f"Volunteer handoff still uses old selected-card flow: {token}", errors)

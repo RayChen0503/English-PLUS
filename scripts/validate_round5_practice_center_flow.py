@@ -43,8 +43,8 @@ def main() -> None:
         require(token in practice_source, f"Practice center is missing required behavior token: {token}")
 
     require(
-        "SeedData.approvedQuestionBankItems" in practice_source,
-        "Practice center must draw from the approved seed question bank.",
+        "learningRepository.questionBankItems" in practice_source,
+        "Practice center must draw from the repository's approved question bank.",
     )
     require(
         "filteredPracticeItems" in practice_source,

@@ -15,6 +15,8 @@ struct EnglishPlusServiceBundle {
     let firestoreService: FirestoreService
     let aiService: AIService
     let learningBackend: any LearningRepositoryBackend
+    let evidenceUploadService: EvidenceUploadService
+    let volunteerReviewService: VolunteerReviewService
     let runtimeDiagnostics: RuntimeDiagnosticsSnapshot
 }
 
@@ -67,6 +69,18 @@ enum EnglishPlusServiceFactory {
                     )
                 ),
                 learningBackend: FirebaseLearningRepository(),
+                evidenceUploadService: EvidenceUploadConfig.workerBaseURL.map { baseURL in
+                    RemoteEvidenceUploadService(
+                        baseURL: baseURL,
+                        idTokenProvider: authService.currentIdToken
+                    )
+                } ?? UnavailableEvidenceUploadService(),
+                volunteerReviewService: EvidenceUploadConfig.workerBaseURL.map { baseURL in
+                    RemoteVolunteerReviewService(
+                        baseURL: baseURL,
+                        idTokenProvider: authService.currentIdToken
+                    )
+                } ?? UnavailableVolunteerReviewService(),
                 runtimeDiagnostics: RuntimeDiagnosticsSnapshot(
                     backendMode: .firebase,
                     hasFirebaseConfig: FirebaseAppConfigurator.hasBundledConfig,
@@ -84,6 +98,8 @@ enum EnglishPlusServiceFactory {
                 firestoreService: MockFirestoreService(),
                 aiService: MockAIService(),
                 learningBackend: MockLearningRepository(),
+                evidenceUploadService: UnavailableEvidenceUploadService(),
+                volunteerReviewService: UnavailableVolunteerReviewService(),
                 runtimeDiagnostics: RuntimeDiagnosticsSnapshot(
                     backendMode: .mock,
                     hasFirebaseConfig: FirebaseAppConfigurator.hasBundledConfig,

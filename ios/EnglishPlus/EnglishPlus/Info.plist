@@ -30,6 +30,8 @@
 	<string>$(CURRENT_PROJECT_VERSION)</string>
 	<key>ENGLISHPLUS_AI_PROXY_URL</key>
 	<string>https://englishplus-ai-proxy.englishplus-ray.workers.dev/ai</string>
+	<key>ENGLISHPLUS_EVIDENCE_UPLOAD_URL</key>
+	<string>https://englishplus-ai-proxy.englishplus-ray.workers.dev</string>
 	<key>LSRequiresIPhoneOS</key>
 	<true/>
 	<key>UILaunchScreen</key>

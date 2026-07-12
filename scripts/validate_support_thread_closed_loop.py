@@ -71,7 +71,7 @@ def main() -> None:
     require(teacher, "SupportQuestionSnapshotCard(", "teacher sees question context")
     require(teacher, "snapshot: snapshot", "teacher snapshot binding")
     require(teacher, "StaffSupportActionBar", "teacher can reply / mark handled / archive")
-    require(volunteer, "VolunteerQuestionContextCard", "volunteer context card")
+    require(volunteer, "VolunteerSupportRequestCard", "volunteer support request card")
     require(volunteer, "SupportQuestionSnapshotCard(", "volunteer sees question context")
     require(volunteer, "snapshot: snapshot", "volunteer snapshot binding")
     require(volunteer, "StaffSupportActionBar", "volunteer can reply / mark handled / archive")

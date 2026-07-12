@@ -18,11 +18,10 @@ already depend on.
 | D-10 | 2026-07-12 | Teacher self-registration is active immediately after verified sign-in and requires a self-declared education institution. | School selection improves context but is not proof of employment; students must still opt into a class before data becomes visible. |
 | D-11 | 2026-07-12 | Volunteer self-application remains pending until an administrator approves evidence and conduct eligibility. | A volunteer cannot access minor students or support records before review. |
 | D-12 | 2026-07-12 | Official institutions come from annual Ministry of Education directories; unlisted experimental or homeschool groups are user-submitted and visibly unverified. | Search stays usable without misrepresenting a manual entry as an official record. |
+| D-13 | 2026-07-12 | Volunteer evidence uses short-lived signed uploads to a private Cloudflare R2 bucket and administrator-only downloads. | Sensitive evidence bytes stay out of Firestore profiles, Git, and the iOS binary. |
 
 ## Pending decisions
 
-- Round 4 will use Cloudflare R2 signed uploads for volunteer evidence unless a
-  different private object store is selected before implementation.
 - Exact volunteer evidence retention and deletion periods remain part of the
   later privacy and operations block; raw evidence must never be stored in a
   user profile document.

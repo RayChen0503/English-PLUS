@@ -115,7 +115,7 @@ def validate_round_4_staff_support(errors):
     models = read(FILES["learning_models"])
     repo = read(FILES["learning_repo"])
 
-    for token in ["sendSupportRequest", "SupportRequestInboxCard", "supportRequests(forStudentUid:", "SupportQuestionSnapshotCard"]:
+    for token in ["SupportReplyCenterSummaryCard", "SupportRequestInboxCard", "supportRequests(forStudentUid:", "SupportQuestionSnapshotCard"]:
         require(token in support, f"support flow missing {token}", errors)
     for token in [
         "TeacherStatusStrip",
@@ -135,8 +135,8 @@ def validate_round_4_staff_support(errors):
     for token in [
         "VolunteerTodayPriorityCard",
         "VolunteerHandoffWorkspaceView",
-        "VolunteerQueuePickerCard",
-        "VolunteerQuestionContextCard",
+        "VolunteerHandoffSummaryCard",
+        "VolunteerSupportRequestCard",
         "VolunteerRecordView",
         "addVolunteerReply",
         "volunteerQueue",

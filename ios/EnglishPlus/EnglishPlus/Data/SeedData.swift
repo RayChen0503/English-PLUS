@@ -60,6 +60,9 @@ enum SeedData {
     static var questionBankItems: [QuestionBankItem] { current.questionBankItems }
     static var approvedQuestionBankItems: [QuestionBankItem] { current.approvedQuestionBankItems }
     static var supportOptions: [SupportOption] { current.supportOptions }
+    static let educationInstitutions: [EducationInstitution] = {
+        (try? SeedLoader().load(EducationInstitutionCatalogSeed.self).institutions) ?? []
+    }()
 
     static func demoAccount(for role: UserRole) -> AppUserProfile? {
         accounts.first { $0.role == role && $0.isDemo }

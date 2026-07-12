@@ -75,10 +75,10 @@ def main() -> int:
         errors,
     )
     require(
-        "case createStudent" in demo_login_text
-        and "建立學生帳號" in demo_login_text
+        "LoginMode.register" in demo_login_text
+        and 'Text("建立帳號")' in demo_login_text
         and "appState.createAccount" in demo_login_text,
-        "DemoLoginView must expose a student account creation mode.",
+        "DemoLoginView must expose account creation for the selected role.",
         errors,
     )
     require(

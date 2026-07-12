@@ -20,29 +20,44 @@ def main() -> None:
     shared = read("ios/EnglishPlus/EnglishPlus/Features/Shared/StaffSupportActionBar.swift")
     models = read("ios/EnglishPlus/EnglishPlus/Models/LearningModels.swift")
 
-    require("送給老師/志工" not in support, "Student empty state still uses split teacher/volunteer wording.")
-    require("送給老師與志工" in support, "Student support empty state should describe one shared handoff.")
-    require("老師/志工協助" in support, "Student support route title should show one shared staff support lane.")
-    require("老師協助" not in support, "Student support inbox should not show old teacher-only route title.")
-    require("志工陪伴" not in support, "Student support inbox should not show old volunteer-only route title.")
+    require("老師/志工協助" in support, "Student support route must use one shared staff lane.")
+    require(
+        "老師與志工的回覆會集中在這裡" in support,
+        "Student inbox must explain the shared reply center.",
+    )
 
-    require("老師與志工都會收到同一筆接力" in teacher, "Teacher queue should explain shared staff handoff.")
-    require("老師與志工都會收到同一筆接力" in volunteer, "Volunteer queue should explain shared staff handoff.")
-    require("任何一端回覆都會消除雙方紅點" in teacher, "Teacher queue should explain shared badge clearing.")
-    require("任何一端回覆都會消除雙方紅點" in volunteer, "Volunteer queue should explain shared badge clearing.")
+    shared_handoff_copy = "老師與志工都會收到同一筆接力"
+    require(shared_handoff_copy in teacher, "Teacher queue must explain shared handoff.")
+    require(shared_handoff_copy in volunteer, "Volunteer queue must explain shared handoff.")
+    require(
+        "任何一端回覆都會消除雙方紅點" in teacher
+        and "任何一端回覆都會消除雙方紅點" in volunteer,
+        "Both staff queues must explain shared badge clearing.",
+    )
 
-    require("只會消除你的紅點" in shared, "Staff action bar should explain read-without-reply is per-role.")
-    require("另一端仍可看見" in shared, "Staff action bar should explain archive does not hide from the other role.")
+    require(
+        "收起只會從你的待辦移除" in shared,
+        "Staff action bar must explain role-specific archive behavior.",
+    )
+    require(
+        "另一端仍可看見" in shared,
+        "Staff archive copy must explain that the other role retains access.",
+    )
+    require("markSupportThreadHandledWithoutReply" not in teacher + volunteer,
+            "Removed read-without-reply action must not return to staff UI.")
+    require("StaffOriginalStudentMessageCard" not in teacher,
+            "Teacher side must not duplicate the student message card.")
+    require("VolunteerOriginalStudentMessageCard" not in volunteer,
+            "Volunteer side must not duplicate the student message card.")
+    require("StaffMissingQuestionSnapshotLabel" in teacher,
+            "Teacher side must keep a low-priority missing-snapshot label.")
 
-    require("志工可以先用 AI 整理陪伴語氣" not in volunteer, "Volunteer composer still contains old verbose AI-first guidance.")
-    require("VolunteerOriginalStudentMessageCard" not in volunteer, "Volunteer side should not keep a separate duplicate student-message card.")
-    require("陪伴順序" not in volunteer, "Volunteer UI should not use old sequence wording.")
-    require("StaffOriginalStudentMessageCard" not in teacher, "Teacher side should not keep a separate duplicate student-message card.")
-    require("StaffMissingQuestionSnapshotLabel" in teacher, "Teacher side should use a low-priority missing-snapshot label.")
-
-    require("teacherArchivedAt" in models and "volunteerArchivedAt" in models, "Support archive state must remain role-specific.")
-    require("countsTowardSharedStaffBadge" in models, "Shared badge logic must remain role-aware.")
-    require("hasAnyStaffAction" in models, "Shared badge clearing must be based on any staff action.")
+    require("teacherArchivedAt" in models and "volunteerArchivedAt" in models,
+            "Support archive state must remain role-specific.")
+    require("countsTowardSharedStaffBadge" in models,
+            "Shared badge logic must remain role-aware.")
+    require("hasAnyStaffAction" in models,
+            "Shared badge clearing must be based on any staff action.")
 
     print("validate_shared_support_round4_final_ux: ok")
 

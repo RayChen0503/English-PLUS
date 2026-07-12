@@ -83,6 +83,7 @@ enum DeletionRequestScope: String, Codable {
 
 enum AccountProvisioningStatus: String, Codable {
     case active
+    case pendingApplication
     case pendingApproval
     case suspended
     case disabled

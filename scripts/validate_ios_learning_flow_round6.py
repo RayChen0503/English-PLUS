@@ -26,12 +26,12 @@ practice_center = read("ios/EnglishPlus/EnglishPlus/Features/Practice/PracticeCe
 
 
 require(
-    "support AI response stays focused on support instead of extra navigation",
+    "support reply inbox stays focused instead of branching into AI or navigation",
     support_view,
     [
-        "SupportMoodAICard",
-        "SupportAIResponseCard",
-        "sendEmotionalSupportRequest",
+        "SupportReplyCenterSummaryCard",
+        "SupportRequestInboxCard",
+        "SupportReplyTimeline",
     ],
 )
 
@@ -45,13 +45,15 @@ require(
 )
 
 require_absent(
-    "removed support navigation action card and home shortcut",
+    "removed support AI branch, navigation action card, and home shortcut",
     support_view,
     [
         "SupportAIActionCard",
         "Label(\"回今日任務\"",
         "onOpenHome",
         "returnToMissionFlow()",
+        "SupportAIResponseCard",
+        "provideEmotionalSupportWithAI",
     ],
 )
 

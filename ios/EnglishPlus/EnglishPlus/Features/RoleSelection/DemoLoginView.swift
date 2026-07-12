@@ -1,67 +1,53 @@
+import AuthenticationServices
 import SwiftUI
 import UIKit
 
+#if canImport(GoogleSignInSwift)
+import GoogleSignInSwift
+#endif
+
 struct DemoLoginView: View {
     @EnvironmentObject private var appState: AppState
+    @Environment(\.colorScheme) private var colorScheme
+
     let role: UserRole
 
-    @State private var email: String
-    @State private var password: String
+    @State private var mode: LoginMode = .signIn
+    @State private var email = ""
+    @State private var password = ""
     @State private var displayName = ""
     @State private var showsPassword = false
-    @State private var mode: LoginMode = .signIn
-
-    init(role: UserRole) {
-        self.role = role
-        _email = State(initialValue: "")
-        _password = State(initialValue: "")
-    }
+    @State private var selectedInstitution: EducationInstitution?
+    @State private var volunteerIsAdult = false
+    @State private var volunteerAcceptedConduct = false
+    @State private var volunteerMotivation = ""
+    @State private var appleRawNonce: String?
 
     var body: some View {
         ZStack {
             EPTheme.background.ignoresSafeArea()
             ScrollView {
                 VStack(alignment: .leading, spacing: 20) {
-                    Button {
-                        appState.signOut()
-                    } label: {
-                        Label("返回選擇身分", systemImage: "chevron.left")
-                    }
-                    .buttonStyle(.plain)
-                    .foregroundStyle(EPTheme.primary)
-
+                    backButton
                     header
+                    modePicker
 
-                    if role == .student {
-                        modePicker
+                    if appState.canUseFederatedSignIn {
+                        federatedButtons
+                        divider
                     }
 
-                    accountCard
-
-                    if let message = appState.signInErrorMessage {
-                        Text(message)
-                            .font(.footnote.weight(.semibold))
-                            .foregroundStyle(EPTheme.danger)
-                            .fixedSize(horizontal: false, vertical: true)
-                    }
-
-                    if let message = appState.authNoticeMessage {
-                        Label(message, systemImage: "checkmark.circle.fill")
-                            .font(.footnote.weight(.semibold))
-                            .foregroundStyle(EPTheme.support)
-                            .padding(12)
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                            .background(EPTheme.support.opacity(0.10))
-                            .clipShape(RoundedRectangle(cornerRadius: EPTheme.cardRadius))
-                    }
-
+                    emailAccountForm
+                    feedback
                     primaryButton
                 }
                 .padding(EPTheme.pagePadding)
+                .padding(.bottom, 24)
             }
         }
-        .onChange(of: mode) { _, newMode in
-            applyDefaults(for: newMode)
+        .onChange(of: mode) { _, _ in
+            password = ""
+            appState.clearAuthFeedback()
         }
         .onChange(of: appState.verificationEmailAddress) { _, address in
             guard let address, !address.isEmpty else { return }
@@ -71,82 +57,155 @@ struct DemoLoginView: View {
         }
     }
 
+    private var backButton: some View {
+        Button {
+            appState.signOut()
+        } label: {
+            Label("選擇其他身分", systemImage: "chevron.left")
+        }
+        .buttonStyle(.plain)
+        .foregroundStyle(EPTheme.primary)
+    }
+
     private var header: some View {
         VStack(alignment: .leading, spacing: 8) {
-            Text("\(role.title)登入")
+            Text(role.title)
                 .font(.largeTitle.bold())
                 .foregroundStyle(EPTheme.ink)
-            Text(role.shortPurpose)
+            Text(headerDescription)
                 .font(.body)
                 .foregroundStyle(EPTheme.secondaryInk)
+                .fixedSize(horizontal: false, vertical: true)
         }
     }
 
     private var modePicker: some View {
-        HStack(spacing: 10) {
-            modeButton(.signIn)
-            modeButton(.createStudent)
+        Picker("帳號模式", selection: $mode) {
+            Text("登入").tag(LoginMode.signIn)
+            Text("建立帳號").tag(LoginMode.register)
         }
+        .pickerStyle(.segmented)
     }
 
-    private func modeButton(_ targetMode: LoginMode) -> some View {
-        Button {
-            mode = targetMode
-        } label: {
-            Text(targetMode.title)
-                .font(.subheadline.bold())
+    private var federatedButtons: some View {
+        VStack(spacing: 12) {
+            #if canImport(GoogleSignInSwift)
+            GoogleSignInButton(
+                scheme: colorScheme == .dark ? .dark : .light,
+                style: .wide,
+                state: federatedActionDisabled ? .disabled : .normal
+            ) {
+                Task { await continueWithGoogle() }
+            }
+            .frame(maxWidth: .infinity)
+            .frame(height: 50)
+            #else
+            Button {
+                Task { await continueWithGoogle() }
+            } label: {
+                HStack(spacing: 10) {
+                    Image(systemName: "g.circle.fill")
+                        .font(.title3)
+                    Text("使用 Google 繼續")
+                        .font(.headline)
+                }
                 .frame(maxWidth: .infinity)
-                .padding(.vertical, 12)
-                .foregroundStyle(mode == targetMode ? .white : EPTheme.primary)
-                .background(mode == targetMode ? EPTheme.primary : EPTheme.primary.opacity(0.10))
-                .clipShape(RoundedRectangle(cornerRadius: 10))
+                .frame(height: 50)
+                .foregroundStyle(EPTheme.ink)
+                .background(EPTheme.card)
+                .overlay(
+                    RoundedRectangle(cornerRadius: EPTheme.cardRadius)
+                        .stroke(EPTheme.hairline, lineWidth: 1)
+                )
+                .clipShape(RoundedRectangle(cornerRadius: EPTheme.cardRadius))
+            }
+            .buttonStyle(.plain)
+            .disabled(federatedActionDisabled)
+            #endif
+
+            SignInWithAppleButton(
+                .continue,
+                onRequest: prepareAppleRequest,
+                onCompletion: completeAppleSignIn
+            )
+            .signInWithAppleButtonStyle(colorScheme == .dark ? .white : .black)
+            .frame(height: 50)
+            .clipShape(RoundedRectangle(cornerRadius: EPTheme.cardRadius))
+            .disabled(federatedActionDisabled)
         }
-        .buttonStyle(.plain)
+        .opacity(federatedActionDisabled ? 0.48 : 1)
     }
 
-    private var accountCard: some View {
-        VStack(alignment: .leading, spacing: 14) {
-            Text(mode.cardTitle)
-                .font(.headline)
-                .foregroundStyle(EPTheme.ink)
-            Text(mode.cardDescription(for: role))
-                .font(.subheadline)
+    private var divider: some View {
+        HStack(spacing: 12) {
+            Rectangle().fill(EPTheme.hairline).frame(height: 1)
+            Text("或使用 Email")
+                .font(.caption)
                 .foregroundStyle(EPTheme.secondaryInk)
-                .fixedSize(horizontal: false, vertical: true)
+            Rectangle().fill(EPTheme.hairline).frame(height: 1)
+        }
+    }
 
-            if mode == .createStudent {
-                formField(
-                    title: "姓名或暱稱",
-                    placeholder: "例如：小安",
-                    text: $displayName,
-                    keyboardType: .default
-                )
+    private var emailAccountForm: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            if mode == .register {
+                registrationFields
             }
 
             formField(
-                title: "帳號",
-                placeholder: "email",
+                title: "Email",
+                placeholder: "name@example.com",
                 text: $email,
                 keyboardType: .emailAddress
             )
-
             passwordField
 
             if mode == .signIn {
-                accountRecoveryActions
-            }
-
-            if role != .student {
-                Label("老師與志工帳號由管理者核發。若尚未收到帳號，請聯絡單位管理者。", systemImage: "lock.shield")
-                    .font(.footnote)
-                    .foregroundStyle(EPTheme.secondaryInk)
-                    .fixedSize(horizontal: false, vertical: true)
+                recoveryActions
             }
         }
         .padding(16)
-        .frame(maxWidth: .infinity, alignment: .leading)
         .background(EPTheme.card)
+        .overlay(
+            RoundedRectangle(cornerRadius: EPTheme.cardRadius)
+                .stroke(EPTheme.hairline.opacity(0.7), lineWidth: 1)
+        )
         .clipShape(RoundedRectangle(cornerRadius: EPTheme.cardRadius))
+    }
+
+    @ViewBuilder
+    private var registrationFields: some View {
+        formField(
+            title: "顯示名稱",
+            placeholder: role == .student ? "同學怎麼稱呼你" : "你的姓名",
+            text: $displayName,
+            keyboardType: .default
+        )
+
+        switch role {
+        case .student:
+            Label("不加入班級也能使用完整的個人學習功能。", systemImage: "person.crop.circle")
+                .registrationHintStyle()
+        case .teacher:
+            InstitutionPickerView(selection: $selectedInstitution)
+            Label("學校資料是自行填寫；學生主動加入班級後，你才能看到加入後的資料。", systemImage: "lock.shield")
+                .registrationHintStyle()
+        case .volunteer:
+            Toggle("我已年滿 18 歲", isOn: $volunteerIsAdult)
+            Toggle("我同意志工守則與資料保密規範", isOn: $volunteerAcceptedConduct)
+            VStack(alignment: .leading, spacing: 8) {
+                Text("申請動機")
+                    .font(.caption.bold())
+                    .foregroundStyle(EPTheme.secondaryInk)
+                TextField("簡短說明你想協助學生的原因", text: $volunteerMotivation, axis: .vertical)
+                    .lineLimit(2...4)
+                    .padding(12)
+                    .background(EPTheme.secondarySurface)
+                    .clipShape(RoundedRectangle(cornerRadius: EPTheme.cardRadius))
+            }
+            Label("建立並驗證帳號後，下一步會上傳學經歷或英語能力證明。審核前不會開放學生資料。", systemImage: "doc.badge.arrow.up")
+                .registrationHintStyle()
+        }
     }
 
     private func formField(
@@ -163,7 +222,9 @@ struct DemoLoginView: View {
                 .textInputAutocapitalization(.never)
                 .keyboardType(keyboardType)
                 .autocorrectionDisabled()
-                .textFieldStyle(.roundedBorder)
+                .padding(12)
+                .background(EPTheme.secondarySurface)
+                .clipShape(RoundedRectangle(cornerRadius: EPTheme.cardRadius))
         }
     }
 
@@ -172,47 +233,44 @@ struct DemoLoginView: View {
             Text("密碼")
                 .font(.caption.bold())
                 .foregroundStyle(EPTheme.secondaryInk)
-            HStack {
-                if showsPassword {
-                    TextField("輸入密碼", text: $password)
-                        .textInputAutocapitalization(.never)
-                        .autocorrectionDisabled()
-                } else {
-                    SecureField("輸入密碼", text: $password)
-                        .textInputAutocapitalization(.never)
-                        .autocorrectionDisabled()
+            HStack(spacing: 8) {
+                Group {
+                    if showsPassword {
+                        TextField("至少 8 個字元", text: $password)
+                    } else {
+                        SecureField("至少 8 個字元", text: $password)
+                    }
                 }
+                .textInputAutocapitalization(.never)
+                .autocorrectionDisabled()
 
                 Button {
                     showsPassword.toggle()
                 } label: {
                     Image(systemName: showsPassword ? "eye.slash" : "eye")
+                        .frame(width: 44, height: 44)
                         .foregroundStyle(EPTheme.secondaryInk)
                 }
                 .buttonStyle(.plain)
             }
-            .padding(10)
+            .padding(.leading, 12)
             .background(EPTheme.secondarySurface)
-            .clipShape(RoundedRectangle(cornerRadius: 8))
+            .clipShape(RoundedRectangle(cornerRadius: EPTheme.cardRadius))
         }
     }
 
-    private var accountRecoveryActions: some View {
+    private var recoveryActions: some View {
         HStack(spacing: 16) {
-            Button("忘記密碼？") {
-                Task {
-                    await appState.sendPasswordReset(email: email)
-                }
+            Button("忘記密碼") {
+                Task { await appState.sendPasswordReset(email: email) }
             }
-            .disabled(email.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || appState.isManagingAccount)
+            .disabled(email.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
 
             if appState.verificationEmailAddress != nil {
-                Button("重新寄送驗證信") {
-                    Task {
-                        await appState.resendVerification(email: email, password: password)
-                    }
+                Button("重寄驗證信") {
+                    Task { await appState.resendVerification(email: email, password: password) }
                 }
-                .disabled(password.isEmpty || appState.isManagingAccount)
+                .disabled(password.isEmpty)
             }
         }
         .font(.footnote.weight(.semibold))
@@ -220,84 +278,181 @@ struct DemoLoginView: View {
         .buttonStyle(.plain)
     }
 
+    @ViewBuilder
+    private var feedback: some View {
+        if let message = appState.signInErrorMessage {
+            Label(message, systemImage: "exclamationmark.circle.fill")
+                .font(.footnote.weight(.semibold))
+                .foregroundStyle(EPTheme.danger)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        if let message = appState.authNoticeMessage {
+            Label(message, systemImage: "checkmark.circle.fill")
+                .font(.footnote.weight(.semibold))
+                .foregroundStyle(EPTheme.support)
+                .padding(12)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .background(EPTheme.support.opacity(0.10))
+                .clipShape(RoundedRectangle(cornerRadius: EPTheme.cardRadius))
+        }
+    }
+
     private var primaryButton: some View {
         Button(primaryButtonTitle) {
-            Task {
-                switch mode {
-                case .signIn:
-                    await appState.signIn(email: email, password: password, role: role)
-                case .createStudent:
-                    await appState.createAccount(
-                        email: email,
-                        password: password,
-                        displayName: displayName,
-                        role: .student
-                    )
-                }
-            }
+            Task { await submitEmailForm() }
         }
-        .disabled(isPrimaryButtonDisabled)
+        .disabled(emailActionDisabled)
         .buttonStyle(PrimaryActionButtonStyle())
-        .opacity(isPrimaryButtonDisabled ? 0.45 : 1)
+    }
+
+    private var headerDescription: String {
+        switch role {
+        case .student:
+            return "登入後繼續你的每日任務、自由練習與班級作業。"
+        case .teacher:
+            return "登入後建立班級、指派任務並回覆學生的學習求助。"
+        case .volunteer:
+            return "登入後接續已核准的陪伴任務；新志工需先完成申請。"
+        }
+    }
+
+    private var registrationProfile: RoleOnboardingProfile? {
+        let cleanedName = displayName.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !cleanedName.isEmpty else { return nil }
+
+        switch role {
+        case .student:
+            return RoleOnboardingProfile(
+                displayName: cleanedName,
+                role: .student,
+                teacherAffiliation: nil,
+                volunteerApplication: nil
+            )
+        case .teacher:
+            guard let institution = selectedInstitution else { return nil }
+            return RoleOnboardingProfile(
+                displayName: cleanedName,
+                role: .teacher,
+                teacherAffiliation: TeacherAffiliation(
+                    institutionId: institution.id,
+                    institutionName: institution.name,
+                    institutionKind: institution.kind,
+                    institutionSource: institution.source,
+                    claimStatus: .selfDeclared
+                ),
+                volunteerApplication: nil
+            )
+        case .volunteer:
+            let motivation = volunteerMotivation.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard volunteerIsAdult, volunteerAcceptedConduct, !motivation.isEmpty else { return nil }
+            return RoleOnboardingProfile(
+                displayName: cleanedName,
+                role: .volunteer,
+                teacherAffiliation: nil,
+                volunteerApplication: VolunteerApplicationInput(
+                    confirmsAge18OrOlder: true,
+                    acceptedConductVersion: "volunteer-conduct-v1",
+                    motivation: motivation,
+                    evidence: []
+                )
+            )
+        }
+    }
+
+    private var federatedActionDisabled: Bool {
+        appState.signingInRole != nil || (mode == .register && registrationProfile == nil)
+    }
+
+    private var emailActionDisabled: Bool {
+        if appState.signingInRole != nil || appState.isManagingAccount { return true }
+        if email.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || password.isEmpty {
+            return true
+        }
+        return mode == .register && (password.count < 8 || registrationProfile == nil)
     }
 
     private var primaryButtonTitle: String {
         if appState.signingInRole == role {
-            return mode == .createStudent ? "建立中..." : "登入中..."
+            return mode == .register ? "建立中..." : "登入中..."
         }
-        return mode == .createStudent ? "建立學生帳號" : "登入 \(role.title)端"
+        return mode == .register ? "建立(role.title)帳號" : "登入"
     }
 
-    private var isPrimaryButtonDisabled: Bool {
-        if appState.signingInRole != nil || appState.isManagingAccount { return true }
-        if email.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty { return true }
-        if password.isEmpty { return true }
-        if mode == .createStudent {
-            return displayName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || password.count < 8
-        }
-        return false
-    }
-
-    private func applyDefaults(for mode: LoginMode) {
+    private func submitEmailForm() async {
         switch mode {
         case .signIn:
-            password = ""
-        case .createStudent:
-            email = ""
-            password = ""
-            displayName = ""
+            await appState.signIn(email: email, password: password, role: role)
+        case .register:
+            guard let profile = registrationProfile else { return }
+            await appState.createAccount(
+                AccountRegistration(
+                    email: email,
+                    password: password,
+                    displayName: profile.displayName,
+                    role: profile.role,
+                    teacherAffiliation: profile.teacherAffiliation,
+                    volunteerApplication: profile.volunteerApplication
+                )
+            )
+        }
+    }
+
+    private func continueWithGoogle() async {
+        do {
+            let credential = try await FederatedSignInCoordinator.googleCredential()
+            await handleFederatedCredential(credential)
+        } catch FederatedSignInCoordinatorError.cancelled {
+            return
+        } catch {
+            appState.presentAuthenticationError(error)
+        }
+    }
+
+    private func prepareAppleRequest(_ request: ASAuthorizationAppleIDRequest) {
+        do {
+            appleRawNonce = try FederatedSignInCoordinator.prepareAppleRequest(request)
+        } catch {
+            appleRawNonce = nil
+            appState.presentAuthenticationError(error)
+        }
+    }
+
+    private func completeAppleSignIn(_ result: Result<ASAuthorization, Error>) {
+        do {
+            let credential = try FederatedSignInCoordinator.appleCredential(
+                from: result,
+                rawNonce: appleRawNonce
+            )
+            appleRawNonce = nil
+            Task { await handleFederatedCredential(credential) }
+        } catch FederatedSignInCoordinatorError.cancelled {
+            appleRawNonce = nil
+        } catch {
+            appleRawNonce = nil
+            appState.presentAuthenticationError(error)
+        }
+    }
+
+    private func handleFederatedCredential(_ credential: FederatedIdentityCredential) async {
+        switch mode {
+        case .signIn:
+            await appState.signIn(with: credential, role: role)
+        case .register:
+            guard let profile = registrationProfile else { return }
+            await appState.createAccount(with: credential, profile: profile)
         }
     }
 }
 
-private enum LoginMode: Equatable {
+private enum LoginMode: Hashable {
     case signIn
-    case createStudent
+    case register
+}
 
-    var title: String {
-        switch self {
-        case .signIn:
-            return "登入"
-        case .createStudent:
-            return "建立帳號"
-        }
-    }
-
-    var cardTitle: String {
-        switch self {
-        case .signIn:
-            return "使用帳號登入"
-        case .createStudent:
-            return "建立學生帳號"
-        }
-    }
-
-    func cardDescription(for role: UserRole) -> String {
-        switch self {
-        case .signIn:
-            return "使用已建立的帳號登入。系統會確認帳號身分與使用權限。"
-        case .createStudent:
-            return "學生可以先建立個人帳號，不需要加入班級。完成信箱驗證後即可開始使用。"
-        }
+private extension View {
+    func registrationHintStyle() -> some View {
+        font(.footnote)
+            .foregroundStyle(EPTheme.secondaryInk)
+            .fixedSize(horizontal: false, vertical: true)
     }
 }

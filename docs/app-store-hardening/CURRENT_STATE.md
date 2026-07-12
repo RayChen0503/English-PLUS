@@ -23,7 +23,8 @@ learning must remain usable without joining a class.
   - Round 1 - baseline audit (`round-01-baseline-audit.md`)
   - Round 2 - personal and multi-class domain (`round-02-personal-and-class-domain.md`)
   - Round 3 - multi-provider role onboarding (`round-03-multi-provider-role-onboarding.md`)
-- Hardening progress: **3/20** rounds complete.
+  - Round 4 - provider UI and private volunteer review (`round-04-provider-ui-private-volunteer-review.md`)
+- Hardening progress: **4/20** rounds complete.
 - Do not merge to `main` or trigger Xcode Cloud until the end of a four-round
   block: 4, 8, 12, 16, and 20.
 - Never reset, overwrite, or silently discard user work.
@@ -63,6 +64,10 @@ learning must remain usable without joining a class.
   pending-review applications, and a deterministic Ministry of Education
   institution catalog pipeline. Email verification and password recovery are
   retained.
+- Round 4 has added the provider SDK/UI wiring, official Apple and Google
+  controls, automatic same-account provider linking, a 3,921-entry institution
+  picker, a two-stage volunteer application, private signed R2 evidence
+  uploads, and an administrator-only review surface.
 
 ## Current technical constraints
 
@@ -97,12 +102,13 @@ learning must remain usable without joining a class.
 | Question data | `Resources/SeedData/question_bank_seed.json`, `Data/SeedData.swift` |
 | Hardening evidence | `docs/app-store-hardening/round-*.md`, `scripts/validate_*.py` |
 
-## Next gate: Round 4
+## Next gate
 
-Round 4 completes the first hardening block. It implements provider SDK/UI
-wiring, the institution picker, volunteer evidence upload, and the full audit
-before any deliberate `main` merge or Xcode Cloud build. Evidence uses a
-private object-storage boundary rather than a Firestore user document.
+The first four-round implementation block is complete. Before its deliberate
+`main` merge and Xcode Cloud build, complete the Firebase provider, Apple
+capability, private R2, Worker-secret, Firestore deployment, and administrator
+claim checklist in the Round 4 report. Round 5 does not begin until this block
+build is green or the user explicitly chooses to defer the manual release gate.
 
 ## Maintenance rule
 

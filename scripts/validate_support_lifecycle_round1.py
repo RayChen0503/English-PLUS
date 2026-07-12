@@ -35,8 +35,8 @@ def main() -> None:
     require(store, "func markSupportThreadHandledWithoutReply(_ requestId: String, by staffUser: DemoUser?)", "staff no-reply store method")
     require(store, "func archiveSupportThreadForStaff(_ requestId: String, by staffUser: DemoUser?)", "staff archive store method")
     require(store, ".filter(\\.isVisibleToStudent)", "student support list hides archived threads")
-    require(store, ".filter(\\.isWaitingForStaffAction)", "teacher queue uses lifecycle helper")
-    require(store, ".filter(\\.countsTowardStaffBadge)", "staff metrics uses badge helper")
+    require(store, ".filter { $0.isVisibleInStaffQueue(for: .teacher) }", "teacher queue uses role visibility helper")
+    require(store, "countsTowardSharedStaffBadge(for: .teacher)", "staff metrics uses role-aware badge helper")
 
     require(mock, "func archiveSupportThreadForStudent(_ requestId: String)", "mock student archive")
     require(mock, "func markSupportThreadHandledWithoutReply(_ requestId: String, by staffUser: DemoUser?)", "mock staff no-reply")
