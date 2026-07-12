@@ -1,5 +1,9 @@
 # Round 3 - Email identity and staff provisioning
 
+> Superseded on 2026-07-12 by
+> `round-03-multi-provider-role-onboarding.md`. Retained only as historical
+> evidence of the corrected option-numbering mistake.
+
 Date: 2026-07-10
 
 Working branch: `codex/app-store-hardening`

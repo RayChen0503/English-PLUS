@@ -8,6 +8,7 @@ struct AuthSession: Equatable {
 enum AccountCreationOutcome: Equatable {
     case authenticated(AuthSession)
     case emailVerificationRequired(email: String)
+    case approvalPending(email: String, role: UserRole)
 }
 
 enum AuthServiceError: Error, Equatable {
@@ -21,6 +22,10 @@ enum AuthServiceError: Error, Equatable {
     case profileUnavailable
     case roleMismatch(expected: UserRole, actual: UserRole)
     case staffSelfServiceUnavailable
+    case missingTeacherAffiliation
+    case invalidVolunteerApplication
+    case identityAlreadyLinked
+    case identityProviderUnavailable
     case invalidClassSelection
     case networkUnavailable
     case tooManyRequests
@@ -47,7 +52,15 @@ enum AuthServiceError: Error, Equatable {
         case .roleMismatch(_, let actual):
             return "這個帳號屬於\(actual.title)端，請返回並選擇\(actual.title)。"
         case .staffSelfServiceUnavailable:
-            return "老師與志工帳號需由管理者核發。"
+            return "這個帳號類型目前無法自行註冊。"
+        case .missingTeacherAffiliation:
+            return "請先選擇任職的學校或教育機構。"
+        case .invalidVolunteerApplication:
+            return "志工申請資料尚未完整，請確認年齡、守則與證明資料。"
+        case .identityAlreadyLinked:
+            return "這個登入方式已連結到其他帳號。"
+        case .identityProviderUnavailable:
+            return "這個登入方式目前無法使用，請稍後再試或改用其他方式。"
         case .invalidClassSelection:
             return "無法切換班級，請確認你仍是該班級成員。"
         case .networkUnavailable:
@@ -64,12 +77,19 @@ protocol AuthService {
     func demoSession(for role: UserRole) -> AuthSession
     func signInDemoAccount(for role: UserRole) async throws -> AuthSession
     func signIn(email: String, password: String, expectedRole: UserRole) async throws -> AuthSession
+    func createAccount(_ registration: AccountRegistration) async throws -> AccountCreationOutcome
+    func signIn(
+        with credential: FederatedIdentityCredential,
+        expectedRole: UserRole
+    ) async throws -> AuthSession
     func createAccount(
-        email: String,
-        password: String,
-        displayName: String,
-        role: UserRole
+        with credential: FederatedIdentityCredential,
+        profile: RoleOnboardingProfile
     ) async throws -> AccountCreationOutcome
+    func linkIdentity(
+        _ credential: FederatedIdentityCredential,
+        to session: AuthSession
+    ) async throws -> AuthSession
     func sendPasswordReset(email: String) async throws
     func resendVerification(email: String, password: String) async throws
     func restorePreviousSession() async throws -> AuthSession?
@@ -104,7 +124,37 @@ extension AuthService {
         displayName: String,
         role: UserRole
     ) async throws -> AccountCreationOutcome {
-        throw AuthServiceError.staffSelfServiceUnavailable
+        try await createAccount(
+            AccountRegistration(
+                email: email,
+                password: password,
+                displayName: displayName,
+                role: role,
+                teacherAffiliation: nil,
+                volunteerApplication: nil
+            )
+        )
+    }
+
+    func signIn(
+        with credential: FederatedIdentityCredential,
+        expectedRole: UserRole
+    ) async throws -> AuthSession {
+        throw AuthServiceError.identityProviderUnavailable
+    }
+
+    func createAccount(
+        with credential: FederatedIdentityCredential,
+        profile: RoleOnboardingProfile
+    ) async throws -> AccountCreationOutcome {
+        throw AuthServiceError.identityProviderUnavailable
+    }
+
+    func linkIdentity(
+        _ credential: FederatedIdentityCredential,
+        to session: AuthSession
+    ) async throws -> AuthSession {
+        throw AuthServiceError.identityProviderUnavailable
     }
 
     func sendPasswordReset(email: String) async throws {}

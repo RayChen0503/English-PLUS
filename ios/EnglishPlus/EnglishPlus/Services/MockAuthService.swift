@@ -25,23 +25,24 @@ struct MockAuthService: AuthService {
         )
     }
 
-    func createAccount(
-        email: String,
-        password: String,
-        displayName: String,
-        role: UserRole
-    ) async throws -> AccountCreationOutcome {
-        let cleanedEmail = email.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
-        let cleanedName = displayName.trimmingCharacters(in: .whitespacesAndNewlines)
+    func createAccount(_ registration: AccountRegistration) async throws -> AccountCreationOutcome {
+        let cleanedEmail = registration.normalizedEmail
+        let cleanedName = registration.normalizedDisplayName
         guard cleanedEmail.contains("@"), cleanedEmail.contains("."), !cleanedName.isEmpty else {
             throw AuthServiceError.invalidEmail
         }
-        guard password.count >= 8 else {
+        guard registration.password.count >= 8 else {
             throw AuthServiceError.weakPassword
         }
-
-        guard role == .student else {
-            throw AuthServiceError.staffSelfServiceUnavailable
+        guard registration.hasRequiredRoleDetails else {
+            switch registration.role {
+            case .student:
+                throw AuthServiceError.profileUnavailable
+            case .teacher:
+                throw AuthServiceError.missingTeacherAffiliation
+            case .volunteer:
+                throw AuthServiceError.invalidVolunteerApplication
+            }
         }
 
         let profileId = cleanedEmail.replacingOccurrences(of: "@", with: "-")
@@ -49,7 +50,7 @@ struct MockAuthService: AuthService {
         let profile = AppUserProfile(
             id: profileId,
             displayName: cleanedName,
-            role: role,
+            role: registration.role,
             classId: FirebaseBackendConfig.personalScopeId(uid: profileId),
             groupId: nil,
             consentStatus: .pending,
@@ -59,6 +60,10 @@ struct MockAuthService: AuthService {
             memberships: [],
             activeClassId: nil
         )
+        if registration.role == .volunteer {
+            return .approvalPending(email: cleanedEmail, role: .volunteer)
+        }
+
         return .authenticated(
             AuthSession(
                 user: DemoUser(id: profile.id, displayName: profile.displayName, role: profile.role),

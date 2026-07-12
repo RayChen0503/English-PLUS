@@ -4,7 +4,7 @@
 > concise. It is the working source of truth, not a replacement for the
 > round reports.
 
-Last verified: 2026-07-10
+Last verified: 2026-07-12
 
 ## Product in one paragraph
 
@@ -22,7 +22,8 @@ learning must remain usable without joining a class.
 - Completed hardening rounds:
   - Round 1 - baseline audit (`round-01-baseline-audit.md`)
   - Round 2 - personal and multi-class domain (`round-02-personal-and-class-domain.md`)
-  - Round 3 - email identity and staff provisioning (`round-03-email-identity-and-staff-provisioning.md`)
+  - Round 3 - multi-provider role onboarding (`round-03-multi-provider-role-onboarding.md`)
+- Hardening progress: **3/20** rounds complete.
 - Do not merge to `main` or trigger Xcode Cloud until the end of a four-round
   block: 4, 8, 12, 16, and 20.
 - Never reset, overwrite, or silently discard user work.
@@ -48,7 +49,7 @@ learning must remain usable without joining a class.
 
 ## What is implemented now
 
-- Student: email/password sign-in and account creation, consent, mood
+- Student: provider-neutral sign-in/account foundation, consent, mood
   check-in, adaptive mission foundation, free practice, learning map,
   assignments, and support threads.
 - Teacher and volunteer: class/workspace, shared support relay, replies,
@@ -57,8 +58,11 @@ learning must remain usable without joining a class.
   Cloudflare Worker boundary for Groq-powered AI tasks.
 - Round 2 has added account-owned personal learning paths, class membership
   lifecycle data, active-class selection, and draft access rules.
-- Round 3 has added email verification, password recovery, account-state
-  enforcement, and a server-only staff invitation contract.
+- Round 3 has added Google/Apple/Email identity contracts, provider linking,
+  teacher self-registration with a self-declared institution, volunteer
+  pending-review applications, and a deterministic Ministry of Education
+  institution catalog pipeline. Email verification and password recovery are
+  retained.
 
 ## Current technical constraints
 
@@ -95,10 +99,10 @@ learning must remain usable without joining a class.
 
 ## Next gate: Round 4
 
-Round 4 completes the first hardening block. At the end of Round 4, run the
-full audit before any deliberate `main` merge or Xcode Cloud build. Confirm
-the Round 4 product scope before editing; no unresolved Round 3 identity
-decision remains.
+Round 4 completes the first hardening block. It implements provider SDK/UI
+wiring, the institution picker, volunteer evidence upload, and the full audit
+before any deliberate `main` merge or Xcode Cloud build. Evidence uses a
+private object-storage boundary rather than a Firestore user document.
 
 ## Maintenance rule
 

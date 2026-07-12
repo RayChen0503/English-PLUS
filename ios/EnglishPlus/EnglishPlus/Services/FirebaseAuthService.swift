@@ -67,41 +67,44 @@ struct FirebaseAuthService: AuthService {
         #endif
     }
 
-    func createAccount(
-        email: String,
-        password: String,
-        displayName: String,
-        role: UserRole
-    ) async throws -> AccountCreationOutcome {
+    func createAccount(_ registration: AccountRegistration) async throws -> AccountCreationOutcome {
         #if canImport(FirebaseAuth) && canImport(FirebaseFirestore)
         guard FirebaseAppConfigurator.hasBundledConfig else {
             throw AuthServiceError.operationUnavailable
         }
-        guard role == .student else {
-            throw AuthServiceError.staffSelfServiceUnavailable
-        }
 
-        let cleanedName = displayName.trimmingCharacters(in: .whitespacesAndNewlines)
-        let cleanedEmail = email.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        let cleanedName = registration.normalizedDisplayName
+        let cleanedEmail = registration.normalizedEmail
         guard Self.isPlausibleEmail(cleanedEmail) else {
             throw AuthServiceError.invalidEmail
         }
-        guard password.count >= 8 else {
+        guard registration.password.count >= 8 else {
             throw AuthServiceError.weakPassword
         }
         guard !cleanedName.isEmpty else {
             throw AuthServiceError.profileUnavailable
         }
+        guard registration.hasRequiredRoleDetails else {
+            switch registration.role {
+            case .student:
+                throw AuthServiceError.profileUnavailable
+            case .teacher:
+                throw AuthServiceError.missingTeacherAffiliation
+            case .volunteer:
+                throw AuthServiceError.invalidVolunteerApplication
+            }
+        }
 
         do {
-            let result = try await createUserWithFirebase(email: cleanedEmail, password: password)
+            let result = try await createUserWithFirebase(
+                email: cleanedEmail,
+                password: registration.password
+            )
             do {
                 try await updateFirebaseDisplayName(cleanedName, for: result.user)
-                try await createInitialProfileDocument(
+                try await createInitialRegistrationDocuments(
                     uid: result.user.uid,
-                    email: cleanedEmail,
-                    displayName: cleanedName,
-                    role: role
+                    registration: registration
                 )
             } catch {
                 try? await deleteFirebaseUser(result.user)
@@ -349,34 +352,107 @@ struct FirebaseAuthService: AuthService {
     #endif
 
     #if canImport(FirebaseFirestore)
-    private func createInitialProfileDocument(
+    private func createInitialRegistrationDocuments(
         uid: String,
-        email: String,
-        displayName: String,
-        role: UserRole
+        registration: AccountRegistration
     ) async throws {
         let now = Date()
-        let name = displayName.isEmpty
-            ? email.components(separatedBy: "@").first ?? "English+ Student"
-            : displayName
+        let name = registration.normalizedDisplayName.isEmpty
+            ? registration.normalizedEmail.components(separatedBy: "@").first ?? "English+"
+            : registration.normalizedDisplayName
+        let accountStatus: AccountProvisioningStatus = registration.role == .volunteer
+            ? .pendingApproval
+            : .active
+        let provisioningSource: AccountProvisioningSource
+        switch registration.role {
+        case .student:
+            provisioningSource = .selfServiceStudent
+        case .teacher:
+            provisioningSource = .selfServiceTeacher
+        case .volunteer:
+            provisioningSource = .selfServiceVolunteer
+        }
 
-        try await setDocument(
-            path: FirestorePath.user(uid: uid),
-            data: [
+        let firestore = Firestore.firestore()
+        let batch = firestore.batch()
+        batch.setData(
+            [
                 "displayName": name,
                 "preferredName": name,
-                "primaryRole": role.rawValue,
+                "primaryRole": registration.role.rawValue,
                 "activeClassId": NSNull(),
                 "createdAt": now,
                 "updatedAt": now,
                 "lastLoginAt": now,
-                "active": true,
-                "accountStatus": AccountProvisioningStatus.active.rawValue,
+                "active": accountStatus == .active,
+                "accountStatus": accountStatus.rawValue,
                 "emailVerificationRequired": true,
-                "provisioningSource": "selfServiceStudent",
+                "provisioningSource": provisioningSource.rawValue,
+                "identityProviders": [AccountIdentityProvider.emailPassword.rawValue],
             ],
-            merge: true
+            forDocument: firestore.document(FirestorePath.user(uid: uid)),
+            merge: false
         )
+
+        if let affiliation = registration.teacherAffiliation {
+            batch.setData(
+                [
+                    "uid": uid,
+                    "displayName": name,
+                    "institutionId": affiliation.institutionId,
+                    "institutionName": affiliation.institutionName,
+                    "institutionKind": affiliation.institutionKind.rawValue,
+                    "institutionSource": affiliation.institutionSource.rawValue,
+                    "claimStatus": affiliation.claimStatus.rawValue,
+                    "createdAt": now,
+                    "updatedAt": now,
+                ],
+                forDocument: firestore.document(FirestorePath.teacherProfile(uid: uid)),
+                merge: false
+            )
+        }
+
+        if let application = registration.volunteerApplication {
+            batch.setData(
+                [
+                    "uid": uid,
+                    "displayName": name,
+                    "status": VolunteerApplicationStatus.pendingReview.rawValue,
+                    "confirmsAge18OrOlder": application.confirmsAge18OrOlder,
+                    "acceptedConductVersion": application.acceptedConductVersion,
+                    "motivation": application.motivation,
+                    "evidence": application.evidence.map { evidence in
+                        [
+                            "id": evidence.id,
+                            "kind": evidence.kind.rawValue,
+                            "storageObjectKey": evidence.storageObjectKey,
+                            "originalFilename": evidence.originalFilename,
+                            "mimeType": evidence.mimeType,
+                            "sizeBytes": evidence.sizeBytes,
+                            "uploadedAt": evidence.uploadedAt,
+                        ] as [String: Any]
+                    },
+                    "submittedAt": now,
+                    "updatedAt": now,
+                ],
+                forDocument: firestore.document(FirestorePath.volunteerApplication(uid: uid)),
+                merge: false
+            )
+        }
+
+        try await commit(batch)
+    }
+
+    private func commit(_ batch: WriteBatch) async throws {
+        try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
+            batch.commit { error in
+                if let error {
+                    continuation.resume(throwing: error)
+                } else {
+                    continuation.resume()
+                }
+            }
+        }
     }
 
     private func accountSession(
@@ -401,6 +477,13 @@ struct FirebaseAuthService: AuthService {
         let accountStatus = (userData["accountStatus"] as? String)
             .flatMap(AccountProvisioningStatus.init(rawValue:))
             ?? ((userData["active"] as? Bool ?? true) ? .active : .disabled)
+
+        if userData["emailVerificationRequired"] as? Bool == true, !emailVerified {
+            throw AuthServiceError.emailNotVerified(
+                email: fallbackDisplayName.contains("@") ? fallbackDisplayName : ""
+            )
+        }
+
         switch accountStatus {
         case .active:
             break
@@ -408,12 +491,6 @@ struct FirebaseAuthService: AuthService {
             throw AuthServiceError.accountPendingApproval
         case .suspended, .disabled:
             throw AuthServiceError.accountDisabled
-        }
-
-        if userData["emailVerificationRequired"] as? Bool == true, !emailVerified {
-            throw AuthServiceError.emailNotVerified(
-                email: fallbackDisplayName.contains("@") ? fallbackDisplayName : ""
-            )
         }
 
         let hasExplicitActiveClass = userData.keys.contains("activeClassId")

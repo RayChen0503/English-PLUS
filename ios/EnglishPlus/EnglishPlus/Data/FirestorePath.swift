@@ -3,6 +3,18 @@ import Foundation
 enum FirestorePath {
     static let appConfigPublic = "appConfig/public"
 
+    static func educationInstitution(institutionId: String) -> String {
+        "educationInstitutions/\(segment(institutionId))"
+    }
+
+    static func teacherProfile(uid: String) -> String {
+        "teacherProfiles/\(segment(uid))"
+    }
+
+    static func volunteerApplication(uid: String) -> String {
+        "volunteerApplications/\(segment(uid))"
+    }
+
     static func staffInvitation(invitationId: String) -> String {
         "staffInvitations/\(segment(invitationId))"
     }

@@ -114,7 +114,31 @@ struct FirestoreUserDocument: Codable, Equatable {
     let activeClassId: String?
     let accountStatus: AccountProvisioningStatus
     let emailVerificationRequired: Bool
-    let provisioningSource: String
+    let provisioningSource: AccountProvisioningSource
+    let identityProviders: [AccountIdentityProvider]
+}
+
+struct FirestoreTeacherProfileDocument: Codable, Equatable {
+    let uid: String
+    let displayName: String
+    let affiliation: TeacherAffiliation
+    let createdAt: Date
+    let updatedAt: Date
+}
+
+struct FirestoreVolunteerApplicationDocument: Codable, Equatable {
+    let uid: String
+    let displayName: String
+    let status: VolunteerApplicationStatus
+    let confirmsAge18OrOlder: Bool
+    let acceptedConductVersion: String
+    let motivation: String
+    let evidence: [VolunteerEvidenceReference]
+    let submittedAt: Date
+    let updatedAt: Date
+    let reviewedByUid: String?
+    let reviewedAt: Date?
+    let reviewNote: String?
 }
 
 struct FirestoreStaffInvitationDocument: Codable, Equatable {

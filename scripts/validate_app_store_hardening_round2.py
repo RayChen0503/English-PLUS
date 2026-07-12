@@ -64,7 +64,7 @@ def main() -> int:
             '"activeClassId": NSNull()',
             "FirestorePath.userMemberships(uid: uid)",
             "legacyMembershipIfPresent",
-            "staffSelfServiceUnavailable",
+            "selfServiceStudent",
         ],
         errors,
     )
@@ -133,7 +133,7 @@ def main() -> int:
             "match /practiceAssignments/{assignmentId}",
             "staffCanReadStudentTimeline",
             "createdAt >= studentVisibilityStartsAt(classId, studentUid)",
-            'request.resource.data.primaryRole == "student"',
+            'profile.primaryRole == "student"',
             "validActiveClassSelection(uid)",
         ],
         errors,

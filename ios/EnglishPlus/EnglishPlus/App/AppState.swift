@@ -72,20 +72,28 @@ final class AppState: ObservableObject {
         displayName: String,
         role: UserRole
     ) async {
+        await createAccount(
+            AccountRegistration(
+                email: email,
+                password: password,
+                displayName: displayName,
+                role: role,
+                teacherAffiliation: nil,
+                volunteerApplication: nil
+            )
+        )
+    }
+
+    func createAccount(_ registration: AccountRegistration) async {
         guard signingInRole == nil else { return }
-        selectedRole = role
-        signingInRole = role
+        selectedRole = registration.role
+        signingInRole = registration.role
         signInErrorMessage = nil
         authNoticeMessage = nil
         verificationEmailAddress = nil
 
         do {
-            let outcome = try await authService.createAccount(
-                email: email.trimmingCharacters(in: .whitespacesAndNewlines),
-                password: password,
-                displayName: displayName.trimmingCharacters(in: .whitespacesAndNewlines),
-                role: role
-            )
+            let outcome = try await authService.createAccount(registration)
             switch outcome {
             case .authenticated(let session):
                 await finishAuthenticatedSession(session)
@@ -93,6 +101,11 @@ final class AppState: ObservableObject {
                 clearFailedAuthenticationState()
                 verificationEmailAddress = email
                 authNoticeMessage = "驗證信已寄出。完成信箱驗證後，就可以回來登入。"
+            case .approvalPending(_, let role):
+                clearFailedAuthenticationState()
+                authNoticeMessage = role == .volunteer
+                    ? "志工申請已送出，審核通過後即可登入。"
+                    : "帳號申請已送出，請等待審核。"
             }
             signingInRole = nil
         } catch {

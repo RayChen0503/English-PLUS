@@ -1,3 +1,8 @@
+#!/usr/bin/env python3
+import importlib.util
+import json
+import sys
+import tempfile
 from pathlib import Path
 
 
@@ -13,94 +18,187 @@ def require(condition: bool, message: str, errors: list[str]) -> None:
         errors.append(message)
 
 
+def validate_catalog_builder(errors: list[str]) -> None:
+    script_path = ROOT / "scripts/build_taiwan_education_institution_catalog.py"
+    spec = importlib.util.spec_from_file_location("institution_catalog", script_path)
+    if spec is None or spec.loader is None:
+        errors.append("Institution catalog builder cannot be imported.")
+        return
+    module = importlib.util.module_from_spec(spec)
+    sys.modules[spec.name] = module
+    spec.loader.exec_module(module)
+
+    with tempfile.TemporaryDirectory() as directory:
+        source_path = Path(directory) / "schools.csv"
+        source_path.write_text(
+            "代碼,學校名稱,縣市名稱,行政區\n"
+            "014501,English Plus Junior High,宜蘭縣,宜蘭市\n",
+            encoding="utf-8-sig",
+        )
+        source = module.SourceSpec("juniorHigh", source_path, "6088", "114")
+        catalog = module.build_catalog([source])
+        require(len(catalog) == 1, "Catalog builder did not emit one school.", errors)
+        if catalog:
+            require(catalog[0]["id"] == "moe-014501", "School ID is not stable.", errors)
+            require(
+                catalog[0]["source"] == "ministryOfEducation",
+                "Official school source was not preserved.",
+                errors,
+            )
+
+
 def main() -> int:
     errors: list[str] = []
+    identity = read("ios/EnglishPlus/EnglishPlus/Models/IdentityModels.swift")
     auth_contract = read("ios/EnglishPlus/EnglishPlus/Services/AuthService.swift")
     firebase_auth = read("ios/EnglishPlus/EnglishPlus/Services/FirebaseAuthService.swift")
+    mock_auth = read("ios/EnglishPlus/EnglishPlus/Services/MockAuthService.swift")
     app_state = read("ios/EnglishPlus/EnglishPlus/App/AppState.swift")
-    login = read("ios/EnglishPlus/EnglishPlus/Features/RoleSelection/DemoLoginView.swift")
-    root_view = read("ios/EnglishPlus/EnglishPlus/App/RootView.swift")
     schema = read("ios/EnglishPlus/EnglishPlus/Models/FirestoreSchema.swift")
+    paths = read("ios/EnglishPlus/EnglishPlus/Data/FirestorePath.swift")
     rules = read("docs/ios-testflight/firebase/firestore.rules.draft")
-
-    require("enum AccountCreationOutcome" in auth_contract,
-            "Account creation must represent verification-required state.", errors)
-    require("func sendPasswordReset(email:" in auth_contract,
-            "Auth contract must support password reset.", errors)
-    require("func resendVerification(email:" in auth_contract,
-            "Auth contract must support resending verification.", errors)
-    require("case staffSelfServiceUnavailable" in auth_contract,
-            "Staff self-service registration must be rejected explicitly.", errors)
+    project = read("ios/EnglishPlus/EnglishPlus.xcodeproj/project.pbxproj")
+    decisions = read("docs/app-store-hardening/DECISIONS.md")
+    state = read("docs/app-store-hardening/CURRENT_STATE.md")
+    report = read("docs/app-store-hardening/round-03-multi-provider-role-onboarding.md")
+    sources = json.loads(
+        read("docs/app-store-hardening/education-institution-sources.json")
+    )
 
     for marker in (
-        "sendPasswordReset(withEmail:",
-        "sendEmailVerification",
-        "isEmailVerified",
-        '"emailVerificationRequired": true',
-        '"provisioningSource": "selfServiceStudent"',
-        "AuthErrorCode(rawValue:",
+        "case emailPassword",
+        "case google",
+        "case apple",
+        "struct AccountRegistration",
+        "struct RoleOnboardingProfile",
+        "struct TeacherAffiliation",
+        "case selfDeclared",
+        "struct VolunteerApplicationInput",
+        "case pendingReview",
+        "confirmsAge18OrOlder",
+        "struct EducationInstitutionDirectory",
+        "normalizedText.count >= 2",
+        "prefix(limit)",
     ):
-        require(marker in firebase_auth, f"Missing Firebase auth marker: {marker}", errors)
-
-    require("guard role == .student" in firebase_auth,
-            "Only students may use self-service account creation.", errors)
-    require("try? Auth.auth().signOut()" in firebase_auth,
-            "Rejected or unverified sessions must be signed out.", errors)
+        require(marker in identity, f"Identity domain missing marker: {marker}", errors)
 
     for marker in (
-        "func sendPasswordReset(email:",
-        "func resendVerification(email:",
-        "authNoticeMessage",
-        "verificationEmailAddress",
-        "userMessage(for error:",
+        "func createAccount(_ registration: AccountRegistration)",
+        "with credential: FederatedIdentityCredential",
+        "profile: RoleOnboardingProfile",
+        "func linkIdentity(",
+        "case approvalPending",
+        "case missingTeacherAffiliation",
+        "case invalidVolunteerApplication",
     ):
-        require(marker in app_state, f"Missing AppState auth UX marker: {marker}", errors)
+        require(marker in auth_contract, f"Auth contract missing marker: {marker}", errors)
 
-    require('_email = State(initialValue: "")' in login,
-            "Release login must not prefill a demo email.", errors)
-    require('_password = State(initialValue: "")' in login,
-            "Release login must not prefill a demo password.", errors)
-    require("忘記密碼？" in login and "重新寄送驗證信" in login,
-            "Login UI must expose account recovery actions.", errors)
-    require("老師與志工帳號由管理者核發" in login,
-            "Staff provisioning copy must be user-facing and explicit.", errors)
-    require("Firebase" not in login and "測試帳號" not in login,
-            "Role-facing login UI must not expose implementation/test language.", errors)
-    require("password.count < 8" in login,
-            "New student password validation must use the Round 3 minimum.", errors)
+    for marker in (
+        "registration.hasRequiredRoleDetails",
+        "case .teacher:",
+        "case .volunteer:",
+        "? .pendingApproval",
+        "provisioningSource = .selfServiceTeacher",
+        "provisioningSource = .selfServiceVolunteer",
+        "FirestorePath.teacherProfile(uid: uid)",
+        "FirestorePath.volunteerApplication(uid: uid)",
+        "VolunteerApplicationStatus.pendingReview.rawValue",
+        "let batch = firestore.batch()",
+        "try await commit(batch)",
+    ):
+        require(marker in firebase_auth, f"Firebase registration missing: {marker}", errors)
+    require(
+        "guard role == .student" not in firebase_auth,
+        "Firebase registration still blocks all teacher and volunteer applications.",
+        errors,
+    )
+    require(
+        "registration.role == .volunteer" in mock_auth
+        and ".approvalPending(email: cleanedEmail, role: .volunteer)" in mock_auth,
+        "Fallback auth does not preserve volunteer pending state.",
+        errors,
+    )
+    require(
+        "func createAccount(_ registration: AccountRegistration)" in app_state,
+        "AppState has no full registration entry point for Round 4 UI.",
+        errors,
+    )
 
-    require("restoreSessionIfPossible" not in root_view,
-            "Cold launch must keep explicit role selection and sign-in.", errors)
-    require("enum AccountProvisioningStatus" in schema,
-            "Firestore schema must model account provisioning status.", errors)
-    require("struct FirestoreStaffInvitationDocument" in schema,
-            "Firestore schema must define server-managed staff invitations.", errors)
-    require("match /staffInvitations/{invitationId}" in rules,
-            "Rules must include the staff invitation boundary.", errors)
-    require("allow read, write: if false;" in rules,
-            "Staff invitations must remain server-only.", errors)
-    require("emailVerificationRequired == true" in rules,
-            "Self-service student profiles must require verified email.", errors)
-    require('request.resource.data.keys().hasOnly([' in rules,
-            "Self-service profiles must use an explicit field allowlist.", errors)
-    update_marker = "allow update: if hasAccountAccess(uid)"
-    user_update_section = ""
-    if update_marker in rules:
-        user_update_section = rules.split(update_marker, 1)[1].split(
-            "allow delete: if false;", 1
-        )[0]
-    require(update_marker in rules and '"active"' not in user_update_section,
-            "Users must not be able to reactivate their own accounts.", errors)
-    require("hasAccountAccess" in rules and "email_verified" in rules,
-            "Protected data must require an active, verified account.", errors)
+    for marker in (
+        "FirestoreTeacherProfileDocument",
+        "FirestoreVolunteerApplicationDocument",
+        "identityProviders: [AccountIdentityProvider]",
+        "provisioningSource: AccountProvisioningSource",
+    ):
+        require(marker in schema, f"Firestore schema missing marker: {marker}", errors)
+    for marker in (
+        "educationInstitution(institutionId:",
+        "teacherProfile(uid:",
+        "volunteerApplication(uid:",
+    ):
+        require(marker in paths, f"Firestore path missing marker: {marker}", errors)
+
+    for marker in (
+        "validSelfServiceProfile(profile)",
+        'profile.provisioningSource == "selfServiceStudent"',
+        'profile.provisioningSource == "selfServiceTeacher"',
+        'profile.provisioningSource == "selfServiceVolunteer"',
+        'profile.accountStatus == "pendingApproval"',
+        "match /educationInstitutions/{institutionId}",
+        "match /teacherProfiles/{uid}",
+        'request.resource.data.claimStatus == "selfDeclared"',
+        "match /volunteerApplications/{uid}",
+        'request.resource.data.status == "pendingReview"',
+        "request.resource.data.confirmsAge18OrOlder == true",
+        '"identityProviders"',
+    ):
+        require(marker in rules, f"Firestore rules missing marker: {marker}", errors)
+    require(
+        'profile.primaryRole == "volunteer"\n          && profile.active == false'
+        in rules,
+        "A self-service volunteer can become active without review.",
+        errors,
+    )
+
+    require(
+        project.count("IdentityModels.swift") >= 3,
+        "IdentityModels.swift is not fully included in the Xcode project.",
+        errors,
+    )
+    require(
+        {item["datasetId"] for item in sources["sources"]}
+        >= {"6087", "6088", "6089", "162568"},
+        "Official school source register is incomplete.",
+        errors,
+    )
+
+    for marker in (
+        "Google + Apple + Email/password",
+        "Teacher self-registration",
+        "Volunteer self-application",
+        "3/20",
+    ):
+        require(
+            marker in decisions + state + report,
+            f"Round 3 documentation missing marker: {marker}",
+            errors,
+        )
+    require(
+        "Production identity uses email/password only in Round 3. Superseded by D-09."
+        in decisions,
+        "The historical Email-only decision is not explicitly superseded.",
+        errors,
+    )
+
+    validate_catalog_builder(errors)
 
     if errors:
-        print("Round 3 hardening validation failed:")
+        print("Round 3 multi-provider onboarding validation failed:")
         for error in errors:
             print(f"- {error}")
         return 1
 
-    print("Round 3 hardening validation passed.")
+    print("Round 3 multi-provider onboarding validation passed.")
     return 0
 
 

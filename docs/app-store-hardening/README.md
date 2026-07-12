@@ -30,7 +30,7 @@ evidence in the round reports.
 | --- | --- | --- |
 | 1 - Baseline audit and freeze | Complete | `round-01-baseline-audit.md` |
 | 2 - Personal mode and class-mode domain model | Complete | `round-02-personal-and-class-domain.md` |
-| 3 - Email identity and staff provisioning | Complete | `round-03-email-identity-and-staff-provisioning.md` |
+| 3 - Google/Apple/Email role onboarding | Complete | `round-03-multi-provider-role-onboarding.md` |
 
 ## Main-branch safety
 

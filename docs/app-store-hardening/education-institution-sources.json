@@ -1,0 +1,43 @@
+{
+  "schemaVersion": 1,
+  "refreshCadence": "oncePerAcademicYear",
+  "license": {
+    "name": "Open Government Data License, version 1.0",
+    "url": "https://data.gov.tw/license"
+  },
+  "sources": [
+    {
+      "datasetId": "6087",
+      "kind": "elementary",
+      "name": "Elementary School Directory",
+      "url": "https://data.gov.tw/dataset/6087"
+    },
+    {
+      "datasetId": "6088",
+      "kind": "juniorHigh",
+      "name": "Junior High School Directory",
+      "url": "https://data.gov.tw/dataset/6088"
+    },
+    {
+      "datasetId": "6089",
+      "kind": "seniorHigh",
+      "name": "Senior High School Directory",
+      "url": "https://data.gov.tw/dataset/6089"
+    },
+    {
+      "datasetId": "162568",
+      "kind": "experimental",
+      "name": "Indigenous Experimental Education School Directory",
+      "url": "https://data.gov.tw/dataset/162568"
+    }
+  ],
+  "manualFallback": {
+    "supportedKinds": [
+      "experimentalEducationInstitution",
+      "homeschoolGroup",
+      "otherEducationOrganization"
+    ],
+    "source": "userSubmitted",
+    "claimStatus": "selfDeclared"
+  }
+}

@@ -42,7 +42,8 @@ struct FirestoreSeedMapper {
                 activeClassId: account.activeClassId,
                 accountStatus: .active,
                 emailVerificationRequired: false,
-                provisioningSource: "internalSeed"
+                provisioningSource: .internalSeed,
+                identityProviders: [.emailPassword]
             )
             writePlan.append(.init(
                 id: FirestorePath.user(uid: uid),

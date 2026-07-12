@@ -135,6 +135,10 @@ block gate rather than consuming a build for Round 2 alone.
 
 ## Decision gate for Round 3
 
+> Historical note: the locally relabeled options below caused the original
+> `3.C` answer to be misread. The corrected decision is Google + Apple +
+> Email/password and is recorded in D-09 through D-12.
+
 Round 3 will harden identity and account provisioning. Confirm:
 
 1. Identity providers:
