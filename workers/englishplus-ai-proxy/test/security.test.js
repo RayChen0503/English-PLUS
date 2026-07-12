@@ -5,6 +5,7 @@ import worker, {
   evidenceQuotaSnapshot,
   enforceEvidenceQuota,
   normalizeEvidenceTicketRequest,
+  reviewTransitionAllowed,
   selectExpiredReviewedApplications,
   signUploadTicket,
   verifyUploadTicket,
@@ -164,4 +165,16 @@ test("retention cleanup selects only final reviews older than thirty days", () =
     selectExpiredReviewedApplications(applications, now).map((item) => item.uid),
     ["expired"]
   );
+});
+
+test("volunteer review actions enforce legal application transitions", () => {
+  assert.equal(reviewTransitionAllowed("pendingReview", "approved"), true);
+  assert.equal(reviewTransitionAllowed("pendingReview", "rejected"), true);
+  assert.equal(
+    reviewTransitionAllowed("pendingReview", "needsMoreInformation"),
+    true
+  );
+  assert.equal(reviewTransitionAllowed("needsMoreInformation", "approved"), false);
+  assert.equal(reviewTransitionAllowed("approved", "suspended"), true);
+  assert.equal(reviewTransitionAllowed("rejected", "approved"), false);
 });

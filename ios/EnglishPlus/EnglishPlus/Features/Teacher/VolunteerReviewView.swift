@@ -6,6 +6,7 @@ struct VolunteerReviewView: View {
 
     @State private var previewURL: URL?
     @State private var isDownloadingEvidence = false
+    @State private var evidenceErrorMessage: String?
 
     var body: some View {
         NavigationStack {
@@ -14,6 +15,12 @@ struct VolunteerReviewView: View {
                 ScrollView {
                     VStack(alignment: .leading, spacing: 16) {
                         header
+                        if let evidenceErrorMessage {
+                            Label(evidenceErrorMessage, systemImage: "exclamationmark.circle.fill")
+                                .font(.footnote.weight(.semibold))
+                                .foregroundStyle(EPTheme.danger)
+                                .fixedSize(horizontal: false, vertical: true)
+                        }
                         if appState.isLoadingVolunteerReviews {
                             ProgressView("正在載入申請...")
                                 .frame(maxWidth: .infinity)
@@ -42,6 +49,17 @@ struct VolunteerReviewView: View {
         }
         .task {
             await appState.loadVolunteerReviewApplications()
+        }
+        .onChange(of: previewURL) { oldValue, newValue in
+            if newValue == nil, let oldValue {
+                try? FileManager.default.removeItem(at: oldValue)
+            }
+        }
+        .onDisappear {
+            if let previewURL {
+                try? FileManager.default.removeItem(at: previewURL)
+                self.previewURL = nil
+            }
         }
         .quickLookPreview($previewURL)
     }
@@ -92,7 +110,13 @@ struct VolunteerReviewView: View {
         Task {
             isDownloadingEvidence = true
             defer { isDownloadingEvidence = false }
-            previewURL = try? await appState.downloadVolunteerEvidence(evidence)
+            evidenceErrorMessage = nil
+            do {
+                previewURL = try await appState.downloadVolunteerEvidence(evidence)
+            } catch {
+                evidenceErrorMessage = (error as? LocalizedError)?.errorDescription
+                    ?? "無法開啟這份證明，請檢查網路後再試。"
+            }
         }
     }
 }
@@ -158,31 +182,38 @@ private struct VolunteerReviewCard: View {
                 }
             }
 
-            TextField("審核備註或補件說明", text: $note, axis: .vertical)
-                .lineLimit(2...4)
-                .padding(12)
-                .background(EPTheme.secondarySurface)
-                .clipShape(RoundedRectangle(cornerRadius: EPTheme.cardRadius))
+            if application.status == .needsMoreInformation {
+                Label("等待申請者補件並重新送出後，才會重新開放審核。", systemImage: "clock.badge")
+                    .font(.footnote.weight(.semibold))
+                    .foregroundStyle(EPTheme.warning)
+                    .fixedSize(horizontal: false, vertical: true)
+            } else {
+                TextField("審核備註或補件說明", text: $note, axis: .vertical)
+                    .lineLimit(2...4)
+                    .padding(12)
+                    .background(EPTheme.secondarySurface)
+                    .clipShape(RoundedRectangle(cornerRadius: EPTheme.cardRadius))
 
-            HStack(spacing: 10) {
-                Button("要求補件") {
-                    confirmationAction = .needsMoreInformation
+                HStack(spacing: 10) {
+                    Button("要求補件") {
+                        confirmationAction = .needsMoreInformation
+                    }
+                    .buttonStyle(SecondaryActionButtonStyle())
+                    .disabled(note.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+
+                    Button("核准") {
+                        confirmationAction = .approved
+                    }
+                    .buttonStyle(PrimaryActionButtonStyle())
                 }
-                .buttonStyle(SecondaryActionButtonStyle())
+
+                Button("拒絕申請", role: .destructive) {
+                    confirmationAction = .rejected
+                }
+                .font(.footnote.weight(.semibold))
+                .frame(maxWidth: .infinity)
                 .disabled(note.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
-
-                Button("核准") {
-                    confirmationAction = .approved
-                }
-                .buttonStyle(PrimaryActionButtonStyle())
             }
-
-            Button("拒絕申請", role: .destructive) {
-                confirmationAction = .rejected
-            }
-            .font(.footnote.weight(.semibold))
-            .frame(maxWidth: .infinity)
-            .disabled(note.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
         }
         .padding(16)
         .background(EPTheme.card)

@@ -113,6 +113,7 @@ def main() -> int:
             "InstitutionPickerView(selection:",
             "volunteer-conduct-v1",
             "LoginMode.register",
+            '"建立\\(role.title)帳號"',
         ),
         "Role onboarding UI",
         errors,
@@ -169,6 +170,10 @@ def main() -> int:
             "10 * 1024 * 1024",
             "submitVolunteerApplication",
             "evidence/upload-ticket",
+            "evidence.count < 5",
+            "totalEvidenceBytes < 25 * 1024 * 1024",
+            "deletingEvidenceID",
+            "核准、拒絕或停權後 30 天會自動刪除",
         ),
         "Volunteer evidence flow",
         errors,
@@ -182,6 +187,9 @@ def main() -> int:
             "admin/volunteer-review",
             "admin/evidence",
             ".quickLookPreview",
+            "evidenceErrorMessage",
+            "等待申請者補件並重新送出後",
+            "FileManager.default.removeItem",
         ),
         "Administrator review flow",
         errors,
@@ -205,6 +213,9 @@ def main() -> int:
             "UPLOAD_RESERVATION_INVALID",
             "cleanupExpiredReviewedEvidence",
             "REVIEW_EVIDENCE_RETENTION_DAYS = 30",
+            "reviewTransitionAllowed",
+            "REVIEW_STATE_CONFLICT",
+            "currentDocument: application.updateTime",
         ),
         "Private Worker boundary",
         errors,
@@ -242,6 +253,8 @@ def main() -> int:
     require("4/20" in state and "4/20" in report, "Round 4 progress is not documented.", errors)
     require("D-13" in decisions and "private Cloudflare R2" in decisions,
             "Private evidence-storage decision is not registered.", errors)
+    require("D-14" in decisions and "five files and 25 MB" in decisions,
+            "Evidence quota and retention decision is not registered.", errors)
     require("64 passed, 0 failed" in report,
             "Round 4 full-audit result is not recorded.", errors)
     require("five-file and 25 MB" in report and "final-review evidence after 30 days" in report,

@@ -19,9 +19,9 @@ already depend on.
 | D-11 | 2026-07-12 | Volunteer self-application remains pending until an administrator approves evidence and conduct eligibility. | A volunteer cannot access minor students or support records before review. |
 | D-12 | 2026-07-12 | Official institutions come from annual Ministry of Education directories; unlisted experimental or homeschool groups are user-submitted and visibly unverified. | Search stays usable without misrepresenting a manual entry as an official record. |
 | D-13 | 2026-07-12 | Volunteer evidence uses short-lived signed uploads to a private Cloudflare R2 bucket and administrator-only downloads. | Sensitive evidence bytes stay out of Firestore profiles, Git, and the iOS binary. |
+| D-14 | 2026-07-12 | Volunteer evidence is limited to five files and 25 MB per applicant, deleted 30 days after a final review, with the 90-day R2 lifecycle retained as an orphan failsafe. | The operational limit is now deployed and must remain aligned across iOS copy, Worker enforcement, privacy documentation, and tests. |
 
 ## Pending decisions
 
-- Exact volunteer evidence retention and deletion periods remain part of the
-  later privacy and operations block; raw evidence must never be stored in a
-  user profile document.
+- No unresolved Round 1-4 product decision remains. Raw volunteer evidence
+  must never be stored in a user profile document.

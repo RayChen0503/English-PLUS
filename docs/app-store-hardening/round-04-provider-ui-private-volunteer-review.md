@@ -164,10 +164,10 @@ Passed on Windows:
 - Xcode source-membership validator: 58 Swift files before the provider UI
   product-only addition; all new Swift files remain target members.
 - Worker syntax check.
-- Three Worker security tests: unauthenticated AI rejection, evidence metadata
-  allow-list/size enforcement, and upload-ticket tamper/expiry rejection.
-- Five Worker security tests after the deployment hardening additions,
-  including aggregate quota reservations and final-review retention selection.
+- Six Worker security tests cover unauthenticated AI rejection, evidence
+  metadata enforcement, upload-ticket tamper/expiry rejection, aggregate quota
+  reservations, final-review retention selection, and legal review-state
+  transitions.
 - Round 3 regression and all updated targeted legacy regressions.
 - Full repository validator audit: **64 passed, 0 failed** at the completion
   gate.
@@ -183,7 +183,7 @@ deliberate first-block push.
 - Cloudflare Worker URL:
   `https://englishplus-ai-proxy.englishplus-ray.workers.dev`
 - Deployed Worker version:
-  `3b3dff8b-ed00-4975-b6ea-050ca9e0fc2d`
+  `06484437-4a9b-47a6-8044-80e48d2fdbe4`
 - Private R2 binding: `VOLUNTEER_EVIDENCE` ->
   `englishplus-volunteer-evidence`.
 - Daily cleanup schedule: `17 3 * * *` UTC.
@@ -198,6 +198,27 @@ deliberate first-block push.
 The positive administrator-review path still requires assigning `admin: true`
 to a deliberately chosen non-demo owner account. It must not be assigned to a
 demo account whose credentials are present in source fixtures.
+
+## Block A final UX and behavior audit
+
+The four-round checkpoint was reviewed as an end-to-end user flow rather than
+only as source presence. The final audit fixed the following issues before the
+release gate:
+
+- the account-creation button now interpolates the selected role correctly;
+- the applicant sees file count, total size, administrator-only visibility,
+  and the 30-day final-review deletion policy before uploading;
+- upload and delete controls cannot race each other, and a failed upload
+  releases its reserved quota instead of blocking the applicant for ten
+  minutes;
+- evidence download failures are visible to the administrator;
+- downloaded evidence is removed from the local temporary directory when its
+  preview closes or the review screen exits;
+- an application waiting for more information cannot be approved or rejected
+  until the applicant resubmits it;
+- the Worker validates the same review-state transitions and uses the
+  Firestore document update time to reject stale concurrent review writes;
+- the decision register now matches the deployed quota and retention policy.
 
 ## Manual gate before release build
 

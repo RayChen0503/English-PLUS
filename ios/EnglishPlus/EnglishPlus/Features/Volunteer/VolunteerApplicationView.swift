@@ -11,6 +11,7 @@ struct VolunteerApplicationView: View {
     @State private var selectedKind: VolunteerQualificationKind = .universityEnrollment
     @State private var showsFileImporter = false
     @State private var isUploading = false
+    @State private var deletingEvidenceID: String?
     @State private var localError: String?
 
     var body: some View {
@@ -91,9 +92,19 @@ struct VolunteerApplicationView: View {
                 Text("資格證明")
                     .font(.headline)
                     .foregroundStyle(EPTheme.ink)
-                Text("至少一份，可使用 PDF、JPG 或 PNG，單檔上限 10 MB。")
+                Text("至少一份，最多 5 份；可使用 PDF、JPG 或 PNG，單檔 10 MB、合計 25 MB。")
                     .font(.footnote)
                     .foregroundStyle(EPTheme.secondaryInk)
+                Text("已加入 \(evidence.count)/5 份 · \(formattedSize(totalEvidenceBytes))/25 MB")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(canAddEvidence ? EPTheme.secondaryInk : EPTheme.warning)
+                Label(
+                    "證明只供授權管理員審核；核准、拒絕或停權後 30 天會自動刪除。",
+                    systemImage: "lock.shield"
+                )
+                .font(.caption)
+                .foregroundStyle(EPTheme.secondaryInk)
+                .fixedSize(horizontal: false, vertical: true)
             }
 
             Picker("證明類型", selection: $selectedKind) {
@@ -108,7 +119,7 @@ struct VolunteerApplicationView: View {
             } label: {
                 Label(isUploading ? "上傳中..." : "選擇證明文件", systemImage: "doc.badge.plus")
             }
-            .disabled(isUploading)
+            .disabled(isUploading || !canAddEvidence)
             .buttonStyle(SecondaryActionButtonStyle())
 
             if evidence.isEmpty {
@@ -147,6 +158,7 @@ struct VolunteerApplicationView: View {
                     .foregroundStyle(EPTheme.danger)
             }
             .buttonStyle(.plain)
+            .disabled(isUploading || deletingEvidenceID != nil)
         }
         .padding(12)
         .background(EPTheme.card)
@@ -177,7 +189,12 @@ struct VolunteerApplicationView: View {
         Button("送出審核") {
             Task { await appState.submitVolunteerApplication(application) }
         }
-        .disabled(!application.isReadyToSubmit || isUploading || appState.signingInRole != nil)
+        .disabled(
+            !application.isReadyToSubmit
+                || isUploading
+                || deletingEvidenceID != nil
+                || appState.signingInRole != nil
+        )
         .buttonStyle(PrimaryActionButtonStyle())
     }
 
@@ -195,6 +212,10 @@ struct VolunteerApplicationView: View {
             if case .failure(let error) = result {
                 localError = error.localizedDescription
             }
+            return
+        }
+        guard canAddEvidence else {
+            localError = "最多可上傳 5 份證明，合計不得超過 25 MB。"
             return
         }
         Task {
@@ -215,7 +236,10 @@ struct VolunteerApplicationView: View {
     }
 
     private func removeEvidence(_ item: VolunteerEvidenceReference) async {
+        guard deletingEvidenceID == nil else { return }
         localError = nil
+        deletingEvidenceID = item.id
+        defer { deletingEvidenceID = nil }
         do {
             try await appState.deleteVolunteerEvidence(item)
             evidence.removeAll { $0.id == item.id }
@@ -234,6 +258,14 @@ struct VolunteerApplicationView: View {
 
     private func formattedSize(_ bytes: Int) -> String {
         ByteCountFormatter.string(fromByteCount: Int64(bytes), countStyle: .file)
+    }
+
+    private var totalEvidenceBytes: Int {
+        evidence.reduce(0) { $0 + max(0, $1.sizeBytes) }
+    }
+
+    private var canAddEvidence: Bool {
+        evidence.count < 5 && totalEvidenceBytes < 25 * 1024 * 1024
     }
 }
 

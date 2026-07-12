@@ -348,12 +348,14 @@ async function handleVolunteerReview(request, env, url) {
   try {
     await commitVolunteerReview(env, {
       uid,
+      action: body.action,
       reviewerUid: admin.sub,
       note: safeString(body?.note)?.slice(0, 1000) || "",
       ...decision,
     });
     return jsonResponse({ ok: true, uid, status: decision.applicationStatus });
-  } catch {
+  } catch (error) {
+    if (error?.status) return authOrValidationError(error);
     return jsonResponse({ ok: false, error: "REVIEW_COMMIT_FAILED" }, 502);
   }
 }
@@ -682,6 +684,15 @@ async function hmacKey(secret, usages) {
 async function commitVolunteerReview(env, review) {
   const projectId = env.FIREBASE_PROJECT_ID || "englishplus-testflight";
   const accessToken = await serviceAccountAccessToken(env);
+  const application = await getVolunteerApplicationDocument(
+    projectId,
+    accessToken,
+    review.uid
+  );
+  const currentStatus = firestoreString(application.fields?.status);
+  if (!reviewTransitionAllowed(currentStatus, review.action)) {
+    throw httpError(409, "REVIEW_STATE_CONFLICT");
+  }
   const now = new Date().toISOString();
   const retentionUntil = FINAL_REVIEW_STATUSES.has(review.applicationStatus)
     ? new Date(Date.now() + REVIEW_EVIDENCE_RETENTION_DAYS * 24 * 60 * 60 * 1000)
@@ -724,7 +735,9 @@ async function commitVolunteerReview(env, review) {
                 "updatedAt",
               ],
             },
-            currentDocument: { exists: true },
+            currentDocument: application.updateTime
+              ? { updateTime: application.updateTime }
+              : { exists: true },
           },
           {
             update: {
@@ -747,6 +760,30 @@ async function commitVolunteerReview(env, review) {
   if (!response.ok) {
     throw new Error("Firestore review commit failed.");
   }
+}
+
+async function getVolunteerApplicationDocument(projectId, accessToken, uid) {
+  const response = await fetch(
+    `https://firestore.googleapis.com/v1/projects/${projectId}/databases/(default)/documents/volunteerApplications/${encodeURIComponent(uid)}`,
+    { headers: { Authorization: `Bearer ${accessToken}` } }
+  );
+  if (response.status === 404) {
+    throw httpError(404, "VOLUNTEER_APPLICATION_NOT_FOUND");
+  }
+  if (!response.ok) {
+    throw httpError(502, "VOLUNTEER_APPLICATION_LOOKUP_FAILED");
+  }
+  return response.json();
+}
+
+function reviewTransitionAllowed(currentStatus, action) {
+  if (["approved", "rejected", "needsMoreInformation"].includes(action)) {
+    return currentStatus === "pendingReview";
+  }
+  if (action === "suspended") {
+    return currentStatus === "approved";
+  }
+  return false;
 }
 
 async function listVolunteerApplications(env) {
@@ -1298,6 +1335,7 @@ export {
   enforceEvidenceQuota,
   normalizeEvidenceTicketRequest,
   normalizeRequest,
+  reviewTransitionAllowed,
   selectExpiredReviewedApplications,
   signUploadTicket,
   verifyUploadTicket,

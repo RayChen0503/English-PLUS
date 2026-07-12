@@ -375,7 +375,7 @@ struct DemoLoginView: View {
         if appState.signingInRole == role {
             return mode == .register ? "建立中..." : "登入中..."
         }
-        return mode == .register ? "建立(role.title)帳號" : "登入"
+        return mode == .register ? "建立\(role.title)帳號" : "登入"
     }
 
     private func submitEmailForm() async {

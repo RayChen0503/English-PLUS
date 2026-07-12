@@ -105,9 +105,17 @@ struct RemoteEvidenceUploadService: EvidenceUploadService {
         uploadRequest.setValue(mimeType, forHTTPHeaderField: "Content-Type")
         uploadRequest.setValue(String(data.count), forHTTPHeaderField: "Content-Length")
 
-        let (_, response) = try await session.upload(for: uploadRequest, from: data)
-        guard let httpResponse = response as? HTTPURLResponse,
+        let uploadResponse: URLResponse
+        do {
+            let (_, response) = try await session.upload(for: uploadRequest, from: data)
+            uploadResponse = response
+        } catch {
+            try? await deleteObjectKey(ticket.objectKey, idToken: idToken)
+            throw EvidenceUploadError.uploadRejected
+        }
+        guard let httpResponse = uploadResponse as? HTTPURLResponse,
               (200..<300).contains(httpResponse.statusCode) else {
+            try? await deleteObjectKey(ticket.objectKey, idToken: idToken)
             throw EvidenceUploadError.uploadRejected
         }
 
@@ -126,6 +134,10 @@ struct RemoteEvidenceUploadService: EvidenceUploadService {
         guard let idToken = try await idTokenProvider(), !idToken.isEmpty else {
             throw EvidenceUploadError.unauthenticated
         }
+        try await deleteObjectKey(reference.storageObjectKey, idToken: idToken)
+    }
+
+    private func deleteObjectKey(_ objectKey: String, idToken: String) async throws {
         var request = URLRequest(
             url: baseURL.appendingPathComponent("evidence/object")
         )
@@ -133,7 +145,7 @@ struct RemoteEvidenceUploadService: EvidenceUploadService {
         request.setValue("Bearer \(idToken)", forHTTPHeaderField: "Authorization")
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         request.httpBody = try JSONEncoder().encode(
-            EvidenceDeleteRequest(objectKey: reference.storageObjectKey)
+            EvidenceDeleteRequest(objectKey: objectKey)
         )
         let (_, response) = try await session.data(for: request)
         guard let httpResponse = response as? HTTPURLResponse,

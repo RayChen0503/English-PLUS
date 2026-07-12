@@ -67,7 +67,9 @@ learning must remain usable without joining a class.
 - Round 4 has added the provider SDK/UI wiring, official Apple and Google
   controls, automatic same-account provider linking, a 3,921-entry institution
   picker, a two-stage volunteer application, private signed R2 evidence
-  uploads, and an administrator-only review surface.
+  uploads, and an administrator-only review surface. The Block A final audit
+  also verified user-facing quota/retention guidance, failed-upload recovery,
+  temporary evidence cleanup, and legal review-state transitions.
 
 ## Current technical constraints
 
