@@ -224,6 +224,7 @@ struct PracticeCenterView: View {
                     aiResponse: practiceQuestionAIResponse,
                     supportConfirmation: practiceSupportConfirmation,
                     supportRequestSent: practiceSupportSentQuestionIds.contains(practiceSupportSentKey(for: item)),
+                    canRequestHumanSupport: appState.currentProfile?.activeClassId != nil,
                     isLoadingAI: isLoadingPracticeQuestionAI,
                     onOpenSupport: onOpenSupport,
                     onAskAI: {
@@ -856,6 +857,7 @@ struct PracticeCenterView: View {
     }
 
     private func sendPracticeSupportRequest(for item: QuestionBankItem) {
+        guard appState.currentProfile?.activeClassId != nil else { return }
         let selectedAnswer = normalizedPracticeAnswer(practiceAnswer).isEmpty ? nil : practiceAnswer
         let option = practiceSupportOption()
         learningRepository.sendQuestionSupportRequest(
@@ -1241,6 +1243,7 @@ private struct PracticeInlineSupportPanel: View {
     let aiResponse: AiProxyResponse?
     let supportConfirmation: String?
     let supportRequestSent: Bool
+    let canRequestHumanSupport: Bool
     let isLoadingAI: Bool
     let onOpenSupport: () -> Void
     let onAskAI: () -> Void
@@ -1252,7 +1255,9 @@ private struct PracticeInlineSupportPanel: View {
                 .font(.headline)
                 .foregroundStyle(EPTheme.ink)
 
-            Text("AI 會立刻解題；老師或志工會收到這一題、你的答案與解析。送出後到「支持」查看回覆。")
+            Text(canRequestHumanSupport
+                ? "AI 會立刻解題；也可以把題目送給班級老師與志工，回覆會集中在「支持」。"
+                : "AI 會立刻解題。加入班級後，這裡也會開啟老師與志工協助。")
                 .font(.caption)
                 .foregroundStyle(EPTheme.secondaryInk)
                 .fixedSize(horizontal: false, vertical: true)
@@ -1266,13 +1271,15 @@ private struct PracticeInlineSupportPanel: View {
                 .buttonStyle(PrimaryActionButtonStyle())
                 .disabled(isLoadingAI)
 
-                Button(action: onSendSupport) {
-                    Label(supportRequestSent ? "已送出" : "送給老師與志工", systemImage: "paperplane.fill")
-                        .font(.caption.bold())
-                        .frame(maxWidth: .infinity, minHeight: 44)
+                if canRequestHumanSupport {
+                    Button(action: onSendSupport) {
+                        Label(supportRequestSent ? "已送出" : "送給老師與志工", systemImage: "paperplane.fill")
+                            .font(.caption.bold())
+                            .frame(maxWidth: .infinity, minHeight: 44)
+                    }
+                    .buttonStyle(SecondaryActionButtonStyle())
+                    .disabled(supportRequestSent)
                 }
-                .buttonStyle(SecondaryActionButtonStyle())
-                .disabled(supportRequestSent)
             }
 
             if isLoadingAI {

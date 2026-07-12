@@ -58,11 +58,23 @@ final class FirebaseLearningRepository: LearningRepositoryBackend {
     func startRealtimeListener(
         classId: String,
         user: DemoUser?,
+        profile: AppUserProfile?,
         onChange: @escaping @MainActor (LearningRepositorySnapshot) -> Void,
         onError: @escaping @MainActor (Error) -> Void
     ) -> LearningRepositoryListenerToken {
-        activeClassId = classId
-        activeUserUid = user?.id
+        let isPersonalMode = profile?.isPersonalMode == true
+            || FirebaseBackendConfig.isPersonalScopeId(classId)
+        activeClassId = isPersonalMode ? nil : classId
+        activeUserUid = profile?.id ?? user?.id
+
+        if let profile, !profile.isDemo {
+            fallback.activatePersistenceScope(uid: profile.id)
+            currentSnapshot = Self.normalizedSnapshotForToday(fallback.snapshot)
+        }
+        if isPersonalMode {
+            currentSnapshot.supportRequests = []
+            currentSnapshot.assignedPracticeTasks = []
+        }
         normalizeCurrentSnapshotForToday()
         onChange(currentSnapshot)
 
@@ -72,6 +84,21 @@ final class FirebaseLearningRepository: LearningRepositoryBackend {
         }
 
         removeRealtimeRegistrations()
+        if isPersonalMode {
+            guard let uid = activeUserUid else {
+                return AnyLearningRepositoryListenerToken {}
+            }
+            listenPersonalCheckIn(uid: uid, onChange: onChange, onError: onError)
+            listenPersonalMission(uid: uid, onChange: onChange, onError: onError)
+            listenPersonalLearningFlow(uid: uid, onChange: onChange, onError: onError)
+
+            return AnyLearningRepositoryListenerToken { [weak self] in
+                self?.removeRealtimeRegistrations()
+                self?.activeClassId = nil
+                self?.activeUserUid = nil
+            }
+        }
+
         listenSupportThreads(classId: classId, user: user, onChange: onChange, onError: onError)
         listenPracticeAssignments(classId: classId, user: user, onChange: onChange, onError: onError)
         listenStudentMissions(classId: classId, user: user, onChange: onChange, onError: onError)
@@ -121,6 +148,7 @@ final class FirebaseLearningRepository: LearningRepositoryBackend {
             preservingSupportRequests: preservingSupportRequests,
             preservingAssignedPracticeTasks: preservingAssignedPracticeTasks
         )
+        mirrorLearningFlowIfPossible()
     }
 
     func continueLearningFlow() {
@@ -142,6 +170,7 @@ final class FirebaseLearningRepository: LearningRepositoryBackend {
             completedFreePracticeSessionCount: currentSnapshot.learningFlow.completedFreePracticeSessionCount,
             lastFreePracticeCompletedAt: currentSnapshot.learningFlow.lastFreePracticeCompletedAt
         )
+        mirrorLearningFlowIfPossible()
     }
 
     func enterFreePracticeMode() {
@@ -160,6 +189,7 @@ final class FirebaseLearningRepository: LearningRepositoryBackend {
             completedFreePracticeSessionCount: currentSnapshot.learningFlow.completedFreePracticeSessionCount,
             lastFreePracticeCompletedAt: currentSnapshot.learningFlow.lastFreePracticeCompletedAt
         )
+        mirrorLearningFlowIfPossible()
     }
 
     func returnToMissionFlow() {
@@ -175,6 +205,7 @@ final class FirebaseLearningRepository: LearningRepositoryBackend {
                 completedFreePracticeSessionCount: currentSnapshot.learningFlow.completedFreePracticeSessionCount,
                 lastFreePracticeCompletedAt: currentSnapshot.learningFlow.lastFreePracticeCompletedAt
             )
+            mirrorLearningFlowIfPossible()
             return
         }
 
@@ -195,12 +226,14 @@ final class FirebaseLearningRepository: LearningRepositoryBackend {
             completedFreePracticeSessionCount: currentSnapshot.learningFlow.completedFreePracticeSessionCount,
             lastFreePracticeCompletedAt: currentSnapshot.learningFlow.lastFreePracticeCompletedAt
         )
+        mirrorLearningFlowIfPossible()
     }
 
     func completeFreePracticeSession(correctCount: Int, totalCount: Int) {
         guard totalCount > 0 else { return }
         fallback.completeFreePracticeSession(correctCount: correctCount, totalCount: totalCount)
         currentSnapshot.learningFlow = currentSnapshot.learningFlow.recordingFreePracticeSessionCompleted(at: Date())
+        mirrorLearningFlowIfPossible()
     }
 
     func submitMissionAnswer(_ answer: String) -> MissionAttempt? {
@@ -214,6 +247,7 @@ final class FirebaseLearningRepository: LearningRepositoryBackend {
         if let attempt {
             mirrorAttemptIfPossible(attempt)
             mirrorMissionIfPossible()
+            mirrorLearningFlowIfPossible()
             currentSnapshot.assignedPracticeTasks
                 .first { $0.id == currentSnapshot.currentMission?.sourceCheckInId }
                 .map(mirrorPracticeAssignmentIfPossible)
@@ -467,6 +501,7 @@ final class FirebaseLearningRepository: LearningRepositoryBackend {
             )
         }
         mirrorMissionIfPossible()
+        mirrorLearningFlowIfPossible()
     }
 
     private func mirrorMissionIfPossible() {
@@ -512,6 +547,14 @@ final class FirebaseLearningRepository: LearningRepositoryBackend {
         setDocumentIfPossible(
             path: path,
             data: firestoreData(from: attempt)
+        )
+    }
+
+    private func mirrorLearningFlowIfPossible() {
+        guard activeClassId == nil, let activeUserUid else { return }
+        setDocumentIfPossible(
+            path: FirestorePath.userLearningSettings(uid: activeUserUid),
+            data: firestoreData(from: currentSnapshot.learningFlow)
         )
     }
 
@@ -676,6 +719,126 @@ final class FirebaseLearningRepository: LearningRepositoryBackend {
         studentAttemptRegistration = nil
     }
 
+    private func listenPersonalCheckIn(
+        uid: String,
+        onChange: @escaping @MainActor (LearningRepositorySnapshot) -> Void,
+        onError: @escaping @MainActor (Error) -> Void
+    ) {
+        guard let db else { return }
+        let todayKey = Self.dateKeyFormatter.string(from: Date())
+        let path = "\(FirestorePath.user(uid: uid))/personalCheckIns"
+        let registration = db.collection(path)
+            .whereField("dateKey", isEqualTo: todayKey)
+            .addSnapshotListener { [weak self] snapshot, error in
+                if let error {
+                    Task { @MainActor in onError(error) }
+                    return
+                }
+                let documents = snapshot?.documents ?? []
+                Task { @MainActor in
+                    guard let self else { return }
+                    let checkIn = documents
+                        .compactMap { self.checkIn(from: $0, studentUid: uid) }
+                        .max { $0.createdAt < $1.createdAt }
+                    self.currentSnapshot.currentCheckIn = checkIn
+                    self.normalizeCurrentSnapshotForToday()
+                    self.synchronizeFallbackWithCurrentSnapshot()
+                    onChange(self.currentSnapshot)
+                }
+            }
+        registrations.append(registration)
+    }
+
+    private func listenPersonalMission(
+        uid: String,
+        onChange: @escaping @MainActor (LearningRepositorySnapshot) -> Void,
+        onError: @escaping @MainActor (Error) -> Void
+    ) {
+        guard let db else { return }
+        let todayKey = Self.dateKeyFormatter.string(from: Date())
+        let path = "\(FirestorePath.user(uid: uid))/personalDailyMissions"
+        let registration = db.collection(path)
+            .whereField("dateKey", isEqualTo: todayKey)
+            .addSnapshotListener { [weak self] snapshot, error in
+                if let error {
+                    Task { @MainActor in onError(error) }
+                    return
+                }
+                let documents = snapshot?.documents ?? []
+                Task { @MainActor in
+                    guard let self else { return }
+                    let mission = documents
+                        .compactMap { self.mission(from: $0, studentUid: uid) }
+                        .max { $0.createdAt < $1.createdAt }
+                    self.replaceMission(mission)
+                    self.listenPersonalAttempts(
+                        uid: uid,
+                        missionId: mission?.id,
+                        onChange: onChange,
+                        onError: onError
+                    )
+                    onChange(self.currentSnapshot)
+                }
+            }
+        registrations.append(registration)
+    }
+
+    private func listenPersonalLearningFlow(
+        uid: String,
+        onChange: @escaping @MainActor (LearningRepositorySnapshot) -> Void,
+        onError: @escaping @MainActor (Error) -> Void
+    ) {
+        guard let db else { return }
+        let registration = db.document(FirestorePath.userLearningSettings(uid: uid))
+            .addSnapshotListener { [weak self] snapshot, error in
+                if let error {
+                    Task { @MainActor in onError(error) }
+                    return
+                }
+                guard let data = snapshot?.data() else { return }
+                Task { @MainActor in
+                    guard let self, let flow = self.learningFlow(from: data) else { return }
+                    self.currentSnapshot.learningFlow = flow
+                    self.normalizeCurrentSnapshotForToday()
+                    self.synchronizeFallbackWithCurrentSnapshot()
+                    onChange(self.currentSnapshot)
+                }
+            }
+        registrations.append(registration)
+    }
+
+    private func listenPersonalAttempts(
+        uid: String,
+        missionId: String?,
+        onChange: @escaping @MainActor (LearningRepositorySnapshot) -> Void,
+        onError: @escaping @MainActor (Error) -> Void
+    ) {
+        studentAttemptRegistration?.remove()
+        guard let db, let missionId else {
+            replaceAttempts([])
+            return
+        }
+
+        let path = "\(FirestorePath.user(uid: uid))/personalAnswerEvents"
+        studentAttemptRegistration = db.collection(path)
+            .whereField("missionId", isEqualTo: missionId)
+            .addSnapshotListener { [weak self] snapshot, error in
+                if let error {
+                    Task { @MainActor in onError(error) }
+                    return
+                }
+                let documents = snapshot?.documents ?? []
+                Task { @MainActor in
+                    guard let self else { return }
+                    let attempts = documents
+                        .compactMap { self.attempt(from: $0, missionId: missionId) }
+                        .sorted { $0.createdAt < $1.createdAt }
+                    self.replaceAttempts(attempts)
+                    onChange(self.currentSnapshot)
+                }
+            }
+    }
+
     private func listenSupportThreads(
         classId: String,
         user: DemoUser?,
@@ -755,6 +918,7 @@ final class FirebaseLearningRepository: LearningRepositoryBackend {
                     if let latestReplyDate = replies.last?.createdAt {
                         self.currentSnapshot.supportRequests[index].updatedAt = latestReplyDate
                     }
+                    self.synchronizeFallbackWithCurrentSnapshot()
                     onChange(self.currentSnapshot)
                 }
             }
@@ -918,6 +1082,26 @@ final class FirebaseLearningRepository: LearningRepositoryBackend {
         ]
     }
 
+    private func firestoreData(from flow: LearningFlowState) -> [String: Any] {
+        [
+            "dateKey": flow.dateKey,
+            "roundNumber": flow.roundNumber,
+            "stage": flow.stage.rawValue,
+            "activeMissionId": nullable(flow.activeMissionId),
+            "continuation": nullable(flow.continuation.map { continuation in
+                [
+                    "missionId": continuation.missionId,
+                    "missionDateKey": continuation.missionDateKey,
+                    "roundNumber": continuation.roundNumber,
+                    "progressText": continuation.progressText,
+                ] as [String: Any]
+            }),
+            "completedFreePracticeSessionCount": flow.completedFreePracticeSessionCount,
+            "lastFreePracticeCompletedAt": nullable(flow.lastFreePracticeCompletedAt),
+            "updatedAt": flow.updatedAt,
+        ]
+    }
+
     private func firestoreData(from request: StudentSupportRequest) -> [String: Any] {
         [
             "threadId": request.id,
@@ -1053,6 +1237,70 @@ final class FirebaseLearningRepository: LearningRepositoryBackend {
         )
     }
 
+    private func checkIn(from document: QueryDocumentSnapshot, studentUid: String) -> MoodCheckIn? {
+        let data = document.data()
+        guard
+            let dateKey = data["dateKey"] as? String,
+            let moodScore = data["moodScore"] as? Int,
+            let availableTimeLevel = data["availableTimeLevel"] as? Int,
+            let wantsChallenge = data["wantsChallenge"] as? Bool
+        else {
+            return nil
+        }
+
+        let preferredTypes = (data["preferredQuestionTypes"] as? [String] ?? [])
+            .compactMap(QuestionType.init(rawValue:))
+        return MoodCheckIn(
+            id: document.documentID,
+            studentUid: data["studentUid"] as? String ?? studentUid,
+            dateKey: dateKey,
+            moodScore: moodScore,
+            availableTimeLevel: availableTimeLevel,
+            wantsChallenge: wantsChallenge,
+            preferredQuestionTypes: preferredTypes,
+            recommendedMinutes: data["recommendedMinutes"] as? Int ?? max(3, availableTimeLevel * 3),
+            createdAt: firestoreDate(data["createdAt"]) ?? Date()
+        )
+    }
+
+    private func learningFlow(from data: [String: Any]) -> LearningFlowState? {
+        guard
+            let dateKey = data["dateKey"] as? String,
+            let roundNumber = data["roundNumber"] as? Int,
+            let stageRaw = data["stage"] as? String,
+            let stage = LearningFlowStage(rawValue: stageRaw)
+        else {
+            return nil
+        }
+
+        let continuation: LearningContinuation?
+        if let raw = data["continuation"] as? [String: Any],
+           let missionId = raw["missionId"] as? String,
+           let missionDateKey = raw["missionDateKey"] as? String,
+           let continuationRound = raw["roundNumber"] as? Int,
+           let progressText = raw["progressText"] as? String {
+            continuation = LearningContinuation(
+                missionId: missionId,
+                missionDateKey: missionDateKey,
+                roundNumber: continuationRound,
+                progressText: progressText
+            )
+        } else {
+            continuation = nil
+        }
+
+        return LearningFlowState(
+            dateKey: dateKey,
+            roundNumber: max(roundNumber, 1),
+            stage: stage,
+            activeMissionId: data["activeMissionId"] as? String,
+            continuation: continuation,
+            updatedAt: firestoreDate(data["updatedAt"]) ?? Date(),
+            completedFreePracticeSessionCount: data["completedFreePracticeSessionCount"] as? Int ?? 0,
+            lastFreePracticeCompletedAt: firestoreDate(data["lastFreePracticeCompletedAt"])
+        )
+    }
+
     private func attempt(from document: QueryDocumentSnapshot, missionId: String) -> MissionAttempt? {
         let data = document.data()
         guard
@@ -1119,6 +1367,7 @@ final class FirebaseLearningRepository: LearningRepositoryBackend {
             return merged
         }
         .sorted { $0.updatedAt > $1.updatedAt }
+        synchronizeFallbackWithCurrentSnapshot()
     }
 
     private func mergePracticeAssignments(_ syncedAssignments: [TeacherAssignedPracticeTask]) {
@@ -1144,16 +1393,23 @@ final class FirebaseLearningRepository: LearningRepositoryBackend {
             currentSnapshot.missionAttempts = []
             currentSnapshot.learningFlow = .initial(dateKey: Self.dateKeyFormatter.string(from: Date()))
         }
+        synchronizeFallbackWithCurrentSnapshot()
     }
 
     private func replaceMission(_ mission: DailyMission?) {
         currentSnapshot.currentMission = mission
         normalizeCurrentSnapshotForToday()
+        synchronizeFallbackWithCurrentSnapshot()
     }
 
     private func replaceAttempts(_ attempts: [MissionAttempt]) {
         currentSnapshot.missionAttempts = attempts
         normalizeCurrentSnapshotForToday()
+        synchronizeFallbackWithCurrentSnapshot()
+    }
+
+    private func synchronizeFallbackWithCurrentSnapshot() {
+        fallback.replaceRuntimeSnapshot(currentSnapshot)
     }
 
     private func questionBankItems(for ids: [String]) -> [QuestionBankItem] {

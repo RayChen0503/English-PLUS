@@ -19,13 +19,15 @@ struct StudentClassroomView: View {
                     VStack(alignment: .leading, spacing: 16) {
                         headerCard
 
-                        if pendingAssignments.isEmpty {
+                        if isPersonalMode {
+                            personalModeCard
+                        } else if pendingAssignments.isEmpty {
                             emptyStateCard
                         } else {
                             pendingSection
                         }
 
-                        if !completedAssignments.isEmpty {
+                        if !isPersonalMode && !completedAssignments.isEmpty {
                             completedSection
                         }
                     }
@@ -47,10 +49,12 @@ struct StudentClassroomView: View {
                     .clipShape(RoundedRectangle(cornerRadius: 12))
 
                 VStack(alignment: .leading, spacing: 4) {
-                    Text("老師指派任務")
+                    Text(isPersonalMode ? "個人學習模式" : "老師指派任務")
                         .font(.title3.bold())
                         .foregroundStyle(EPTheme.ink)
-                    Text("這裡只放老師派給你的題組。老師收回任務後，任務會從這裡消失；完成後會移到完成紀錄。")
+                    Text(isPersonalMode
+                        ? "沒有加入班級也能使用今日任務、AI 解題與自由練習。加入班級後，老師指派的題組會集中在這裡。"
+                        : "這裡只放老師派給你的題組。老師收回任務後，任務會從這裡消失；完成後會移到完成紀錄。")
                         .font(.subheadline)
                         .foregroundStyle(EPTheme.secondaryInk)
                         .fixedSize(horizontal: false, vertical: true)
@@ -66,6 +70,27 @@ struct StudentClassroomView: View {
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(EPTheme.card)
         .clipShape(RoundedRectangle(cornerRadius: EPTheme.cardRadius))
+    }
+
+    private var personalModeCard: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Label("目前沒有班級任務", systemImage: "person.crop.circle.badge.checkmark")
+                .font(.headline)
+                .foregroundStyle(EPTheme.ink)
+
+            Text("你可以照常完成每日任務與自由練習。加入班級後，老師指派的題組會自動出現在這裡。")
+                .font(.subheadline)
+                .foregroundStyle(EPTheme.secondaryInk)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        .padding(16)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(EPTheme.card)
+        .clipShape(RoundedRectangle(cornerRadius: EPTheme.cardRadius))
+    }
+
+    private var isPersonalMode: Bool {
+        appState.currentProfile?.activeClassId == nil
     }
 
     private var emptyStateCard: some View {

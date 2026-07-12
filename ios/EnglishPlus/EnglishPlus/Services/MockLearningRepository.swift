@@ -11,7 +11,8 @@ final class MockLearningRepository: ObservableObject {
 
     private let seedSnapshot: SeedDataSnapshot
     private let now: () -> Date
-    private let localPersistence: any LocalLearningPersistence
+    private var localPersistence: any LocalLearningPersistence
+    private var activePersistenceUid: String?
     private let cachedSupportedQuestionTypes: [QuestionType]
     private let cachedDefaultPreferredQuestionTypes: [QuestionType]
     private let cachedQuestionBankItems: [QuestionBankItem]
@@ -75,6 +76,44 @@ final class MockLearningRepository: ObservableObject {
 
     var questionPracticeSets: [QuestionPracticeSet] {
         cachedQuestionPracticeSets
+    }
+
+    func activatePersistenceScope(uid: String) {
+        let normalizedUid = uid.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !normalizedUid.isEmpty, activePersistenceUid != normalizedUid else { return }
+
+        localPersistence = localPersistence.scoped(for: normalizedUid)
+        activePersistenceUid = normalizedUid
+
+        if let restoredSnapshot = localPersistence.loadSnapshot()?.repositorySnapshot {
+            currentCheckIn = restoredSnapshot.currentCheckIn
+            currentMission = restoredSnapshot.currentMission
+            missionAttempts = restoredSnapshot.missionAttempts
+            supportRequests = restoredSnapshot.supportRequests
+            assignedPracticeTasks = restoredSnapshot.assignedPracticeTasks
+            learningFlow = Self.normalizedLearningFlow(
+                from: restoredSnapshot,
+                todayKey: Self.dateKey(from: now()),
+                now: now()
+            )
+        } else {
+            currentCheckIn = nil
+            currentMission = nil
+            missionAttempts = []
+            supportRequests = []
+            assignedPracticeTasks = []
+            learningFlow = .initial(dateKey: Self.dateKey(from: now()), updatedAt: now())
+        }
+    }
+
+    func replaceRuntimeSnapshot(_ snapshot: LearningRepositorySnapshot) {
+        currentCheckIn = snapshot.currentCheckIn
+        currentMission = snapshot.currentMission
+        missionAttempts = snapshot.missionAttempts
+        supportRequests = snapshot.supportRequests
+        assignedPracticeTasks = snapshot.assignedPracticeTasks
+        learningFlow = snapshot.learningFlow
+        persistSnapshot()
     }
 
     var latestMissionAttempt: MissionAttempt? {
@@ -1065,10 +1104,18 @@ protocol LocalLearningPersistence {
     func loadSnapshot() -> LocalLearningSnapshot?
     func saveSnapshot(_ snapshot: LocalLearningSnapshot)
     func clearSnapshot()
+    func scoped(for uid: String) -> any LocalLearningPersistence
+}
+
+extension LocalLearningPersistence {
+    func scoped(for uid: String) -> any LocalLearningPersistence {
+        self
+    }
 }
 
 struct UserDefaultsLearningPersistence: LocalLearningPersistence {
     private let defaults: UserDefaults
+    private let baseKey: String
     private let key: String
 
     init(
@@ -1076,6 +1123,13 @@ struct UserDefaultsLearningPersistence: LocalLearningPersistence {
         key: String = "englishplus.learning.snapshot.v1"
     ) {
         self.defaults = defaults
+        self.baseKey = key
+        self.key = key
+    }
+
+    private init(defaults: UserDefaults, baseKey: String, key: String) {
+        self.defaults = defaults
+        self.baseKey = baseKey
         self.key = key
     }
 
@@ -1095,6 +1149,15 @@ struct UserDefaultsLearningPersistence: LocalLearningPersistence {
 
     func clearSnapshot() {
         defaults.removeObject(forKey: key)
+    }
+
+    func scoped(for uid: String) -> any LocalLearningPersistence {
+        let safeUid = FirebaseBackendConfig.personalScopeId(uid: uid).lowercased()
+        return UserDefaultsLearningPersistence(
+            defaults: defaults,
+            baseKey: baseKey,
+            key: "\(baseKey).\(safeUid)"
+        )
     }
 }
 

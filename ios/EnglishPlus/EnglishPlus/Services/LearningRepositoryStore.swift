@@ -43,6 +43,7 @@ protocol LearningRepositoryBackend: AnyObject {
     func startRealtimeListener(
         classId: String,
         user: DemoUser?,
+        profile: AppUserProfile?,
         onChange: @escaping @MainActor (LearningRepositorySnapshot) -> Void,
         onError: @escaping @MainActor (Error) -> Void
     ) -> LearningRepositoryListenerToken
@@ -318,11 +319,12 @@ final class LearningRepositoryStore: ObservableObject {
             .sorted { $0.createdAt > $1.createdAt }
     }
 
-    func startRealtimeSync(classId: String, user: DemoUser?) {
+    func startRealtimeSync(classId: String, user: DemoUser?, profile: AppUserProfile?) {
         listener?.cancel()
         listener = backend.startRealtimeListener(
             classId: classId,
-            user: user
+            user: user,
+            profile: profile
         ) { [weak self] snapshot in
             self?.apply(snapshot)
         } onError: { [weak self] error in
@@ -576,6 +578,7 @@ extension MockLearningRepository: LearningRepositoryBackend {
     func startRealtimeListener(
         classId: String,
         user: DemoUser?,
+        profile: AppUserProfile?,
         onChange: @escaping @MainActor (LearningRepositorySnapshot) -> Void,
         onError: @escaping @MainActor (Error) -> Void
     ) -> LearningRepositoryListenerToken {

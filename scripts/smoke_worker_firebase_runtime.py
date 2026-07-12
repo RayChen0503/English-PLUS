@@ -2,6 +2,7 @@
 import argparse
 import json
 import plistlib
+import re
 import sys
 import urllib.error
 import urllib.request
@@ -78,6 +79,11 @@ def firebase_sign_in(api_key: str, email: str, password: str) -> dict[str, str]:
         "idToken": str(response.body["idToken"]),
         "localId": str(response.body["localId"]),
     }
+
+
+def personal_scope_id(uid: str) -> str:
+    compact = re.sub(r"[^A-Za-z0-9]+", "-", uid.upper()).strip("-")[:48]
+    return f"PERSONAL-{compact}"
 
 
 def expect(
@@ -179,6 +185,38 @@ def main() -> int:
             "authenticated_real_ai",
             results,
             f"HTTP {ai.status}; fallbackUsed={result.get('fallbackUsed')}",
+        )
+
+        personal_ai = request_json(
+            f"{WORKER_BASE_URL}/ai",
+            method="POST",
+            token=student["idToken"],
+            payload={
+                "taskType": "dailyMission",
+                "classId": personal_scope_id(student["localId"]),
+                "studentUid": student["localId"],
+                "sessionId": "personal-mode-deployment-smoke-test",
+                "qualityMode": "free",
+                "locale": "zh-TW",
+                "context": {
+                    "moodScore": 3,
+                    "availableTimeLevel": 2,
+                    "wantsChallenge": False,
+                    "preferredQuestionTypes": ["vocabulary", "fillBlank"],
+                },
+            },
+        )
+        personal_result = personal_ai.body.get("result", {})
+        expect(
+            personal_ai.status == 200
+            and personal_result.get("taskType") == "dailyMission"
+            and personal_result.get("fallbackUsed") is False,
+            "authenticated_personal_mode_real_ai",
+            results,
+            (
+                f"HTTP {personal_ai.status}; "
+                f"fallbackUsed={personal_result.get('fallbackUsed')}"
+            ),
         )
 
         student_evidence = request_json(

@@ -17,14 +17,15 @@ learning must remain usable without joining a class.
 ## Repository and release safety
 
 - Repository: `RayChen0503/English-PLUS`
-- Stable baseline: `main` at `cf5381fea1c595632a897b2fa38076358870ff39`
-- Active hardening branch: `codex/app-store-hardening`
+- Stable Block A baseline: `main` at `9bb6307`
+- Active Block B branch: `codex/app-store-hardening-b`
 - Completed hardening rounds:
   - Round 1 - baseline audit (`round-01-baseline-audit.md`)
   - Round 2 - personal and multi-class domain (`round-02-personal-and-class-domain.md`)
   - Round 3 - multi-provider role onboarding (`round-03-multi-provider-role-onboarding.md`)
   - Round 4 - provider UI and private volunteer review (`round-04-provider-ui-private-volunteer-review.md`)
-- Hardening progress: **4/20** rounds complete.
+  - Round 5 - personal learning mode (`round-05-personal-learning-mode.md`)
+- Hardening progress: **5/20** rounds complete.
 - Do not merge to `main` or trigger Xcode Cloud until the end of a four-round
   block: 4, 8, 12, 16, and 20.
 - Never reset, overwrite, or silently discard user work.
@@ -70,6 +71,10 @@ learning must remain usable without joining a class.
   uploads, and an administrator-only review surface. The Block A final audit
   also verified user-facing quota/retention guidance, failed-upload recovery,
   temporary evidence cleanup, and legal review-state transitions.
+- Round 5 has made personal learning a complete authenticated runtime scope:
+  check-ins, missions, attempts and learning-flow state restore from personal
+  Firestore paths; local fallback data is isolated by UID; and class-only
+  assignments or human support are not shown without a class.
 
 ## Current technical constraints
 
@@ -108,13 +113,11 @@ learning must remain usable without joining a class.
 
 ## Next gate
 
-The first four-round implementation block is complete. Google, Apple, private
-R2, Worker secrets, Worker deployment, Firestore deployment, quota enforcement,
-retention cleanup, and runtime smoke tests are complete. Before a deliberate
-`main` merge and Xcode Cloud build, assign the chosen owner account the Firebase
-`admin: true` claim and update Xcode Cloud's Firebase plist secret. Round 5 does
-not begin until this block build is green or the user explicitly chooses to
-defer the manual release gate.
+Block A is complete and its Xcode Cloud build is green at `9bb6307`. Round 5 is
+complete on `codex/app-store-hardening-b`. Round 6 implements teacher-resettable
+class codes, joining, leaving and active-class switching under D-15 through
+D-17. Do not merge to `main` or trigger Xcode Cloud until the Round 8 Block B
+audit.
 
 ## Maintenance rule
 

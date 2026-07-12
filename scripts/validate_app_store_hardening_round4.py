@@ -273,7 +273,11 @@ def main() -> int:
         require("REVERSED_CLIENT_ID" in ci_script, "Google URL scheme restore missing.", errors)
         require("CFBundleURLTypes" in ci_script, "CI URL type injection missing.", errors)
 
-    require("4/20" in state and "4/20" in report, "Round 4 progress is not documented.", errors)
+    require(
+        "Round 4 - provider UI and private volunteer review" in state and "4/20" in report,
+        "Round 4 progress is not documented.",
+        errors,
+    )
     require("D-13" in decisions and "private Cloudflare R2" in decisions,
             "Private evidence-storage decision is not registered.", errors)
     require("D-14" in decisions and "five files and 25 MB" in decisions,
