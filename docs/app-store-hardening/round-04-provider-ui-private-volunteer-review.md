@@ -219,6 +219,9 @@ release gate:
 - the Worker validates the same review-state transitions and uses the
   Firestore document update time to reject stale concurrent review writes;
 - the decision register now matches the deployed quota and retention policy.
+- the shared SwiftPM lockfile now includes Google Sign-In 9.1.0 and its runtime
+  dependencies, with GTMSessionFetcher pinned to the latest 3.x release that
+  satisfies both Firebase 12.15 and Google Sign-In.
 
 ## Manual gate before release build
 

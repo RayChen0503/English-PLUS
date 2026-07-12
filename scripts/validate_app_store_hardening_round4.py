@@ -58,6 +58,12 @@ def main() -> int:
     worker = read("workers/englishplus-ai-proxy/src/index.js")
     wrangler = read("workers/englishplus-ai-proxy/wrangler.toml")
     worker_package = json.loads(read("workers/englishplus-ai-proxy/package.json"))
+    package_resolved = json.loads(
+        read(
+            "ios/EnglishPlus/EnglishPlus.xcodeproj/project.xcworkspace/"
+            "xcshareddata/swiftpm/Package.resolved"
+        )
+    )
     rules = read("docs/ios-testflight/firebase/firestore.rules.draft")
     root_ci = read("ci_scripts/ci_post_clone.sh")
     ios_ci = read("ios/EnglishPlus/ci_scripts/ci_post_clone.sh")
@@ -93,6 +99,23 @@ def main() -> int:
         errors,
     )
     require("com.apple.developer.applesignin" in entitlements, "Apple sign-in entitlement missing.", errors)
+
+    package_pins = {
+        pin.get("identity"): pin.get("state", {})
+        for pin in package_resolved.get("pins", [])
+    }
+    expected_provider_pins = {
+        "appauth-ios": "2.0.0",
+        "googlesignin-ios": "9.1.0",
+        "gtmappauth": "5.0.0",
+        "gtm-session-fetcher": "3.5.0",
+    }
+    for identity, version in expected_provider_pins.items():
+        require(
+            package_pins.get(identity, {}).get("version") == version,
+            f"Package.resolved missing compatible {identity} {version} pin.",
+            errors,
+        )
 
     require_markers(
         coordinator,
