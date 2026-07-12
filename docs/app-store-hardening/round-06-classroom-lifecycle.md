@@ -1,6 +1,6 @@
 # Round 6 - Classroom lifecycle
 
-Status: Complete
+Status: Pending macOS compile verification
 
 ## Objective
 
@@ -64,6 +64,9 @@ Local verification includes:
 - Existing identity, mission, learning-flow, practice, Firebase and Xcode
   source validators
 - `git diff --check`
+- Firestore Emulator Rules compilation on Java 21
+- 6/6 isolated Rules and Worker lifecycle integration tests, including
+  create, join, personal/class switching, code reset, leave and rejoin
 
 Remote verification includes:
 
@@ -79,3 +82,10 @@ Remote verification includes:
 
 Passed. Round 6 remains on `codex/app-store-hardening-b`; it is not merged into
 `main`, and Xcode Cloud will not be triggered before the Round 8 Block B audit.
+
+## macOS compile gate
+
+The round has been reopened until the manual macOS GitHub Actions gate compiles
+the actual Swift/Xcode project for an iOS Simulator. This uses a generated,
+non-production Firebase plist and does not sign, archive, upload, merge `main`
+or trigger Xcode Cloud.

@@ -565,7 +565,8 @@ async function joinClassroom(env, user, joinCode) {
   const mapping = await getFirestoreDocument(
     context.projectId,
     context.accessToken,
-    `classJoinCodes/${joinCode}`
+    `classJoinCodes/${joinCode}`,
+    context.firestoreBaseURL
   );
   if (!mapping) throw httpError(404, "CLASSROOM_CODE_NOT_FOUND");
   const classId = firestoreString(mapping.fields?.classId);
@@ -575,7 +576,8 @@ async function joinClassroom(env, user, joinCode) {
   const classroom = await getFirestoreDocument(
     context.projectId,
     context.accessToken,
-    `classes/${classId}`
+    `classes/${classId}`,
+    context.firestoreBaseURL
   );
   if (!classroom || classroom.fields?.active?.booleanValue !== true) {
     throw httpError(410, "CLASSROOM_UNAVAILABLE");
@@ -588,7 +590,8 @@ async function joinClassroom(env, user, joinCode) {
   const existingMembership = await getFirestoreDocument(
     context.projectId,
     context.accessToken,
-    memberPath
+    memberPath,
+    context.firestoreBaseURL
   );
   const firstJoinedAt = existingMembership?.fields?.joinedAt?.timestampValue || now;
   // Rejoining the same class must not erase the historical reporting window.
@@ -676,7 +679,8 @@ async function leaveClassroom(env, user, classId) {
   const membership = await getFirestoreDocument(
     context.projectId,
     context.accessToken,
-    memberPath
+    memberPath,
+    context.firestoreBaseURL
   );
   if (!membership || !membershipIsActiveDocument(membership) || firestoreString(membership.fields?.role) !== "student") {
     throw httpError(409, "CLASSROOM_MEMBERSHIP_INACTIVE");
@@ -722,9 +726,24 @@ async function resetClassroomCode(env, user, classId) {
   const context = await classroomUserContext(env, user);
   requireActiveRole(context.profile, "teacher", "TEACHER_ACCOUNT_REQUIRED");
   const [classroom, membership, admin] = await Promise.all([
-    getFirestoreDocument(context.projectId, context.accessToken, `classes/${classId}`),
-    getFirestoreDocument(context.projectId, context.accessToken, `classes/${classId}/members/${teacherUid}`),
-    getFirestoreDocument(context.projectId, context.accessToken, `classAdmins/${classId}`),
+    getFirestoreDocument(
+      context.projectId,
+      context.accessToken,
+      `classes/${classId}`,
+      context.firestoreBaseURL
+    ),
+    getFirestoreDocument(
+      context.projectId,
+      context.accessToken,
+      `classes/${classId}/members/${teacherUid}`,
+      context.firestoreBaseURL
+    ),
+    getFirestoreDocument(
+      context.projectId,
+      context.accessToken,
+      `classAdmins/${classId}`,
+      context.firestoreBaseURL
+    ),
   ]);
   if (!classroom || !membership) throw httpError(404, "CLASSROOM_NOT_FOUND");
   const existingOwnerUid = firestoreString(classroom.fields?.ownerTeacherUid);
@@ -813,7 +832,8 @@ async function listClassroomsForUser(env, user) {
   const memberships = await listFirestoreCollection(
     context.projectId,
     context.accessToken,
-    `users/${uid}/classMemberships`
+    `users/${uid}/classMemberships`,
+    context.firestoreBaseURL
   );
   const activeMemberships = memberships.filter(membershipIsActiveDocument);
   const activeClassId = firestoreString(context.profile.fields?.activeClassId);
@@ -827,7 +847,8 @@ async function listClassroomsForUser(env, user) {
     const legacyMembership = await getFirestoreDocument(
       context.projectId,
       context.accessToken,
-      `classes/${activeClassId}/members/${uid}`
+      `classes/${activeClassId}/members/${uid}`,
+      context.firestoreBaseURL
     );
     if (legacyMembership && membershipIsActiveDocument(legacyMembership)) {
       activeMemberships.push(legacyMembership);
@@ -839,11 +860,17 @@ async function listClassroomsForUser(env, user) {
     const classroom = await getFirestoreDocument(
       context.projectId,
       context.accessToken,
-      `classes/${classId}`
+      `classes/${classId}`,
+      context.firestoreBaseURL
     );
     if (!classroom || classroom.fields?.active?.booleanValue !== true) return null;
     const admin = role === "teacher"
-      ? await getFirestoreDocument(context.projectId, context.accessToken, `classAdmins/${classId}`)
+      ? await getFirestoreDocument(
+          context.projectId,
+          context.accessToken,
+          `classAdmins/${classId}`,
+          context.firestoreBaseURL
+        )
       : null;
     return classroomSummary({
       classId,
@@ -862,13 +889,22 @@ async function listClassroomsForUser(env, user) {
 async function classroomUserContext(env, user) {
   const uid = user.sub;
   const projectId = env.FIREBASE_PROJECT_ID || "englishplus-testflight";
-  const accessToken = await serviceAccountAccessToken(env);
-  let profile = await getFirestoreDocument(projectId, accessToken, `users/${uid}`);
+  const firestoreBaseURL = firestoreEmulatorBaseURL(env);
+  // The Firestore emulator recognizes the reserved owner token as an Admin
+  // request. This branch is reachable only for an explicitly local host.
+  const accessToken = firestoreBaseURL ? "owner" : await serviceAccountAccessToken(env);
+  let profile = await getFirestoreDocument(
+    projectId,
+    accessToken,
+    `users/${uid}`,
+    firestoreBaseURL
+  );
   if (profile) {
     return {
       env,
       projectId,
       accessToken,
+      firestoreBaseURL,
       profile,
       profileExists: true,
       firebaseUser: user,
@@ -881,7 +917,8 @@ async function classroomUserContext(env, user) {
   const legacyMembership = await getFirestoreDocument(
     projectId,
     accessToken,
-    `classes/${legacyClassId}/members/${uid}`
+    `classes/${legacyClassId}/members/${uid}`,
+    firestoreBaseURL
   );
   if (!legacyMembership || !membershipIsActiveDocument(legacyMembership)) {
     throw httpError(404, "ACCOUNT_PROFILE_NOT_FOUND");
@@ -908,6 +945,7 @@ async function classroomUserContext(env, user) {
     env,
     projectId,
     accessToken,
+    firestoreBaseURL,
     profile,
     profileExists: false,
     firebaseUser: user,
@@ -925,14 +963,16 @@ async function ensureLegacyClassroomAccount(env, user) {
     const userMembership = await getFirestoreDocument(
       context.projectId,
       context.accessToken,
-      `users/${user.sub}/classMemberships/${legacyClassId}`
+      `users/${user.sub}/classMemberships/${legacyClassId}`,
+      context.firestoreBaseURL
     );
     if (userMembership && membershipIsActiveDocument(userMembership)) return false;
 
     const legacyMembership = await getFirestoreDocument(
       context.projectId,
       context.accessToken,
-      `classes/${legacyClassId}/members/${user.sub}`
+      `classes/${legacyClassId}/members/${user.sub}`,
+      context.firestoreBaseURL
     );
     if (!legacyMembership || !membershipIsActiveDocument(legacyMembership)) return false;
 
@@ -1153,7 +1193,8 @@ async function unusedClassroomCode(context) {
     const existing = await getFirestoreDocument(
       context.projectId,
       context.accessToken,
-      `classJoinCodes/${code}`
+      `classJoinCodes/${code}`,
+      context.firestoreBaseURL
     );
     if (!existing) return code;
   }
@@ -1161,14 +1202,16 @@ async function unusedClassroomCode(context) {
 }
 
 async function commitFirestoreWrites(context, writes) {
+  const endpoint = context.firestoreBaseURL
+    ? `${context.firestoreBaseURL}/v1/projects/${context.projectId}/databases/(default)/documents:commit`
+    : `https://firestore.googleapis.com/v1/projects/${context.projectId}/databases/(default)/documents:commit`;
+  const headers = { "Content-Type": "application/json" };
+  if (context.accessToken) headers.Authorization = `Bearer ${context.accessToken}`;
   const response = await fetch(
-    `https://firestore.googleapis.com/v1/projects/${context.projectId}/databases/(default)/documents:commit`,
+    endpoint,
     {
       method: "POST",
-      headers: {
-        Authorization: `Bearer ${context.accessToken}`,
-        "Content-Type": "application/json",
-      },
+      headers,
       body: JSON.stringify({ writes }),
     }
   );
@@ -1183,7 +1226,8 @@ async function assertClassJoinRateLimit(context, uid) {
   const existing = await getFirestoreDocument(
     context.projectId,
     context.accessToken,
-    path
+    path,
+    context.firestoreBaseURL
   );
   const now = new Date();
   const nowSeconds = Math.floor(now.getTime() / 1000);
@@ -1221,25 +1265,23 @@ async function assertClassJoinRateLimit(context, uid) {
   ]);
 }
 
-async function getFirestoreDocument(projectId, accessToken, path) {
-  const response = await fetch(firestoreDocumentUrl(projectId, path), {
-    headers: { Authorization: `Bearer ${accessToken}` },
-  });
+async function getFirestoreDocument(projectId, accessToken, path, firestoreBaseURL) {
+  const headers = accessToken ? { Authorization: `Bearer ${accessToken}` } : {};
+  const response = await fetch(firestoreDocumentUrl(projectId, path, firestoreBaseURL), { headers });
   if (response.status === 404) return null;
   if (!response.ok) throw httpError(502, "FIRESTORE_LOOKUP_FAILED");
   return response.json();
 }
 
-async function listFirestoreCollection(projectId, accessToken, path) {
+async function listFirestoreCollection(projectId, accessToken, path, firestoreBaseURL) {
   const documents = [];
   let pageToken = "";
   do {
-    const endpoint = new URL(firestoreDocumentUrl(projectId, path));
+    const endpoint = new URL(firestoreDocumentUrl(projectId, path, firestoreBaseURL));
     endpoint.searchParams.set("pageSize", "100");
     if (pageToken) endpoint.searchParams.set("pageToken", pageToken);
-    const response = await fetch(endpoint, {
-      headers: { Authorization: `Bearer ${accessToken}` },
-    });
+    const headers = accessToken ? { Authorization: `Bearer ${accessToken}` } : {};
+    const response = await fetch(endpoint, { headers });
     if (!response.ok) throw httpError(502, "FIRESTORE_LIST_FAILED");
     const payload = await response.json();
     documents.push(...(payload.documents || []));
@@ -1248,9 +1290,21 @@ async function listFirestoreCollection(projectId, accessToken, path) {
   return documents;
 }
 
-function firestoreDocumentUrl(projectId, path) {
+function firestoreDocumentUrl(projectId, path, firestoreBaseURL) {
   const encodedPath = path.split("/").map(encodeURIComponent).join("/");
+  if (firestoreBaseURL) {
+    return `${firestoreBaseURL}/v1/projects/${projectId}/databases/(default)/documents/${encodedPath}`;
+  }
   return `https://firestore.googleapis.com/v1/projects/${projectId}/databases/(default)/documents/${encodedPath}`;
+}
+
+function firestoreEmulatorBaseURL(env) {
+  const host = safeString(env?.FIRESTORE_EMULATOR_HOST);
+  if (!host) return null;
+  if (!/^(127\.0\.0\.1|localhost):[0-9]{2,5}$/.test(host)) {
+    throw httpError(500, "INVALID_FIRESTORE_EMULATOR_HOST");
+  }
+  return `http://${host}`;
 }
 
 function firestoreRoot(projectId) {
@@ -2227,8 +2281,13 @@ function jsonResponse(body, status = 200) {
 
 export {
   evidenceQuotaSnapshot,
+  createClassroom,
   enforceEvidenceQuota,
+  ensureLegacyClassroomAccount,
   generateClassCode,
+  joinClassroom,
+  leaveClassroom,
+  listClassroomsForUser,
   membershipIsActiveDocument,
   normalizeEvidenceTicketRequest,
   normalizeClassroomCode,
@@ -2236,6 +2295,7 @@ export {
   normalizeClassroomJoinRequest,
   normalizeRequest,
   reviewTransitionAllowed,
+  resetClassroomCode,
   selectExpiredReviewedApplications,
   signUploadTicket,
   verifyUploadTicket,

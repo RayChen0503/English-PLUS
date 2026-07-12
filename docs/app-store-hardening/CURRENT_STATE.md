@@ -25,8 +25,8 @@ learning must remain usable without joining a class.
   - Round 3 - multi-provider role onboarding (`round-03-multi-provider-role-onboarding.md`)
   - Round 4 - provider UI and private volunteer review (`round-04-provider-ui-private-volunteer-review.md`)
   - Round 5 - personal learning mode (`round-05-personal-learning-mode.md`)
-  - Round 6 - classroom lifecycle (`round-06-classroom-lifecycle.md`)
-- Hardening progress: **6/20** rounds complete.
+  - Round 6 - classroom lifecycle, macOS compile pending (`round-06-classroom-lifecycle.md`)
+- Hardening progress: **5/20 complete; Round 6 verification reopened**.
 - Do not merge to `main` or trigger Xcode Cloud until the end of a four-round
   block: 4, 8, 12, 16, and 20.
 - Never reset, overwrite, or silently discard user work.
@@ -119,10 +119,11 @@ learning must remain usable without joining a class.
 
 ## Next gate
 
-Block A is complete and its Xcode Cloud build is green at `9bb6307`. Rounds 5
-and 6 are complete on `codex/app-store-hardening-b`. Round 7 now hardens the
-teacher class workspace, roster, assignment scope and class settings. Do not
-merge to `main` or trigger Xcode Cloud until the Round 8 Block B audit.
+Block A is complete and its Xcode Cloud build is green at `9bb6307`. Round 5 is
+complete on `codex/app-store-hardening-b`; Round 6 has passed Worker, online and
+Firestore Emulator verification but remains open until its isolated macOS
+Simulator build passes. Do not merge to `main` or trigger Xcode Cloud until the
+Round 8 Block B audit.
 
 ## Maintenance rule
 

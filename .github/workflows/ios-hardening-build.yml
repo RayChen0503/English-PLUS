@@ -1,0 +1,68 @@
+name: iOS hardening compile gate
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - codex/app-store-hardening-b
+    paths:
+      - .github/ci-triggers/round6-ios-build
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ios-hardening-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  simulator-build:
+    name: Validate and compile English+
+    runs-on: macos-15
+    timeout-minutes: 45
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Show Xcode toolchain
+        run: xcodebuild -version
+
+      - name: Create non-production Firebase build config
+        shell: bash
+        run: |
+          plist="ios/EnglishPlus/EnglishPlus/GoogleService-Info.plist"
+          plutil -create xml "$plist"
+          plutil -insert API_KEY -string "ci-placeholder" "$plist"
+          plutil -insert GCM_SENDER_ID -string "000000000000" "$plist"
+          plutil -insert PLIST_VERSION -string "1" "$plist"
+          plutil -insert BUNDLE_ID -string "com.englishplus" "$plist"
+          plutil -insert PROJECT_ID -string "englishplus-ci-placeholder" "$plist"
+          plutil -insert STORAGE_BUCKET -string "englishplus-ci-placeholder.appspot.com" "$plist"
+          plutil -insert IS_ADS_ENABLED -bool NO "$plist"
+          plutil -insert IS_ANALYTICS_ENABLED -bool NO "$plist"
+          plutil -insert IS_APPINVITE_ENABLED -bool NO "$plist"
+          plutil -insert IS_GCM_ENABLED -bool YES "$plist"
+          plutil -insert IS_SIGNIN_ENABLED -bool YES "$plist"
+          plutil -insert GOOGLE_APP_ID -string "1:000000000000:ios:0000000000000000" "$plist"
+          plutil -insert CLIENT_ID -string "placeholder.apps.googleusercontent.com" "$plist"
+          plutil -insert REVERSED_CLIENT_ID -string "com.googleusercontent.apps.placeholder" "$plist"
+
+      - name: Validate hardening contracts
+        run: |
+          python3 scripts/validate_app_store_hardening_round5.py
+          python3 scripts/validate_app_store_hardening_round6.py
+          python3 scripts/validate_ios_xcode_project_sources.py
+
+      - name: Build iOS Simulator target
+        run: |
+          set -o pipefail
+          xcodebuild \
+            -project ios/EnglishPlus/EnglishPlus.xcodeproj \
+            -scheme EnglishPlus \
+            -configuration Debug \
+            -sdk iphonesimulator \
+            -destination 'generic/platform=iOS Simulator' \
+            -derivedDataPath "$RUNNER_TEMP/EnglishPlusDerivedData" \
+            CODE_SIGNING_ALLOWED=NO \
+            clean build

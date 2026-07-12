@@ -35,6 +35,8 @@ def main() -> int:
     decisions = read("docs/app-store-hardening/DECISIONS.md")
     report = read("docs/app-store-hardening/round-06-classroom-lifecycle.md")
     project = read("ios/EnglishPlus/EnglishPlus.xcodeproj/project.pbxproj")
+    emulator_tests = read("firebase-tests/test/round6-classroom-lifecycle.test.js")
+    workflow = read(".github/workflows/ios-hardening-build.yml")
 
     require_markers(
         worker,
@@ -54,6 +56,8 @@ def main() -> int:
             "CLASSROOM_JOIN_RATE_LIMIT",
             "CLASS_JOIN_MAX_ATTEMPTS",
             "assertClassJoinRateLimit",
+            "firestoreEmulatorBaseURL",
+            "INVALID_FIRESTORE_EMULATOR_HOST",
             "ensureLegacyClassroomAccount",
             "migrationContext",
             'users/${user.sub}/classMemberships/${legacyClassId}',
@@ -177,10 +181,38 @@ def main() -> int:
         errors,
     )
     require_markers(
+        emulator_tests,
+        (
+            "class data and private join-code collections enforce membership boundaries",
+            "students keep personal mode but cannot cross class or write memberships",
+            "teachers see only the retained membership window",
+            "volunteer support access ends when the student leaves",
+            "Worker classroom lifecycle completes in isolated Firestore",
+            "createClassroom",
+            "joinClassroom",
+            "resetClassroomCode",
+            "leaveClassroom",
+        ),
+        "Firestore Emulator coverage",
+        errors,
+    )
+    require_markers(
+        workflow,
+        (
+            "workflow_dispatch:",
+            "macos-15",
+            "Create non-production Firebase build config",
+            "generic/platform=iOS Simulator",
+            "CODE_SIGNING_ALLOWED=NO",
+            "clean build",
+        ),
+        "macOS compile gate",
+        errors,
+    )
+    require_markers(
         report,
         (
             "Round 6",
-            "Status: Complete",
             "4B",
             "5A",
             "6A",
