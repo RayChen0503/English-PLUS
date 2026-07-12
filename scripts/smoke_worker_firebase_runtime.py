@@ -132,6 +132,15 @@ def main() -> int:
         f"HTTP {unauthenticated_ai.status}",
     )
 
+    unauthenticated_classrooms = request_json(f"{WORKER_BASE_URL}/classrooms")
+    expect(
+        unauthenticated_classrooms.status == 401
+        and unauthenticated_classrooms.body.get("error") == "AUTH_REQUIRED",
+        "classroom_list_requires_firebase_auth",
+        results,
+        f"HTTP {unauthenticated_classrooms.status}",
+    )
+
     unauthenticated_evidence = request_json(
         f"{WORKER_BASE_URL}/evidence/upload-ticket",
         method="POST",
@@ -156,6 +165,76 @@ def main() -> int:
     student = sessions.get("student")
     teacher = sessions.get("teacher")
     volunteer = sessions.get("volunteer")
+
+    for role, session in sessions.items():
+        bootstrap = request_json(
+            f"{WORKER_BASE_URL}/classrooms/bootstrap",
+            method="POST",
+            token=session["idToken"],
+            payload={},
+        )
+        expect(
+            bootstrap.status == 200
+            and isinstance(bootstrap.body.get("migrated"), bool),
+            f"authenticated_{role}_classroom_bootstrap",
+            results,
+            f"HTTP {bootstrap.status}; migrated={bootstrap.body.get('migrated')}",
+        )
+        classroom_list = request_json(
+            f"{WORKER_BASE_URL}/classrooms",
+            token=session["idToken"],
+        )
+        expect(
+            classroom_list.status == 200
+            and isinstance(classroom_list.body.get("classrooms"), list),
+            f"authenticated_{role}_classroom_list",
+            results,
+            f"HTTP {classroom_list.status}",
+        )
+
+    if student:
+        forbidden_create = request_json(
+            f"{WORKER_BASE_URL}/classrooms",
+            method="POST",
+            token=student["idToken"],
+            payload={"name": "Smoke Test Class"},
+        )
+        expect(
+            forbidden_create.status == 403
+            and forbidden_create.body.get("error") == "TEACHER_ACCOUNT_REQUIRED",
+            "student_cannot_create_classroom",
+            results,
+            f"HTTP {forbidden_create.status}",
+        )
+
+        forbidden_reset = request_json(
+            f"{WORKER_BASE_URL}/classrooms/YILAN-CHENGZHI-8A/reset-code",
+            method="POST",
+            token=student["idToken"],
+            payload={},
+        )
+        expect(
+            forbidden_reset.status == 403
+            and forbidden_reset.body.get("error") == "TEACHER_ACCOUNT_REQUIRED",
+            "student_cannot_reset_classroom_code",
+            results,
+            f"HTTP {forbidden_reset.status}",
+        )
+
+    if teacher:
+        forbidden_join = request_json(
+            f"{WORKER_BASE_URL}/classrooms/join",
+            method="POST",
+            token=teacher["idToken"],
+            payload={"code": "ABCDEFGH"},
+        )
+        expect(
+            forbidden_join.status == 403
+            and forbidden_join.body.get("error") == "STUDENT_ACCOUNT_REQUIRED",
+            "teacher_cannot_join_with_student_code",
+            results,
+            f"HTTP {forbidden_join.status}",
+        )
 
     if student:
         ai = request_json(

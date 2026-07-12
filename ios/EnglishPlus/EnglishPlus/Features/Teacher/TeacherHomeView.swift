@@ -1,5 +1,9 @@
 ﻿import SwiftUI
 
+#if canImport(UIKit)
+import UIKit
+#endif
+
 struct TeacherHomeView: View {
     @EnvironmentObject private var appState: AppState
     @EnvironmentObject private var learningRepository: LearningRepositoryStore
@@ -431,6 +435,10 @@ struct TeacherClassAssignmentView: View {
     @State private var selectedLevel: QuestionLevel?
     @State private var selectedSkill: String?
     @State private var assignmentConfirmation: String?
+    @State private var newClassroomName = ""
+    @State private var showsCreateClassroom = false
+    @State private var classIdPendingCodeReset: String?
+    @State private var copiedClassCode: String?
 
     var body: some View {
         NavigationStack {
@@ -438,57 +446,298 @@ struct TeacherClassAssignmentView: View {
                 EPTheme.background.ignoresSafeArea()
                 ScrollView {
                     VStack(alignment: .leading, spacing: 16) {
-                        TeacherClassAssignmentHeader(
-                            studentCount: learningRepository.staffStudentSummaries.count,
-                            waitingHelpCount: learningRepository.staffDashboardMetrics.waitingHelpCount,
-                            assignmentCount: learningRepository.assignedPracticeTasks.filter { $0.status != .withdrawn }.count
-                        )
+                        teacherClassroomManagementCard
 
-                        TeacherClassRosterSummaryCard(
-                            metrics: learningRepository.staffDashboardMetrics,
-                            students: learningRepository.staffStudentSummaries
-                        )
-
-                        TeacherStudentPickerCard(
-                            students: learningRepository.staffStudentSummaries,
-                            selectedStudentUid: $selectedStudentUid
-                        )
-
-                        if let selectedStudent {
-                            TeacherSelectedStudentPanel(
-                                student: selectedStudent,
-                                assignments: learningRepository.assignments(forStudentUid: selectedStudent.studentUid),
-                                missionAttempts: learningRepository.missionAttempts,
-                                questionBankItems: learningRepository.questionBankItems,
-                                recommendationText: recommendationText(for: selectedStudent)
-                            ) { assignment in
-                                learningRepository.withdrawAssignedPracticeTask(assignment.id)
-                                assignmentConfirmation = "已收回 \(selectedStudent.studentName) 的任務：\(assignment.setTitle)"
-                            }
-
-                            if let assignmentConfirmation {
-                                TeacherAssignmentConfirmationCard(message: assignmentConfirmation)
-                            }
-
-                            TeacherPracticeSetCatalog(
-                                selectedStudent: selectedStudent,
-                                sets: learningRepository.questionPracticeSets,
-                                selectedQuestionType: $selectedQuestionType,
-                                selectedLevel: $selectedLevel,
-                                selectedSkill: $selectedSkill
-                            ) { set in
-                                learningRepository.assignPracticeSet(set, to: selectedStudent, by: appState.currentUser)
-                                assignmentConfirmation = "已指派給 \(selectedStudent.studentName)：\(set.title)"
-                            }
+                        if appState.currentProfile?.activeClassId == nil {
+                            TeacherNoActiveClassCard()
                         } else {
-                            TeacherClassEmptyStudentCard()
+                            assignmentWorkspace
                         }
                     }
                     .padding(EPTheme.pagePadding)
                 }
             }
             .navigationTitle("班級")
+            .task {
+                await appState.loadClassrooms()
+                showsCreateClassroom = teacherClassrooms.isEmpty
+            }
+            .onChange(of: appState.currentProfile?.activeClassId) { _, _ in
+                selectedStudentUid = nil
+                selectedQuestionType = nil
+                selectedLevel = nil
+                selectedSkill = nil
+                assignmentConfirmation = nil
+                copiedClassCode = nil
+            }
+            .alert(
+                codeResetHasExistingCode ? "重設班級代碼？" : "建立班級代碼？",
+                isPresented: Binding(
+                    get: { classIdPendingCodeReset != nil },
+                    set: { if !$0 { classIdPendingCodeReset = nil } }
+                )
+            ) {
+                Button("取消", role: .cancel) {
+                    classIdPendingCodeReset = nil
+                }
+                Button(codeResetHasExistingCode ? "重設代碼" : "建立代碼") {
+                    guard let classId = classIdPendingCodeReset else { return }
+                    classIdPendingCodeReset = nil
+                    Task { await appState.resetClassroomCode(classId: classId) }
+                }
+            } message: {
+                Text(codeResetHasExistingCode
+                    ? "舊代碼會立即失效；已加入的學生不受影響。"
+                    : "建立後，學生可以用這組 8 碼代碼加入班級。")
+            }
         }
+    }
+
+    @ViewBuilder
+    private var assignmentWorkspace: some View {
+        TeacherClassAssignmentHeader(
+            studentCount: learningRepository.staffStudentSummaries.count,
+            waitingHelpCount: learningRepository.staffDashboardMetrics.waitingHelpCount,
+            assignmentCount: learningRepository.assignedPracticeTasks.filter { $0.status != .withdrawn }.count
+        )
+
+        TeacherClassRosterSummaryCard(
+            metrics: learningRepository.staffDashboardMetrics,
+            students: learningRepository.staffStudentSummaries
+        )
+
+        TeacherStudentPickerCard(
+            students: learningRepository.staffStudentSummaries,
+            selectedStudentUid: $selectedStudentUid
+        )
+
+        if let selectedStudent {
+            TeacherSelectedStudentPanel(
+                student: selectedStudent,
+                assignments: learningRepository.assignments(forStudentUid: selectedStudent.studentUid),
+                missionAttempts: learningRepository.missionAttempts,
+                questionBankItems: learningRepository.questionBankItems,
+                recommendationText: recommendationText(for: selectedStudent)
+            ) { assignment in
+                learningRepository.withdrawAssignedPracticeTask(assignment.id)
+                assignmentConfirmation = "已收回 \(selectedStudent.studentName) 的任務：\(assignment.setTitle)"
+            }
+
+            if let assignmentConfirmation {
+                TeacherAssignmentConfirmationCard(message: assignmentConfirmation)
+            }
+
+            TeacherPracticeSetCatalog(
+                selectedStudent: selectedStudent,
+                sets: learningRepository.questionPracticeSets,
+                selectedQuestionType: $selectedQuestionType,
+                selectedLevel: $selectedLevel,
+                selectedSkill: $selectedSkill
+            ) { set in
+                learningRepository.assignPracticeSet(set, to: selectedStudent, by: appState.currentUser)
+                assignmentConfirmation = "已指派給 \(selectedStudent.studentName)：\(set.title)"
+            }
+        } else {
+            TeacherClassEmptyStudentCard()
+        }
+    }
+
+    private var teacherClassroomManagementCard: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            HStack(alignment: .top, spacing: 12) {
+                Image(systemName: "person.3.sequence.fill")
+                    .font(.title3)
+                    .foregroundStyle(EPTheme.primary)
+                    .frame(width: 40, height: 40)
+                    .background(EPTheme.primary.opacity(0.10))
+                    .clipShape(RoundedRectangle(cornerRadius: 10))
+
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("班級控制台")
+                        .font(.headline)
+                        .foregroundStyle(EPTheme.ink)
+                    Text(activeTeacherClassroom == nil
+                        ? "先建立或選擇班級，再查看學生與指派任務。"
+                        : "目前管理「\(activeTeacherClassroom?.name ?? "班級")」。學生用下方代碼加入。")
+                        .font(.subheadline)
+                        .foregroundStyle(EPTheme.secondaryInk)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+            }
+
+            if appState.isLoadingClassrooms {
+                ProgressView("正在載入班級...")
+                    .font(.footnote)
+            }
+
+            if !teacherClassrooms.isEmpty {
+                Menu {
+                    ForEach(teacherClassrooms) { classroom in
+                        Button {
+                            Task { await appState.selectActiveClass(classroom.classId) }
+                        } label: {
+                            Label(
+                                classroom.name,
+                                systemImage: classroom.classId == appState.currentProfile?.activeClassId
+                                    ? "checkmark.circle.fill"
+                                    : "circle"
+                            )
+                        }
+                    }
+                } label: {
+                    HStack {
+                        Label(activeTeacherClassroom?.name ?? "選擇班級", systemImage: "building.2")
+                        Spacer()
+                        Image(systemName: "chevron.up.chevron.down")
+                    }
+                    .font(.subheadline.bold())
+                    .frame(maxWidth: .infinity, minHeight: 44)
+                    .padding(.horizontal, 12)
+                    .foregroundStyle(EPTheme.ink)
+                    .background(EPTheme.secondarySurface)
+                    .clipShape(RoundedRectangle(cornerRadius: EPTheme.cardRadius))
+                }
+            }
+
+            if let classroom = activeTeacherClassroom,
+               let displayCode = classroom.formattedJoinCode {
+                VStack(alignment: .leading, spacing: 10) {
+                    Text("學生加入代碼")
+                        .font(.caption.bold())
+                        .foregroundStyle(EPTheme.secondaryInk)
+                    Text(displayCode)
+                        .font(.title2.monospaced().bold())
+                        .foregroundStyle(EPTheme.ink)
+                        .textSelection(.enabled)
+
+                    HStack(spacing: 8) {
+                        Button {
+                            #if canImport(UIKit)
+                            UIPasteboard.general.string = classroom.joinCode
+                            #endif
+                            copiedClassCode = classroom.classId
+                        } label: {
+                            Label(
+                                copiedClassCode == classroom.classId ? "已複製" : "複製代碼",
+                                systemImage: copiedClassCode == classroom.classId ? "checkmark" : "doc.on.doc"
+                            )
+                            .frame(maxWidth: .infinity, minHeight: 44)
+                        }
+                        .buttonStyle(PrimaryActionButtonStyle())
+
+                        Button {
+                            classIdPendingCodeReset = classroom.classId
+                        } label: {
+                            Label("重設", systemImage: "arrow.triangle.2.circlepath")
+                                .frame(maxWidth: .infinity, minHeight: 44)
+                        }
+                        .buttonStyle(SecondaryActionButtonStyle())
+                        .disabled(appState.isManagingClassroom)
+                    }
+                }
+                .padding(12)
+                .background(EPTheme.primary.opacity(0.06))
+                .clipShape(RoundedRectangle(cornerRadius: EPTheme.cardRadius))
+            }
+
+            if let classroom = activeTeacherClassroom, classroom.joinCode == nil {
+                Button {
+                    classIdPendingCodeReset = classroom.classId
+                } label: {
+                    Label("建立學生加入代碼", systemImage: "key.fill")
+                        .font(.subheadline.bold())
+                        .frame(maxWidth: .infinity, minHeight: 44)
+                }
+                .buttonStyle(PrimaryActionButtonStyle())
+                .disabled(appState.isManagingClassroom)
+            }
+
+            if showsCreateClassroom || teacherClassrooms.isEmpty {
+                createClassroomForm
+            } else {
+                Button {
+                    showsCreateClassroom = true
+                } label: {
+                    Label("建立另一個班級", systemImage: "plus.circle")
+                        .font(.subheadline.bold())
+                        .frame(maxWidth: .infinity, minHeight: 44)
+                }
+                .buttonStyle(SecondaryActionButtonStyle())
+            }
+
+            if let notice = appState.classroomNoticeMessage {
+                TeacherClassroomMessage(text: notice, isError: false)
+            }
+            if let error = appState.classroomErrorMessage {
+                TeacherClassroomMessage(text: error, isError: true)
+            }
+        }
+        .padding(16)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(EPTheme.card)
+        .clipShape(RoundedRectangle(cornerRadius: EPTheme.cardRadius))
+    }
+
+    private var createClassroomForm: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text("建立班級")
+                .font(.subheadline.bold())
+                .foregroundStyle(EPTheme.ink)
+            TextField("例如：八年級英文 A 班", text: $newClassroomName)
+                .textInputAutocapitalization(.words)
+                .autocorrectionDisabled()
+                .padding(12)
+                .background(EPTheme.secondarySurface)
+                .clipShape(RoundedRectangle(cornerRadius: EPTheme.cardRadius))
+
+            HStack(spacing: 8) {
+                Button {
+                    Task {
+                        let created = await appState.createClassroom(name: newClassroomName)
+                        if created {
+                            newClassroomName = ""
+                            showsCreateClassroom = false
+                        }
+                    }
+                } label: {
+                    if appState.isManagingClassroom {
+                        ProgressView()
+                            .frame(maxWidth: .infinity, minHeight: 44)
+                    } else {
+                        Label("建立班級", systemImage: "plus.circle.fill")
+                            .frame(maxWidth: .infinity, minHeight: 44)
+                    }
+                }
+                .buttonStyle(PrimaryActionButtonStyle())
+                .disabled(trimmedClassroomName.count < 2 || appState.isManagingClassroom)
+                .opacity(trimmedClassroomName.count >= 2 && !appState.isManagingClassroom ? 1 : 0.45)
+
+                if !teacherClassrooms.isEmpty {
+                    Button("取消") {
+                        newClassroomName = ""
+                        showsCreateClassroom = false
+                    }
+                    .buttonStyle(SecondaryActionButtonStyle())
+                }
+            }
+        }
+    }
+
+    private var teacherClassrooms: [ClassroomSummary] {
+        appState.classrooms.filter { $0.role == .teacher && $0.status == .active }
+    }
+
+    private var activeTeacherClassroom: ClassroomSummary? {
+        teacherClassrooms.first { $0.classId == appState.currentProfile?.activeClassId }
+    }
+
+    private var trimmedClassroomName: String {
+        newClassroomName.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    private var codeResetHasExistingCode: Bool {
+        guard let classIdPendingCodeReset else { return false }
+        return teacherClassrooms.first { $0.classId == classIdPendingCodeReset }?.joinCode != nil
     }
 
     private var selectedStudent: StaffStudentSummary? {
@@ -505,6 +754,40 @@ struct TeacherClassAssignmentView: View {
         case .low:
             return "可以給會考挑戰或進階挑戰，讓學生維持成就感與挑戰感。"
         }
+    }
+}
+
+private struct TeacherNoActiveClassCard: View {
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Label("尚未選擇班級", systemImage: "person.3")
+                .font(.headline)
+                .foregroundStyle(EPTheme.ink)
+            Text("建立或選擇班級後，這裡才會顯示該班學生、任務與題組。")
+                .font(.subheadline)
+                .foregroundStyle(EPTheme.secondaryInk)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        .padding(16)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(EPTheme.card)
+        .clipShape(RoundedRectangle(cornerRadius: EPTheme.cardRadius))
+    }
+}
+
+private struct TeacherClassroomMessage: View {
+    let text: String
+    let isError: Bool
+
+    var body: some View {
+        Label(text, systemImage: isError ? "exclamationmark.circle.fill" : "checkmark.circle.fill")
+            .font(.footnote)
+            .foregroundStyle(isError ? EPTheme.warning : EPTheme.support)
+            .fixedSize(horizontal: false, vertical: true)
+            .padding(12)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background((isError ? EPTheme.warning : EPTheme.support).opacity(0.10))
+            .clipShape(RoundedRectangle(cornerRadius: 10))
     }
 }
 

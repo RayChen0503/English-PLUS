@@ -33,6 +33,7 @@ evidence in the round reports.
 | 3 - Google/Apple/Email role onboarding | Complete | `round-03-multi-provider-role-onboarding.md` |
 | 4 - Provider UI and private volunteer review | Complete | `round-04-provider-ui-private-volunteer-review.md` |
 | 5 - Personal learning mode | Complete | `round-05-personal-learning-mode.md` |
+| 6 - Classroom lifecycle | Complete | `round-06-classroom-lifecycle.md` |
 
 ## Main-branch safety
 

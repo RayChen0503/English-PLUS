@@ -70,9 +70,11 @@ def main() -> int:
         local,
         (
             "func activatePersistenceScope(uid: String)",
+            "func activatePersistenceScope(uid: String, scopeId: String)",
             "func replaceRuntimeSnapshot(_ snapshot: LearningRepositorySnapshot)",
             "func scoped(for uid: String) -> any LocalLearningPersistence",
-            'key: "\\(baseKey).\\(safeUid)"',
+            'key: "\\(baseKey).scope.\\(encodedScope)"',
+            'uid.hasSuffix("--personal")',
             "supportRequests = []",
             "assignedPracticeTasks = []",
         ),

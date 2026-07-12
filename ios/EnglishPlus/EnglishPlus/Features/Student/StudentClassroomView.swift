@@ -3,6 +3,9 @@ import SwiftUI
 struct StudentClassroomView: View {
     @EnvironmentObject private var appState: AppState
     @EnvironmentObject private var learningRepository: LearningRepositoryStore
+    @State private var joinCode = ""
+    @State private var showsJoinAnotherClass = false
+    @State private var classIdPendingLeave: String?
 
     let onOpenHome: () -> Void
 
@@ -18,6 +21,7 @@ struct StudentClassroomView: View {
                 ScrollView {
                     VStack(alignment: .leading, spacing: 16) {
                         headerCard
+                        classAccessCard
 
                         if isPersonalMode {
                             personalModeCard
@@ -35,7 +39,187 @@ struct StudentClassroomView: View {
                 }
             }
             .navigationTitle("班級")
+            .task {
+                await appState.loadClassrooms()
+            }
+            .onChange(of: appState.currentProfile?.activeClassId) { _, _ in
+                joinCode = ""
+                showsJoinAnotherClass = false
+                classIdPendingLeave = nil
+            }
+            .alert(
+                "確定離開班級？",
+                isPresented: Binding(
+                    get: { classIdPendingLeave != nil },
+                    set: { if !$0 { classIdPendingLeave = nil } }
+                )
+            ) {
+                Button("取消", role: .cancel) {
+                    classIdPendingLeave = nil
+                }
+                Button("離開班級", role: .destructive) {
+                    guard let classId = classIdPendingLeave else { return }
+                    classIdPendingLeave = nil
+                    Task { await appState.leaveClassroom(classId: classId) }
+                }
+            } message: {
+                Text("離開後將不再收到這個班級的新任務，老師也不能繼續查看你的即時資料；你的個人學習紀錄仍會保留。")
+            }
         }
+    }
+
+    private var classAccessCard: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            HStack(alignment: .top, spacing: 12) {
+                Image(systemName: isPersonalMode ? "person.crop.circle" : "person.3.fill")
+                    .font(.title3)
+                    .foregroundStyle(EPTheme.primary)
+                    .frame(width: 40, height: 40)
+                    .background(EPTheme.primary.opacity(0.10))
+                    .clipShape(RoundedRectangle(cornerRadius: 10))
+
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(isPersonalMode ? "目前：個人模式" : "目前：\(activeClassroom?.name ?? "班級模式")")
+                        .font(.headline)
+                        .foregroundStyle(EPTheme.ink)
+                    Text(isPersonalMode
+                        ? "不加入班級也能正常學習；有老師提供的代碼時再加入即可。"
+                        : "此頁只顯示目前班級的指派任務。切換班級後，內容會自動更新。")
+                        .font(.subheadline)
+                        .foregroundStyle(EPTheme.secondaryInk)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+            }
+
+            if appState.isLoadingClassrooms {
+                Label("正在載入班級...", systemImage: "arrow.triangle.2.circlepath")
+                    .font(.footnote)
+                    .foregroundStyle(EPTheme.secondaryInk)
+            }
+
+            if !studentClassrooms.isEmpty {
+                Menu {
+                    ForEach(studentClassrooms) { classroom in
+                        Button {
+                            Task { await appState.selectActiveClass(classroom.classId) }
+                        } label: {
+                            Label(
+                                classroom.name,
+                                systemImage: classroom.classId == appState.currentProfile?.activeClassId
+                                    ? "checkmark.circle.fill"
+                                    : "circle"
+                            )
+                        }
+                    }
+                } label: {
+                    HStack {
+                        Label("切換班級", systemImage: "arrow.left.arrow.right")
+                        Spacer()
+                        Image(systemName: "chevron.up.chevron.down")
+                    }
+                    .font(.subheadline.bold())
+                    .frame(maxWidth: .infinity, minHeight: 44)
+                    .padding(.horizontal, 12)
+                    .foregroundStyle(EPTheme.ink)
+                    .background(EPTheme.secondarySurface)
+                    .clipShape(RoundedRectangle(cornerRadius: EPTheme.cardRadius))
+                }
+
+                HStack(spacing: 8) {
+                    if !isPersonalMode {
+                        Button {
+                            Task { await appState.selectActiveClass(nil) }
+                        } label: {
+                            Label("個人模式", systemImage: "person.crop.circle")
+                                .frame(maxWidth: .infinity, minHeight: 44)
+                        }
+                        .buttonStyle(SecondaryActionButtonStyle())
+
+                        Button(role: .destructive) {
+                            classIdPendingLeave = appState.currentProfile?.activeClassId
+                        } label: {
+                            Label("離開班級", systemImage: "rectangle.portrait.and.arrow.right")
+                                .frame(maxWidth: .infinity, minHeight: 44)
+                        }
+                        .buttonStyle(SecondaryActionButtonStyle())
+                    }
+                }
+            }
+
+            if isPersonalMode || showsJoinAnotherClass {
+                joinClassForm
+            } else {
+                Button {
+                    showsJoinAnotherClass = true
+                } label: {
+                    Label("加入另一個班級", systemImage: "person.badge.plus")
+                        .font(.subheadline.bold())
+                        .frame(maxWidth: .infinity, minHeight: 44)
+                }
+                .buttonStyle(SecondaryActionButtonStyle())
+            }
+
+            if let notice = appState.classroomNoticeMessage {
+                ClassroomInlineMessage(text: notice, isError: false)
+            }
+            if let error = appState.classroomErrorMessage {
+                ClassroomInlineMessage(text: error, isError: true)
+            }
+        }
+        .padding(16)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(EPTheme.card)
+        .clipShape(RoundedRectangle(cornerRadius: EPTheme.cardRadius))
+    }
+
+    private var joinClassForm: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text("輸入老師提供的 8 碼代碼")
+                .font(.subheadline.bold())
+                .foregroundStyle(EPTheme.ink)
+
+            TextField("例如 ABCD EFGH", text: $joinCode)
+                .textInputAutocapitalization(.characters)
+                .autocorrectionDisabled()
+                .textContentType(.oneTimeCode)
+                .font(.body.monospaced())
+                .padding(12)
+                .background(EPTheme.secondarySurface)
+                .clipShape(RoundedRectangle(cornerRadius: EPTheme.cardRadius))
+
+            Button {
+                Task {
+                    let joined = await appState.joinClassroom(code: normalizedJoinCode)
+                    if joined {
+                        joinCode = ""
+                        showsJoinAnotherClass = false
+                    }
+                }
+            } label: {
+                if appState.isManagingClassroom {
+                    ProgressView()
+                        .frame(maxWidth: .infinity, minHeight: 44)
+                } else {
+                    Label("加入班級", systemImage: "arrow.right.circle.fill")
+                        .frame(maxWidth: .infinity, minHeight: 44)
+                }
+            }
+            .buttonStyle(PrimaryActionButtonStyle())
+            .disabled(normalizedJoinCode.count != 8 || appState.isManagingClassroom)
+            .opacity(normalizedJoinCode.count == 8 && !appState.isManagingClassroom ? 1 : 0.45)
+        }
+    }
+
+    private var studentClassrooms: [ClassroomSummary] {
+        appState.classrooms.filter { $0.role == .student && $0.status == .active }
+    }
+
+    private var activeClassroom: ClassroomSummary? {
+        studentClassrooms.first { $0.classId == appState.currentProfile?.activeClassId }
+    }
+
+    private var normalizedJoinCode: String {
+        String(joinCode.uppercased().filter { $0.isLetter || $0.isNumber }.prefix(8))
     }
 
     private var headerCard: some View {
@@ -171,6 +355,22 @@ struct StudentClassroomView: View {
 
     private var currentStudentUid: String? {
         appState.currentUser?.id ?? appState.currentProfile?.id
+    }
+}
+
+private struct ClassroomInlineMessage: View {
+    let text: String
+    let isError: Bool
+
+    var body: some View {
+        Label(text, systemImage: isError ? "exclamationmark.circle.fill" : "checkmark.circle.fill")
+            .font(.footnote)
+            .foregroundStyle(isError ? EPTheme.warning : EPTheme.support)
+            .fixedSize(horizontal: false, vertical: true)
+            .padding(12)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background((isError ? EPTheme.warning : EPTheme.support).opacity(0.10))
+            .clipShape(RoundedRectangle(cornerRadius: 10))
     }
 }
 

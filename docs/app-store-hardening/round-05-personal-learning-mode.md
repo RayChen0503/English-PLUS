@@ -18,8 +18,10 @@ personal progress must not depend on a demo class or class membership.
   are mirrored to account-owned Firestore paths and listened back into the app.
 - Firestore snapshots also hydrate the local execution engine, so a mission
   restored on a new device is not merely visible: it remains answerable.
-- Local fallback snapshots are keyed by authenticated UID. Switching accounts
-  cannot reuse another account's mission, support queue or assignment state.
+- Local fallback snapshots are keyed by authenticated UID and active learning
+  scope. Switching accounts or classes cannot reuse another mission, support
+  queue or assignment state; the previous UID-only personal cache migrates
+  forward without exposing it to a class scope.
 - Personal scope explicitly removes class-only support threads and teacher
   assignments from the active snapshot.
 - Daily-mission and free-practice help keep real AI explanation available in

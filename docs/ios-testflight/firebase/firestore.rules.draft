@@ -176,6 +176,11 @@ service cloud.firestore {
         && get(memberPath(classId, studentUid)).data.role == "student";
     }
 
+    function isStudentMembershipRecord(classId, studentUid) {
+      return exists(memberPath(classId, studentUid))
+        && get(memberPath(classId, studentUid)).data.role == "student";
+    }
+
     function studentVisibilityStartsAt(classId, studentUid) {
       let membership = get(memberPath(classId, studentUid)).data;
       return "visibilityStartsAt" in membership
@@ -183,7 +188,33 @@ service cloud.firestore {
         : membership.joinedAt;
     }
 
+    function isInsideStudentMembershipWindow(classId, studentUid, createdAt) {
+      let membership = get(memberPath(classId, studentUid)).data;
+      return isStudentMembershipRecord(classId, studentUid)
+        && createdAt is timestamp
+        && createdAt >= studentVisibilityStartsAt(classId, studentUid)
+        && (
+          membershipIsActive(membership)
+          || (
+            "leftAt" in membership
+            && membership.leftAt is timestamp
+            && createdAt <= membership.leftAt
+          )
+        );
+    }
+
     function staffCanReadStudentTimeline(classId, studentUid, createdAt) {
+      return isInsideStudentMembershipWindow(classId, studentUid, createdAt)
+        && (
+          isClassTeacher(classId)
+          || (
+            isActiveStudentMember(classId, studentUid)
+            && assignedToStudent(classId, studentUid)
+          )
+        );
+    }
+
+    function staffCanWriteStudentTimeline(classId, studentUid, createdAt) {
       return isActiveStudentMember(classId, studentUid)
         && createdAt is timestamp
         && createdAt >= studentVisibilityStartsAt(classId, studentUid)
@@ -194,6 +225,17 @@ service cloud.firestore {
     }
 
     function classStaffCanReadSupportTimeline(classId, studentUid, createdAt) {
+      return isInsideStudentMembershipWindow(classId, studentUid, createdAt)
+        && (
+          isClassTeacher(classId)
+          || (
+            isActiveStudentMember(classId, studentUid)
+            && isClassVolunteer(classId)
+          )
+        );
+    }
+
+    function classStaffCanWriteSupportTimeline(classId, studentUid, createdAt) {
       return isActiveStudentMember(classId, studentUid)
         && createdAt is timestamp
         && createdAt >= studentVisibilityStartsAt(classId, studentUid)
@@ -222,12 +264,15 @@ service cloud.firestore {
     }
 
     function canReadStudentRecord(classId, studentUid) {
-      return isOwnerStudent(studentUid)
+      return (isOwnerStudent(studentUid) && isClassStudent(classId))
         || (
-          isActiveStudentMember(classId, studentUid)
+          isStudentMembershipRecord(classId, studentUid)
           && (
             isClassTeacher(classId)
-            || assignedToStudent(classId, studentUid)
+            || (
+              isActiveStudentMember(classId, studentUid)
+              && assignedToStudent(classId, studentUid)
+            )
           )
         );
     }
@@ -239,13 +284,17 @@ service cloud.firestore {
           thread.studentUid,
           thread.createdAt
         )
-        || (isSelf(thread.studentUid) && thread.studentVisible == true)
+        || (
+          isSelf(thread.studentUid)
+          && isClassStudent(classId)
+          && thread.studentVisible == true
+        )
         ;
     }
 
     function canWriteStaffReply(classId, threadId) {
       let thread = get(threadPath(classId, threadId)).data;
-      return classStaffCanReadSupportTimeline(
+      return classStaffCanWriteSupportTimeline(
         classId,
         thread.studentUid,
         thread.createdAt
@@ -450,16 +499,16 @@ service cloud.firestore {
         allow delete: if false;
 
         match /checkIns/{dateKey} {
-          allow read: if isOwnerStudent(studentUid)
+          allow read: if (isOwnerStudent(studentUid) && isClassStudent(classId))
             || staffCanReadStudentTimeline(classId, studentUid, resource.data.createdAt);
           allow create: if isOwnerStudent(studentUid) && isClassStudent(classId);
-          allow update: if isOwnerStudent(studentUid)
-            || staffCanReadStudentTimeline(classId, studentUid, resource.data.createdAt);
+          allow update: if (isOwnerStudent(studentUid) && isClassStudent(classId))
+            || staffCanWriteStudentTimeline(classId, studentUid, resource.data.createdAt);
           allow delete: if false;
         }
 
         match /consents/{consentVersion} {
-          allow read: if isOwnerStudent(studentUid)
+          allow read: if (isOwnerStudent(studentUid) && isClassStudent(classId))
             || staffCanReadStudentTimeline(classId, studentUid, resource.data.acceptedAt);
           allow create: if isOwnerStudent(studentUid)
             && isClassStudent(classId)
@@ -469,7 +518,7 @@ service cloud.firestore {
         }
 
         match /deletionRequests/{requestId} {
-          allow read: if isOwnerStudent(studentUid)
+          allow read: if (isOwnerStudent(studentUid) && isClassStudent(classId))
             || (isClassTeacher(classId) && isActiveStudentMember(classId, studentUid));
           allow create: if isOwnerStudent(studentUid)
             && isClassStudent(classId)
@@ -481,23 +530,23 @@ service cloud.firestore {
         }
 
         match /dailyMissions/{missionId} {
-          allow read: if isOwnerStudent(studentUid)
+          allow read: if (isOwnerStudent(studentUid) && isClassStudent(classId))
             || staffCanReadStudentTimeline(classId, studentUid, resource.data.createdAt);
           allow create: if isOwnerStudent(studentUid) && isClassStudent(classId);
-          allow update: if isOwnerStudent(studentUid)
-            || staffCanReadStudentTimeline(classId, studentUid, resource.data.createdAt);
+          allow update: if (isOwnerStudent(studentUid) && isClassStudent(classId))
+            || staffCanWriteStudentTimeline(classId, studentUid, resource.data.createdAt);
           allow delete: if false;
         }
 
         match /answerEvents/{eventId} {
-          allow read: if isOwnerStudent(studentUid)
+          allow read: if (isOwnerStudent(studentUid) && isClassStudent(classId))
             || staffCanReadStudentTimeline(classId, studentUid, resource.data.createdAt);
           allow create: if isOwnerStudent(studentUid) && isClassStudent(classId);
           allow update, delete: if false;
         }
 
         match /learningEvents/{eventId} {
-          allow read: if isOwnerStudent(studentUid)
+          allow read: if (isOwnerStudent(studentUid) && isClassStudent(classId))
             || staffCanReadStudentTimeline(classId, studentUid, resource.data.createdAt);
           allow create: if isOwnerStudent(studentUid) && isClassStudent(classId);
           allow update, delete: if false;
@@ -551,14 +600,14 @@ service cloud.firestore {
       match /staffAssignments/{assignmentId} {
         allow read: if isClassTeacher(classId)
           || (isClassVolunteer(classId) && resource.data.assignedToUid == request.auth.uid)
-          || isSelf(resource.data.studentUid);
+          || (isSelf(resource.data.studentUid) && isClassStudent(classId));
 
         allow create, update: if isClassTeacher(classId);
         allow delete: if false;
       }
 
       match /practiceAssignments/{assignmentId} {
-        allow read: if isSelf(resource.data.studentUid)
+        allow read: if (isSelf(resource.data.studentUid) && isClassStudent(classId))
           || staffCanReadStudentTimeline(
             classId,
             resource.data.studentUid,
@@ -600,6 +649,21 @@ service cloud.firestore {
         allow read, create, update: if isClassTeacher(classId);
         allow delete: if false;
       }
+    }
+
+    // Join-code lookup and owner-only code rotation are trusted-backend
+    // operations. Keeping these collections unreadable prevents students from
+    // enumerating valid class codes even after they join a class.
+    match /classAdmins/{classId} {
+      allow read, write: if false;
+    }
+
+    match /classJoinCodes/{joinCode} {
+      allow read, write: if false;
+    }
+
+    match /classJoinAttempts/{uid} {
+      allow read, write: if false;
     }
   }
 }

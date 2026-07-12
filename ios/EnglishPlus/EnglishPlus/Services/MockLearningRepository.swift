@@ -12,7 +12,7 @@ final class MockLearningRepository: ObservableObject {
     private let seedSnapshot: SeedDataSnapshot
     private let now: () -> Date
     private var localPersistence: any LocalLearningPersistence
-    private var activePersistenceUid: String?
+    private var activePersistenceScopeKey: String?
     private let cachedSupportedQuestionTypes: [QuestionType]
     private let cachedDefaultPreferredQuestionTypes: [QuestionType]
     private let cachedQuestionBankItems: [QuestionBankItem]
@@ -79,11 +79,18 @@ final class MockLearningRepository: ObservableObject {
     }
 
     func activatePersistenceScope(uid: String) {
-        let normalizedUid = uid.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !normalizedUid.isEmpty, activePersistenceUid != normalizedUid else { return }
+        activatePersistenceScope(uid: uid, scopeId: "personal")
+    }
 
-        localPersistence = localPersistence.scoped(for: normalizedUid)
-        activePersistenceUid = normalizedUid
+    func activatePersistenceScope(uid: String, scopeId: String) {
+        let normalizedUid = uid.trimmingCharacters(in: .whitespacesAndNewlines)
+        let normalizedScopeId = scopeId.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !normalizedUid.isEmpty, !normalizedScopeId.isEmpty else { return }
+        let scopeKey = "\(normalizedUid)--\(normalizedScopeId)"
+        guard activePersistenceScopeKey != scopeKey else { return }
+
+        localPersistence = localPersistence.scoped(for: scopeKey)
+        activePersistenceScopeKey = scopeKey
 
         if let restoredSnapshot = localPersistence.loadSnapshot()?.repositorySnapshot {
             currentCheckIn = restoredSnapshot.currentCheckIn
@@ -1117,6 +1124,7 @@ struct UserDefaultsLearningPersistence: LocalLearningPersistence {
     private let defaults: UserDefaults
     private let baseKey: String
     private let key: String
+    private let fallbackKey: String?
 
     init(
         defaults: UserDefaults = .standard,
@@ -1125,15 +1133,35 @@ struct UserDefaultsLearningPersistence: LocalLearningPersistence {
         self.defaults = defaults
         self.baseKey = key
         self.key = key
+        fallbackKey = nil
     }
 
-    private init(defaults: UserDefaults, baseKey: String, key: String) {
+    private init(
+        defaults: UserDefaults,
+        baseKey: String,
+        key: String,
+        fallbackKey: String?
+    ) {
         self.defaults = defaults
         self.baseKey = baseKey
         self.key = key
+        self.fallbackKey = fallbackKey
     }
 
     func loadSnapshot() -> LocalLearningSnapshot? {
+        if let snapshot = decodedSnapshot(forKey: key) {
+            return snapshot
+        }
+        guard let fallbackKey,
+              let snapshot = decodedSnapshot(forKey: fallbackKey)
+        else {
+            return nil
+        }
+        saveSnapshot(snapshot)
+        return snapshot
+    }
+
+    private func decodedSnapshot(forKey key: String) -> LocalLearningSnapshot? {
         guard let data = defaults.data(forKey: key) else { return nil }
         let decoder = JSONDecoder()
         decoder.dateDecodingStrategy = .iso8601
@@ -1149,14 +1177,30 @@ struct UserDefaultsLearningPersistence: LocalLearningPersistence {
 
     func clearSnapshot() {
         defaults.removeObject(forKey: key)
+        if let fallbackKey {
+            defaults.removeObject(forKey: fallbackKey)
+        }
     }
 
     func scoped(for uid: String) -> any LocalLearningPersistence {
-        let safeUid = FirebaseBackendConfig.personalScopeId(uid: uid).lowercased()
+        let encodedScope = Data(uid.utf8)
+            .base64EncodedString()
+            .replacingOccurrences(of: "/", with: "_")
+            .replacingOccurrences(of: "+", with: "-")
+            .replacingOccurrences(of: "=", with: "")
+        let fallbackKey: String?
+        if uid.hasSuffix("--personal") {
+            let legacyUid = String(uid.dropLast("--personal".count))
+            let legacySafeUid = FirebaseBackendConfig.personalScopeId(uid: legacyUid).lowercased()
+            fallbackKey = "\(baseKey).\(legacySafeUid)"
+        } else {
+            fallbackKey = nil
+        }
         return UserDefaultsLearningPersistence(
             defaults: defaults,
             baseKey: baseKey,
-            key: "\(baseKey).\(safeUid)"
+            key: "\(baseKey).scope.\(encodedScope)",
+            fallbackKey: fallbackKey
         )
     }
 }

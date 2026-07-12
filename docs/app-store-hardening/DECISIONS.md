@@ -26,5 +26,5 @@ already depend on.
 
 ## Pending decisions
 
-- No unresolved Round 1-5 product decision remains. Raw volunteer evidence
+- No unresolved Round 1-6 product decision remains. Raw volunteer evidence
   must never be stored in a user profile document.

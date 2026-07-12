@@ -4,12 +4,66 @@ import test from "node:test";
 import worker, {
   evidenceQuotaSnapshot,
   enforceEvidenceQuota,
+  generateClassCode,
+  membershipIsActiveDocument,
+  normalizeClassroomCode,
+  normalizeClassroomCreateRequest,
+  normalizeClassroomJoinRequest,
   normalizeEvidenceTicketRequest,
   reviewTransitionAllowed,
   selectExpiredReviewedApplications,
   signUploadTicket,
   verifyUploadTicket,
 } from "../src/index.js";
+
+test("classroom names and join codes are normalized without weakening validation", () => {
+  assert.deepEqual(
+    normalizeClassroomCreateRequest({ name: "  八年級   英文 A 班  " }),
+    { name: "八年級 英文 A 班" }
+  );
+  assert.deepEqual(
+    normalizeClassroomJoinRequest({ code: "abcd efgh" }),
+    { code: "ABCDEFGH" }
+  );
+  assert.equal(normalizeClassroomCode("ABCD-EFGH"), "ABCDEFGH");
+  assert.throws(
+    () => normalizeClassroomCreateRequest({ name: "A" }),
+    (error) => error.code === "INVALID_CLASSROOM_NAME"
+  );
+  assert.throws(
+    () => normalizeClassroomJoinRequest({ code: "OOOO-1111" }),
+    (error) => error.code === "INVALID_CLASSROOM_CODE"
+  );
+});
+
+test("classroom codes use the unambiguous alphabet deterministically", () => {
+  const code = generateClassCode(
+    new Uint8Array([0, 1, 2, 3, 4, 5, 6, 7])
+  );
+  assert.equal(code, "ABCDEFGH");
+  assert.match(code, /^[A-HJ-NP-Z2-9]{8}$/);
+  assert.throws(() => generateClassCode(new Uint8Array([1, 2, 3])));
+});
+
+test("legacy and current membership shapes migrate only while active", () => {
+  assert.equal(membershipIsActiveDocument({
+    fields: { active: { booleanValue: true } },
+  }), true);
+  assert.equal(membershipIsActiveDocument({
+    fields: {
+      status: { stringValue: "active" },
+      active: { booleanValue: true },
+      leftAt: { nullValue: null },
+    },
+  }), true);
+  assert.equal(membershipIsActiveDocument({
+    fields: {
+      status: { stringValue: "left" },
+      active: { booleanValue: false },
+      leftAt: { timestampValue: "2026-07-12T00:00:00.000Z" },
+    },
+  }), false);
+});
 
 test("AI requests require a verified Firebase session", async () => {
   const response = await worker.fetch(

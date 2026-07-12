@@ -17,6 +17,7 @@ struct EnglishPlusServiceBundle {
     let learningBackend: any LearningRepositoryBackend
     let evidenceUploadService: EvidenceUploadService
     let volunteerReviewService: VolunteerReviewService
+    let classroomService: ClassroomService
     let runtimeDiagnostics: RuntimeDiagnosticsSnapshot
 }
 
@@ -81,6 +82,12 @@ enum EnglishPlusServiceFactory {
                         idTokenProvider: authService.currentIdToken
                     )
                 } ?? UnavailableVolunteerReviewService(),
+                classroomService: EvidenceUploadConfig.workerBaseURL.map { baseURL in
+                    RemoteClassroomService(
+                        baseURL: baseURL,
+                        idTokenProvider: authService.currentIdToken
+                    )
+                } ?? UnavailableClassroomService(),
                 runtimeDiagnostics: RuntimeDiagnosticsSnapshot(
                     backendMode: .firebase,
                     hasFirebaseConfig: FirebaseAppConfigurator.hasBundledConfig,
@@ -100,6 +107,7 @@ enum EnglishPlusServiceFactory {
                 learningBackend: MockLearningRepository(),
                 evidenceUploadService: UnavailableEvidenceUploadService(),
                 volunteerReviewService: UnavailableVolunteerReviewService(),
+                classroomService: MockClassroomService(),
                 runtimeDiagnostics: RuntimeDiagnosticsSnapshot(
                     backendMode: .mock,
                     hasFirebaseConfig: FirebaseAppConfigurator.hasBundledConfig,

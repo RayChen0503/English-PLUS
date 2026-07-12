@@ -68,7 +68,10 @@ final class FirebaseLearningRepository: LearningRepositoryBackend {
         activeUserUid = profile?.id ?? user?.id
 
         if let profile, !profile.isDemo {
-            fallback.activatePersistenceScope(uid: profile.id)
+            fallback.activatePersistenceScope(
+                uid: profile.id,
+                scopeId: isPersonalMode ? "personal" : classId
+            )
             currentSnapshot = Self.normalizedSnapshotForToday(fallback.snapshot)
         }
         if isPersonalMode {
