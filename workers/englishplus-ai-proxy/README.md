@@ -27,6 +27,17 @@ GET /admin/evidence?objectKey=...
 Evidence uploads are limited to PDF/JPG/PNG, 10 MB, a five-minute HMAC ticket,
 and an owner-scoped private R2 key. The bucket is never public.
 
+Additional evidence safeguards:
+
+- five files maximum per applicant;
+- 25 MB aggregate maximum per applicant;
+- upload and applicant deletion only while `accountStatus` is
+  `pendingApplication` (initial application or requested supplementation);
+- final approval, rejection, or suspension starts a 30-day retention period;
+- the daily `17 3 * * *` UTC Cron deletes expired evidence, clears Firestore
+  references, and removes expired upload reservations;
+- the bucket's 90-day lifecycle is a final failsafe for orphaned objects.
+
 `POST /ai` accepts either the plain `AiProxyRequest` body or the Firebase-callable-style envelope used by the iOS transport:
 
 ```json

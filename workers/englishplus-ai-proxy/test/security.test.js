@@ -2,7 +2,10 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import worker, {
+  evidenceQuotaSnapshot,
+  enforceEvidenceQuota,
   normalizeEvidenceTicketRequest,
+  selectExpiredReviewedApplications,
   signUploadTicket,
   verifyUploadTicket,
 } from "../src/index.js";
@@ -76,4 +79,89 @@ test("signed upload tickets reject tampering and expiry", async () => {
     secret
   );
   await assert.rejects(() => verifyUploadTicket(expired, secret));
+});
+
+test("evidence quota counts active reservations and rejects file or byte overflow", () => {
+  const now = 2_000;
+  const snapshot = evidenceQuotaSnapshot(
+    [
+      { key: "complete.pdf", size: 5 * 1024 * 1024, customMetadata: {} },
+      {
+        key: "reserved.pdf",
+        size: 0,
+        customMetadata: {
+          uploadState: "reserved",
+          expectedSizeBytes: String(10 * 1024 * 1024),
+          reservedUntilSeconds: "2500",
+        },
+      },
+      {
+        key: "expired.pdf",
+        size: 0,
+        customMetadata: {
+          uploadState: "reserved",
+          expectedSizeBytes: String(10 * 1024 * 1024),
+          reservedUntilSeconds: "1999",
+        },
+      },
+    ],
+    now
+  );
+  assert.equal(snapshot.fileCount, 2);
+  assert.equal(snapshot.totalBytes, 15 * 1024 * 1024);
+  assert.deepEqual(snapshot.expiredReservationKeys, ["expired.pdf"]);
+  assert.doesNotThrow(() => enforceEvidenceQuota(snapshot, 10 * 1024 * 1024));
+  assert.throws(
+    () => enforceEvidenceQuota(snapshot, 10 * 1024 * 1024 + 1),
+    (error) => error.code === "EVIDENCE_TOTAL_SIZE_LIMIT_REACHED"
+  );
+
+  assert.throws(
+    () => enforceEvidenceQuota({ fileCount: 5, totalBytes: 1 }, 1),
+    (error) => error.code === "EVIDENCE_FILE_LIMIT_REACHED"
+  );
+});
+
+test("retention cleanup selects only final reviews older than thirty days", () => {
+  const now = new Date("2026-07-12T00:00:00.000Z");
+  const evidence = [{ objectKey: "volunteer-evidence/u/e.pdf" }];
+  const applications = [
+    {
+      uid: "expired",
+      status: "approved",
+      reviewedAt: "2026-05-01T00:00:00.000Z",
+      evidenceRetentionUntil: "2026-06-01T00:00:00.000Z",
+      evidenceDeletedAt: "",
+      evidence,
+    },
+    {
+      uid: "recent",
+      status: "rejected",
+      reviewedAt: "2026-07-01T00:00:00.000Z",
+      evidenceRetentionUntil: "2026-07-31T00:00:00.000Z",
+      evidenceDeletedAt: "",
+      evidence,
+    },
+    {
+      uid: "needs-info",
+      status: "needsMoreInformation",
+      reviewedAt: "2026-05-01T00:00:00.000Z",
+      evidenceRetentionUntil: "",
+      evidenceDeletedAt: "",
+      evidence,
+    },
+    {
+      uid: "already-deleted",
+      status: "suspended",
+      reviewedAt: "2026-05-01T00:00:00.000Z",
+      evidenceRetentionUntil: "2026-06-01T00:00:00.000Z",
+      evidenceDeletedAt: "2026-06-02T00:00:00.000Z",
+      evidence,
+    },
+  ];
+
+  assert.deepEqual(
+    selectExpiredReviewedApplications(applications, now).map((item) => item.uid),
+    ["expired"]
+  );
 });

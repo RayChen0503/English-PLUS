@@ -2,6 +2,11 @@ const GROQ_CHAT_COMPLETIONS_URL = "https://api.groq.com/openai/v1/chat/completio
 const FIREBASE_JWKS_URL =
   "https://www.googleapis.com/service_accounts/v1/jwk/securetoken@system.gserviceaccount.com";
 const MAX_EVIDENCE_BYTES = 10 * 1024 * 1024;
+const MAX_EVIDENCE_FILES_PER_APPLICANT = 5;
+const MAX_EVIDENCE_TOTAL_BYTES = 25 * 1024 * 1024;
+const EVIDENCE_RESERVATION_SECONDS = 10 * 60;
+const REVIEW_EVIDENCE_RETENTION_DAYS = 30;
+const FINAL_REVIEW_STATUSES = new Set(["approved", "rejected", "suspended"]);
 const ALLOWED_EVIDENCE_MIME_TYPES = new Set([
   "application/pdf",
   "image/jpeg",
@@ -75,6 +80,22 @@ export default {
     }
 
     return jsonResponse({ ok: false, error: "NOT_FOUND" }, 404);
+  },
+
+  async scheduled(_controller, env, ctx) {
+    ctx.waitUntil(
+      cleanupExpiredReviewedEvidence(env)
+        .then((result) => {
+          console.log(JSON.stringify({ event: "evidence_retention_cleanup", ...result }));
+        })
+        .catch((error) => {
+          console.error(JSON.stringify({
+            event: "evidence_retention_cleanup_failed",
+            error: error instanceof Error ? error.message : "unknown",
+          }));
+          throw error;
+        })
+    );
   },
 };
 
@@ -164,6 +185,19 @@ async function handleEvidenceUploadTicket(request, env) {
   const extension = extensionForMimeType(input.mimeType);
   const objectKey = `volunteer-evidence/${user.sub}/${evidenceId}.${extension}`;
   const expiresAtSeconds = Math.floor(Date.now() / 1000) + 5 * 60;
+  try {
+    await reserveEvidenceUpload(env, {
+      uid: user.sub,
+      evidenceId,
+      objectKey,
+      mimeType: input.mimeType,
+      sizeBytes: input.sizeBytes,
+      qualificationKind: input.qualificationKind,
+      nowSeconds: Math.floor(Date.now() / 1000),
+    });
+  } catch (error) {
+    return authOrValidationError(error);
+  }
   const ticket = await signUploadTicket(
     {
       uid: user.sub,
@@ -217,12 +251,28 @@ async function handleEvidenceUpload(request, env) {
     return jsonResponse({ ok: false, error: "INVALID_OBJECT_KEY" }, 400);
   }
 
+  const reservation = await env.VOLUNTEER_EVIDENCE.head(ticket.objectKey);
+  const reservationMetadata = reservation?.customMetadata || {};
+  if (
+    !reservation ||
+    reservationMetadata.uploadState !== "reserved" ||
+    reservationMetadata.ownerUid !== ticket.uid ||
+    reservationMetadata.evidenceId !== ticket.evidenceId ||
+    Number(reservationMetadata.expectedSizeBytes) !== ticket.sizeBytes ||
+    Number(reservationMetadata.reservedUntilSeconds) <= Math.floor(Date.now() / 1000)
+  ) {
+    return jsonResponse({ ok: false, error: "UPLOAD_RESERVATION_INVALID" }, 409);
+  }
+
   const stored = await env.VOLUNTEER_EVIDENCE.put(ticket.objectKey, request.body, {
     httpMetadata: { contentType },
     customMetadata: {
       ownerUid: ticket.uid,
       evidenceId: ticket.evidenceId,
       qualificationKind: ticket.qualificationKind,
+      uploadState: "complete",
+      expectedSizeBytes: String(ticket.sizeBytes),
+      uploadedAt: new Date().toISOString(),
     },
   });
   if (!stored) {
@@ -375,6 +425,107 @@ function extensionForMimeType(mimeType) {
       return "png";
     default:
       throw httpError(400, "UNSUPPORTED_FILE_TYPE");
+  }
+}
+
+async function reserveEvidenceUpload(env, reservation) {
+  let objects = await listEvidenceObjectsForUid(env, reservation.uid);
+  let quota = evidenceQuotaSnapshot(objects, reservation.nowSeconds);
+  if (quota.expiredReservationKeys.length > 0) {
+    await Promise.all(
+      quota.expiredReservationKeys.map((key) => env.VOLUNTEER_EVIDENCE.delete(key))
+    );
+    objects = await listEvidenceObjectsForUid(env, reservation.uid);
+    quota = evidenceQuotaSnapshot(objects, reservation.nowSeconds);
+  }
+
+  enforceEvidenceQuota(quota, reservation.sizeBytes);
+  const reservedUntilSeconds =
+    reservation.nowSeconds + EVIDENCE_RESERVATION_SECONDS;
+  await env.VOLUNTEER_EVIDENCE.put(
+    reservation.objectKey,
+    new Uint8Array(0),
+    {
+      httpMetadata: { contentType: reservation.mimeType },
+      customMetadata: {
+        ownerUid: reservation.uid,
+        evidenceId: reservation.evidenceId,
+        qualificationKind: reservation.qualificationKind,
+        uploadState: "reserved",
+        expectedSizeBytes: String(reservation.sizeBytes),
+        reservedAtSeconds: String(reservation.nowSeconds),
+        reservedUntilSeconds: String(reservedUntilSeconds),
+      },
+    }
+  );
+
+  const confirmed = evidenceQuotaSnapshot(
+    await listEvidenceObjectsForUid(env, reservation.uid),
+    reservation.nowSeconds
+  );
+  if (
+    confirmed.fileCount > MAX_EVIDENCE_FILES_PER_APPLICANT ||
+    confirmed.totalBytes > MAX_EVIDENCE_TOTAL_BYTES
+  ) {
+    await env.VOLUNTEER_EVIDENCE.delete(reservation.objectKey);
+    throw httpError(
+      confirmed.fileCount > MAX_EVIDENCE_FILES_PER_APPLICANT ? 409 : 413,
+      confirmed.fileCount > MAX_EVIDENCE_FILES_PER_APPLICANT
+        ? "EVIDENCE_FILE_LIMIT_REACHED"
+        : "EVIDENCE_TOTAL_SIZE_LIMIT_REACHED"
+    );
+  }
+}
+
+async function listEvidenceObjectsForUid(env, uid) {
+  return listEvidenceObjects(env, `volunteer-evidence/${uid}/`);
+}
+
+async function listEvidenceObjects(env, prefix = "volunteer-evidence/") {
+  const objects = [];
+  let cursor;
+  do {
+    const page = await env.VOLUNTEER_EVIDENCE.list({
+      prefix,
+      cursor,
+      limit: 100,
+      include: ["customMetadata"],
+    });
+    objects.push(...page.objects);
+    cursor = page.truncated ? page.cursor : undefined;
+  } while (cursor);
+  return objects;
+}
+
+function evidenceQuotaSnapshot(objects, nowSeconds) {
+  const snapshot = {
+    fileCount: 0,
+    totalBytes: 0,
+    expiredReservationKeys: [],
+  };
+  for (const object of objects) {
+    const metadata = object.customMetadata || {};
+    if (metadata.uploadState === "reserved") {
+      if (Number(metadata.reservedUntilSeconds) <= nowSeconds) {
+        snapshot.expiredReservationKeys.push(object.key);
+        continue;
+      }
+      snapshot.fileCount += 1;
+      snapshot.totalBytes += Number(metadata.expectedSizeBytes) || 0;
+      continue;
+    }
+    snapshot.fileCount += 1;
+    snapshot.totalBytes += Number(object.size) || 0;
+  }
+  return snapshot;
+}
+
+function enforceEvidenceQuota(quota, requestedBytes) {
+  if (quota.fileCount >= MAX_EVIDENCE_FILES_PER_APPLICANT) {
+    throw httpError(409, "EVIDENCE_FILE_LIMIT_REACHED");
+  }
+  if (quota.totalBytes + requestedBytes > MAX_EVIDENCE_TOTAL_BYTES) {
+    throw httpError(413, "EVIDENCE_TOTAL_SIZE_LIMIT_REACHED");
   }
 }
 
@@ -532,6 +683,10 @@ async function commitVolunteerReview(env, review) {
   const projectId = env.FIREBASE_PROJECT_ID || "englishplus-testflight";
   const accessToken = await serviceAccountAccessToken(env);
   const now = new Date().toISOString();
+  const retentionUntil = FINAL_REVIEW_STATUSES.has(review.applicationStatus)
+    ? new Date(Date.now() + REVIEW_EVIDENCE_RETENTION_DAYS * 24 * 60 * 60 * 1000)
+        .toISOString()
+    : null;
   const root = `projects/${projectId}/databases/(default)/documents`;
   const response = await fetch(
     `https://firestore.googleapis.com/v1/projects/${projectId}/databases/(default)/documents:commit`,
@@ -551,6 +706,10 @@ async function commitVolunteerReview(env, review) {
                 reviewedByUid: { stringValue: review.reviewerUid },
                 reviewedAt: { timestampValue: now },
                 reviewNote: { stringValue: review.note },
+                evidenceRetentionUntil: retentionUntil
+                  ? { timestampValue: retentionUntil }
+                  : { nullValue: null },
+                evidenceDeletedAt: { nullValue: null },
                 updatedAt: { timestampValue: now },
               },
             },
@@ -560,6 +719,8 @@ async function commitVolunteerReview(env, review) {
                 "reviewedByUid",
                 "reviewedAt",
                 "reviewNote",
+                "evidenceRetentionUntil",
+                "evidenceDeletedAt",
                 "updatedAt",
               ],
             },
@@ -589,8 +750,16 @@ async function commitVolunteerReview(env, review) {
 }
 
 async function listVolunteerApplications(env) {
-  const projectId = env.FIREBASE_PROJECT_ID || "englishplus-testflight";
   const accessToken = await serviceAccountAccessToken(env);
+  const documents = await listVolunteerApplicationDocuments(env, accessToken);
+  return documents
+    .map(normalizeVolunteerApplicationDocument)
+    .filter((item) => ["pendingReview", "needsMoreInformation"].includes(item.status))
+    .sort((left, right) => right.submittedAt.localeCompare(left.submittedAt));
+}
+
+async function listVolunteerApplicationDocuments(env, accessToken) {
+  const projectId = env.FIREBASE_PROJECT_ID || "englishplus-testflight";
   const documents = [];
   let pageToken = "";
 
@@ -609,10 +778,7 @@ async function listVolunteerApplications(env) {
     pageToken = safeString(payload.nextPageToken);
   } while (pageToken);
 
-  return documents
-    .map(normalizeVolunteerApplicationDocument)
-    .filter((item) => ["pendingReview", "needsMoreInformation"].includes(item.status))
-    .sort((left, right) => right.submittedAt.localeCompare(left.submittedAt));
+  return documents;
 }
 
 function normalizeVolunteerApplicationDocument(document) {
@@ -625,6 +791,9 @@ function normalizeVolunteerApplicationDocument(document) {
     motivation: firestoreString(fields.motivation),
     submittedAt:
       fields.submittedAt?.timestampValue || fields.updatedAt?.timestampValue || "",
+    reviewedAt: fields.reviewedAt?.timestampValue || "",
+    evidenceRetentionUntil: fields.evidenceRetentionUntil?.timestampValue || "",
+    evidenceDeletedAt: fields.evidenceDeletedAt?.timestampValue || "",
     evidence: evidenceValues.map((value) => {
       const item = value.mapValue?.fields || {};
       return {
@@ -637,6 +806,89 @@ function normalizeVolunteerApplicationDocument(document) {
       };
     }),
   };
+}
+
+async function cleanupExpiredReviewedEvidence(env, now = new Date()) {
+  if (!env.VOLUNTEER_EVIDENCE) {
+    throw new Error("Volunteer evidence storage is not configured.");
+  }
+  const accessToken = await serviceAccountAccessToken(env);
+  const documents = await listVolunteerApplicationDocuments(env, accessToken);
+  const applications = documents.map(normalizeVolunteerApplicationDocument);
+  const expired = selectExpiredReviewedApplications(applications, now);
+  const expiredReservations = await cleanupExpiredUploadReservations(env, now);
+  let deletedObjects = 0;
+
+  for (const application of expired) {
+    const prefix = `volunteer-evidence/${application.uid}/`;
+    const keys = application.evidence
+      .map((item) => item.objectKey)
+      .filter((key) => key.startsWith(prefix));
+    await Promise.all(keys.map((key) => env.VOLUNTEER_EVIDENCE.delete(key)));
+    await commitEvidenceDeletion(env, accessToken, application.uid, now);
+    deletedObjects += keys.length;
+  }
+
+  return {
+    scannedApplications: applications.length,
+    expiredApplications: expired.length,
+    deletedObjects,
+    deletedExpiredReservations: expiredReservations,
+    completedAt: now.toISOString(),
+  };
+}
+
+async function cleanupExpiredUploadReservations(env, now = new Date()) {
+  const nowSeconds = Math.floor(now.getTime() / 1000);
+  const objects = await listEvidenceObjects(env);
+  const expiredKeys = objects
+    .filter((object) => object.customMetadata?.uploadState === "reserved")
+    .filter(
+      (object) => Number(object.customMetadata?.reservedUntilSeconds) <= nowSeconds
+    )
+    .map((object) => object.key);
+  await Promise.all(expiredKeys.map((key) => env.VOLUNTEER_EVIDENCE.delete(key)));
+  return expiredKeys.length;
+}
+
+function selectExpiredReviewedApplications(applications, now = new Date()) {
+  const fallbackCutoff = now.getTime()
+    - REVIEW_EVIDENCE_RETENTION_DAYS * 24 * 60 * 60 * 1000;
+  return applications.filter((application) => {
+    if (!FINAL_REVIEW_STATUSES.has(application.status)) return false;
+    if (application.evidenceDeletedAt || application.evidence.length === 0) return false;
+    const retentionTime = Date.parse(application.evidenceRetentionUntil);
+    if (Number.isFinite(retentionTime)) return retentionTime <= now.getTime();
+    const reviewedTime = Date.parse(application.reviewedAt);
+    return Number.isFinite(reviewedTime) && reviewedTime <= fallbackCutoff;
+  });
+}
+
+async function commitEvidenceDeletion(env, accessToken, uid, now) {
+  const projectId = env.FIREBASE_PROJECT_ID || "englishplus-testflight";
+  const name = `projects/${projectId}/databases/(default)/documents/volunteerApplications/${uid}`;
+  const timestamp = now.toISOString();
+  const response = await fetch(
+    `https://firestore.googleapis.com/v1/${name}?updateMask.fieldPaths=evidence&updateMask.fieldPaths=evidenceDeletedAt&updateMask.fieldPaths=updatedAt&currentDocument.exists=true`,
+    {
+      method: "PATCH",
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        name,
+        fields: {
+          evidence: { arrayValue: { values: [] } },
+          evidenceDeletedAt: { timestampValue: timestamp },
+          updatedAt: { timestampValue: timestamp },
+        },
+      }),
+    }
+  );
+  if (!response.ok) {
+    throw new Error("Unable to record volunteer evidence deletion.");
+  }
 }
 
 function firestoreString(value) {
@@ -1042,8 +1294,11 @@ function jsonResponse(body, status = 200) {
 }
 
 export {
+  evidenceQuotaSnapshot,
+  enforceEvidenceQuota,
   normalizeEvidenceTicketRequest,
   normalizeRequest,
+  selectExpiredReviewedApplications,
   signUploadTicket,
   verifyUploadTicket,
 };

@@ -13,10 +13,10 @@ contains the production-facing Google, Apple, and Email/password onboarding
 layer, role-specific registration, a nationwide institution picker, a private
 volunteer-evidence boundary, and an administrator-only review surface.
 
-No production secret was committed. No deployment, `main` merge, push, or
-Xcode Cloud build is part of the automatic Windows implementation. Those
-actions remain deliberately gated until the required console settings are
-complete.
+No production secret was committed. After the required Cloudflare and Firebase
+console settings were completed, the Worker and Firestore rules were deployed
+from Windows. The hardening branch has not been merged or pushed and Xcode
+Cloud has not been triggered.
 
 ## Identity providers
 
@@ -93,12 +93,17 @@ iOS repository. The Cloudflare Worker provides:
 - Owner-scoped keys and upload/delete access only while the account is in
   `pendingApplication`.
 - PDF/JPEG/PNG allow-list and a 10 MB maximum.
+- A five-file and 25 MB aggregate limit per applicant, enforced before a
+  single-use upload reservation is issued.
 - Administrator-only application listing, review, and evidence download.
 - `no-store`, attachment disposition, and `nosniff` evidence responses.
 - Firestore review commits through a service account, not through a mobile
   client secret.
 - Pagination for more than 100 volunteer applications and Worker
   observability with 10% head sampling.
+- A daily retention job that deletes final-review evidence after 30 days,
+  clears stale Firestore references, and removes expired upload reservations.
+  The 90-day R2 lifecycle rule remains a second-line orphan cleanup.
 
 The iOS app never contains the Groq key, service-account key, R2 credentials,
 or upload signing secret.
@@ -126,8 +131,10 @@ The draft rules now enforce:
 - append-only provider linking limited to Email/password, Google, and Apple;
 - no client-side approval or activation of a volunteer.
 
-Deployment and emulator verification are manual gate items because this
-Windows host does not hold production Firebase deployment credentials.
+The reviewed rules were deployed to `englishplus-testflight`. Runtime smoke
+tests confirmed that an authenticated user may reach their own missing profile
+document (404 rather than permission denied), while a student cannot read
+another user's profile (403).
 
 ## Regression reconciliation
 
@@ -159,6 +166,8 @@ Passed on Windows:
 - Worker syntax check.
 - Three Worker security tests: unauthenticated AI rejection, evidence metadata
   allow-list/size enforcement, and upload-ticket tamper/expiry rejection.
+- Five Worker security tests after the deployment hardening additions,
+  including aggregate quota reservations and final-review retention selection.
 - Round 3 regression and all updated targeted legacy regressions.
 - Full repository validator audit: **64 passed, 0 failed** at the completion
   gate.
@@ -169,15 +178,31 @@ Swift/Xcode compilation is not available on this Windows host. Xcode Cloud is
 the agreed release compiler after the manual provider/storage settings and the
 deliberate first-block push.
 
+## Deployment and runtime smoke evidence
+
+- Cloudflare Worker URL:
+  `https://englishplus-ai-proxy.englishplus-ray.workers.dev`
+- Deployed Worker version:
+  `3b3dff8b-ed00-4975-b6ea-050ca9e0fc2d`
+- Private R2 binding: `VOLUNTEER_EVIDENCE` ->
+  `englishplus-volunteer-evidence`.
+- Daily cleanup schedule: `17 3 * * *` UTC.
+- Firestore rules were compiled and released to `englishplus-testflight`.
+- Online smoke tests passed for Worker health, unauthenticated boundaries,
+  student/teacher/volunteer Firebase sign-in, a real Groq response with
+  `fallbackUsed=false`, Firestore self/cross-user access, ordinary-teacher
+  rejection from the admin endpoint, and volunteer upload-state rejection.
+- The smoke client deletes an upload reservation if a positive volunteer
+  ticket is issued, so validation does not consume an applicant's quota.
+
+The positive administrator-review path still requires assigning `admin: true`
+to a deliberately chosen non-demo owner account. It must not be assigned to a
+demo account whose credentials are present in source fixtures.
+
 ## Manual gate before release build
 
-1. Enable Google and Apple in Firebase Authentication.
-2. Download the refreshed iOS `GoogleService-Info.plist` and replace the
-   Xcode Cloud base64 environment variable.
-3. Confirm Sign in with Apple for `com.englishplus` in Apple Developer.
-4. Create the private R2 bucket and set Worker secrets.
-5. Deploy the Worker and the reviewed Firestore rules.
-6. Assign the owner account the Firebase `admin: true` custom claim.
-7. Resolve packages/build in Xcode Cloud, then test all three providers and the
+1. Replace the Xcode Cloud base64 `GoogleService-Info.plist` environment
+   variable with the refreshed Google-enabled Firebase configuration.
+2. Assign a chosen owner account the Firebase `admin: true` custom claim.
+3. Resolve packages/build in Xcode Cloud, then test all three providers and the
    volunteer application/review lifecycle before TestFlight distribution.
-

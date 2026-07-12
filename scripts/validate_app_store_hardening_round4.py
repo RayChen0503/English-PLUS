@@ -199,12 +199,20 @@ def main() -> int:
             'await requireVolunteerApplicant(user, env, ["pendingApplication"]);',
             '"X-Content-Type-Options": "nosniff"',
             "while (pageToken);",
+            "MAX_EVIDENCE_FILES_PER_APPLICANT = 5",
+            "MAX_EVIDENCE_TOTAL_BYTES = 25 * 1024 * 1024",
+            "reserveEvidenceUpload",
+            "UPLOAD_RESERVATION_INVALID",
+            "cleanupExpiredReviewedEvidence",
+            "REVIEW_EVIDENCE_RETENTION_DAYS = 30",
         ),
         "Private Worker boundary",
         errors,
     )
     require("VOLUNTEER_EVIDENCE" in wrangler, "R2 binding missing.", errors)
     require("[observability]" in wrangler, "Worker observability missing.", errors)
+    require('crons = [ "17 3 * * *" ]' in wrangler,
+            "Daily evidence-retention Cron is missing.", errors)
     require(
         worker_package.get("scripts", {}).get("test") == "node --test test/*.test.js",
         "Worker security test command missing.",
@@ -236,6 +244,8 @@ def main() -> int:
             "Private evidence-storage decision is not registered.", errors)
     require("64 passed, 0 failed" in report,
             "Round 4 full-audit result is not recorded.", errors)
+    require("five-file and 25 MB" in report and "final-review evidence after 30 days" in report,
+            "Round 4 evidence quota/retention update is not documented.", errors)
 
     if errors:
         print("Round 4 provider UI and private review validation failed:")

@@ -5,6 +5,8 @@ enum EvidenceUploadError: LocalizedError {
     case unauthenticated
     case invalidFile
     case fileTooLarge
+    case fileLimitReached
+    case totalSizeLimitReached
     case ticketRejected
     case uploadRejected
     case invalidResponse
@@ -19,6 +21,10 @@ enum EvidenceUploadError: LocalizedError {
             return "無法讀取這個檔案，請改選 PDF、JPG 或 PNG。"
         case .fileTooLarge:
             return "單一證明文件不可超過 10 MB。"
+        case .fileLimitReached:
+            return "每位志工最多可保留 5 個證明檔案；請先移除不需要的檔案。"
+        case .totalSizeLimitReached:
+            return "證明檔案總容量不可超過 25 MB；請壓縮或移除部分檔案。"
         case .ticketRejected:
             return "無法建立安全上傳，請稍後再試。"
         case .uploadRejected:
@@ -159,9 +165,22 @@ struct RemoteEvidenceUploadService: EvidenceUploadService {
         )
 
         let (data, response) = try await session.data(for: request)
-        guard let httpResponse = response as? HTTPURLResponse,
-              (200..<300).contains(httpResponse.statusCode) else {
-            throw EvidenceUploadError.ticketRejected
+        guard let httpResponse = response as? HTTPURLResponse else {
+            throw EvidenceUploadError.invalidResponse
+        }
+        guard (200..<300).contains(httpResponse.statusCode) else {
+            let errorCode = try? JSONDecoder().decode(
+                EvidenceErrorResponse.self,
+                from: data
+            ).error
+            switch errorCode {
+            case "EVIDENCE_FILE_LIMIT_REACHED":
+                throw EvidenceUploadError.fileLimitReached
+            case "EVIDENCE_TOTAL_SIZE_LIMIT_REACHED":
+                throw EvidenceUploadError.totalSizeLimitReached
+            default:
+                throw EvidenceUploadError.ticketRejected
+            }
         }
         guard let ticket = try? JSONDecoder().decode(UploadTicket.self, from: data),
               ticket.uploadURL.scheme == "https",
@@ -189,6 +208,10 @@ private struct UploadTicket: Decodable {
 
 private struct EvidenceDeleteRequest: Encodable {
     let objectKey: String
+}
+
+private struct EvidenceErrorResponse: Decodable {
+    let error: String
 }
 
 enum EvidenceUploadConfig {

@@ -140,6 +140,8 @@ struct FirestoreVolunteerApplicationDocument: Codable, Equatable {
     let reviewedByUid: String?
     let reviewedAt: Date?
     let reviewNote: String?
+    let evidenceRetentionUntil: Date?
+    let evidenceDeletedAt: Date?
 }
 
 struct FirestoreStaffInvitationDocument: Codable, Equatable {

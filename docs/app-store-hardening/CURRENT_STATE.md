@@ -71,7 +71,9 @@ learning must remain usable without joining a class.
 
 ## Current technical constraints
 
-- Firestore rules are draft-only. They are not yet deployed or emulator-tested.
+- The reviewed Firestore rules are deployed to `englishplus-testflight` and
+  online access-boundary smoke tests pass. A full role matrix in the Firebase
+  emulator remains future defense-in-depth coverage.
 - Swift compilation is not available on this Windows host. Xcode Cloud is the
   release-level verification gate at the agreed checkpoint.
 - Existing legacy validators can fail because they assert removed UI or old
@@ -104,11 +106,13 @@ learning must remain usable without joining a class.
 
 ## Next gate
 
-The first four-round implementation block is complete. Before its deliberate
-`main` merge and Xcode Cloud build, complete the Firebase provider, Apple
-capability, private R2, Worker-secret, Firestore deployment, and administrator
-claim checklist in the Round 4 report. Round 5 does not begin until this block
-build is green or the user explicitly chooses to defer the manual release gate.
+The first four-round implementation block is complete. Google, Apple, private
+R2, Worker secrets, Worker deployment, Firestore deployment, quota enforcement,
+retention cleanup, and runtime smoke tests are complete. Before a deliberate
+`main` merge and Xcode Cloud build, assign the chosen owner account the Firebase
+`admin: true` claim and update Xcode Cloud's Firebase plist secret. Round 5 does
+not begin until this block build is green or the user explicitly chooses to
+defer the manual release gate.
 
 ## Maintenance rule
 
