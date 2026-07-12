@@ -4,7 +4,7 @@
 > concise. It is the working source of truth, not a replacement for the
 > round reports.
 
-Last verified: 2026-07-12
+Last verified: 2026-07-13
 
 ## Product in one paragraph
 
@@ -25,8 +25,8 @@ learning must remain usable without joining a class.
   - Round 3 - multi-provider role onboarding (`round-03-multi-provider-role-onboarding.md`)
   - Round 4 - provider UI and private volunteer review (`round-04-provider-ui-private-volunteer-review.md`)
   - Round 5 - personal learning mode (`round-05-personal-learning-mode.md`)
-  - Round 6 - classroom lifecycle, macOS compile pending (`round-06-classroom-lifecycle.md`)
-- Hardening progress: **5/20 complete; Round 6 verification reopened**.
+  - Round 6 - classroom lifecycle (`round-06-classroom-lifecycle.md`)
+- Hardening progress: **6/20 complete; Round 7 is next**.
 - Do not merge to `main` or trigger Xcode Cloud until the end of a four-round
   block: 4, 8, 12, 16, and 20.
 - Never reset, overwrite, or silently discard user work.
@@ -80,15 +80,18 @@ learning must remain usable without joining a class.
   codes, multi-class joining and switching, safe leaving, legacy membership
   migration, UID-and-class cache isolation, and historical report boundaries.
   The deployed Worker passed authenticated student, teacher and volunteer
-  smoke checks at version `c50812b0-2eb5-48af-8b52-951d209220e4`.
+  smoke checks at version `de12abab-5cb9-44f8-91e2-33ba859832a2`. Firestore
+  Emulator coverage also passes the complete isolated create, join, switch,
+  reset-code, leave and rejoin lifecycle.
 
 ## Current technical constraints
 
-- The reviewed Firestore rules are deployed to `englishplus-testflight` and
-  online access-boundary smoke tests pass. A full role matrix in the Firebase
-  emulator remains future defense-in-depth coverage.
-- Swift compilation is not available on this Windows host. Xcode Cloud is the
-  release-level verification gate at the agreed checkpoint.
+- The reviewed Firestore rules are deployed to `englishplus-testflight`; online
+  access-boundary smoke tests and the isolated Firestore Emulator role matrix
+  both pass.
+- Swift compilation is not available on this Windows host. The isolated macOS
+  GitHub Actions gate passed a clean Xcode 16.4 Simulator build for Round 6;
+  Xcode Cloud remains the release-level gate at the agreed checkpoint.
 - Existing legacy validators can fail because they assert removed UI or old
   copy. Preserve useful behavioral coverage by replacing them, not by reviving
   obsolete UI.
@@ -119,11 +122,11 @@ learning must remain usable without joining a class.
 
 ## Next gate
 
-Block A is complete and its Xcode Cloud build is green at `9bb6307`. Round 5 is
-complete on `codex/app-store-hardening-b`; Round 6 has passed Worker, online and
-Firestore Emulator verification but remains open until its isolated macOS
-Simulator build passes. Do not merge to `main` or trigger Xcode Cloud until the
-Round 8 Block B audit.
+Block A is complete and its Xcode Cloud build is green at `9bb6307`. Rounds 5
+and 6 are complete on `codex/app-store-hardening-b`; Round 6 passed Worker,
+online, Firestore Emulator and isolated macOS Simulator verification. Round 7
+is next. Do not merge to `main` or trigger Xcode Cloud until the Round 8 Block
+B audit.
 
 ## Maintenance rule
 

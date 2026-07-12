@@ -1,6 +1,6 @@
 # Round 6 - Classroom lifecycle
 
-Status: Pending macOS compile verification
+Status: Complete
 
 ## Objective
 
@@ -70,7 +70,7 @@ Local verification includes:
 
 Remote verification includes:
 
-- Worker version `c50812b0-2eb5-48af-8b52-951d209220e4`
+- Worker version `de12abab-5cb9-44f8-91e2-33ba859832a2`
 - 23/23 production smoke checks across Firebase student, teacher and volunteer
   sessions
 - successful legacy membership migration and authenticated classroom listing
@@ -85,7 +85,12 @@ Passed. Round 6 remains on `codex/app-store-hardening-b`; it is not merged into
 
 ## macOS compile gate
 
-The round has been reopened until the manual macOS GitHub Actions gate compiles
-the actual Swift/Xcode project for an iOS Simulator. This uses a generated,
-non-production Firebase plist and does not sign, archive, upload, merge `main`
+Passed. GitHub Actions run `29201794382` compiled commit `95e748a` using
+Xcode 16.4 and a clean generic iOS Simulator build. The gate generated a
+non-production Firebase plist and did not sign, archive, upload, merge `main`
 or trigger Xcode Cloud.
+
+The first real compile exposed an expression-complexity failure in
+`ClassroomReportExport.shareText`; the implementation was split into explicit
+append operations without changing the exported report content. The next clean
+build passed, so this round is not relying on source-marker validation alone.
