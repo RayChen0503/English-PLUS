@@ -156,10 +156,118 @@ final class AuthenticationFlowAcceptanceTests: XCTestCase {
         XCTAssertEqual(auth.restoreCallCount, 1)
     }
 
-    private func makeAppState(auth: RecordingAuthService) -> AppState {
+    func testExistingEmailCollisionLinksProviderAfterOriginalLogin() async {
+        let auth = RecordingAuthService()
+        auth.providerSignInResult = .failure(.accountLinkRequired)
+        auth.emailSignInResult = .success(session(role: .teacher))
+        let appState = makeAppState(auth: auth)
+
+        await appState.signIn(with: .google(idToken: "collision", accessToken: "token"), role: .teacher)
+        XCTAssertTrue(appState.signInErrorMessage?.contains("原本方式登入") == true)
+
+        await appState.signIn(
+            email: "teacher@englishplus.test",
+            password: "EnglishPlus2026!",
+            role: .teacher
+        )
+
+        XCTAssertEqual(auth.linkIdentityCallCount, 1)
+        XCTAssertEqual(appState.currentUser?.role, .teacher)
+        XCTAssertEqual(appState.route, .privacyConsent(.teacher))
+        XCTAssertTrue(appState.authNoticeMessage?.contains("安全連結") == true)
+    }
+
+    func testSwitchingRoleDuringFirstUseCancelsAuthenticatedIdentity() async {
+        let auth = RecordingAuthService()
+        auth.providerSignInResult = .failure(.profileUnavailable)
+        let appState = makeAppState(auth: auth)
+
+        await appState.signIn(with: .apple(idToken: "apple-id", rawNonce: "nonce"), role: .student)
+        appState.chooseRole(.teacher)
+
+        XCTAssertEqual(auth.signOutCallCount, 1)
+        XCTAssertNil(appState.federatedOnboardingProvider(for: .student))
+        XCTAssertEqual(appState.route, .demoLogin(.teacher))
+    }
+
+    func testPendingVolunteerCannotEnterProtectedHome() async {
+        let auth = RecordingAuthService()
+        auth.providerSignInResult = .failure(.accountPendingApproval)
+        let appState = makeAppState(auth: auth)
+
+        await appState.signIn(with: .google(idToken: "pending", accessToken: "token"), role: .volunteer)
+
+        XCTAssertNil(appState.currentUser)
+        XCTAssertNil(appState.federatedOnboardingProvider(for: .volunteer))
+        XCTAssertNotEqual(appState.route, .home(.volunteer))
+        XCTAssertTrue(appState.signInErrorMessage?.contains("等待") == true)
+    }
+
+    func testSignOutClearsAuthenticatedStateAndReturnsToRoleSelection() async {
+        let auth = RecordingAuthService()
+        auth.providerSignInResult = .success(session(role: .student))
+        let appState = makeAppState(auth: auth)
+
+        await appState.signIn(with: .google(idToken: "existing", accessToken: "token"), role: .student)
+        appState.signOut()
+
+        XCTAssertEqual(auth.signOutCallCount, 1)
+        XCTAssertNil(appState.currentUser)
+        XCTAssertNil(appState.currentProfile)
+        XCTAssertNil(appState.selectedRole)
+        XCTAssertFalse(appState.hasAcceptedConsent)
+        XCTAssertEqual(appState.route, .roleSelection)
+    }
+
+    func testEmailAlreadyInUseNeverCreatesAnAuthenticatedSession() async {
+        let auth = RecordingAuthService()
+        auth.emailCreationResult = .failure(.emailAlreadyInUse)
+        let appState = makeAppState(auth: auth)
+
+        await appState.createAccount(
+            AccountRegistration(
+                email: "existing@englishplus.test",
+                password: "EnglishPlus2026!",
+                displayName: "既有同學",
+                role: .student,
+                teacherAffiliation: nil,
+                volunteerApplication: nil
+            )
+        )
+
+        XCTAssertNil(appState.currentUser)
+        XCTAssertTrue(appState.signInErrorMessage?.contains("已經建立過") == true)
+    }
+
+    func testRestoredConsentEntersHomeWithoutShowingAgreementAgain() async throws {
+        let auth = RecordingAuthService()
+        let restored = session(role: .student)
+        auth.restoredSession = restored
+        let firestore = MockFirestoreService()
+        try await firestore.saveConsent(
+            PrivacyConsentRecord.accepted(
+                uid: restored.user.id,
+                role: .student,
+                classId: restored.profile.classId,
+                categories: PrivacyPolicyCopy.requiredCategories(for: .student),
+                guardianConsentStatus: .notRequired
+            )
+        )
+        let appState = makeAppState(auth: auth, firestore: firestore)
+
+        await appState.restoreSessionIfPossible()
+
+        XCTAssertTrue(appState.hasAcceptedConsent)
+        XCTAssertEqual(appState.route, .home(.student))
+    }
+
+    private func makeAppState(
+        auth: RecordingAuthService,
+        firestore: MockFirestoreService = MockFirestoreService()
+    ) -> AppState {
         AppState(
             authService: auth,
-            firestoreService: MockFirestoreService(),
+            firestoreService: firestore,
             aiService: MockAIService(),
             evidenceUploadService: UnavailableEvidenceUploadService(),
             volunteerReviewService: UnavailableVolunteerReviewService(),
@@ -253,6 +361,7 @@ private final class RecordingAuthService: AuthService {
     private(set) var signOutCallCount = 0
     private(set) var restoreCallCount = 0
     private(set) var loadVolunteerApplicationCallCount = 0
+    private(set) var linkIdentityCallCount = 0
     private(set) var lastCreatedProfile: RoleOnboardingProfile?
 
     func demoSession(for role: UserRole) -> AuthSession {
@@ -282,6 +391,14 @@ private final class RecordingAuthService: AuthService {
         providerCreationCallCount += 1
         lastCreatedProfile = profile
         return try providerCreationResult.get()
+    }
+
+    func linkIdentity(
+        _ credential: FederatedIdentityCredential,
+        to session: AuthSession
+    ) async throws -> AuthSession {
+        linkIdentityCallCount += 1
+        return session
     }
 
     func loadVolunteerApplication(

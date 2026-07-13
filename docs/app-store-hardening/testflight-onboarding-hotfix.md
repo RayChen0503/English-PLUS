@@ -45,8 +45,9 @@ The `EnglishPlusTests` target now executes first-use and returning-account
 scenarios against `AppState` with a controllable authentication service. The
 suite covers first Google identity, first Apple identity, returning provider
 accounts, wrong-role selection, cancellation, retry after network failure,
-Email verification, unverified Email sign-in, volunteer evidence routing, and
-restored sessions.
+Email verification, unverified Email sign-in, identity linking, role switching,
+pending-volunteer blocking, sign-out cleanup, volunteer evidence routing,
+restored sessions, and consent restoration.
 
 Local evidence before the macOS gate:
 
