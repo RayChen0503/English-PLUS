@@ -307,7 +307,10 @@ service cloud.firestore {
         classId,
         thread.studentUid,
         thread.createdAt
-      );
+      )
+        && thread.status != "closed"
+        && thread.status != "archived"
+        && (!("withdrawnAt" in thread) || thread.withdrawnAt == null);
     }
 
     match /appConfig/{docId} {
@@ -653,7 +656,7 @@ service cloud.firestore {
             );
 
           allow create: if (
-              isSelf(get(threadPath(classId, threadId)).data.studentUid)
+              isSelf(getAfter(threadPath(classId, threadId)).data.studentUid)
               && isClassStudent(classId)
               && request.resource.data.authorUid == request.auth.uid
               && request.resource.data.authorRole == "student"

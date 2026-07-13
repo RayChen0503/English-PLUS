@@ -33,6 +33,23 @@ struct RootView: View {
         .onChange(of: appState.currentProfile?.activeClassId) { _, _ in
             startRealtimeSyncIfNeeded()
         }
+        .alert(
+            "同步未完成",
+            isPresented: Binding(
+                get: { learningRepository.supportActionErrorMessage != nil },
+                set: { isPresented in
+                    if !isPresented {
+                        learningRepository.dismissSupportActionError()
+                    }
+                }
+            )
+        ) {
+            Button("好") {
+                learningRepository.dismissSupportActionError()
+            }
+        } message: {
+            Text(learningRepository.supportActionErrorMessage ?? "請稍後再試一次。")
+        }
     }
 
     private func startRealtimeSyncIfNeeded() {

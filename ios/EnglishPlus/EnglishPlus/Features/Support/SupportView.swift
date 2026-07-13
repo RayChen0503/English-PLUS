@@ -47,8 +47,11 @@ struct SupportView: View {
                     ForEach(studentRequests) { request in
                         SupportRequestInboxCard(
                             request: request,
+                            isProcessing: learningRepository.isSupportActionPending(for: request.id),
                             onArchive: {
-                                learningRepository.archiveSupportThreadForStudent(request.id)
+                                Task {
+                                    _ = await learningRepository.archiveSupportThreadForStudent(request.id)
+                                }
                             }
                         )
                     }
@@ -63,7 +66,7 @@ struct SupportView: View {
     }
 
     private var waitingRequestCount: Int {
-        studentRequests.filter { $0.status == .open || $0.status == .waitingForStaff }.count
+        studentRequests.filter(\.isWaitingForStaffAction).count
     }
 
     private var unreadReplyCount: Int {
@@ -71,11 +74,7 @@ struct SupportView: View {
     }
 
     private var answeredRequestCount: Int {
-        studentRequests.filter { request in
-            request.status == .replied
-                || request.status == .readByStudent
-                || !request.visibleStaffRepliesToStudent.isEmpty
-        }.count
+        studentRequests.filter { !$0.visibleStaffRepliesToStudent.isEmpty }.count
     }
 
 }
@@ -205,6 +204,7 @@ private struct SupportRequestInboxCard: View {
     @EnvironmentObject private var learningRepository: LearningRepositoryStore
 
     let request: StudentSupportRequest
+    let isProcessing: Bool
     let onArchive: () -> Void
 
     private var visibleReplies: [SupportReply] {
@@ -271,21 +271,28 @@ private struct SupportRequestInboxCard: View {
             if visibleReplies.isEmpty {
                 SupportWaitingReplyCard(route: request.route)
                 if request.canStudentWithdrawBeforeReply {
-                    SupportWithdrawRequestRow {
-                        learningRepository.withdrawSupportRequest(request.id)
-                    }
+                    SupportWithdrawRequestRow(
+                        isProcessing: isProcessing,
+                        onWithdraw: {
+                            Task {
+                                _ = await learningRepository.withdrawSupportRequest(request.id)
+                            }
+                        }
+                    )
                 } else if request.canStudentArchiveAfterStaffArchivedWithoutReply {
                     SupportThreadActionRow(
                         title: "這筆目前沒有回覆",
                         message: "老師與志工都已把這筆從待辦收起；你也可以把它收起，避免回覆中心一直累積。",
                         buttonTitle: "收起這筆",
                         systemImage: "archivebox",
+                        isProcessing: isProcessing,
                         onArchive: onArchive
                     )
                 }
             } else {
                 SupportReplyTimeline(replies: visibleReplies)
                 SupportThreadActionRow(
+                    isProcessing: isProcessing,
                     onArchive: onArchive
                 )
             }
@@ -295,8 +302,10 @@ private struct SupportRequestInboxCard: View {
         .background(EPTheme.card)
         .clipShape(RoundedRectangle(cornerRadius: EPTheme.cardRadius))
         .onAppear {
-            if request.status == .replied {
-                learningRepository.markSupportThreadReadByStudent(request.id)
+            if request.hasStudentUnreadReply {
+                Task {
+                    _ = await learningRepository.markSupportThreadReadByStudent(request.id)
+                }
             }
         }
     }
@@ -354,6 +363,7 @@ private struct SupportThreadActionRow: View {
     var message: String = "收起後不會刪除資料，只是不再顯示在你的回覆中心。需要繼續練習時，直接用下方分頁切回練習中心。"
     var buttonTitle: String = "我看懂了，收起這筆"
     var systemImage: String = "archivebox"
+    var isProcessing: Bool = false
     let onArchive: () -> Void
 
     var body: some View {
@@ -368,11 +378,12 @@ private struct SupportThreadActionRow: View {
                 .fixedSize(horizontal: false, vertical: true)
 
             Button(action: onArchive) {
-                Label(buttonTitle, systemImage: systemImage)
+                Label(isProcessing ? "同步中" : buttonTitle, systemImage: systemImage)
                     .font(.caption.bold())
                     .frame(maxWidth: .infinity, minHeight: 44)
             }
             .buttonStyle(SecondaryActionButtonStyle())
+            .disabled(isProcessing)
         }
         .padding(12)
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -382,6 +393,7 @@ private struct SupportThreadActionRow: View {
 }
 
 private struct SupportWithdrawRequestRow: View {
+    let isProcessing: Bool
     let onWithdraw: () -> Void
 
     var body: some View {
@@ -396,11 +408,12 @@ private struct SupportWithdrawRequestRow: View {
                 .fixedSize(horizontal: false, vertical: true)
 
             Button(action: onWithdraw) {
-                Label("收回這題", systemImage: "arrow.uturn.backward")
+                Label(isProcessing ? "正在收回" : "收回這題", systemImage: "arrow.uturn.backward")
                     .font(.caption.bold())
                     .frame(maxWidth: .infinity, minHeight: 44)
             }
             .buttonStyle(SecondaryActionButtonStyle())
+            .disabled(isProcessing)
         }
         .padding(12)
         .frame(maxWidth: .infinity, alignment: .leading)

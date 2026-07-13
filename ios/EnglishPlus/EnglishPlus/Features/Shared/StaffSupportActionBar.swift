@@ -79,6 +79,7 @@ private struct StaffSupportMetricPill: View {
 
 struct StaffSupportActionBar: View {
     let canReply: Bool
+    let isProcessing: Bool
     let sendReply: () -> Void
     let archiveThread: () -> Void
 
@@ -89,13 +90,13 @@ struct StaffSupportActionBar: View {
                 .foregroundStyle(EPTheme.ink)
 
             Button(action: sendReply) {
-                Label("送出回覆", systemImage: "paperplane.fill")
+                Label(isProcessing ? "正在同步" : "送出回覆", systemImage: "paperplane.fill")
                     .font(.subheadline.bold())
                     .frame(maxWidth: .infinity, minHeight: 44)
             }
             .buttonStyle(PrimaryActionButtonStyle())
-            .disabled(!canReply)
-            .opacity(canReply ? 1 : 0.45)
+            .disabled(!canReply || isProcessing)
+            .opacity(canReply && !isProcessing ? 1 : 0.45)
 
             Button(action: archiveThread) {
                 Label("收起", systemImage: "archivebox")
@@ -103,6 +104,7 @@ struct StaffSupportActionBar: View {
                     .frame(maxWidth: .infinity, minHeight: 44)
             }
             .buttonStyle(SecondaryActionButtonStyle())
+            .disabled(isProcessing)
 
             Text("收起只會從你的待辦移除，不會刪除學生資料；另一端仍可看見並選擇是否補充回覆。")
                 .font(.caption)

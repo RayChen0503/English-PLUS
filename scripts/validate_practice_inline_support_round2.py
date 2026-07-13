@@ -59,8 +59,8 @@ require(
         "questionItem: QuestionBankItem",
         "selectedAnswer: String?",
         "latestQuestionId: questionItem.id",
-        "mirrorSupportRequestIfPossible(request)",
-        "mirrorStudentSupportMessageIfPossible(request)",
+        "persistNewSupportRequest(request)",
+        "firestoreData(fromStudentRequest: request)",
     ],
 )
 

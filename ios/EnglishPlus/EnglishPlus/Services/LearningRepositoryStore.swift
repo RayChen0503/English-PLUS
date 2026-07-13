@@ -21,6 +21,38 @@ struct PracticeLaunchRequest: Identifiable, Equatable {
     let questionIds: [String]
 }
 
+enum SupportMutationError: LocalizedError {
+    case remoteSyncUnavailable
+    case classRequired
+    case unauthenticated
+    case roleNotAllowed
+    case requestNotFound
+    case requestAlreadyHandled
+    case emptyReply
+    case invalidSupportContext
+
+    var errorDescription: String? {
+        switch self {
+        case .remoteSyncUnavailable:
+            return "目前無法連上班級同步服務，請確認網路後再試一次。"
+        case .classRequired:
+            return "請先加入或切換到班級，再使用老師與志工協助。"
+        case .unauthenticated:
+            return "登入狀態已失效，請重新登入後再試一次。"
+        case .roleNotAllowed:
+            return "目前帳號沒有執行這個操作的權限。"
+        case .requestNotFound:
+            return "這筆求助已不存在或已被收回，列表即將重新整理。"
+        case .requestAlreadyHandled:
+            return "這筆求助已有新回覆或狀態已改變，請重新確認後再操作。"
+        case .emptyReply:
+            return "請先輸入回覆內容。"
+        case .invalidSupportContext:
+            return "題目資料不完整，這次沒有送出。請回到題目後重新求助。"
+        }
+    }
+}
+
 protocol LearningRepositoryListenerToken {
     func cancel()
 }
@@ -76,7 +108,7 @@ protocol LearningRepositoryBackend: AnyObject {
         profile: AppUserProfile?,
         option: SupportOption,
         message: String?
-    )
+    ) async throws
     func sendQuestionSupportRequest(
         from user: DemoUser?,
         profile: AppUserProfile?,
@@ -84,14 +116,14 @@ protocol LearningRepositoryBackend: AnyObject {
         questionItem: QuestionBankItem,
         selectedAnswer: String?,
         message: String
-    )
-    func addTeacherReply(to requestId: String, body: String)
-    func addVolunteerReply(to requestId: String, body: String)
-    func markSupportThreadReadByStudent(_ requestId: String)
-    func archiveSupportThreadForStudent(_ requestId: String)
-    func withdrawSupportRequest(_ requestId: String)
-    func markSupportThreadHandledWithoutReply(_ requestId: String, by staffUser: DemoUser?)
-    func archiveSupportThreadForStaff(_ requestId: String, by staffUser: DemoUser?)
+    ) async throws
+    func addTeacherReply(to requestId: String, body: String) async throws
+    func addVolunteerReply(to requestId: String, body: String) async throws
+    func markSupportThreadReadByStudent(_ requestId: String) async throws
+    func archiveSupportThreadForStudent(_ requestId: String) async throws
+    func withdrawSupportRequest(_ requestId: String) async throws
+    func markSupportThreadHandledWithoutReply(_ requestId: String, by staffUser: DemoUser?) async throws
+    func archiveSupportThreadForStaff(_ requestId: String, by staffUser: DemoUser?) async throws
     func assignPracticeSet(_ set: QuestionPracticeSet, to student: StaffStudentSummary, by teacher: DemoUser?)
     func startAssignedPracticeTask(_ assignment: TeacherAssignedPracticeTask)
     func withdrawAssignedPracticeTask(_ assignmentId: String)
@@ -108,6 +140,8 @@ final class LearningRepositoryStore: ObservableObject {
     @Published private(set) var learningFlow: LearningFlowState = .initial(dateKey: "1970-01-01")
     @Published private(set) var syncStatus: LearningRepositorySyncStatus = .idle
     @Published private(set) var pendingPracticeLaunch: PracticeLaunchRequest?
+    @Published private(set) var pendingSupportActionKeys = Set<String>()
+    @Published private(set) var supportActionErrorMessage: String?
 
     private let backend: any LearningRepositoryBackend
     private var listener: LearningRepositoryListenerToken?
@@ -438,6 +472,7 @@ final class LearningRepositoryStore: ObservableObject {
         return supportRequests
             .filter { $0.studentUid == studentUid }
             .filter(\.isVisibleToStudent)
+            .filter(\.hasActionableSupportContent)
             .sorted { $0.updatedAt > $1.updatedAt }
     }
 
@@ -446,14 +481,15 @@ final class LearningRepositoryStore: ObservableObject {
         profile: AppUserProfile?,
         option: SupportOption,
         message: String? = nil
-    ) {
-        backend.sendSupportRequest(
-            from: user,
-            profile: profile,
-            option: option,
-            message: message
-        )
-        apply(backend.snapshot)
+    ) async -> Bool {
+        await performSupportAction(key: "create-general") {
+            try await backend.sendSupportRequest(
+                from: user,
+                profile: profile,
+                option: option,
+                message: message
+            )
+        }
     }
 
     func sendQuestionSupportRequest(
@@ -463,51 +499,71 @@ final class LearningRepositoryStore: ObservableObject {
         questionItem: QuestionBankItem,
         selectedAnswer: String?,
         message: String
-    ) {
-        backend.sendQuestionSupportRequest(
-            from: user,
-            profile: profile,
-            option: option,
-            questionItem: questionItem,
-            selectedAnswer: selectedAnswer,
-            message: message
-        )
-        apply(backend.snapshot)
+    ) async -> Bool {
+        await performSupportAction(key: "create-question-\(questionItem.id)") {
+            try await backend.sendQuestionSupportRequest(
+                from: user,
+                profile: profile,
+                option: option,
+                questionItem: questionItem,
+                selectedAnswer: selectedAnswer,
+                message: message
+            )
+        }
     }
 
-    func addTeacherReply(to requestId: String, body: String) {
-        backend.addTeacherReply(to: requestId, body: body)
-        apply(backend.snapshot)
+    func addTeacherReply(to requestId: String, body: String) async -> Bool {
+        await performSupportAction(key: "\(requestId):teacher-reply") {
+            try await backend.addTeacherReply(to: requestId, body: body)
+        }
     }
 
-    func addVolunteerReply(to requestId: String, body: String) {
-        backend.addVolunteerReply(to: requestId, body: body)
-        apply(backend.snapshot)
+    func addVolunteerReply(to requestId: String, body: String) async -> Bool {
+        await performSupportAction(key: "\(requestId):volunteer-reply") {
+            try await backend.addVolunteerReply(to: requestId, body: body)
+        }
     }
 
-    func markSupportThreadReadByStudent(_ requestId: String) {
-        backend.markSupportThreadReadByStudent(requestId)
-        apply(backend.snapshot)
+    func markSupportThreadReadByStudent(_ requestId: String) async -> Bool {
+        await performSupportAction(key: "\(requestId):student-read", reportsFailure: false) {
+            try await backend.markSupportThreadReadByStudent(requestId)
+        }
     }
 
-    func archiveSupportThreadForStudent(_ requestId: String) {
-        backend.archiveSupportThreadForStudent(requestId)
-        apply(backend.snapshot)
+    func archiveSupportThreadForStudent(_ requestId: String) async -> Bool {
+        await performSupportAction(key: "\(requestId):student-archive") {
+            try await backend.archiveSupportThreadForStudent(requestId)
+        }
     }
 
-    func withdrawSupportRequest(_ requestId: String) {
-        backend.withdrawSupportRequest(requestId)
-        apply(backend.snapshot)
+    func withdrawSupportRequest(_ requestId: String) async -> Bool {
+        await performSupportAction(key: "\(requestId):student-withdraw") {
+            try await backend.withdrawSupportRequest(requestId)
+        }
     }
 
-    func markSupportThreadHandledWithoutReply(_ requestId: String, by staffUser: DemoUser?) {
-        backend.markSupportThreadHandledWithoutReply(requestId, by: staffUser)
-        apply(backend.snapshot)
+    func markSupportThreadHandledWithoutReply(_ requestId: String, by staffUser: DemoUser?) async -> Bool {
+        await performSupportAction(key: "\(requestId):staff-handle") {
+            try await backend.markSupportThreadHandledWithoutReply(requestId, by: staffUser)
+        }
     }
 
-    func archiveSupportThreadForStaff(_ requestId: String, by staffUser: DemoUser?) {
-        backend.archiveSupportThreadForStaff(requestId, by: staffUser)
-        apply(backend.snapshot)
+    func archiveSupportThreadForStaff(_ requestId: String, by staffUser: DemoUser?) async -> Bool {
+        await performSupportAction(key: "\(requestId):staff-archive") {
+            try await backend.archiveSupportThreadForStaff(requestId, by: staffUser)
+        }
+    }
+
+    func isSupportActionPending(for requestId: String) -> Bool {
+        pendingSupportActionKeys.contains { $0.hasPrefix("\(requestId):") }
+    }
+
+    var isCreatingSupportRequest: Bool {
+        pendingSupportActionKeys.contains { $0.hasPrefix("create-") }
+    }
+
+    func dismissSupportActionError() {
+        supportActionErrorMessage = nil
     }
 
     func pendingAssignments(forStudentUid studentUid: String?) -> [TeacherAssignedPracticeTask] {
@@ -544,8 +600,33 @@ final class LearningRepositoryStore: ObservableObject {
         currentMission = snapshot.currentMission
         missionAttempts = snapshot.missionAttempts
         supportRequests = snapshot.supportRequests
+            .filter(\.hasActionableSupportContent)
+            .map { $0.reconcilingLifecycle() }
         assignedPracticeTasks = snapshot.assignedPracticeTasks
         learningFlow = snapshot.learningFlow
+    }
+
+    private func performSupportAction(
+        key: String,
+        reportsFailure: Bool = true,
+        operation: () async throws -> Void
+    ) async -> Bool {
+        guard pendingSupportActionKeys.insert(key).inserted else { return false }
+        supportActionErrorMessage = nil
+        defer { pendingSupportActionKeys.remove(key) }
+
+        do {
+            try await operation()
+            apply(backend.snapshot)
+            return true
+        } catch {
+            apply(backend.snapshot)
+            if reportsFailure {
+                supportActionErrorMessage = (error as? LocalizedError)?.errorDescription
+                    ?? "同步沒有完成，請確認網路後再試一次。"
+            }
+            return false
+        }
     }
 
     private func updateSyncStatus(_ status: LearningRepositorySyncStatus) {

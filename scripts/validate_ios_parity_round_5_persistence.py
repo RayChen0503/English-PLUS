@@ -102,8 +102,8 @@ def validate_sync_boundary(errors: list[str]) -> None:
             "currentSnapshot = fallback.snapshot",
             "mirrorCheckInAndMissionIfPossible",
             "mirrorAttemptIfPossible",
-            "mirrorSupportRequestIfPossible",
-            "mirrorUpdatedSupportRequestIfPossible",
+            "persistNewSupportRequest",
+            "persistSupportReply",
         ],
     )
 

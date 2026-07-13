@@ -239,7 +239,9 @@ struct PracticeCenterView: View {
                         }
                     },
                     onSendSupport: {
-                        sendPracticeSupportRequest(for: item)
+                        Task {
+                            await sendPracticeSupportRequest(for: item)
+                        }
                     }
                 )
 
@@ -1004,11 +1006,12 @@ struct PracticeCenterView: View {
         practiceQuestionAIResponse = await appState.explainWrongAnswerWithAI(context: context)
     }
 
-    private func sendPracticeSupportRequest(for item: QuestionBankItem) {
+    @MainActor
+    private func sendPracticeSupportRequest(for item: QuestionBankItem) async {
         guard appState.currentProfile?.activeClassId != nil else { return }
         let selectedAnswer = normalizedPracticeAnswer(practiceAnswer).isEmpty ? nil : practiceAnswer
         let option = practiceSupportOption()
-        learningRepository.sendQuestionSupportRequest(
+        let didSend = await learningRepository.sendQuestionSupportRequest(
             from: appState.currentUser,
             profile: appState.currentProfile,
             option: option,
@@ -1016,6 +1019,7 @@ struct PracticeCenterView: View {
             selectedAnswer: selectedAnswer,
             message: practiceSupportMessage(for: item)
         )
+        guard didSend else { return }
         practiceSupportSentQuestionIds.insert(practiceSupportSentKey(for: item))
         practiceSupportConfirmation = "已送給老師與志工，兩邊都會看到這一題與你的答案。"
     }

@@ -77,8 +77,9 @@ def main() -> int:
     markers(firebase, (
         "private var activeUserRole: UserRole?",
         "activeUserRole = profile?.role ?? user?.role",
-        "guard activeUserRole == .teacher, let activeUserUid else { return }",
-        "guard activeUserRole == .volunteer, let activeUserUid else { return }",
+        "guard activeUserRole == .teacher, let activeUserUid else {",
+        "guard activeUserRole == .volunteer, let activeUserUid else {",
+        "throw SupportMutationError.roleNotAllowed",
         'authorUid: activeUserUid',
         '.whereField("studentVisible", isEqualTo: true)',
         'if user?.role != .volunteer',

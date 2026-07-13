@@ -205,13 +205,19 @@ struct TeacherSupportRequestCard: View {
 
             StaffSupportActionBar(
                 canReply: canReply,
+                isProcessing: learningRepository.isSupportActionPending(for: request.id),
                 sendReply: {
-                    learningRepository.addTeacherReply(to: request.id, body: replyDraft)
-                    replyDraft = ""
-                    aiDraftResponse = nil
+                    Task {
+                        if await learningRepository.addTeacherReply(to: request.id, body: replyDraft) {
+                            replyDraft = ""
+                            aiDraftResponse = nil
+                        }
+                    }
                 },
                 archiveThread: {
-                    learningRepository.archiveSupportThreadForStaff(request.id, by: appState.currentUser)
+                    Task {
+                        _ = await learningRepository.archiveSupportThreadForStaff(request.id, by: appState.currentUser)
+                    }
                 }
             )
         }

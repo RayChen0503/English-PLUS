@@ -349,6 +349,116 @@ final class AuthenticationFlowAcceptanceTests: XCTestCase {
     }
 }
 
+final class SupportLifecycleAcceptanceTests: XCTestCase {
+    func testStaffReplyIsUnreadUntilStudentReadTimestampPassesReply() {
+        let replyAt = Date(timeIntervalSince1970: 2_000)
+        var request = makeRequest(
+            status: .waitingForStaff,
+            replies: [staffReply(at: replyAt)]
+        )
+
+        XCTAssertTrue(request.hasStudentUnreadReply)
+        XCTAssertEqual(request.reconciledStatus, .replied)
+
+        request.studentLastReadAt = Date(timeIntervalSince1970: 2_001)
+        XCTAssertFalse(request.hasStudentUnreadReply)
+        XCTAssertEqual(request.reconciledStatus, .readByStudent)
+    }
+
+    func testStudentRequestMessageNeverCountsAsAStaffReply() {
+        let studentMessage = SupportReply(
+            id: "student-message",
+            authorUid: "student-1",
+            authorName: "Student",
+            authorRole: .student,
+            body: "Please help.",
+            visibleToStudent: true,
+            createdAt: Date(timeIntervalSince1970: 2_000)
+        )
+        let request = makeRequest(status: .waitingForStaff, replies: [studentMessage])
+
+        XCTAssertTrue(request.visibleStaffRepliesToStudent.isEmpty)
+        XCTAssertFalse(request.hasStudentUnreadReply)
+        XCTAssertEqual(request.reconciledStatus, .waitingForStaff)
+    }
+
+    func testIndependentStaffArchivesBecomeArchivedOnlyAfterBothSidesArchive() {
+        var request = makeRequest(status: .waitingForStaff)
+        request.teacherArchivedAt = Date(timeIntervalSince1970: 2_000)
+        XCTAssertEqual(request.reconciledStatus, .waitingForStaff)
+
+        request.volunteerArchivedAt = Date(timeIntervalSince1970: 2_001)
+        XCTAssertEqual(request.reconciledStatus, .archived)
+        XCTAssertTrue(request.reconcilingLifecycle().canStudentArchiveAfterStaffArchivedWithoutReply)
+    }
+
+    func testWithdrawAlwaysClosesAndHidesStudentThread() {
+        var request = makeRequest(status: .waitingForStaff)
+        request.withdrawnAt = Date(timeIntervalSince1970: 2_000)
+        request.studentArchivedAt = request.withdrawnAt
+
+        XCTAssertEqual(request.reconciledStatus, .closed)
+        XCTAssertFalse(request.isVisibleToStudent)
+        XCTAssertFalse(request.isVisibleInStaffQueue(for: .teacher))
+        XCTAssertFalse(request.isVisibleInStaffQueue(for: .volunteer))
+    }
+
+    func testIncompleteLegacyQuestionIsNotActionable() {
+        var request = makeRequest(status: .waitingForStaff)
+        request.questionSnapshot = nil
+        request.studentMessage = "Old record without a question snapshot"
+
+        XCTAssertFalse(request.hasActionableSupportContent)
+        XCTAssertFalse(request.isVisibleInStaffQueue(for: .teacher))
+    }
+
+    private func makeRequest(
+        status: SupportThreadStatus,
+        replies: [SupportReply] = []
+    ) -> StudentSupportRequest {
+        StudentSupportRequest(
+            id: "thread-1",
+            studentUid: "student-1",
+            studentName: "Student",
+            classCode: "class-1",
+            reason: .stuckOnQuestion,
+            route: .humanHandoff,
+            priority: .medium,
+            status: status,
+            studentMessage: "I need help.",
+            moodScore: 3,
+            latestQuestionId: "question-1",
+            questionSnapshot: SupportQuestionSnapshot(
+                questionId: "question-1",
+                prompt: "My parents ___ at home.",
+                options: ["be", "am", "is", "are"],
+                questionTypeTitle: "Grammar",
+                levelTitle: "Foundation",
+                skill: "be verbs",
+                selectedAnswer: "is",
+                correctAnswer: "are",
+                explanation: "A plural subject uses are.",
+                repairHint: "Find the subject first."
+            ),
+            createdAt: Date(timeIntervalSince1970: 1_900),
+            updatedAt: Date(timeIntervalSince1970: 1_900),
+            replies: replies
+        )
+    }
+
+    private func staffReply(at date: Date) -> SupportReply {
+        SupportReply(
+            id: "teacher-reply",
+            authorUid: "teacher-1",
+            authorName: "Teacher",
+            authorRole: .teacher,
+            body: "Find the plural subject first.",
+            visibleToStudent: true,
+            createdAt: date
+        )
+    }
+}
+
 private final class RecordingAuthService: AuthService {
     var providerSignInResult: Result<AuthSession, AuthServiceError> = .failure(.profileUnavailable)
     var providerCreationResult: Result<AccountCreationOutcome, AuthServiceError> = .failure(.operationUnavailable)

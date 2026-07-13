@@ -472,7 +472,7 @@ final class MockLearningRepository: ObservableObject {
         profile: AppUserProfile?,
         option: SupportOption,
         message: String? = nil
-    ) {
+    ) async {
         let date = now()
         let studentUid = user?.id ?? profile?.id ?? "demo-student"
         let studentName = user?.displayName ?? profile?.displayName ?? "展示學生"
@@ -506,7 +506,7 @@ final class MockLearningRepository: ObservableObject {
         questionItem: QuestionBankItem,
         selectedAnswer: String?,
         message: String
-    ) {
+    ) async {
         let date = now()
         let studentUid = user?.id ?? profile?.id ?? "demo-student"
         let studentName = user?.displayName ?? profile?.displayName ?? "學生"
@@ -532,7 +532,7 @@ final class MockLearningRepository: ObservableObject {
         persistSnapshot()
     }
 
-    func addTeacherReply(to requestId: String, body: String) {
+    func addTeacherReply(to requestId: String, body: String) async {
         addReply(
             to: requestId,
             authorUid: "demo-teacher-1",
@@ -542,7 +542,7 @@ final class MockLearningRepository: ObservableObject {
         )
     }
 
-    func addVolunteerReply(to requestId: String, body: String) {
+    func addVolunteerReply(to requestId: String, body: String) async {
         addReply(
             to: requestId,
             authorUid: "demo-volunteer-1",
@@ -552,7 +552,7 @@ final class MockLearningRepository: ObservableObject {
         )
     }
 
-    func markSupportThreadReadByStudent(_ requestId: String) {
+    func markSupportThreadReadByStudent(_ requestId: String) async {
         guard let index = supportRequests.firstIndex(where: { $0.id == requestId }) else { return }
         guard supportRequests[index].status == .replied else { return }
         supportRequests[index].status = .readByStudent
@@ -562,7 +562,7 @@ final class MockLearningRepository: ObservableObject {
         persistSnapshot()
     }
 
-    func archiveSupportThreadForStudent(_ requestId: String) {
+    func archiveSupportThreadForStudent(_ requestId: String) async {
         guard let index = supportRequests.firstIndex(where: { $0.id == requestId }) else { return }
         let date = now()
         supportRequests[index].studentArchivedAt = date
@@ -574,7 +574,7 @@ final class MockLearningRepository: ObservableObject {
         persistSnapshot()
     }
 
-    func withdrawSupportRequest(_ requestId: String) {
+    func withdrawSupportRequest(_ requestId: String) async {
         guard let index = supportRequests.firstIndex(where: { $0.id == requestId }) else { return }
         let date = now()
         supportRequests[index].withdrawnAt = date
@@ -584,7 +584,7 @@ final class MockLearningRepository: ObservableObject {
         persistSnapshot()
     }
 
-    func markSupportThreadHandledWithoutReply(_ requestId: String, by staffUser: DemoUser?) {
+    func markSupportThreadHandledWithoutReply(_ requestId: String, by staffUser: DemoUser?) async {
         guard let index = supportRequests.firstIndex(where: { $0.id == requestId }) else { return }
         let date = now()
         markStaffThreadHandled(at: index, date: date, by: staffUser)
@@ -592,7 +592,7 @@ final class MockLearningRepository: ObservableObject {
         persistSnapshot()
     }
 
-    func archiveSupportThreadForStaff(_ requestId: String, by staffUser: DemoUser?) {
+    func archiveSupportThreadForStaff(_ requestId: String, by staffUser: DemoUser?) async {
         guard let index = supportRequests.firstIndex(where: { $0.id == requestId }) else { return }
         let date = now()
         archiveStaffThread(at: index, date: date, by: staffUser)

@@ -104,7 +104,8 @@ def main() -> int:
             "personalCheckIn",
             "personalDailyMission",
             "personalAnswerEvent",
-            "guard !FirebaseBackendConfig.isPersonalScopeId(request.classCode)",
+            "validateStudentSupportContext",
+            "guard activeClassId != nil else { throw SupportMutationError.classRequired }",
         ],
         errors,
     )

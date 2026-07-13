@@ -49,7 +49,6 @@ def main() -> None:
 
     for repository_name, text in {
         "mock repository": mock_repo,
-        "firebase repository": firebase_repo,
     }.items():
         for needle in [
             "markStaffThreadHandled",
@@ -60,6 +59,17 @@ def main() -> None:
             "volunteerArchivedAt",
         ]:
             require(text, needle, repository_name)
+
+    for needle in [
+        "activeStaffRole",
+        "staffVisibleSupportRequest",
+        "updateSupportThread",
+        "teacherHandledWithoutReplyAt",
+        "volunteerHandledWithoutReplyAt",
+        "teacherArchivedAt",
+        "volunteerArchivedAt",
+    ]:
+        require(firebase_repo, needle, "firebase confirmed support mutation repository")
 
     for needle in [
         "\"teacherHandledWithoutReplyAt\"",

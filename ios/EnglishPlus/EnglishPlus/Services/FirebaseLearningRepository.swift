@@ -12,6 +12,7 @@ final class FirebaseLearningRepository: LearningRepositoryBackend {
     private var activeUserUid: String?
     private var activeUserDisplayName: String?
     private var activeUserRole: UserRole?
+    private var activeProfileIsDemo = false
 
     #if canImport(FirebaseFirestore)
     private let db: Firestore?
@@ -60,6 +61,7 @@ final class FirebaseLearningRepository: LearningRepositoryBackend {
         activeUserUid = nil
         activeUserDisplayName = nil
         activeUserRole = nil
+        activeProfileIsDemo = false
     }
 
     func refresh() async throws {
@@ -80,6 +82,7 @@ final class FirebaseLearningRepository: LearningRepositoryBackend {
         activeUserUid = profile?.id ?? user?.id
         activeUserDisplayName = profile?.displayName ?? user?.displayName
         activeUserRole = profile?.role ?? user?.role
+        activeProfileIsDemo = profile?.isDemo ?? false
 
         if let profile, !profile.isDemo {
             fallback.activatePersistenceScope(
@@ -94,6 +97,8 @@ final class FirebaseLearningRepository: LearningRepositoryBackend {
         } else if user?.role == .volunteer {
             currentSnapshot.assignedPracticeTasks = []
         }
+        currentSnapshot.supportRequests = sanitizedSupportRequests(currentSnapshot.supportRequests)
+        synchronizeFallbackWithCurrentSnapshot()
         normalizeCurrentSnapshotForToday()
         onChange(currentSnapshot)
 
@@ -117,6 +122,7 @@ final class FirebaseLearningRepository: LearningRepositoryBackend {
                 self?.activeUserUid = nil
                 self?.activeUserDisplayName = nil
                 self?.activeUserRole = nil
+                self?.activeProfileIsDemo = false
             }
         }
 
@@ -132,6 +138,7 @@ final class FirebaseLearningRepository: LearningRepositoryBackend {
             self?.activeUserUid = nil
             self?.activeUserDisplayName = nil
             self?.activeUserRole = nil
+            self?.activeProfileIsDemo = false
         }
         #else
         return AnyLearningRepositoryListenerToken {}
@@ -296,23 +303,25 @@ final class FirebaseLearningRepository: LearningRepositoryBackend {
         profile: AppUserProfile?,
         option: SupportOption,
         message: String? = nil
-    ) {
-        let preservingSupportRequests = currentSnapshot.supportRequests
-        let preservingAssignedPracticeTasks = currentSnapshot.assignedPracticeTasks
-        fallback.sendSupportRequest(
+    ) async throws {
+        try validateStudentSupportContext()
+        let existingIds = Set(currentSnapshot.supportRequests.map(\.id))
+        fallback.replaceRuntimeSnapshot(currentSnapshot)
+        await fallback.sendSupportRequest(
             from: user,
             profile: profile,
             option: option,
             message: message
         )
-        currentSnapshot = fallbackSnapshot(
-            preservingSupportRequests: preservingSupportRequests,
-            preservingAssignedPracticeTasks: preservingAssignedPracticeTasks
-        )
-        if let request = currentSnapshot.supportRequests.first {
-            mirrorSupportRequestIfPossible(request)
-            mirrorStudentSupportMessageIfPossible(request)
+        guard var request = fallback.supportRequests.first(where: { !existingIds.contains($0.id) }) else {
+            fallback.replaceRuntimeSnapshot(currentSnapshot)
+            throw SupportMutationError.invalidSupportContext
         }
+        fallback.replaceRuntimeSnapshot(currentSnapshot)
+        request.replies = []
+        try validateNewSupportRequest(request)
+        try await persistNewSupportRequest(request)
+        upsertSupportRequest(request)
     }
 
     func sendQuestionSupportRequest(
@@ -322,10 +331,11 @@ final class FirebaseLearningRepository: LearningRepositoryBackend {
         questionItem: QuestionBankItem,
         selectedAnswer: String?,
         message: String
-    ) {
-        let preservingSupportRequests = currentSnapshot.supportRequests
-        let preservingAssignedPracticeTasks = currentSnapshot.assignedPracticeTasks
-        fallback.sendQuestionSupportRequest(
+    ) async throws {
+        try validateStudentSupportContext()
+        let existingIds = Set(currentSnapshot.supportRequests.map(\.id))
+        fallback.replaceRuntimeSnapshot(currentSnapshot)
+        await fallback.sendQuestionSupportRequest(
             from: user,
             profile: profile,
             option: option,
@@ -333,19 +343,21 @@ final class FirebaseLearningRepository: LearningRepositoryBackend {
             selectedAnswer: selectedAnswer,
             message: message
         )
-        currentSnapshot = fallbackSnapshot(
-            preservingSupportRequests: preservingSupportRequests,
-            preservingAssignedPracticeTasks: preservingAssignedPracticeTasks
-        )
-        if let request = currentSnapshot.supportRequests.first {
-            mirrorSupportRequestIfPossible(request)
-            mirrorStudentSupportMessageIfPossible(request)
+        guard let request = fallback.supportRequests.first(where: { !existingIds.contains($0.id) }) else {
+            fallback.replaceRuntimeSnapshot(currentSnapshot)
+            throw SupportMutationError.invalidSupportContext
         }
+        fallback.replaceRuntimeSnapshot(currentSnapshot)
+        try validateNewSupportRequest(request)
+        try await persistNewSupportRequest(request)
+        upsertSupportRequest(request)
     }
 
-    func addTeacherReply(to requestId: String, body: String) {
-        guard activeUserRole == .teacher, let activeUserUid else { return }
-        appendSupportReply(
+    func addTeacherReply(to requestId: String, body: String) async throws {
+        guard activeUserRole == .teacher, let activeUserUid else {
+            throw SupportMutationError.roleNotAllowed
+        }
+        try await appendSupportReply(
             to: requestId,
             authorUid: activeUserUid,
             authorName: activeUserDisplayName ?? "老師",
@@ -354,9 +366,11 @@ final class FirebaseLearningRepository: LearningRepositoryBackend {
         )
     }
 
-    func addVolunteerReply(to requestId: String, body: String) {
-        guard activeUserRole == .volunteer, let activeUserUid else { return }
-        appendSupportReply(
+    func addVolunteerReply(to requestId: String, body: String) async throws {
+        guard activeUserRole == .volunteer, let activeUserUid else {
+            throw SupportMutationError.roleNotAllowed
+        }
+        try await appendSupportReply(
             to: requestId,
             authorUid: activeUserUid,
             authorName: activeUserDisplayName ?? "志工",
@@ -365,102 +379,103 @@ final class FirebaseLearningRepository: LearningRepositoryBackend {
         )
     }
 
-    func markSupportThreadReadByStudent(_ requestId: String) {
-        guard let index = currentSnapshot.supportRequests.firstIndex(where: { $0.id == requestId }) else {
-            return
-        }
-        guard currentSnapshot.supportRequests[index].status == .replied else { return }
+    func markSupportThreadReadByStudent(_ requestId: String) async throws {
+        var request = try studentOwnedSupportRequest(requestId)
+        guard request.hasStudentUnreadReply else { return }
         let date = Date()
-        currentSnapshot.supportRequests[index].status = .readByStudent
-        currentSnapshot.supportRequests[index].studentLastReadAt = date
-        currentSnapshot.supportRequests[index].updatedAt = date
-        mirrorSupportRequestIfPossible(currentSnapshot.supportRequests[index])
+        try await updateSupportThread(
+            request,
+            fields: [
+                "status": SupportThreadStatus.readByStudent.rawValue,
+                "studentLastReadAt": date,
+                "updatedAt": date,
+            ]
+        )
+        request.status = .readByStudent
+        request.studentLastReadAt = date
+        request.updatedAt = date
+        upsertSupportRequest(request)
     }
 
-    func archiveSupportThreadForStudent(_ requestId: String) {
-        guard let index = currentSnapshot.supportRequests.firstIndex(where: { $0.id == requestId }) else {
-            return
-        }
+    func archiveSupportThreadForStudent(_ requestId: String) async throws {
+        var request = try studentOwnedSupportRequest(requestId)
+        guard request.isVisibleToStudent else { return }
         let date = Date()
-        currentSnapshot.supportRequests[index].studentArchivedAt = date
-        if currentSnapshot.supportRequests[index].status == .replied {
-            currentSnapshot.supportRequests[index].status = .readByStudent
-            currentSnapshot.supportRequests[index].studentLastReadAt = date
+        var fields: [String: Any] = [
+            "studentArchivedAt": date,
+            "updatedAt": date,
+        ]
+        request.studentArchivedAt = date
+        if !request.visibleStaffRepliesToStudent.isEmpty {
+            fields["status"] = SupportThreadStatus.readByStudent.rawValue
+            fields["studentLastReadAt"] = date
+            request.status = .readByStudent
+            request.studentLastReadAt = date
         }
-        currentSnapshot.supportRequests[index].updatedAt = date
-        mirrorSupportRequestIfPossible(currentSnapshot.supportRequests[index])
+        try await updateSupportThread(request, fields: fields)
+        request.updatedAt = date
+        upsertSupportRequest(request)
     }
 
-    func withdrawSupportRequest(_ requestId: String) {
-        guard let index = currentSnapshot.supportRequests.firstIndex(where: { $0.id == requestId }) else {
-            return
-        }
-        let date = Date()
-        currentSnapshot.supportRequests[index].withdrawnAt = date
-        currentSnapshot.supportRequests[index].studentArchivedAt = date
-        currentSnapshot.supportRequests[index].status = .closed
-        currentSnapshot.supportRequests[index].updatedAt = date
-        mirrorSupportRequestIfPossible(currentSnapshot.supportRequests[index])
-    }
-
-    func markSupportThreadHandledWithoutReply(_ requestId: String, by staffUser: DemoUser?) {
-        guard let index = currentSnapshot.supportRequests.firstIndex(where: { $0.id == requestId }) else {
-            return
-        }
-        let date = Date()
-        markStaffThreadHandled(at: index, date: date, by: staffUser)
-        currentSnapshot.supportRequests[index].updatedAt = date
-        mirrorSupportRequestIfPossible(currentSnapshot.supportRequests[index])
-    }
-
-    func archiveSupportThreadForStaff(_ requestId: String, by staffUser: DemoUser?) {
-        guard let index = currentSnapshot.supportRequests.firstIndex(where: { $0.id == requestId }) else {
-            return
+    func withdrawSupportRequest(_ requestId: String) async throws {
+        var request = try studentOwnedSupportRequest(requestId)
+        guard request.canStudentWithdrawBeforeReply else {
+            throw SupportMutationError.requestAlreadyHandled
         }
         let date = Date()
-        archiveStaffThread(at: index, date: date, by: staffUser)
-        currentSnapshot.supportRequests[index].updatedAt = date
-        mirrorSupportRequestIfPossible(currentSnapshot.supportRequests[index])
+        try await withdrawSupportThreadTransactionally(request, at: date)
+        request.withdrawnAt = date
+        request.studentArchivedAt = date
+        request.status = .closed
+        request.updatedAt = date
+        upsertSupportRequest(request)
     }
 
-    private func markStaffThreadHandled(at index: Int, date: Date, by staffUser: DemoUser?) {
-        currentSnapshot.supportRequests[index].status = .staffHandledNoReply
-        currentSnapshot.supportRequests[index].handledWithoutReplyAt = date
-        currentSnapshot.supportRequests[index].handledByUid = staffUser?.id
-        currentSnapshot.supportRequests[index].handledByName = staffUser?.displayName
-        currentSnapshot.supportRequests[index].handledByRole = staffUser?.role
-
-        switch staffUser?.role {
-        case .teacher?:
-            currentSnapshot.supportRequests[index].teacherHandledWithoutReplyAt = date
-        case .volunteer?:
-            currentSnapshot.supportRequests[index].volunteerHandledWithoutReplyAt = date
-        default:
-            currentSnapshot.supportRequests[index].teacherHandledWithoutReplyAt = date
-            currentSnapshot.supportRequests[index].volunteerHandledWithoutReplyAt = date
+    func markSupportThreadHandledWithoutReply(_ requestId: String, by staffUser: DemoUser?) async throws {
+        var request = try staffVisibleSupportRequest(requestId)
+        let date = Date()
+        let role = try activeStaffRole()
+        var fields: [String: Any] = [
+            "status": SupportThreadStatus.staffHandledNoReply.rawValue,
+            "handledWithoutReplyAt": date,
+            "handledByUid": activeUserUid ?? "",
+            "handledByName": activeUserDisplayName ?? staffUser?.displayName ?? "",
+            "handledByRole": role.rawValue,
+            "updatedAt": date,
+        ]
+        if role == .teacher {
+            fields["teacherHandledWithoutReplyAt"] = date
+            request.teacherHandledWithoutReplyAt = date
+        } else {
+            fields["volunteerHandledWithoutReplyAt"] = date
+            request.volunteerHandledWithoutReplyAt = date
         }
+        try await updateSupportThread(request, fields: fields)
+        request.status = .staffHandledNoReply
+        request.handledWithoutReplyAt = date
+        request.handledByUid = activeUserUid
+        request.handledByName = activeUserDisplayName ?? staffUser?.displayName
+        request.handledByRole = role
+        request.updatedAt = date
+        upsertSupportRequest(request)
     }
 
-    private func archiveStaffThread(at index: Int, date: Date, by staffUser: DemoUser?) {
-        currentSnapshot.supportRequests[index].handledByUid = staffUser?.id
-        currentSnapshot.supportRequests[index].handledByName = staffUser?.displayName
-        currentSnapshot.supportRequests[index].handledByRole = staffUser?.role
-
-        switch staffUser?.role {
-        case .teacher?:
-            currentSnapshot.supportRequests[index].teacherArchivedAt = date
-        case .volunteer?:
-            currentSnapshot.supportRequests[index].volunteerArchivedAt = date
-        default:
-            currentSnapshot.supportRequests[index].teacherArchivedAt = date
-            currentSnapshot.supportRequests[index].volunteerArchivedAt = date
+    func archiveSupportThreadForStaff(_ requestId: String, by staffUser: DemoUser?) async throws {
+        var request = try staffVisibleSupportRequest(requestId)
+        let date = Date()
+        let role = try activeStaffRole()
+        let archiveField = role == .teacher ? "teacherArchivedAt" : "volunteerArchivedAt"
+        try await updateSupportThread(
+            request,
+            fields: [archiveField: date, "updatedAt": date]
+        )
+        if role == .teacher {
+            request.teacherArchivedAt = date
+        } else {
+            request.volunteerArchivedAt = date
         }
-
-        if currentSnapshot.supportRequests[index].teacherArchivedAt != nil
-            && currentSnapshot.supportRequests[index].volunteerArchivedAt != nil {
-            currentSnapshot.supportRequests[index].status = .archived
-            currentSnapshot.supportRequests[index].staffArchivedAt = date
-        }
+        request.updatedAt = date
+        upsertSupportRequest(request.reconcilingLifecycle())
     }
 
     func assignPracticeSet(_ set: QuestionPracticeSet, to student: StaffStudentSummary, by teacher: DemoUser?) {
@@ -624,47 +639,6 @@ final class FirebaseLearningRepository: LearningRepositoryBackend {
         )
     }
 
-    private func mirrorUpdatedSupportRequestIfPossible(requestId: String) {
-        guard let request = currentSnapshot.supportRequests.first(where: { $0.id == requestId }) else {
-            return
-        }
-        guard !FirebaseBackendConfig.isPersonalScopeId(request.classCode) else { return }
-        mirrorSupportRequestIfPossible(request)
-        request.replies.forEach { reply in
-            setDocumentIfPossible(
-                path: FirestorePath.supportMessage(
-                    classId: request.classCode,
-                    threadId: request.id,
-                    messageId: reply.id
-                ),
-                data: firestoreData(from: reply, request: request)
-            )
-        }
-    }
-
-    private func mirrorSupportRequestIfPossible(_ request: StudentSupportRequest) {
-        guard !FirebaseBackendConfig.isPersonalScopeId(request.classCode) else { return }
-        setDocumentIfPossible(
-            path: FirestorePath.supportThread(
-                classId: request.classCode,
-                threadId: request.id
-            ),
-            data: firestoreData(from: request)
-        )
-    }
-
-    private func mirrorStudentSupportMessageIfPossible(_ request: StudentSupportRequest) {
-        guard !FirebaseBackendConfig.isPersonalScopeId(request.classCode) else { return }
-        setDocumentIfPossible(
-            path: FirestorePath.supportMessage(
-                classId: request.classCode,
-                threadId: request.id,
-                messageId: "\(request.id)-student-request"
-            ),
-            data: firestoreData(fromStudentRequest: request)
-        )
-    }
-
     private func mirrorPracticeAssignmentIfPossible(_ assignment: TeacherAssignedPracticeTask) {
         setDocumentIfPossible(
             path: FirestorePath.practiceAssignment(
@@ -681,15 +655,16 @@ final class FirebaseLearningRepository: LearningRepositoryBackend {
         authorName: String,
         authorRole: UserRole,
         body: String
-    ) {
+    ) async throws {
         let trimmedBody = body.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmedBody.isEmpty else { return }
-        guard let index = currentSnapshot.supportRequests.firstIndex(where: { $0.id == requestId }) else {
-            return
+        guard !trimmedBody.isEmpty else { throw SupportMutationError.emptyReply }
+        var request = try staffVisibleSupportRequest(requestId)
+        guard request.isVisibleInStaffQueue(for: authorRole) else {
+            throw SupportMutationError.requestAlreadyHandled
         }
         let date = Date()
         let reply = SupportReply(
-            id: "reply-\(date.timeIntervalSince1970)-\(requestId)",
+            id: "reply-\(UUID().uuidString)",
             authorUid: authorUid,
             authorName: authorName,
             authorRole: authorRole,
@@ -697,10 +672,212 @@ final class FirebaseLearningRepository: LearningRepositoryBackend {
             visibleToStudent: true,
             createdAt: date
         )
-        currentSnapshot.supportRequests[index].replies.append(reply)
-        currentSnapshot.supportRequests[index].status = .replied
-        currentSnapshot.supportRequests[index].updatedAt = date
-        mirrorUpdatedSupportRequestIfPossible(requestId: requestId)
+        try await persistSupportReply(reply, for: request)
+        request.replies.removeAll { $0.id == reply.id }
+        request.replies.append(reply)
+        request.replies.sort { $0.createdAt < $1.createdAt }
+        request.status = .replied
+        request.updatedAt = date
+        upsertSupportRequest(request)
+    }
+
+    private func validateStudentSupportContext() throws {
+        guard activeUserUid != nil else { throw SupportMutationError.unauthenticated }
+        guard activeUserRole == .student else { throw SupportMutationError.roleNotAllowed }
+        guard activeClassId != nil else { throw SupportMutationError.classRequired }
+    }
+
+    private func validateNewSupportRequest(_ request: StudentSupportRequest) throws {
+        guard let activeUserUid, request.studentUid == activeUserUid else {
+            throw SupportMutationError.roleNotAllowed
+        }
+        guard let activeClassId, request.classCode == activeClassId else {
+            throw SupportMutationError.classRequired
+        }
+        guard request.hasActionableSupportContent else { throw SupportMutationError.invalidSupportContext }
+    }
+
+    private func studentOwnedSupportRequest(_ requestId: String) throws -> StudentSupportRequest {
+        guard activeUserRole == .student, let activeUserUid else {
+            throw SupportMutationError.roleNotAllowed
+        }
+        guard let request = currentSnapshot.supportRequests.first(where: { $0.id == requestId }) else {
+            throw SupportMutationError.requestNotFound
+        }
+        guard let activeClassId,
+              request.studentUid == activeUserUid,
+              request.classCode == activeClassId
+        else {
+            throw SupportMutationError.roleNotAllowed
+        }
+        return request
+    }
+
+    private func staffVisibleSupportRequest(_ requestId: String) throws -> StudentSupportRequest {
+        let role = try activeStaffRole()
+        guard let request = currentSnapshot.supportRequests.first(where: { $0.id == requestId }) else {
+            throw SupportMutationError.requestNotFound
+        }
+        guard let activeClassId,
+              request.classCode == activeClassId,
+              request.hasActionableSupportContent,
+              !request.isWithdrawn,
+              role == .teacher || role == .volunteer
+        else {
+            throw SupportMutationError.roleNotAllowed
+        }
+        return request
+    }
+
+    private func activeStaffRole() throws -> UserRole {
+        guard activeUserUid != nil else { throw SupportMutationError.unauthenticated }
+        guard activeClassId != nil else { throw SupportMutationError.classRequired }
+        guard activeUserRole == .teacher || activeUserRole == .volunteer,
+              let activeUserRole
+        else {
+            throw SupportMutationError.roleNotAllowed
+        }
+        return activeUserRole
+    }
+
+    private func upsertSupportRequest(_ rawRequest: StudentSupportRequest) {
+        let request = rawRequest.reconcilingLifecycle()
+        currentSnapshot.supportRequests.removeAll { $0.id == request.id }
+        currentSnapshot.supportRequests.append(request)
+        currentSnapshot.supportRequests.sort { $0.updatedAt > $1.updatedAt }
+        synchronizeFallbackWithCurrentSnapshot()
+    }
+
+    private func sanitizedSupportRequests(
+        _ requests: [StudentSupportRequest]
+    ) -> [StudentSupportRequest] {
+        guard let activeClassId else { return [] }
+        return requests
+            .filter { $0.classCode == activeClassId }
+            .filter(\.hasActionableSupportContent)
+            .filter { activeProfileIsDemo || !$0.studentUid.hasPrefix("demo-") }
+            .filter { request in
+                guard activeUserRole == .student else { return true }
+                return request.studentUid == activeUserUid
+            }
+            .map { $0.reconcilingLifecycle() }
+            .sorted { $0.updatedAt > $1.updatedAt }
+    }
+
+    private func persistNewSupportRequest(_ request: StudentSupportRequest) async throws {
+        #if canImport(FirebaseFirestore)
+        guard let db else { throw SupportMutationError.remoteSyncUnavailable }
+        let threadReference = db.document(
+            FirestorePath.supportThread(classId: request.classCode, threadId: request.id)
+        )
+        let messageReference = db.document(
+            FirestorePath.supportMessage(
+                classId: request.classCode,
+                threadId: request.id,
+                messageId: "\(request.id)-student-request"
+            )
+        )
+        let batch = db.batch()
+        batch.setData(firestoreData(from: request), forDocument: threadReference)
+        batch.setData(firestoreData(fromStudentRequest: request), forDocument: messageReference)
+        try await batch.commit()
+        #else
+        throw SupportMutationError.remoteSyncUnavailable
+        #endif
+    }
+
+    private func persistSupportReply(
+        _ reply: SupportReply,
+        for request: StudentSupportRequest
+    ) async throws {
+        #if canImport(FirebaseFirestore)
+        guard let db else { throw SupportMutationError.remoteSyncUnavailable }
+        let threadReference = db.document(
+            FirestorePath.supportThread(classId: request.classCode, threadId: request.id)
+        )
+        let messageReference = db.document(
+            FirestorePath.supportMessage(
+                classId: request.classCode,
+                threadId: request.id,
+                messageId: reply.id
+            )
+        )
+        let batch = db.batch()
+        batch.setData(
+            firestoreData(from: reply, request: request),
+            forDocument: messageReference
+        )
+        batch.updateData(
+            [
+                "status": SupportThreadStatus.replied.rawValue,
+                "latestMessagePreview": reply.body,
+                "updatedAt": reply.createdAt,
+            ],
+            forDocument: threadReference
+        )
+        try await batch.commit()
+        #else
+        throw SupportMutationError.remoteSyncUnavailable
+        #endif
+    }
+
+    private func updateSupportThread(
+        _ request: StudentSupportRequest,
+        fields: [String: Any]
+    ) async throws {
+        #if canImport(FirebaseFirestore)
+        guard let db else { throw SupportMutationError.remoteSyncUnavailable }
+        try await db.document(
+            FirestorePath.supportThread(classId: request.classCode, threadId: request.id)
+        ).updateData(fields)
+        #else
+        throw SupportMutationError.remoteSyncUnavailable
+        #endif
+    }
+
+    private func withdrawSupportThreadTransactionally(
+        _ request: StudentSupportRequest,
+        at date: Date
+    ) async throws {
+        #if canImport(FirebaseFirestore)
+        guard let db else { throw SupportMutationError.remoteSyncUnavailable }
+        let reference = db.document(
+            FirestorePath.supportThread(classId: request.classCode, threadId: request.id)
+        )
+        let transactionErrorDomain = "EnglishPlus.SupportTransaction"
+        _ = try await db.runTransaction { transaction, errorPointer -> Any? in
+            let snapshot: DocumentSnapshot
+            do {
+                snapshot = try transaction.getDocument(reference)
+            } catch let error as NSError {
+                errorPointer?.pointee = error
+                return nil
+            }
+            let status = snapshot.data()?["status"] as? String
+            guard status == SupportThreadStatus.open.rawValue
+                    || status == SupportThreadStatus.waitingForStaff.rawValue
+            else {
+                errorPointer?.pointee = NSError(
+                    domain: transactionErrorDomain,
+                    code: 1,
+                    userInfo: [NSLocalizedDescriptionKey: "support_request_already_handled"]
+                )
+                return nil
+            }
+            transaction.updateData(
+                [
+                    "status": SupportThreadStatus.closed.rawValue,
+                    "studentArchivedAt": date,
+                    "withdrawnAt": date,
+                    "updatedAt": date,
+                ],
+                forDocument: reference
+            )
+            return nil
+        }
+        #else
+        throw SupportMutationError.remoteSyncUnavailable
+        #endif
     }
 
     private static func normalizedSnapshotForToday(
@@ -745,7 +922,7 @@ final class FirebaseLearningRepository: LearningRepositoryBackend {
         for request in fallbackRequests {
             requestsById[request.id] = request
         }
-        return requestsById.values.sorted { $0.updatedAt > $1.updatedAt }
+        return sanitizedSupportRequests(Array(requestsById.values))
     }
 
     private func mergedPracticeAssignments(
@@ -934,7 +1111,9 @@ final class FirebaseLearningRepository: LearningRepositoryBackend {
 
             Task { @MainActor in
                 guard let self else { return }
-                let syncedRequests = documents.compactMap { self.supportRequest(from: $0) }
+                let syncedRequests = self.sanitizedSupportRequests(
+                    documents.compactMap { self.supportRequest(from: $0) }
+                )
                 self.mergeSupportRequests(syncedRequests)
                 self.listenSupportMessages(
                     classId: classId,
@@ -979,12 +1158,19 @@ final class FirebaseLearningRepository: LearningRepositoryBackend {
                     else { return }
                     let replies = documents
                         .compactMap { self.supportReply(from: $0) }
+                        .filter(\.isStaffReply)
                         .filter(\.visibleToStudent)
                         .sorted { $0.createdAt < $1.createdAt }
                     self.currentSnapshot.supportRequests[index].replies = replies
                     if let latestReplyDate = replies.last?.createdAt {
-                        self.currentSnapshot.supportRequests[index].updatedAt = latestReplyDate
+                        self.currentSnapshot.supportRequests[index].updatedAt = max(
+                            self.currentSnapshot.supportRequests[index].updatedAt,
+                            latestReplyDate
+                        )
                     }
+                    self.currentSnapshot.supportRequests[index] = self.currentSnapshot
+                        .supportRequests[index]
+                        .reconcilingLifecycle()
                     self.synchronizeFallbackWithCurrentSnapshot()
                     onChange(self.currentSnapshot)
                 }
@@ -1182,7 +1368,8 @@ final class FirebaseLearningRepository: LearningRepositoryBackend {
             "priority": request.priority.rawValue,
             "assignedToUid": NSNull(),
             "assignedRole": NSNull(),
-            "studentVisible": request.isVisibleToStudent,
+            // Query visibility is immutable. Student archive/withdraw state is carried by timestamps.
+            "studentVisible": true,
             "studentMessage": request.studentMessage,
             "moodScore": nullable(request.moodScore),
             "latestQuestionId": nullable(request.latestQuestionId),
@@ -1438,12 +1625,12 @@ final class FirebaseLearningRepository: LearningRepositoryBackend {
             currentSnapshot.supportRequests.map { ($0.id, $0) },
             uniquingKeysWith: { existing, _ in existing }
         )
-        currentSnapshot.supportRequests = syncedRequests.map { request in
+        currentSnapshot.supportRequests = sanitizedSupportRequests(syncedRequests).map { request in
             var merged = request
             if let existing = existingById[request.id] {
                 merged.replies = existing.replies
             }
-            return merged
+            return merged.reconcilingLifecycle()
         }
         .sorted { $0.updatedAt > $1.updatedAt }
         synchronizeFallbackWithCurrentSnapshot()

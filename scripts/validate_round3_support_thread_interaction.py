@@ -43,8 +43,9 @@ def main():
     volunteer_text = read(volunteer_view)
 
     require(
-        "mirrorStudentSupportMessageIfPossible" in firebase_text,
-        "FirebaseLearningRepository must mirror the original student request as the first support message",
+        "persistNewSupportRequest" in firebase_text
+        and "firestoreData(fromStudentRequest: request)" in firebase_text,
+        "FirebaseLearningRepository must atomically persist the original student request as the first support message",
         errors,
     )
     require(

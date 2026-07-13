@@ -74,7 +74,9 @@ struct StudentHomeView: View {
             .alert("送出真人求助？", isPresented: $showsHumanSupportConfirmation) {
                 Button("取消", role: .cancel) {}
                 Button("送給老師與志工") {
-                    sendHumanSupportRequest()
+                    Task {
+                        await sendHumanSupportRequest()
+                    }
                 }
             } message: {
                 Text("只有按下送出後，班級中的老師與志工才會看到這則訊息。心情分數本身不會自動通知任何人。")
@@ -480,17 +482,20 @@ struct StudentHomeView: View {
             },
             onSendSupport: {
                 guard let item else { return }
-                sendMissionSupportRequest(for: item, attempt: attempt)
+                Task {
+                    await sendMissionSupportRequest(for: item, attempt: attempt)
+                }
             }
         )
     }
 
+    @MainActor
     private func sendMissionSupportRequest(
         for item: QuestionBankItem,
         attempt: MissionAttempt
-    ) {
+    ) async {
         guard appState.currentProfile?.activeClassId != nil else { return }
-        learningRepository.sendQuestionSupportRequest(
+        let didSend = await learningRepository.sendQuestionSupportRequest(
             from: appState.currentUser,
             profile: appState.currentProfile,
             option: missionSupportOption(),
@@ -498,6 +503,7 @@ struct StudentHomeView: View {
             selectedAnswer: attempt.selectedAnswer,
             message: missionSupportMessage(for: item, attempt: attempt)
         )
+        guard didSend else { return }
         missionSupportSentQuestionIds.insert(missionSupportSentKey(for: item))
         missionSupportConfirmation = "已送給老師與志工，兩邊都會看到這一題與你的答案。"
     }
@@ -571,10 +577,11 @@ struct StudentHomeView: View {
         }
     }
 
-    private func sendHumanSupportRequest() {
+    @MainActor
+    private func sendHumanSupportRequest() async {
         guard appState.currentProfile?.activeClassId != nil,
               !hasActiveHumanSupportRequest else { return }
-        learningRepository.sendSupportRequest(
+        _ = await learningRepository.sendSupportRequest(
             from: appState.currentUser,
             profile: appState.currentProfile,
             option: humanSupportOption(),

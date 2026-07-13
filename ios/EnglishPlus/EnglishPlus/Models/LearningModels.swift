@@ -364,6 +364,10 @@ struct StudentSupportRequest: Identifiable, Codable, Equatable {
             && !studentMessage.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
     }
 
+    var hasActionableSupportContent: Bool {
+        hasCompleteQuestionSnapshotForStaff || hasActionableHumanSupportContext
+    }
+
     var requiresStaffTeachingResponse: Bool {
         countsTowardSharedStaffBadge(for: .teacher)
             || countsTowardSharedStaffBadge(for: .volunteer)
@@ -403,7 +407,40 @@ struct StudentSupportRequest: Identifiable, Codable, Equatable {
     }
 
     var hasStudentUnreadReply: Bool {
-        isVisibleToStudent && status == .replied
+        guard isVisibleToStudent,
+              let latestReplyAt = visibleStaffRepliesToStudent.map(\.createdAt).max()
+        else {
+            return false
+        }
+        guard let studentLastReadAt else { return true }
+        return latestReplyAt > studentLastReadAt
+    }
+
+    var reconciledStatus: SupportThreadStatus {
+        if isWithdrawn {
+            return .closed
+        }
+        if !visibleStaffRepliesToStudent.isEmpty {
+            return hasStudentUnreadReply ? .replied : .readByStudent
+        }
+        if teacherArchivedAt != nil && volunteerArchivedAt != nil {
+            return .archived
+        }
+        if handledWithoutReplyAt != nil
+            || teacherHandledWithoutReplyAt != nil
+            || volunteerHandledWithoutReplyAt != nil {
+            return .staffHandledNoReply
+        }
+        if status == .open || status == .waitingForStaff {
+            return status
+        }
+        return .waitingForStaff
+    }
+
+    func reconcilingLifecycle() -> StudentSupportRequest {
+        var request = self
+        request.status = reconciledStatus
+        return request
     }
 
     var isPendingOnStudentLearningMap: Bool {

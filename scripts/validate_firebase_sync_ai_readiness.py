@@ -130,8 +130,9 @@ def validate_sync_ready(errors):
         "FirestorePath.supportMessage",
         "addSnapshotListener",
         "setData(data, merge: true)",
-        "mirrorSupportRequestIfPossible",
-        "mirrorUpdatedSupportRequestIfPossible",
+        "persistNewSupportRequest",
+        "persistSupportReply",
+        "try await batch.commit()",
     ]:
         require(token in firebase_learning, f"FirebaseLearningRepository missing {token}", errors)
 
