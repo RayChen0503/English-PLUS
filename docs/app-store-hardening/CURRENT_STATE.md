@@ -30,11 +30,9 @@ learning must remain usable without joining a class.
   - Round 8 - Firestore synchronization and Block B audit (`round-08-firestore-sync-audit.md`)
   - Round 9 - authenticated AI gateway, quota and monitoring (`round-09-ai-gateway-hardening.md`)
   - Round 10 - executable AI learning and staff actions (`round-10-executable-ai-actions.md`)
-  - Round 11 implementation - account deletion and explicit human help
-    (`round-11-account-deletion-human-help.md`); final scheduled-recovery IAM
-    sign-off remains pending.
-- Hardening progress: **10/20 fully signed off; Round 11 implementation is
-  complete and awaiting one production IAM recovery check**.
+  - Round 11 - account deletion and explicit human help
+    (`round-11-account-deletion-human-help.md`)
+- Hardening progress: **11/20 fully signed off**.
 - Do not merge to `main` or trigger Xcode Cloud until the end of a four-round
   block: 4, 8, 12, 16, and 20.
 - Never reset, overwrite, or silently discard user work.
@@ -128,12 +126,14 @@ learning must remain usable without joining a class.
 - Round 11 has added two-step in-app account deletion, UID-scoped local erasure,
   anonymous-only retained metrics, staged cleanup for multi-class accounts and
   an explicit student-controlled human-help route without automatic mood
-  alerts. Firestore Rules and indexes are deployed; Worker version
+  alerts. Firestore Rules and indexes are deployed; the base Worker version
   `c4cf2872-26ca-4829-90a2-66102a055eb4` passes production smoke checks `46/46`,
   the Firestore Emulator suite passes `18/18`, Worker tests pass `22/22`, and
-  the complete validator sweep passes `71/71`. The normal signed-in deletion
-  path is complete; scheduled crash recovery still needs Firebase Auth delete
-  permission for the Worker service account.
+  the complete validator sweep passes `71/71`. Scheduled recovery now uses a
+  one-permission custom IAM role and passed a controlled production probe with
+  `scanned: 1`, `completed: 1`, `failed: 0`; the deleted account could not sign
+  in again. Final Worker version `addf0fc7-f6cc-41a0-ac49-04d32b76f48d`
+  restores the daily Cron and contains no temporary test route.
 
 ## Current technical constraints
 
@@ -142,9 +142,9 @@ learning must remain usable without joining a class.
   both pass.
 - Swift compilation is not available on this Windows host. The isolated macOS
   GitHub Actions gate passed the Round 9 clean iOS Simulator build in run
-  `29241754603`; Round 10 branch-only run `29243976304` also passed the clean
-  Xcode 16.4 iOS Simulator build. Xcode Cloud remains the release-level gate
-  at the agreed checkpoint.
+  `29241754603`; Round 10 branch-only run `29243976304` and Round 11 run
+  `29252015455` also passed clean Xcode 16.4 iOS Simulator builds. Xcode Cloud
+  remains the release-level gate at the agreed checkpoint.
 - Existing legacy validators can fail because they assert removed UI or old
   copy. Preserve useful behavioral coverage by replacing them, not by reviving
   obsolete UI.
@@ -175,12 +175,10 @@ learning must remain usable without joining a class.
 
 ## Next gate
 
-Round 11 implementation is complete on `codex/app-store-hardening-c`. Before it
-is fully signed off, grant the Worker service account Firebase Authentication
-user-delete permission and verify the scheduled retry path. Round 12 then adds
-the final privacy policy, third-party AI disclosure and support entry. The
-branch stays separate from `main` until that Block C checkpoint, when one
-deliberate merge will trigger Xcode Cloud.
+Round 11 is fully signed off on `codex/app-store-hardening-c`. Round 12 adds the
+final privacy policy, third-party AI disclosure and support entry, then performs
+the Block C four-round checkpoint audit. The branch stays separate from `main`
+until that checkpoint, when one deliberate merge will trigger Xcode Cloud.
 
 ## Maintenance rule
 
