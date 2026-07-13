@@ -84,6 +84,7 @@ private struct VolunteerSupportRequestCard: View {
 
     @State private var replyDraft = ""
     @State private var isDraftingWithAI = false
+    @State private var aiDraftResponse: AiProxyResponse?
 
     private var canReply: Bool {
         !replyDraft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
@@ -158,11 +159,25 @@ private struct VolunteerSupportRequestCard: View {
             .buttonStyle(SecondaryActionButtonStyle())
             .disabled(isDraftingWithAI)
 
+            if let aiDraftResponse {
+                StaffAIDraftCard(
+                    response: aiDraftResponse,
+                    roleTitle: "志工",
+                    onApply: {
+                        if let draft = aiDraftResponse.output.studentFacingFeedback,
+                           !draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                            replyDraft = draft
+                        }
+                    }
+                )
+            }
+
             StaffSupportActionBar(
                 canReply: canReply,
                 sendReply: {
                     learningRepository.addVolunteerReply(to: request.id, body: replyDraft)
                     replyDraft = ""
+                    aiDraftResponse = nil
                 },
                 archiveThread: {
                     learningRepository.archiveSupportThreadForStaff(request.id, by: appState.currentUser)
@@ -180,11 +195,7 @@ private struct VolunteerSupportRequestCard: View {
         defer { isDraftingWithAI = false }
 
         let response = await appState.coachVolunteerReplyWithAI(context: SupportAIContext(request: request))
-        replyDraft = response.output.studentFacingFeedback
-            ?? response.output.recommendedNextAction
-            ?? response.output.teacherSummary
-            ?? response.output.summary
-            ?? replyDraft
+        aiDraftResponse = response
     }
 }
 

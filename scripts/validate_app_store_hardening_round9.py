@@ -113,7 +113,6 @@ def main() -> int:
     ), "Production smoke suite", errors)
     markers(workflow, (
         "codex/app-store-hardening-c",
-        ".github/ci-triggers/round9-ios-build",
         "npm test",
         "validate_app_store_hardening_round9.py",
         "generic/platform=iOS Simulator",

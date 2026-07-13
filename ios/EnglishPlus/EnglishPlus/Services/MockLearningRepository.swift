@@ -202,6 +202,7 @@ final class MockLearningRepository: ObservableObject {
             createdAt: date
         )
         let missionQuestions = selectMissionQuestions(
+            aiPlan: aiMission?.questionPlan,
             preferredTypes: selectedTypes,
             track: track,
             targetCount: targetCorrectCount
@@ -770,6 +771,7 @@ final class MockLearningRepository: ObservableObject {
     }
 
     private func selectMissionQuestions(
+        aiPlan: [AiQuestionPlanItem]?,
         preferredTypes: [QuestionType],
         track: MissionTrack,
         targetCount: Int
@@ -777,6 +779,61 @@ final class MockLearningRepository: ObservableObject {
         let allowedTypes = preferredTypes.isEmpty ? defaultPreferredQuestionTypes : preferredTypes
         let preferredSet = Set(allowedTypes)
         let target = max(1, targetCount)
+
+        if let aiPlan, !aiPlan.isEmpty {
+            var selected: [QuestionBankItem] = []
+            for planItem in aiPlan where selected.count < target {
+                guard let type = questionType(from: planItem.type), preferredSet.contains(type) else { continue }
+                let preferredPlanLevels = questionLevels(from: planItem.difficulty, fallbackTrack: track)
+                let selectedIds = Set(selected.map(\.id))
+                let exactCandidates = cachedQuestionBankItems.filter { item in
+                    !selectedIds.contains(item.id)
+                        && item.question.type == type
+                        && preferredPlanLevels.contains(item.level)
+                }
+                let requestedCount = min(
+                    max(1, planItem.targetCorrect),
+                    target - selected.count
+                )
+                let segment = QuestionGroupingEngine.practiceSelection(
+                    from: exactCandidates,
+                    fallbackCandidates: QuestionGroupingEngine.balancedFallbackCandidates(
+                        preferredTypes: [type],
+                        preferredLevels: preferredPlanLevels,
+                        from: cachedQuestionBankItems.filter { !selectedIds.contains($0.id) }
+                    ),
+                    limit: requestedCount
+                )
+                selected.append(contentsOf: segment.items.filter { item in
+                    !selected.contains(where: { $0.id == item.id })
+                })
+            }
+
+            if selected.count < target {
+                let selectedIds = Set(selected.map(\.id))
+                let remaining = cachedQuestionBankItems.filter { !selectedIds.contains($0.id) }
+                let preferredLevels = preferredLevels(for: track)
+                let fill = QuestionGroupingEngine.practiceSelection(
+                    from: remaining.filter { item in
+                        preferredSet.contains(item.question.type)
+                            && preferredLevels.contains(item.level)
+                    },
+                    fallbackCandidates: QuestionGroupingEngine.balancedFallbackCandidates(
+                        preferredTypes: allowedTypes,
+                        preferredLevels: preferredLevels,
+                        from: remaining
+                    ),
+                    limit: target - selected.count
+                )
+                selected.append(contentsOf: fill.items)
+            }
+
+            let balanced = QuestionGroupingEngine.balancedItems(from: selected, limit: target)
+            if !balanced.isEmpty {
+                return balanced
+            }
+        }
+
         let preferredLevels = preferredLevels(for: track)
         let exactMatches = cachedQuestionBankItems.filter { item in
             preferredSet.contains(item.question.type) && preferredLevels.contains(item.level)
@@ -967,6 +1024,21 @@ final class MockLearningRepository: ObservableObject {
             return .dialogue
         default:
             return nil
+        }
+    }
+
+    private func questionLevels(from aiDifficulty: String, fallbackTrack: MissionTrack) -> [QuestionLevel] {
+        switch aiDifficulty.lowercased() {
+        case "foundation", "a1":
+            return [.a1]
+        case "core", "a2":
+            return [.a2]
+        case "exam", "challenge", "b1":
+            return [.b1]
+        case "advanced", "highschool", "b2":
+            return [.b2]
+        default:
+            return preferredLevels(for: fallbackTrack)
         }
     }
 

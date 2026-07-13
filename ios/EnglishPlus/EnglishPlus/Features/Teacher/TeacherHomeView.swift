@@ -99,6 +99,7 @@ struct TeacherSupportRequestCard: View {
 
     @State private var replyDraft = ""
     @State private var isDraftingWithAI = false
+    @State private var aiDraftResponse: AiProxyResponse?
 
     private var canReply: Bool {
         !replyDraft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
@@ -173,11 +174,25 @@ struct TeacherSupportRequestCard: View {
             .buttonStyle(SecondaryActionButtonStyle())
             .disabled(isDraftingWithAI)
 
+            if let aiDraftResponse {
+                StaffAIDraftCard(
+                    response: aiDraftResponse,
+                    roleTitle: "老師",
+                    onApply: {
+                        if let draft = aiDraftResponse.output.studentFacingFeedback,
+                           !draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                            replyDraft = draft
+                        }
+                    }
+                )
+            }
+
             StaffSupportActionBar(
                 canReply: canReply,
                 sendReply: {
                     learningRepository.addTeacherReply(to: request.id, body: replyDraft)
                     replyDraft = ""
+                    aiDraftResponse = nil
                 },
                 archiveThread: {
                     learningRepository.archiveSupportThreadForStaff(request.id, by: appState.currentUser)
@@ -195,11 +210,83 @@ struct TeacherSupportRequestCard: View {
         defer { isDraftingWithAI = false }
 
         let response = await appState.draftTeacherFeedbackWithAI(context: SupportAIContext(request: request))
-        replyDraft = response.output.studentFacingFeedback
-            ?? response.output.recommendedNextAction
-            ?? response.output.teacherSummary
-            ?? response.output.summary
-            ?? replyDraft
+        aiDraftResponse = response
+    }
+}
+
+struct StaffAIDraftCard: View {
+    let response: AiProxyResponse
+    let roleTitle: String
+    let onApply: () -> Void
+
+    private var summary: String? {
+        response.output.teacherSummary ?? response.output.summary
+    }
+
+    private var hasUsableDraft: Bool {
+        guard let draft = response.output.studentFacingFeedback else { return false }
+        return !draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Label(response.fallbackUsed ? "內建草稿" : "AI 草稿預覽", systemImage: "sparkles")
+                .font(.subheadline.bold())
+                .foregroundStyle(response.fallbackUsed ? EPTheme.warning : EPTheme.primary)
+
+            if let summary, !summary.isEmpty {
+                VStack(alignment: .leading, spacing: 3) {
+                    Text("卡點摘要")
+                        .font(.caption.bold())
+                        .foregroundStyle(EPTheme.secondaryInk)
+                    Text(summary)
+                        .font(.footnote)
+                        .foregroundStyle(EPTheme.ink)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+            }
+
+            if let draft = response.output.studentFacingFeedback, !draft.isEmpty {
+                VStack(alignment: .leading, spacing: 3) {
+                    Text("給學生的草稿")
+                        .font(.caption.bold())
+                        .foregroundStyle(EPTheme.secondaryInk)
+                    Text(draft)
+                        .font(.footnote)
+                        .foregroundStyle(EPTheme.ink)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+            }
+
+            if let nextAction = response.output.recommendedNextAction, !nextAction.isEmpty {
+                VStack(alignment: .leading, spacing: 3) {
+                    Text("建議下一步")
+                        .font(.caption.bold())
+                        .foregroundStyle(EPTheme.secondaryInk)
+                    Text(nextAction)
+                        .font(.footnote)
+                        .foregroundStyle(EPTheme.ink)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+            }
+
+            Button(action: onApply) {
+                Label("採用並編輯這份\(roleTitle)回覆", systemImage: "square.and.pencil")
+                    .font(.subheadline.bold())
+                    .frame(maxWidth: .infinity, minHeight: 44)
+            }
+            .buttonStyle(PrimaryActionButtonStyle())
+            .disabled(!hasUsableDraft)
+            .opacity(hasUsableDraft ? 1 : 0.45)
+
+            Text("採用後仍可修改；只有按下回覆才會送給學生。")
+                .font(.caption)
+                .foregroundStyle(EPTheme.secondaryInk)
+        }
+        .padding(12)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(EPTheme.primary.opacity(0.07))
+        .clipShape(RoundedRectangle(cornerRadius: EPTheme.cardRadius))
     }
 }
 

@@ -33,12 +33,16 @@ def main() -> None:
         "AI recommendation card must apply the executable recommendation plan.",
     )
     require(
-        "let sessionSelection = buildPracticeSessionItems(from: plan.items)" in source,
-        "Applying an AI recommendation must build a quality-controlled practice session from the selected items.",
+        "structuredRecommendationSelection(" in source,
+        "AI recommendations must be converted from a structured, quality-controlled plan.",
     )
     require(
-        "startPracticeSession(with: sessionSelection.items" in source,
-        "Applying an AI recommendation must immediately start a practice session with the quality-controlled items.",
+        "startPracticeSession(with: plan.items, sourceTitle: plan.title)" in source,
+        "Applying an AI recommendation must start exactly the validated plan without silently changing its size.",
+    )
+    require(
+        "buildPracticeSessionItems(from: plan.items)" not in source,
+        "A validated AI plan must not be refilled to the generic session limit.",
     )
     require(
         "selectedPracticeSetId = nil" in source,

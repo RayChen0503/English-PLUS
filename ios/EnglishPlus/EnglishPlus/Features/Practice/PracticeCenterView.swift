@@ -29,6 +29,7 @@ struct PracticeCenterView: View {
     @State private var isLoadingPracticeAI = false
     @State private var isLoadingPracticeQuestionAI = false
     @State private var isLoadingWrongAnswerAI = false
+    @State private var wrongAnswerRepairItems: [QuestionBankItem] = []
 
     private let freePracticeSessionLimit = 10
 
@@ -52,6 +53,9 @@ struct PracticeCenterView: View {
                 }
             }
             .navigationTitle("練習中心")
+        }
+        .onAppear {
+            launchPendingPracticeIfNeeded()
         }
     }
 
@@ -216,7 +220,9 @@ struct PracticeCenterView: View {
                     PracticeResultCard(
                         result: practiceResult,
                         aiResponse: wrongAnswerAIResponse,
-                        isLoadingAI: isLoadingWrongAnswerAI
+                        isLoadingAI: isLoadingWrongAnswerAI,
+                        repairQuestionCount: wrongAnswerRepairItems.count,
+                        onStartRepair: startWrongAnswerRepair
                     )
                 }
 
@@ -275,7 +281,7 @@ struct PracticeCenterView: View {
                     Text("不知道要練什麼？")
                         .font(.headline)
                         .foregroundStyle(EPTheme.ink)
-                    Text("可以依照最近表現請 AI 推薦下一步。這是驗證 AI 是否連線的另一個入口。")
+                    Text("AI 會依最近表現整理成一組可以直接開始的題目。")
                         .font(.subheadline)
                         .foregroundStyle(EPTheme.secondaryInk)
                         .fixedSize(horizontal: false, vertical: true)
@@ -417,6 +423,7 @@ struct PracticeCenterView: View {
         practiceAIResponse = nil
         recommendedPracticePlan = nil
         wrongAnswerAIResponse = nil
+        wrongAnswerRepairItems = []
         practiceQuestionAIResponse = nil
         practiceSupportConfirmation = nil
         practiceSupportSentQuestionIds = []
@@ -451,6 +458,7 @@ struct PracticeCenterView: View {
         practiceAnswer = ""
         practiceResult = nil
         wrongAnswerAIResponse = nil
+        wrongAnswerRepairItems = []
         practiceQuestionAIResponse = nil
         practiceSupportConfirmation = nil
         practiceSupportSentQuestionIds = []
@@ -468,6 +476,7 @@ struct PracticeCenterView: View {
         practiceAnswer = ""
         practiceResult = nil
         wrongAnswerAIResponse = nil
+        wrongAnswerRepairItems = []
         practiceQuestionAIResponse = nil
         practiceSupportConfirmation = nil
         didCountCurrentPracticeAnswer = false
@@ -476,9 +485,16 @@ struct PracticeCenterView: View {
 
     private func buildAIRecommendationPlan(from response: AiProxyResponse) -> AIPracticeRecommendationPlan? {
         let searchText = recommendationSearchText(from: response)
-        let inferredTypes = inferRecommendedQuestionTypes(from: searchText)
-        let inferredLevels = inferRecommendedQuestionLevels(from: searchText)
-        let skillHints = inferRecommendedSkillHints(from: searchText)
+        let structuredPlan = response.output.practicePlan
+        let structuredTypes = structuredPlan?.questionPlan.compactMap { questionType(fromAIValue: $0.type) } ?? []
+        let structuredLevels = structuredPlan?.questionPlan.flatMap { questionLevels(fromAIDifficulty: $0.difficulty) } ?? []
+        let inferredTypes = structuredTypes.isEmpty
+            ? inferRecommendedQuestionTypes(from: searchText)
+            : structuredTypes.uniqued()
+        let inferredLevels = structuredLevels.isEmpty
+            ? inferRecommendedQuestionLevels(from: searchText)
+            : structuredLevels.uniqued()
+        let skillHints = ((structuredPlan?.focusSkills ?? []) + inferRecommendedSkillHints(from: searchText)).uniqued()
 
         let scoredItems = questionBankItems
             .map { item in
@@ -500,21 +516,33 @@ struct PracticeCenterView: View {
             .map(\.item)
             .uniqued(by: \.id)
 
-        let fallbackItems = fallbackAIRecommendationItems(
-            inferredTypes: inferredTypes,
-            inferredLevels: inferredLevels
+        let targetCount = min(
+            freePracticeSessionLimit,
+            max(1, structuredPlan?.targetQuestionCount ?? freePracticeSessionLimit)
         )
-        let selection = QuestionGroupingEngine.practiceSelection(
+        let selection = structuredPlan.map {
+            structuredRecommendationSelection(
+                plan: $0,
+                fallbackScoredItems: scoredItems,
+                targetCount: targetCount
+            )
+        } ?? QuestionGroupingEngine.practiceSelection(
             from: scoredItems,
-            fallbackCandidates: fallbackItems,
-            limit: freePracticeSessionLimit
+            fallbackCandidates: fallbackAIRecommendationItems(
+                inferredTypes: inferredTypes,
+                inferredLevels: inferredLevels
+            ),
+            limit: targetCount
         )
         let selectedItems = selection.items
         guard let firstItem = selectedItems.first else { return nil }
 
         let resolvedSkill = resolvedRecommendationSkill(from: selectedItems, skillHints: skillHints)
         let titleSkill = resolvedSkill.isEmpty ? firstItem.skill : resolvedSkill
-        let title = "AI 推薦：\(firstItem.question.type.title) / \(titleSkill)"
+        let providedTitle = structuredPlan?.title.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        let title = providedTitle.isEmpty
+            ? "AI 推薦：\(firstItem.question.type.title) / \(titleSkill)"
+            : providedTitle
         let subtitle = "\(selectedItems.count) 題，約 \(max(3, min(18, selectedItems.count * 2))) 分鐘"
         let note = recommendationMatchNote(
             inferredTypes: inferredTypes,
@@ -533,6 +561,94 @@ struct PracticeCenterView: View {
             skill: titleSkill,
             items: selectedItems
         )
+    }
+
+    private func structuredRecommendationSelection(
+        plan: AiPracticePlanOutput,
+        fallbackScoredItems: [QuestionBankItem],
+        targetCount: Int
+    ) -> QuestionPracticeSelection {
+        var selected: [QuestionBankItem] = []
+        var usedFallback = false
+        let focusSkills = plan.focusSkills
+            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() }
+            .filter { !$0.isEmpty }
+
+        for planItem in plan.questionPlan where selected.count < targetCount {
+            guard let type = questionType(fromAIValue: planItem.type) else {
+                usedFallback = true
+                continue
+            }
+            let levels = questionLevels(fromAIDifficulty: planItem.difficulty)
+            let selectedIds = Set(selected.map(\.id))
+            let typeAndLevel = questionBankItems.filter { item in
+                !selectedIds.contains(item.id)
+                    && item.question.type == type
+                    && (levels.isEmpty || levels.contains(item.level))
+            }
+            let skillMatches = typeAndLevel.filter { item in
+                guard !focusSkills.isEmpty else { return true }
+                let itemText = "\(item.skill) \(item.unit) \(item.question.concept)".lowercased()
+                return focusSkills.contains { itemText.contains($0) }
+            }
+            let exactCandidates = skillMatches.isEmpty ? typeAndLevel : skillMatches
+            let requestedCount = min(
+                max(1, planItem.targetCorrect),
+                targetCount - selected.count
+            )
+            let segment = QuestionGroupingEngine.practiceSelection(
+                from: exactCandidates,
+                fallbackCandidates: QuestionGroupingEngine.balancedFallbackCandidates(
+                    preferredTypes: [type],
+                    preferredLevels: levels,
+                    from: questionBankItems.filter { !selectedIds.contains($0.id) }
+                ),
+                limit: requestedCount
+            )
+            usedFallback = usedFallback || segment.fallbackUsed
+            selected.append(contentsOf: segment.items.filter { item in
+                !selected.contains(where: { $0.id == item.id })
+            })
+        }
+
+        if selected.count < targetCount {
+            let selectedIds = Set(selected.map(\.id))
+            let fill = QuestionGroupingEngine.practiceSelection(
+                from: fallbackScoredItems.filter { !selectedIds.contains($0.id) },
+                fallbackCandidates: questionBankItems.filter { !selectedIds.contains($0.id) },
+                limit: targetCount - selected.count
+            )
+            selected.append(contentsOf: fill.items)
+            usedFallback = true
+        }
+
+        return QuestionPracticeSelection(
+            items: QuestionGroupingEngine.balancedItems(from: selected, limit: targetCount),
+            fallbackUsed: usedFallback
+        )
+    }
+
+    private func questionType(fromAIValue value: String) -> QuestionType? {
+        switch value {
+        case "vocabulary": return .vocabulary
+        case "multipleChoice", "grammar", "choice": return .grammar
+        case "fillBlank": return .fillBlank
+        case "cloze": return .cloze
+        case "reading": return .reading
+        case "translation", "sentenceReorder": return .translation
+        case "dialogue": return .dialogue
+        default: return nil
+        }
+    }
+
+    private func questionLevels(fromAIDifficulty value: String) -> [QuestionLevel] {
+        switch value.lowercased() {
+        case "foundation", "a1": return [.a1]
+        case "core", "a2": return [.a2]
+        case "exam", "challenge", "b1": return [.b1]
+        case "advanced", "highschool", "b2": return [.b2]
+        default: return []
+        }
     }
 
     private func recommendationSearchText(from response: AiProxyResponse) -> String {
@@ -768,9 +884,8 @@ struct PracticeCenterView: View {
         selectedPracticeSetId = nil
         selectedPracticeType = plan.type
         selectedPracticeLevel = plan.level
-        let sessionSelection = buildPracticeSessionItems(from: plan.items)
-        startPracticeSession(with: sessionSelection.items, sourceTitle: plan.title)
-        practiceSelectionNote = sessionSelection.note ?? plan.matchNote
+        startPracticeSession(with: plan.items, sourceTitle: plan.title)
+        practiceSelectionNote = plan.matchNote
     }
 
     private func submitPracticeAnswer(for item: QuestionBankItem) {
@@ -796,6 +911,12 @@ struct PracticeCenterView: View {
         }
 
         guard !isCorrect else { return }
+        wrongAnswerRepairItems = QuestionGroupingEngine.repairSelection(
+            after: item,
+            from: questionBankItems,
+            excluding: Set(freePracticeSessionItems.map(\.id)),
+            limit: 3
+        ).items
         let attempt = MissionAttempt(
             id: "practice-\(UUID().uuidString)",
             missionId: "free-practice",
@@ -826,6 +947,33 @@ struct PracticeCenterView: View {
             questionItem: item
         )
         wrongAnswerAIResponse = await appState.explainWrongAnswerWithAI(context: context)
+    }
+
+    private func startWrongAnswerRepair() {
+        guard let source = currentPracticeItem, !wrongAnswerRepairItems.isEmpty else { return }
+        startPracticeSession(
+            with: wrongAnswerRepairItems,
+            sourceTitle: "錯題回練：\(source.skill.isEmpty ? source.question.concept : source.skill)"
+        )
+        practiceSelectionNote = "已依剛才的錯題安排相同能力點練習；完成後會結算這組結果。"
+    }
+
+    private func launchPendingPracticeIfNeeded() {
+        guard let launch = learningRepository.takePendingPracticeLaunch() else { return }
+        let itemsById = Dictionary(
+            questionBankItems.map { ($0.id, $0) },
+            uniquingKeysWith: { existing, _ in existing }
+        )
+        let items = launch.questionIds.compactMap { itemsById[$0] }
+        guard !items.isEmpty else {
+            practiceSelectionNote = "原本的錯題練習暫時找不到題目，請重新選一組練習。"
+            return
+        }
+        selectedPracticeSetId = nil
+        selectedPracticeType = items.first?.question.type
+        selectedPracticeLevel = items.first?.level
+        startPracticeSession(with: items, sourceTitle: launch.title)
+        practiceSelectionNote = "已接續 AI 錯題詳解，先完成這組相似題。"
     }
 
     @MainActor
@@ -1338,6 +1486,8 @@ private struct PracticeResultCard: View {
     let result: PracticeResult
     let aiResponse: AiProxyResponse?
     let isLoadingAI: Bool
+    let repairQuestionCount: Int
+    let onStartRepair: () -> Void
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
@@ -1371,6 +1521,20 @@ private struct PracticeResultCard: View {
                     .foregroundStyle(EPTheme.ink)
                     .fixedSize(horizontal: false, vertical: true)
             }
+
+            if !result.isCorrect, !isLoadingAI, repairQuestionCount > 0 {
+                Button(action: onStartRepair) {
+                    Label("練 \(repairQuestionCount) 題同類題", systemImage: "target")
+                        .font(.subheadline.bold())
+                        .frame(maxWidth: .infinity, minHeight: 44)
+                }
+                .buttonStyle(PrimaryActionButtonStyle())
+
+                Text("會直接開啟相同題型、難度與能力點的短練習，不必重新篩選題庫。")
+                    .font(.caption)
+                    .foregroundStyle(EPTheme.secondaryInk)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
         }
         .padding(12)
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -1389,10 +1553,15 @@ private struct PracticeAIRecommendationView: View {
             PracticeAIStatusCard(response: response, title: "AI 練習建議")
 
             if let action = response.output.recommendedNextAction, !action.isEmpty {
-                Text(action)
-                    .font(.footnote.bold())
-                    .foregroundStyle(EPTheme.support)
-                    .fixedSize(horizontal: false, vertical: true)
+                VStack(alignment: .leading, spacing: 3) {
+                    Text("建議下一步")
+                        .font(.caption.bold())
+                        .foregroundStyle(EPTheme.secondaryInk)
+                    Text(action)
+                        .font(.footnote)
+                        .foregroundStyle(EPTheme.ink)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
             }
 
             if let recommendedPracticePlan {

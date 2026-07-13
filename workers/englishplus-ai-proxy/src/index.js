@@ -2757,15 +2757,39 @@ function taskInstruction(taskType) {
         "questionPlan items must include type, difficulty, targetCorrect.",
       ].join(" ");
     case "wrongAnswerExplanation":
-      return "Return keys: shortFeedback, whyWrong, nextHint, tryAgain, staffEscalationNeeded.";
+      return [
+        "Return keys: shortFeedback, whyWrong, nextHint, tryAgain, staffEscalationNeeded.",
+        "Keep whyWrong specific to the supplied question and make nextHint a concrete step the learner can try.",
+        "Set tryAgain true unless the supplied question data is unusable.",
+      ].join(" ");
     case "emotionalSupport":
       return "Return keys: summary, supportLevel, recommendedNextAction. Keep it low-pressure.";
     case "teacherFeedbackDraft":
-      return "Return keys: teacherSummary, studentFacingFeedback, recommendedNextAction.";
+      return [
+        "Return keys: teacherSummary, studentFacingFeedback, recommendedNextAction.",
+        "teacherSummary is a concise staff-only diagnosis of the learning obstacle.",
+        "studentFacingFeedback is an editable reply draft, not a diagnosis and not a promise of monitoring.",
+        "recommendedNextAction is one specific follow-up the teacher can take.",
+      ].join(" ");
     case "volunteerReplyCoach":
-      return "Return keys: studentFacingFeedback, recommendedNextAction, summary.";
+      return [
+        "Return keys: studentFacingFeedback, recommendedNextAction, summary.",
+        "summary is a concise staff-only reading of the learning obstacle.",
+        "studentFacingFeedback is an editable, encouraging reply draft.",
+        "recommendedNextAction is one specific follow-up the volunteer can take.",
+      ].join(" ");
     case "progressSummary":
-      return "Return keys: summary, recommendedNextAction.";
+      return [
+        "Create an executable English practice recommendation, not only prose.",
+        "Return keys: summary, recommendedNextAction, practicePlan.",
+        "practicePlan must include title, targetQuestionCount, focusSkills, questionPlan.",
+        "targetQuestionCount must be 6 to 10.",
+        "focusSkills must contain up to 3 short skill names grounded in recentWeakSkills.",
+        "questionPlan must contain 1 to 4 items with type, difficulty, targetCorrect.",
+        "Allowed types: vocabulary, multipleChoice, fillBlank, cloze, reading, translation, dialogue.",
+        "Allowed difficulties: foundation, core, exam, advanced.",
+        "The sum of targetCorrect should equal targetQuestionCount.",
+      ].join(" ");
     default:
       return "Return compact JSON for English+.";
   }
@@ -2800,12 +2824,17 @@ function normalizeOutput(taskType, output) {
     };
   }
 
-  return {
+  const normalized = {
     summary: safeString(output.summary),
     shortFeedback: safeString(output.shortFeedback),
     whyWrong: safeString(output.whyWrong),
     nextHint: safeString(output.nextHint),
-    tryAgain: typeof output.tryAgain === "boolean" ? output.tryAgain : undefined,
+    tryAgain:
+      taskType === "wrongAnswerExplanation"
+        ? true
+        : typeof output.tryAgain === "boolean"
+          ? output.tryAgain
+          : undefined,
     staffEscalationNeeded:
       typeof output.staffEscalationNeeded === "boolean"
         ? output.staffEscalationNeeded
@@ -2815,6 +2844,73 @@ function normalizeOutput(taskType, output) {
     studentFacingFeedback: safeString(output.studentFacingFeedback),
     recommendedNextAction: safeString(output.recommendedNextAction),
   };
+
+  if (taskType === "progressSummary") {
+    normalized.practicePlan = normalizePracticePlan(output.practicePlan || output);
+  }
+
+  return normalized;
+}
+
+function normalizePracticePlan(raw) {
+  const allowedTypes = new Set([
+    "vocabulary",
+    "multipleChoice",
+    "fillBlank",
+    "cloze",
+    "reading",
+    "translation",
+    "dialogue",
+  ]);
+  const allowedDifficulties = new Set(["foundation", "core", "exam", "advanced"]);
+  const rawPlan = Array.isArray(raw?.questionPlan) ? raw.questionPlan : [];
+  const questionPlan = rawPlan.slice(0, 4).map((item) => ({
+    type: allowedTypes.has(item?.type) ? item.type : "multipleChoice",
+    difficulty: allowedDifficulties.has(item?.difficulty) ? item.difficulty : "core",
+    targetCorrect: clampInteger(item?.targetCorrect, 1, 6, 1),
+  }));
+
+  if (questionPlan.length === 0) {
+    questionPlan.push({ type: "multipleChoice", difficulty: "core", targetCorrect: 6 });
+  }
+
+  const requestedCount = clampInteger(raw?.targetQuestionCount, 6, 10, 8);
+  const normalizedPlan = normalizePlanTotal(questionPlan, requestedCount);
+  const focusSkills = Array.isArray(raw?.focusSkills)
+    ? raw.focusSkills.map(safeString).filter(Boolean).slice(0, 3)
+    : [];
+
+  return {
+    title: safeString(raw?.title) || "下一組個人化練習",
+    targetQuestionCount: normalizedPlan.reduce((total, item) => total + item.targetCorrect, 0),
+    focusSkills,
+    questionPlan: normalizedPlan,
+  };
+}
+
+function normalizePlanTotal(plan, targetCount) {
+  const result = plan.map((item) => ({ ...item }));
+  let total = result.reduce((sum, item) => sum + item.targetCorrect, 0);
+
+  while (total > targetCount) {
+    const index = result.findIndex((item) => item.targetCorrect > 1);
+    if (index < 0) break;
+    result[index].targetCorrect -= 1;
+    total -= 1;
+  }
+
+  let cursor = 0;
+  while (total < targetCount) {
+    const index = cursor % result.length;
+    if (result[index].targetCorrect < 6) {
+      result[index].targetCorrect += 1;
+      total += 1;
+    }
+    cursor += 1;
+    if (cursor > 48) break;
+  }
+
+  return result;
 }
 
 function normalizeMission(raw) {
@@ -2836,25 +2932,7 @@ function normalizeMission(raw) {
 }
 
 function buildFallbackResponse(request, errorCode) {
-  const output =
-    request.taskType === "dailyMission"
-      ? {
-          summary: "今天先完成一個短任務，答對才算進度。",
-          mission: {
-            track: "repair",
-            targetCorrectCount: 3,
-            recommendedMinutes: 8,
-            questionPlan: [
-              { type: "multipleChoice", difficulty: "foundation", targetCorrect: 1 },
-              { type: "fillBlank", difficulty: "core", targetCorrect: 2 },
-            ],
-          },
-        }
-      : {
-          summary: "English+ 先給你一個簡短提示，稍後可以再請老師或志工協助。",
-          supportLevel: "tryAgain",
-          recommendedNextAction: "先看提示，再試一次。",
-        };
+  const output = fallbackOutput(request);
 
   return {
     ok: false,
@@ -2867,6 +2945,66 @@ function buildFallbackResponse(request, errorCode) {
     requestId: crypto.randomUUID(),
     errorCode,
   };
+}
+
+function fallbackOutput(request) {
+  switch (request.taskType) {
+    case "dailyMission":
+      return {
+        summary: "今天先完成一個短任務，答對才算進度。",
+        mission: {
+          track: "repair",
+          targetCorrectCount: 3,
+          recommendedMinutes: 8,
+          questionPlan: [
+            { type: "multipleChoice", difficulty: "foundation", targetCorrect: 1 },
+            { type: "fillBlank", difficulty: "core", targetCorrect: 2 },
+          ],
+        },
+      };
+    case "progressSummary":
+      return {
+        summary: "先從最近容易卡住的能力點開始，完成一組短練習。",
+        recommendedNextAction: "套用題組後直接開始，完成後再看正確率。",
+        practicePlan: {
+          title: "最近卡點複習",
+          targetQuestionCount: 8,
+          focusSkills: request.context.recentWeakSkills || [],
+          questionPlan: [
+            { type: request.context.preferredQuestionTypes?.[0] || "multipleChoice", difficulty: "core", targetCorrect: 4 },
+            { type: request.context.preferredQuestionTypes?.[1] || "fillBlank", difficulty: "exam", targetCorrect: 4 },
+          ],
+        },
+      };
+    case "wrongAnswerExplanation":
+      return {
+        shortFeedback: "先把這題拆成一個小規則，再試一次。",
+        whyWrong: request.context.correctAnswer
+          ? `先對照正確答案 ${request.context.correctAnswer} 與題目中的關鍵線索。`
+          : "先找出題目要考的規則，再檢查答案是否符合。",
+        nextHint: request.context.explanation || "把答案代回原句讀一次，再重新作答。",
+        tryAgain: true,
+        staffEscalationNeeded: false,
+      };
+    case "teacherFeedbackDraft":
+      return {
+        teacherSummary: "學生需要先釐清題目線索與規則，再重試原題。",
+        studentFacingFeedback: "先別急，我們先圈出題目的關鍵字，再把答案代回句子檢查一次。",
+        recommendedNextAction: "請學生用自己的話說一次規則，再完成一題同類題。",
+      };
+    case "volunteerReplyCoach":
+      return {
+        summary: "學生需要一個短步驟與鼓勵，而不是直接得到答案。",
+        studentFacingFeedback: "你已經找到卡點了。先看題目的關鍵字，再試著排除一個不合理的答案。",
+        recommendedNextAction: "鼓勵學生說出判斷依據，再確認是否需要老師補充規則。",
+      };
+    default:
+      return {
+        summary: "English+ 先給你一個簡短提示，稍後可以再請老師或志工協助。",
+        supportLevel: "tryAgain",
+        recommendedNextAction: "先看提示，再試一次。",
+      };
+  }
 }
 
 function sanitizeContext(context) {
@@ -3006,6 +3144,7 @@ export {
   normalizeClassroomCreateRequest,
   normalizeClassroomJoinRequest,
   normalizeClassroomUpdateRequest,
+  normalizeOutput,
   normalizeRequest,
   personalScopeIdForUid,
   reserveAiQuota,

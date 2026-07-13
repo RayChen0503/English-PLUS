@@ -32,7 +32,8 @@ require_markers(
         "applyAIRecommendedPracticePlan",
         "PracticeAIRecommendationActionCard",
         "onApplyRecommendation",
-        "startPracticeSession(with: sessionSelection.items",
+        "structuredRecommendationSelection(",
+        "startPracticeSession(with: plan.items, sourceTitle: plan.title)",
     ],
 )
 
@@ -41,7 +42,8 @@ require_markers(
     student_home,
     [
         "AIActionButtonRow",
-        "openPracticeFromAI",
+        "openPracticeFromAI(for item:",
+        "scheduleFocusedPractice(",
         "latestWrongAnswerAIResponse",
         "learningRepository.enterFreePracticeMode()",
     ],

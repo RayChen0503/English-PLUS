@@ -73,6 +73,13 @@ struct AiMissionOutput: Codable, Equatable {
     var questionPlan: [AiQuestionPlanItem]
 }
 
+struct AiPracticePlanOutput: Codable, Equatable {
+    var title: String
+    var targetQuestionCount: Int
+    var focusSkills: [String]
+    var questionPlan: [AiQuestionPlanItem]
+}
+
 struct AiProxyOutput: Codable, Equatable {
     var summary: String?
     var mission: AiMissionOutput?
@@ -85,6 +92,7 @@ struct AiProxyOutput: Codable, Equatable {
     var teacherSummary: String?
     var studentFacingFeedback: String?
     var recommendedNextAction: String?
+    var practicePlan: AiPracticePlanOutput?
 }
 
 struct AiProxyResponse: Codable, Equatable {

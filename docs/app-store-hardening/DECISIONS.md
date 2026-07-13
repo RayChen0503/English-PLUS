@@ -24,8 +24,12 @@ already depend on.
 | D-16 | 2026-07-12 | Leaving a class immediately removes the learner's class access while staff retain historical class reports under the agreed retention policy. | Personal learning continues, but old class permissions and live assignments cannot follow the learner. |
 | D-17 | 2026-07-12 | Every active teacher account may create a class without a separate class-creation approval. | Teacher onboarding stays usable while class access still depends on explicit student membership. |
 | D-18 | 2026-07-13 | AI usage is lenient during internal testing (`internal`: 180 weighted units per user per Taipei day and 30 requests per minute) and switches to a stricter public policy before release (`public`: 60 units and 8 requests per minute). | Internal testers can exercise every AI flow while Firebase identity, least-privilege task authorization, atomic daily quotas and provider-cost protection are already enforced. |
+| D-19 | 2026-07-13 | Account deletion removes identifiable personal data while retaining only non-reversible anonymous aggregate statistics. | A deleted account must not remain reconstructable from operational records, while product-level learning metrics may remain useful. |
+| D-20 | 2026-07-13 | High-risk emotional messages do not trigger automatic staff notifications; the product provides an explicit human-help entry and clear emergency guidance. | Avoids presenting English+ as a monitored crisis service while preserving a direct route to trusted adults and appropriate help. |
+| D-21 | 2026-07-13 | The question-bank target spans junior-high comprehensive-exam preparation through introductory high-school English, while retaining foundation material. | Learners can progress beyond the current floor without losing accessible recovery practice. |
+| D-22 | 2026-07-13 | The UI direction is `Clear Learning Companion`: structured like Junyi, motivating like Duolingo, and restrained like native Apple interfaces. | Keeps learning actions obvious and encouraging without becoming childish or looking like a cold school administration tool. |
 
 ## Pending decisions
 
-- No unresolved Round 1-6 product decision remains. Raw volunteer evidence
-  must never be stored in a user profile document.
+- No unresolved product decision remains for Rounds 1-11. Raw volunteer
+  evidence must never be stored in a user profile document.

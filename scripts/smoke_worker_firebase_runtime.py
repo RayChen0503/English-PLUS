@@ -414,6 +414,86 @@ def main() -> int:
             f"HTTP {ai.status}; fallbackUsed={result.get('fallbackUsed')}",
         )
 
+        practice_ai = request_json(
+            f"{WORKER_BASE_URL}/ai",
+            method="POST",
+            token=student["idToken"],
+            payload={
+                "taskType": "progressSummary",
+                "classId": personal_scope_id(student["localId"]),
+                "studentUid": student["localId"],
+                "sessionId": "round10-practice-plan-smoke",
+                "qualityMode": "free",
+                "locale": "zh-TW",
+                "context": {
+                    "recentAccuracy": 0.62,
+                    "recentWeakSkills": ["be 動詞", "文意推論"],
+                    "preferredQuestionTypes": ["multipleChoice", "cloze"],
+                    "supportReason": "practiceRecommendation",
+                },
+            },
+        )
+        practice_result = practice_ai.body.get("result", {})
+        practice_plan = practice_result.get("output", {}).get("practicePlan", {})
+        practice_items = practice_plan.get("questionPlan", [])
+        planned_count = sum(
+            int(item.get("targetCorrect", 0))
+            for item in practice_items
+            if isinstance(item, dict)
+        )
+        expect(
+            practice_ai.status == 200
+            and practice_result.get("taskType") == "progressSummary"
+            and practice_result.get("fallbackUsed") is False
+            and 6 <= practice_plan.get("targetQuestionCount", 0) <= 10
+            and planned_count == practice_plan.get("targetQuestionCount")
+            and len(practice_items) >= 1,
+            "authenticated_ai_returns_executable_practice_plan",
+            results,
+            (
+                f"HTTP {practice_ai.status}; fallbackUsed={practice_result.get('fallbackUsed')}; "
+                f"target={practice_plan.get('targetQuestionCount')}; planned={planned_count}"
+            ),
+        )
+
+        wrong_answer_ai = request_json(
+            f"{WORKER_BASE_URL}/ai",
+            method="POST",
+            token=student["idToken"],
+            payload={
+                "taskType": "wrongAnswerExplanation",
+                "classId": personal_scope_id(student["localId"]),
+                "studentUid": student["localId"],
+                "sessionId": "round10-wrong-answer-smoke",
+                "qualityMode": "free",
+                "locale": "zh-TW",
+                "context": {
+                    "questionType": "multipleChoice",
+                    "questionPrompt": "Amy and Ben ___ ready for class.",
+                    "studentAnswer": "is",
+                    "correctAnswer": "are",
+                    "explanation": "複數主詞要搭配 are。",
+                    "attemptCount": 1,
+                },
+            },
+        )
+        wrong_answer_result = wrong_answer_ai.body.get("result", {})
+        wrong_answer_output = wrong_answer_result.get("output", {})
+        expect(
+            wrong_answer_ai.status == 200
+            and wrong_answer_result.get("taskType") == "wrongAnswerExplanation"
+            and wrong_answer_result.get("fallbackUsed") is False
+            and bool(wrong_answer_output.get("whyWrong"))
+            and bool(wrong_answer_output.get("nextHint"))
+            and wrong_answer_output.get("tryAgain") is True,
+            "authenticated_ai_returns_actionable_wrong_answer_repair",
+            results,
+            (
+                f"HTTP {wrong_answer_ai.status}; fallbackUsed={wrong_answer_result.get('fallbackUsed')}; "
+                f"tryAgain={wrong_answer_output.get('tryAgain')}"
+            ),
+        )
+
         replay_request_id = f"smoke-{uuid.uuid4()}"
         personal_ai_payload = {
             "taskType": "dailyMission",

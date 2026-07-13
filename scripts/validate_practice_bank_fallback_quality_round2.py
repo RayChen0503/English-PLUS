@@ -33,7 +33,8 @@ def main() -> None:
         ("QuestionGroupingEngine.balancedOptions(", "shared answer position balancing"),
         ("shuffledAnswerOptions(for: item)", "answer UI using balanced options"),
         ("buildPracticeSessionItems(from: filteredPracticeItems)", "free practice using shared builder"),
-        ("buildPracticeSessionItems(from: plan.items)", "AI recommendation using shared builder"),
+        ("structuredRecommendationSelection(", "AI recommendation structured selector"),
+        ("startPracticeSession(with: plan.items, sourceTitle: plan.title)", "validated AI plan preserving its question count"),
     ]
 
     for token, message in required_tokens:
@@ -42,7 +43,7 @@ def main() -> None:
     forbidden_tokens = [
         ("ForEach(item.question.options, id: \\.self)", "direct option ordering"),
         ("Array(filteredPracticeItems.prefix(freePracticeSessionLimit))", "direct filtered prefix session"),
-        ("startPracticeSession(with: plan.items, sourceTitle: plan.title)", "direct AI plan session start"),
+        ("buildPracticeSessionItems(from: plan.items)", "generic filler changing the validated AI plan size"),
     ]
 
     for token, message in forbidden_tokens:

@@ -15,6 +15,12 @@ enum LearningRepositorySyncStatus: Equatable {
     case offlineFallback(reason: String)
 }
 
+struct PracticeLaunchRequest: Identifiable, Equatable {
+    let id: String
+    let title: String
+    let questionIds: [String]
+}
+
 protocol LearningRepositoryListenerToken {
     func cancel()
 }
@@ -100,6 +106,7 @@ final class LearningRepositoryStore: ObservableObject {
     @Published private(set) var assignedPracticeTasks: [TeacherAssignedPracticeTask] = []
     @Published private(set) var learningFlow: LearningFlowState = .initial(dateKey: "1970-01-01")
     @Published private(set) var syncStatus: LearningRepositorySyncStatus = .idle
+    @Published private(set) var pendingPracticeLaunch: PracticeLaunchRequest?
 
     private let backend: any LearningRepositoryBackend
     private var listener: LearningRepositoryListenerToken?
@@ -393,6 +400,21 @@ final class LearningRepositoryStore: ObservableObject {
     func completeFreePracticeSession(correctCount: Int, totalCount: Int) {
         backend.completeFreePracticeSession(correctCount: correctCount, totalCount: totalCount)
         apply(backend.snapshot)
+    }
+
+    func scheduleFocusedPractice(title: String, questionIds: [String]) {
+        let uniqueIds = questionIds.uniqued()
+        guard !uniqueIds.isEmpty else { return }
+        pendingPracticeLaunch = PracticeLaunchRequest(
+            id: UUID().uuidString,
+            title: title,
+            questionIds: uniqueIds
+        )
+    }
+
+    func takePendingPracticeLaunch() -> PracticeLaunchRequest? {
+        defer { pendingPracticeLaunch = nil }
+        return pendingPracticeLaunch
     }
 
     func submitMissionAnswer(_ answer: String) -> MissionAttempt? {

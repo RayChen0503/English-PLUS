@@ -29,7 +29,8 @@ learning must remain usable without joining a class.
   - Round 7 - teacher class management (`round-07-teacher-class-management.md`)
   - Round 8 - Firestore synchronization and Block B audit (`round-08-firestore-sync-audit.md`)
   - Round 9 - authenticated AI gateway, quota and monitoring (`round-09-ai-gateway-hardening.md`)
-- Hardening progress: **9/20 complete; Round 10 is next**.
+  - Round 10 - executable AI learning and staff actions (`round-10-executable-ai-actions.md`)
+- Hardening progress: **10/20 complete; Round 11 is next**.
 - Do not merge to `main` or trigger Xcode Cloud until the end of a four-round
   block: 4, 8, 12, 16, and 20.
 - Never reset, overwrite, or silently discard user work.
@@ -112,6 +113,14 @@ learning must remain usable without joining a class.
   pass `15/15`, production Firebase/Groq smoke tests pass `34/34`, the complete
   Python validator sweep passes `69/69`, and isolated macOS run `29241754603`
   passed the clean iOS Simulator build.
+- Round 10 has converted AI output into three real action chains. Structured
+  recommendations now select and launch exact approved question IDs; wrong
+  answers open a finite same-skill repair set across the daily-mission and
+  practice tabs; and teacher or volunteer assistance is previewed before
+  explicit adoption and sending. Worker version
+  `8db50781-98b4-4ef7-89e4-a8ff4e9319a6` is deployed. Runtime tests pass
+  `19/19`, production Firebase/Groq smoke tests pass `36/36`, and the complete
+  Python validator sweep passes `70/70`.
 
 ## Current technical constraints
 
@@ -120,7 +129,8 @@ learning must remain usable without joining a class.
   both pass.
 - Swift compilation is not available on this Windows host. The isolated macOS
   GitHub Actions gate passed the Round 9 clean iOS Simulator build in run
-  `29241754603`; Xcode Cloud remains the release-level gate at the agreed
+  `29241754603`; Round 10 branch-only compile evidence is added after its
+  isolated run. Xcode Cloud remains the release-level gate at the agreed
   checkpoint.
 - Existing legacy validators can fail because they assert removed UI or old
   copy. Preserve useful behavioral coverage by replacing them, not by reviving
@@ -152,10 +162,10 @@ learning must remain usable without joining a class.
 
 ## Next gate
 
-Round 9 is complete on `codex/app-store-hardening-c`. The authenticated AI
-gateway, internal/public quota policies, structured monitoring, iOS fallback
-boundary, production smoke suite and isolated macOS compile gate all pass.
-Round 10 can now connect AI recommendations to executable learning actions.
+Round 10 is complete on `codex/app-store-hardening-c`. AI recommendations now
+launch validated question sets, wrong-answer help opens finite repair practice,
+and staff AI remains an editable draft rather than an automatic message.
+Round 11 can now implement account deletion, retention and human-help rules.
 The branch stays separate from `main` until the Block C checkpoint after Round
 12, when one deliberate merge will trigger Xcode Cloud.
 

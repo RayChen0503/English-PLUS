@@ -321,6 +321,32 @@ enum QuestionGroupingEngine {
         return result
     }
 
+    static func repairSelection(
+        after source: QuestionBankItem,
+        from items: [QuestionBankItem],
+        excluding excludedIds: Set<String> = [],
+        limit: Int = 3
+    ) -> QuestionPracticeSelection {
+        let sourceSkill = normalizedSkill(source)
+        let available = items.filter { item in
+            item.id != source.id && !excludedIds.contains(item.id)
+        }
+        let exactCandidates = available.filter { item in
+            item.question.type == source.question.type
+                && item.level == source.level
+                && normalizedSkill(item) == sourceSkill
+        }
+        let sameSkillOrType = available.filter { item in
+            item.question.type == source.question.type
+                && (normalizedSkill(item) == sourceSkill || item.level == source.level)
+        }
+        return practiceSelection(
+            from: exactCandidates,
+            fallbackCandidates: sameSkillOrType,
+            limit: min(max(1, limit), 5)
+        )
+    }
+
     private static func diversityScore(
         for item: QuestionBankItem,
         state: AnswerDistributionState,

@@ -438,7 +438,10 @@ struct StudentHomeView: View {
             supportRequestSent: item.map { missionSupportSentQuestionIds.contains(missionSupportSentKey(for: $0)) } ?? false,
             canRequestHumanSupport: appState.currentProfile?.activeClassId != nil,
             isLoadingAI: isExplainingWrongAnswer,
-            onOpenPractice: openPracticeFromAI,
+            onOpenPractice: {
+                guard let item else { return }
+                openPracticeFromAI(for: item)
+            },
             onOpenSupport: onOpenSupport,
             onAskAI: {
                 guard let item else { return }
@@ -501,7 +504,16 @@ struct StudentHomeView: View {
         "\(item.id)-shared"
     }
 
-    private func openPracticeFromAI() {
+    private func openPracticeFromAI(for item: QuestionBankItem) {
+        let repairSelection = QuestionGroupingEngine.repairSelection(
+            after: item,
+            from: learningRepository.questionBankItems,
+            limit: 3
+        )
+        learningRepository.scheduleFocusedPractice(
+            title: "錯題回練：\(item.skill.isEmpty ? item.question.concept : item.skill)",
+            questionIds: repairSelection.items.map(\.id)
+        )
         openFreePractice()
     }
 
