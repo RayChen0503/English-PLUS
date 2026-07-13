@@ -248,8 +248,9 @@ def main() -> int:
     require('crons = [ "17 3 * * *" ]' in wrangler,
             "Daily evidence-retention Cron is missing.", errors)
     require(
-        worker_package.get("scripts", {}).get("test") == "node --test test/*.test.js",
-        "Worker security test command missing.",
+        worker_package.get("scripts", {}).get("test") == "vitest run"
+        and "@cloudflare/vitest-pool-workers" in worker_package.get("devDependencies", {}),
+        "Worker runtime security test command or Workers pool missing.",
         errors,
     )
     for forbidden in ("GROQ_API_KEY =", "FIREBASE_SERVICE_ACCOUNT_PRIVATE_KEY ="):

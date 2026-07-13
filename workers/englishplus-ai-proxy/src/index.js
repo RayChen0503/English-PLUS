@@ -1,3 +1,5 @@
+import { DurableObject } from "cloudflare:workers";
+
 const GROQ_CHAT_COMPLETIONS_URL = "https://api.groq.com/openai/v1/chat/completions";
 const FIREBASE_JWKS_URL =
   "https://www.googleapis.com/service_accounts/v1/jwk/securetoken@system.gserviceaccount.com";
@@ -8,6 +10,7 @@ const EVIDENCE_RESERVATION_SECONDS = 10 * 60;
 const REVIEW_EVIDENCE_RETENTION_DAYS = 30;
 const CLASS_JOIN_WINDOW_SECONDS = 15 * 60;
 const CLASS_JOIN_MAX_ATTEMPTS = 12;
+const TAIPEI_TIMEZONE_OFFSET_MS = 8 * 60 * 60 * 1000;
 const FINAL_REVIEW_STATUSES = new Set(["approved", "rejected", "suspended"]);
 const ALLOWED_EVIDENCE_MIME_TYPES = new Set([
   "application/pdf",
@@ -31,10 +34,43 @@ const TASKS = new Set([
   "progressSummary",
 ]);
 
+const AI_TASK_ROLES = Object.freeze({
+  student: new Set([
+    "dailyMission",
+    "wrongAnswerExplanation",
+    "emotionalSupport",
+    "progressSummary",
+  ]),
+  teacher: new Set(["teacherFeedbackDraft"]),
+  volunteer: new Set(["volunteerReplyCoach"]),
+});
+const AI_STAFF_SUPPORT_TASKS = new Set([
+  "teacherFeedbackDraft",
+  "volunteerReplyCoach",
+]);
+const AI_QUALITY_TASKS = new Set([
+  "teacherFeedbackDraft",
+  "volunteerReplyCoach",
+]);
+const AI_TASK_UNIT_COSTS = Object.freeze({
+  dailyMission: 4,
+  wrongAnswerExplanation: 2,
+  emotionalSupport: 2,
+  teacherFeedbackDraft: 3,
+  volunteerReplyCoach: 3,
+  progressSummary: 3,
+});
+const AI_QUOTA_POLICIES = Object.freeze({
+  internal: Object.freeze({ dailyUnitLimit: 180, burstLimit: 30, burstPeriodSeconds: 60 }),
+  public: Object.freeze({ dailyUnitLimit: 60, burstLimit: 8, burstPeriodSeconds: 60 }),
+});
+
 const CORS_HEADERS = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Methods": "GET,POST,PATCH,PUT,DELETE,OPTIONS",
-  "Access-Control-Allow-Headers": "Authorization,Content-Type",
+  "Access-Control-Allow-Headers": "Authorization,Content-Type,X-EnglishPlus-Request-ID",
+  "Access-Control-Expose-Headers":
+    "X-EnglishPlus-Request-ID,X-EnglishPlus-Quota-Remaining,X-EnglishPlus-Quota-Reset,Retry-After",
   "Access-Control-Max-Age": "86400",
 };
 
@@ -52,6 +88,10 @@ export default {
 
     if (url.pathname === "/ai" && request.method === "POST") {
       return handleAi(request, env);
+    }
+
+    if (url.pathname === "/ai/quota" && request.method === "GET") {
+      return handleAiQuotaStatus(request, env);
     }
 
     if (url.pathname === "/evidence/upload-ticket" && request.method === "POST") {
@@ -146,34 +186,94 @@ function handleHealth(env) {
     service: "englishplus-ai-proxy",
     provider: "groq",
     defaultModel: env.GROQ_DEFAULT_MODEL || "llama-3.1-8b-instant",
+    quotaMode: aiQuotaMode(env),
+    aiGatewayReady: Boolean(
+      env.AI_QUOTA
+      && env.AI_INTERNAL_BURST_LIMITER
+      && env.AI_PUBLIC_BURST_LIMITER
+    ),
   });
 }
 
 async function handleAi(request, env) {
+  const startedAt = Date.now();
+  const requestId = requestIdentifier(request);
+  let user;
+  let actor;
   let normalized;
+  let quota;
 
   try {
-    await requireFirebaseUser(request, env);
+    user = await requireFirebaseUser(request, env);
   } catch (error) {
-    return authOrValidationError(error);
+    return authOrValidationError(error, requestId);
   }
 
   try {
     const body = await request.json();
     normalized = normalizeRequest(body?.data ?? body);
-  } catch {
-    return jsonResponse({
-      result: buildFallbackResponse(
-        fallbackRequest("dailyMission"),
-        "INVALID_JSON"
-      ),
-    }, 400);
+    actor = await authorizeAiRequest(env, user, normalized);
+    normalized = actor.request;
+  } catch (error) {
+    await logAiRequest({
+      requestId,
+      user,
+      taskType: normalized?.taskType,
+      outcome: "rejected",
+      errorCode: safeString(error?.code) || "INVALID_AI_REQUEST",
+      latencyMs: Date.now() - startedAt,
+    });
+    return authOrValidationError(error, requestId);
+  }
+
+  try {
+    await enforceAiBurstLimit(env, user.sub);
+    quota = await reserveAiQuota(env, user.sub, normalized, requestId);
+  } catch (error) {
+    const status = Number(error?.status) || 503;
+    const errorCode = safeString(error?.code) || "AI_QUOTA_UNAVAILABLE";
+    await logAiRequest({
+      requestId,
+      user,
+      role: actor.role,
+      taskType: normalized.taskType,
+      quotaMode: aiQuotaMode(env),
+      outcome: status === 429 ? "rate_limited" : "quota_error",
+      errorCode,
+      latencyMs: Date.now() - startedAt,
+    });
+    return jsonResponse(
+      {
+        ok: false,
+        error: errorCode,
+        requestId,
+        retryAfterSeconds: Number(error?.retryAfterSeconds) || undefined,
+      },
+      status,
+      {
+        "X-EnglishPlus-Request-ID": requestId,
+        ...(status === 429
+          ? { "Retry-After": String(Number(error?.retryAfterSeconds) || 60) }
+          : {}),
+      }
+    );
   }
 
   if (!env.GROQ_API_KEY) {
-    return jsonResponse({
-      result: buildFallbackResponse(normalized, "GROQ_API_KEY_NOT_CONFIGURED"),
+    const result = buildFallbackResponse(normalized, "GROQ_API_KEY_NOT_CONFIGURED");
+    result.requestId = requestId;
+    await logAiRequest({
+      requestId,
+      user,
+      role: actor.role,
+      taskType: normalized.taskType,
+      quota,
+      quotaMode: aiQuotaMode(env),
+      outcome: "fallback",
+      errorCode: result.errorCode,
+      latencyMs: Date.now() - startedAt,
     });
+    return jsonResponse({ result }, 200, aiResponseHeaders(requestId, quota));
   }
 
   try {
@@ -185,26 +285,437 @@ async function handleAi(request, env) {
         "Content-Type": "application/json",
       },
       body: JSON.stringify(groqBody),
+      signal: AbortSignal.timeout(12_000),
     });
 
     const groqJson = await groqResponse.json().catch(() => ({}));
     if (!groqResponse.ok) {
-      return jsonResponse({
-        result: buildFallbackResponse(
-          normalized,
-          `GROQ_HTTP_${groqResponse.status}`
-        ),
+      const result = buildFallbackResponse(normalized, `GROQ_HTTP_${groqResponse.status}`);
+      result.requestId = requestId;
+      await logAiRequest({
+        requestId,
+        user,
+        role: actor.role,
+        taskType: normalized.taskType,
+        quota,
+        quotaMode: aiQuotaMode(env),
+        outcome: "fallback",
+        providerStatus: groqResponse.status,
+        errorCode: result.errorCode,
+        latencyMs: Date.now() - startedAt,
       });
+      return jsonResponse({ result }, 200, aiResponseHeaders(requestId, quota));
     }
 
-    return jsonResponse({
-      result: normalizeGroqResponse(normalized, groqJson),
+    const result = normalizeGroqResponse(normalized, groqJson);
+    const providerRequestId = result.requestId;
+    result.requestId = requestId;
+    await logAiRequest({
+      requestId,
+      providerRequestId,
+      user,
+      role: actor.role,
+      taskType: normalized.taskType,
+      quota,
+      quotaMode: aiQuotaMode(env),
+      outcome: "success",
+      model: result.modelUsed,
+      usage: result.usage,
+      latencyMs: Date.now() - startedAt,
     });
-  } catch {
-    return jsonResponse({
-      result: buildFallbackResponse(normalized, "GROQ_UNAVAILABLE"),
+    return jsonResponse({ result }, 200, aiResponseHeaders(requestId, quota));
+  } catch (error) {
+    const errorCode = error?.name === "TimeoutError" ? "GROQ_TIMEOUT" : "GROQ_UNAVAILABLE";
+    const result = buildFallbackResponse(normalized, errorCode);
+    result.requestId = requestId;
+    await logAiRequest({
+      requestId,
+      user,
+      role: actor.role,
+      taskType: normalized.taskType,
+      quota,
+      quotaMode: aiQuotaMode(env),
+      outcome: "fallback",
+      errorCode,
+      latencyMs: Date.now() - startedAt,
+    });
+    return jsonResponse({ result }, 200, aiResponseHeaders(requestId, quota));
+  }
+}
+
+async function handleAiQuotaStatus(request, env) {
+  const requestId = requestIdentifier(request);
+  try {
+    const user = await requireFirebaseUser(request, env);
+    const context = await classroomUserContext(env, user);
+    const role = activeProfileRole(context.profile);
+    const quota = await readAiQuota(env, user.sub);
+    return jsonResponse(
+      { ok: true, role, ...quota, requestId },
+      200,
+      aiResponseHeaders(requestId, quota)
+    );
+  } catch (error) {
+    return authOrValidationError(error, requestId);
+  }
+}
+
+export class AIQuotaCoordinator extends DurableObject {
+  async reserve(input) {
+    const command = normalizeAiQuotaCommand(input);
+    return this.ctx.storage.transaction(async (transaction) => {
+      const stored = await transaction.get("daily-usage");
+      const state = quotaStateForDate(stored, command.nowMs);
+      const duplicate = state.recentRequestIds.includes(command.requestId);
+      if (duplicate) {
+        return quotaDecision(state, command.mode, true, true);
+      }
+
+      const policy = aiQuotaPolicy(command.mode);
+      if (state.usedUnits + command.cost > policy.dailyUnitLimit) {
+        return quotaDecision(state, command.mode, false, false);
+      }
+
+      const next = {
+        ...state,
+        usedUnits: state.usedUnits + command.cost,
+        callCount: state.callCount + 1,
+        taskCounts: {
+          ...state.taskCounts,
+          [command.taskType]: (state.taskCounts[command.taskType] || 0) + 1,
+        },
+        recentRequestIds: [...state.recentRequestIds, command.requestId].slice(-100),
+        updatedAt: new Date(command.nowMs).toISOString(),
+      };
+      await transaction.put("daily-usage", next);
+      return quotaDecision(next, command.mode, true, false);
     });
   }
+
+  async status(input = {}) {
+    const nowMs = normalizedNow(input.nowMs);
+    const mode = normalizedAiQuotaMode(input.mode);
+    const stored = await this.ctx.storage.get("daily-usage");
+    return quotaDecision(quotaStateForDate(stored, nowMs), mode, true, false);
+  }
+}
+
+function aiQuotaMode(env) {
+  return normalizedAiQuotaMode(env?.AI_QUOTA_MODE);
+}
+
+function normalizedAiQuotaMode(value) {
+  return value === "public" ? "public" : "internal";
+}
+
+function aiQuotaPolicy(mode) {
+  return AI_QUOTA_POLICIES[normalizedAiQuotaMode(mode)];
+}
+
+function aiTaskCost(taskType, qualityMode = "free") {
+  const baseCost = AI_TASK_UNIT_COSTS[taskType];
+  if (!baseCost) throw httpError(400, "AI_TASK_NOT_SUPPORTED");
+  return qualityMode === "quality" ? baseCost * 2 : baseCost;
+}
+
+function normalizeAiQuotaCommand(input) {
+  const mode = normalizedAiQuotaMode(input?.mode);
+  const taskType = safeString(input?.taskType);
+  const requestId = safeString(input?.requestId);
+  const cost = Number(input?.cost);
+  if (!taskType || !TASKS.has(taskType) || !requestId) {
+    throw httpError(400, "AI_QUOTA_COMMAND_INVALID");
+  }
+  if (!Number.isInteger(cost) || cost < 1 || cost > 20) {
+    throw httpError(400, "AI_QUOTA_COST_INVALID");
+  }
+  return {
+    mode,
+    taskType,
+    requestId,
+    cost,
+    nowMs: normalizedNow(input?.nowMs),
+  };
+}
+
+function normalizedNow(value) {
+  const number = Number(value);
+  if (Number.isFinite(number) && number >= 0) return Math.floor(number);
+  return Date.now();
+}
+
+function quotaStateForDate(stored, nowMs) {
+  const dateKey = new Date(nowMs + TAIPEI_TIMEZONE_OFFSET_MS)
+    .toISOString()
+    .slice(0, 10);
+  if (stored?.dateKey === dateKey) {
+    return {
+      dateKey,
+      usedUnits: Math.max(0, Number(stored.usedUnits) || 0),
+      callCount: Math.max(0, Number(stored.callCount) || 0),
+      taskCounts: stored.taskCounts && typeof stored.taskCounts === "object"
+        ? stored.taskCounts
+        : {},
+      recentRequestIds: Array.isArray(stored.recentRequestIds)
+        ? stored.recentRequestIds.filter((item) => typeof item === "string").slice(-100)
+        : [],
+      updatedAt: safeString(stored.updatedAt) || new Date(nowMs).toISOString(),
+      nowMs,
+    };
+  }
+  return {
+    dateKey,
+    usedUnits: 0,
+    callCount: 0,
+    taskCounts: {},
+    recentRequestIds: [],
+    updatedAt: new Date(nowMs).toISOString(),
+    nowMs,
+  };
+}
+
+function quotaDecision(state, mode, allowed, duplicate) {
+  const policy = aiQuotaPolicy(mode);
+  const nextTaipeiMidnightAsUTC =
+    Date.parse(`${state.dateKey}T00:00:00.000Z`)
+    + 24 * 60 * 60 * 1000
+    - TAIPEI_TIMEZONE_OFFSET_MS;
+  return {
+    allowed,
+    duplicate,
+    mode: normalizedAiQuotaMode(mode),
+    dateKey: state.dateKey,
+    usedUnits: state.usedUnits,
+    dailyUnitLimit: policy.dailyUnitLimit,
+    remainingUnits: Math.max(0, policy.dailyUnitLimit - state.usedUnits),
+    callCount: state.callCount,
+    taskCounts: state.taskCounts,
+    resetAt: new Date(nextTaipeiMidnightAsUTC).toISOString(),
+  };
+}
+
+async function enforceAiBurstLimit(env, uid) {
+  const mode = aiQuotaMode(env);
+  const limiter = mode === "public"
+    ? env.AI_PUBLIC_BURST_LIMITER
+    : env.AI_INTERNAL_BURST_LIMITER;
+  if (!limiter || typeof limiter.limit !== "function") {
+    throw httpError(503, "AI_RATE_LIMITER_NOT_CONFIGURED");
+  }
+  const result = await limiter.limit({ key: `firebase:${uid}` });
+  if (!result?.success) {
+    const error = httpError(429, "AI_BURST_LIMIT_REACHED");
+    error.retryAfterSeconds = aiQuotaPolicy(mode).burstPeriodSeconds;
+    throw error;
+  }
+}
+
+async function reserveAiQuota(env, uid, request, requestId) {
+  if (!env.AI_QUOTA || typeof env.AI_QUOTA.getByName !== "function") {
+    throw httpError(503, "AI_QUOTA_NOT_CONFIGURED");
+  }
+  const mode = aiQuotaMode(env);
+  const stub = env.AI_QUOTA.getByName(`firebase:${uid}`);
+  const quota = await stub.reserve({
+    mode,
+    taskType: request.taskType,
+    requestId,
+    cost: aiTaskCost(request.taskType, request.qualityMode),
+    nowMs: Date.now(),
+  });
+  if (quota?.duplicate) {
+    throw httpError(409, "AI_REQUEST_ID_REUSED");
+  }
+  if (!quota?.allowed) {
+    const error = httpError(429, "AI_DAILY_LIMIT_REACHED");
+    error.retryAfterSeconds = Math.max(
+      60,
+      Math.ceil((Date.parse(quota.resetAt) - Date.now()) / 1000)
+    );
+    throw error;
+  }
+  return quota;
+}
+
+async function readAiQuota(env, uid) {
+  if (!env.AI_QUOTA || typeof env.AI_QUOTA.getByName !== "function") {
+    throw httpError(503, "AI_QUOTA_NOT_CONFIGURED");
+  }
+  return env.AI_QUOTA.getByName(`firebase:${uid}`).status({
+    mode: aiQuotaMode(env),
+    nowMs: Date.now(),
+  });
+}
+
+async function authorizeAiRequest(env, user, request) {
+  const context = await classroomUserContext(env, user);
+  const role = activeProfileRole(context.profile);
+  assertAiTaskRole(role, request.taskType);
+
+  const normalized = {
+    ...request,
+    qualityMode: AI_QUALITY_TASKS.has(request.taskType) ? "quality" : "free",
+  };
+  const isPersonal = request.classId.startsWith("PERSONAL-");
+
+  if (isPersonal) {
+    if (role !== "student" || request.classId !== personalScopeIdForUid(user.sub)) {
+      throw httpError(403, "AI_PERSONAL_SCOPE_FORBIDDEN");
+    }
+  } else {
+    const membership = await getAiMembership(context, request.classId, user.sub);
+    if (
+      !membershipIsActiveDocument(membership)
+      || firestoreString(membership.fields?.role) !== role
+    ) {
+      throw httpError(403, "AI_CLASS_MEMBERSHIP_REQUIRED");
+    }
+  }
+
+  if (role === "student") {
+    if (request.studentUid && request.studentUid !== user.sub) {
+      throw httpError(403, "AI_STUDENT_IDENTITY_MISMATCH");
+    }
+    normalized.studentUid = user.sub;
+  } else {
+    if (!request.studentUid || isPersonal) {
+      throw httpError(403, "AI_STUDENT_SCOPE_REQUIRED");
+    }
+    const studentMembership = await getAiMembership(context, request.classId, request.studentUid);
+    if (
+      !membershipIsActiveDocument(studentMembership)
+      || firestoreString(studentMembership.fields?.role) !== "student"
+    ) {
+      throw httpError(403, "AI_TARGET_STUDENT_NOT_ACTIVE");
+    }
+  }
+
+  if (AI_STAFF_SUPPORT_TASKS.has(request.taskType)) {
+    await requireAiSupportThread(context, normalized);
+  }
+
+  return { role, request: normalized };
+}
+
+function activeProfileRole(profile) {
+  const fields = profile?.fields || {};
+  const role = firestoreString(fields.primaryRole);
+  if (
+    !AI_TASK_ROLES[role]
+    || firestoreString(fields.accountStatus) !== "active"
+    || fields.active?.booleanValue !== true
+  ) {
+    throw httpError(403, "AI_ACCOUNT_NOT_ACTIVE");
+  }
+  return role;
+}
+
+function assertAiTaskRole(role, taskType) {
+  if (!AI_TASK_ROLES[role]?.has(taskType)) {
+    throw httpError(403, "AI_TASK_ROLE_FORBIDDEN");
+  }
+}
+
+async function getAiMembership(context, classId, uid) {
+  if (
+    context.legacyClassId === classId
+    && context.firebaseUser.sub === uid
+    && context.legacyMembership
+  ) {
+    return context.legacyMembership;
+  }
+  return getFirestoreDocument(
+    context.projectId,
+    context.accessToken,
+    `classes/${classId}/members/${uid}`,
+    context.firestoreBaseURL
+  );
+}
+
+async function requireAiSupportThread(context, request) {
+  const supportThreadId = safeString(request.context?.supportThreadId);
+  if (!supportThreadId || !/^[A-Za-z0-9._:-]{3,160}$/.test(supportThreadId)) {
+    throw httpError(400, "AI_SUPPORT_THREAD_REQUIRED");
+  }
+  const thread = await getFirestoreDocument(
+    context.projectId,
+    context.accessToken,
+    `classes/${request.classId}/supportThreads/${supportThreadId}`,
+    context.firestoreBaseURL
+  );
+  const fields = thread?.fields || {};
+  const status = firestoreString(fields.status);
+  if (
+    !thread
+    || firestoreString(fields.classId) !== request.classId
+    || firestoreString(fields.studentUid) !== request.studentUid
+    || fields.studentVisible?.booleanValue === false
+    || fields.withdrawnAt?.timestampValue
+    || status === "archived"
+    || status === "closed"
+  ) {
+    throw httpError(403, "AI_SUPPORT_THREAD_FORBIDDEN");
+  }
+}
+
+function personalScopeIdForUid(uid) {
+  const compact = String(uid || "")
+    .toUpperCase()
+    .replace(/[^A-Z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .slice(0, 48);
+  return `PERSONAL-${compact}`;
+}
+
+function requestIdentifier(request) {
+  const supplied = request.headers.get("X-EnglishPlus-Request-ID") || "";
+  return /^[A-Za-z0-9._:-]{8,100}$/.test(supplied)
+    ? supplied
+    : crypto.randomUUID();
+}
+
+function aiResponseHeaders(requestId, quota) {
+  return {
+    "X-EnglishPlus-Request-ID": requestId,
+    ...(quota
+      ? {
+          "X-EnglishPlus-Quota-Remaining": String(quota.remainingUnits),
+          "X-EnglishPlus-Quota-Reset": quota.resetAt,
+        }
+      : {}),
+  };
+}
+
+async function logAiRequest(event) {
+  let actorHash = "anonymous";
+  if (event.user?.sub) {
+    const digest = await crypto.subtle.digest(
+      "SHA-256",
+      new TextEncoder().encode(event.user.sub)
+    );
+    actorHash = Array.from(new Uint8Array(digest).slice(0, 8))
+      .map((byte) => byte.toString(16).padStart(2, "0"))
+      .join("");
+  }
+  console.log({
+    event: "ai_request",
+    requestId: event.requestId,
+    providerRequestId: event.providerRequestId,
+    actorHash,
+    role: event.role,
+    taskType: event.taskType,
+    quotaMode: event.quotaMode,
+    quotaUsedUnits: event.quota?.usedUnits,
+    quotaRemainingUnits: event.quota?.remainingUnits,
+    outcome: event.outcome,
+    model: event.model,
+    promptTokens: event.usage?.promptTokens,
+    completionTokens: event.usage?.completionTokens,
+    totalTokens: event.usage?.totalTokens,
+    providerStatus: event.providerStatus,
+    errorCode: event.errorCode,
+    latencyMs: event.latencyMs,
+  });
 }
 
 async function handleEvidenceUploadTicket(request, env) {
@@ -2158,10 +2669,18 @@ function httpError(status, code) {
   return Object.assign(new Error(code), { status, code });
 }
 
-function authOrValidationError(error) {
+function authOrValidationError(error, requestId) {
   const status = Number(error?.status) || 400;
   const code = safeString(error?.code) || "INVALID_REQUEST";
-  return jsonResponse({ ok: false, error: code }, status);
+  return jsonResponse(
+    {
+      ok: false,
+      error: code,
+      ...(requestId ? { requestId } : {}),
+    },
+    status,
+    requestId ? { "X-EnglishPlus-Request-ID": requestId } : {}
+  );
 }
 
 function normalizeRequest(raw) {
@@ -2455,18 +2974,22 @@ function safeString(value) {
     : undefined;
 }
 
-function jsonResponse(body, status = 200) {
+function jsonResponse(body, status = 200, extraHeaders = {}) {
   return new Response(JSON.stringify(body), {
     status,
     headers: {
       ...CORS_HEADERS,
       "Content-Type": "application/json; charset=utf-8",
       "Cache-Control": "no-store",
+      ...extraHeaders,
     },
   });
 }
 
 export {
+  aiQuotaPolicy,
+  aiTaskCost,
+  assertAiTaskRole,
   evidenceQuotaSnapshot,
   createClassroom,
   enforceEvidenceQuota,
@@ -2478,11 +3001,16 @@ export {
   listClassroomsForUser,
   membershipIsActiveDocument,
   normalizeEvidenceTicketRequest,
+  normalizeAiQuotaCommand,
   normalizeClassroomCode,
   normalizeClassroomCreateRequest,
   normalizeClassroomJoinRequest,
   normalizeClassroomUpdateRequest,
   normalizeRequest,
+  personalScopeIdForUid,
+  reserveAiQuota,
+  quotaDecision,
+  quotaStateForDate,
   reviewTransitionAllowed,
   resetClassroomCode,
   selectExpiredReviewedApplications,

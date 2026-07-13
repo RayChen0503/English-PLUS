@@ -119,7 +119,7 @@ def main() -> int:
         "答對才會增加進度",
         "explainWrongAnswerWithAI",
         "今日任務完成",
-        "已整理成下一個可執行的小步驟",
+        "response.userFacingAvailabilityMessage",
         "appState.signOut()",
     ]:
         require(token in text["student_home"], f"StudentHomeView missing Windows parity token: {token}", errors)

@@ -4,9 +4,9 @@ on:
   workflow_dispatch:
   push:
     branches:
-      - codex/app-store-hardening-b
+      - codex/app-store-hardening-c
     paths:
-      - .github/ci-triggers/round6-ios-build
+      - .github/ci-triggers/round9-ios-build
 
 permissions:
   contents: read
@@ -27,6 +27,20 @@ jobs:
 
       - name: Show Xcode toolchain
         run: xcodebuild -version
+
+      - name: Use Node.js 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: workers/englishplus-ai-proxy/package-lock.json
+
+      - name: Validate Cloudflare AI gateway
+        working-directory: workers/englishplus-ai-proxy
+        run: |
+          npm ci
+          npm run check
+          npm test
 
       - name: Create non-production Firebase build config
         shell: bash
@@ -62,6 +76,7 @@ jobs:
           python3 scripts/validate_app_store_hardening_round6.py
           python3 scripts/validate_app_store_hardening_round7.py
           python3 scripts/validate_app_store_hardening_round8.py
+          python3 scripts/validate_app_store_hardening_round9.py
           python3 scripts/validate_ios_xcode_project_sources.py
 
       - name: Build iOS Simulator target

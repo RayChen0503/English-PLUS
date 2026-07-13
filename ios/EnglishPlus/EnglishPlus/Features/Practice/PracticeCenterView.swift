@@ -1451,9 +1451,7 @@ private struct PracticeAIStatusCard: View {
             Label(response.fallbackUsed ? "內建提示" : "AI 建議", systemImage: response.fallbackUsed ? "exclamationmark.triangle.fill" : "sparkles")
                 .font(.subheadline.bold())
                 .foregroundStyle(response.fallbackUsed ? EPTheme.warning : EPTheme.support)
-            Text(response.fallbackUsed
-                ? "先用內建提示陪你修這一題。"
-                : "已整理成下一個可執行的小步驟。")
+            Text(response.userFacingAvailabilityMessage)
                 .font(.caption)
                 .foregroundStyle(EPTheme.secondaryInk)
             if let summary = response.output.summary, !summary.isEmpty {

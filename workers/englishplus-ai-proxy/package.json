@@ -4,11 +4,14 @@
   "type": "module",
   "scripts": {
     "check": "node --check src/index.js",
-    "test": "node --test test/*.test.js",
+    "test": "vitest run",
+    "test:watch": "vitest",
     "dev": "wrangler dev",
     "deploy": "wrangler deploy"
   },
   "devDependencies": {
+    "@cloudflare/vitest-pool-workers": "^0.18.4",
+    "vitest": "^4.1.10",
     "wrangler": "4.110.0"
   }
 }

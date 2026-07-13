@@ -942,9 +942,7 @@ private struct AIStatusCard: View {
                 .font(.subheadline.bold())
                 .foregroundStyle(response.fallbackUsed ? EPTheme.warning : EPTheme.primary)
 
-            Text(response.fallbackUsed
-                ? "先用內建提示幫你整理下一步。"
-                : "已整理成下一個可執行的小步驟。")
+            Text(response.userFacingAvailabilityMessage)
                 .font(.caption)
                 .foregroundStyle(EPTheme.secondaryInk)
 

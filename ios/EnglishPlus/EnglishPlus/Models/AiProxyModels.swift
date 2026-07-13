@@ -99,6 +99,34 @@ struct AiProxyResponse: Codable, Equatable {
     var errorCode: String?
 }
 
+extension AiProxyResponse {
+    var userFacingAvailabilityMessage: String {
+        guard fallbackUsed else {
+            return "已整理成下一個可執行的小步驟。"
+        }
+
+        switch errorCode {
+        case "AI_DAILY_LIMIT_REACHED":
+            return "今天的 AI 協助額度已用完，先用內建提示繼續；額度會在明天自動恢復。"
+        case "AI_BURST_LIMIT_REACHED":
+            return "剛才的請求比較密集，先用內建提示繼續，稍後就能再請 AI 幫忙。"
+        case "AI_ACCOUNT_NOT_ACTIVE", "AI_CLASS_MEMBERSHIP_REQUIRED",
+             "AI_PERSONAL_SCOPE_FORBIDDEN", "AI_STUDENT_IDENTITY_MISMATCH",
+             "AI_STUDENT_SCOPE_REQUIRED", "AI_TARGET_STUDENT_NOT_ACTIVE",
+             "AI_TASK_ROLE_FORBIDDEN", "AI_SUPPORT_THREAD_REQUIRED",
+             "AI_SUPPORT_THREAD_FORBIDDEN", "AI_REQUEST_ID_REUSED",
+             "AUTH_REQUIRED", "TOKEN_INVALID":
+            return "目前無法取得這次的個人化建議，先用內建提示繼續。"
+        case "GROQ_TIMEOUT", "GROQ_UNAVAILABLE", "AI_PROXY_TIMEOUT",
+             "AI_PROXY_UNAVAILABLE", "AI_QUOTA_UNAVAILABLE",
+             "AI_QUOTA_NOT_CONFIGURED", "AI_RATE_LIMITER_NOT_CONFIGURED":
+            return "AI 暫時沒有回應，已切換成內建提示，不會影響你繼續學習。"
+        default:
+            return "先用內建提示幫你整理下一步。"
+        }
+    }
+}
+
 extension QuestionType {
     var aiProxyValue: String {
         switch self {

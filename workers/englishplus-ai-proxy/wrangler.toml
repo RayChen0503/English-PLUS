@@ -1,12 +1,38 @@
 name = "englishplus-ai-proxy"
 main = "src/index.js"
 compatibility_date = "2026-07-12"
+compatibility_flags = [ "nodejs_compat" ]
 workers_dev = true
 
 [vars]
 FIREBASE_PROJECT_ID = "englishplus-testflight"
 GROQ_DEFAULT_MODEL = "llama-3.1-8b-instant"
 GROQ_QUALITY_MODEL = "llama-3.3-70b-versatile"
+AI_QUOTA_MODE = "internal"
+
+[[durable_objects.bindings]]
+name = "AI_QUOTA"
+class_name = "AIQuotaCoordinator"
+
+[[migrations]]
+tag = "v1-ai-quota"
+new_sqlite_classes = [ "AIQuotaCoordinator" ]
+
+[[ratelimits]]
+name = "AI_INTERNAL_BURST_LIMITER"
+namespace_id = "91001"
+
+  [ratelimits.simple]
+  limit = 30
+  period = 60
+
+[[ratelimits]]
+name = "AI_PUBLIC_BURST_LIMITER"
+namespace_id = "91002"
+
+  [ratelimits.simple]
+  limit = 8
+  period = 60
 
 [[r2_buckets]]
 binding = "VOLUNTEER_EVIDENCE"
@@ -17,4 +43,4 @@ crons = [ "17 3 * * *" ]
 
 [observability]
 enabled = true
-head_sampling_rate = 0.1
+head_sampling_rate = 1.0

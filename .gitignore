@@ -19,3 +19,6 @@ firestore-debug.log
 ui-debug.log
 workers/**/.dev.vars
 workers/**/.wrangler/
+workers/**/node_modules/
+**/__pycache__/
+*.pyc

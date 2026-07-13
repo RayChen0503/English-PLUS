@@ -3,7 +3,7 @@ import Foundation
 enum RemoteAIServiceError: Error {
     case workerEndpointNotConfigured
     case invalidFunctionResponse
-    case functionReturnedStatus(Int)
+    case requestRejected(status: Int, code: String?, retryAfterSeconds: Int?)
     case taskTypeMismatch
     case timedOut
 
@@ -13,8 +13,8 @@ enum RemoteAIServiceError: Error {
             return "AI_PROXY_WORKER_NOT_CONFIGURED"
         case .invalidFunctionResponse:
             return "AI_PROXY_INVALID_RESPONSE"
-        case .functionReturnedStatus(let status):
-            return "AI_PROXY_HTTP_\(status)"
+        case .requestRejected(let status, let code, _):
+            return code ?? "AI_PROXY_HTTP_\(status)"
         case .taskTypeMismatch:
             return "AI_PROXY_TASK_MISMATCH"
         case .timedOut:
@@ -177,6 +177,7 @@ struct CloudflareWorkerAiProxyTransport: AiProxyTransport {
         urlRequest.httpMethod = "POST"
         urlRequest.timeoutInterval = timeoutInterval
         urlRequest.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        urlRequest.setValue(UUID().uuidString, forHTTPHeaderField: "X-EnglishPlus-Request-ID")
         if let idToken = try await idTokenProvider(), !idToken.isEmpty {
             urlRequest.setValue("Bearer \(idToken)", forHTTPHeaderField: "Authorization")
         }
@@ -196,7 +197,14 @@ struct CloudflareWorkerAiProxyTransport: AiProxyTransport {
             throw RemoteAIServiceError.invalidFunctionResponse
         }
         guard (200..<300).contains(httpResponse.statusCode) else {
-            throw RemoteAIServiceError.functionReturnedStatus(httpResponse.statusCode)
+            let errorEnvelope = try? decoder.decode(WorkerErrorEnvelope.self, from: data)
+            let retryAfterHeader = httpResponse.value(forHTTPHeaderField: "Retry-After")
+                .flatMap(Int.init)
+            throw RemoteAIServiceError.requestRejected(
+                status: httpResponse.statusCode,
+                code: errorEnvelope?.error,
+                retryAfterSeconds: errorEnvelope?.retryAfterSeconds ?? retryAfterHeader
+            )
         }
 
         let result: AiProxyResponse
@@ -225,4 +233,9 @@ private struct CallableRequestEnvelope: Encodable {
 private struct CallableResponseEnvelope: Decodable {
     let result: AiProxyResponse?
     let data: AiProxyResponse?
+}
+
+private struct WorkerErrorEnvelope: Decodable {
+    let error: String?
+    let retryAfterSeconds: Int?
 }

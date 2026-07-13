@@ -23,6 +23,7 @@ already depend on.
 | D-15 | 2026-07-12 | A class uses a stable join code that its teacher can reset at any time. | Teachers can invalidate a shared code without deleting the class or disrupting existing members. |
 | D-16 | 2026-07-12 | Leaving a class immediately removes the learner's class access while staff retain historical class reports under the agreed retention policy. | Personal learning continues, but old class permissions and live assignments cannot follow the learner. |
 | D-17 | 2026-07-12 | Every active teacher account may create a class without a separate class-creation approval. | Teacher onboarding stays usable while class access still depends on explicit student membership. |
+| D-18 | 2026-07-13 | AI usage is lenient during internal testing (`internal`: 180 weighted units per user per Taipei day and 30 requests per minute) and switches to a stricter public policy before release (`public`: 60 units and 8 requests per minute). | Internal testers can exercise every AI flow while Firebase identity, least-privilege task authorization, atomic daily quotas and provider-cost protection are already enforced. |
 
 ## Pending decisions
 

@@ -6,6 +6,7 @@ import re
 import sys
 import urllib.error
 import urllib.request
+import uuid
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -24,6 +25,7 @@ TEST_ACCOUNTS = {
 class Response:
     status: int
     body: dict[str, Any]
+    headers: dict[str, str]
 
 
 def request_json(
@@ -31,6 +33,7 @@ def request_json(
     method: str = "GET",
     payload: dict[str, Any] | None = None,
     token: str | None = None,
+    request_id: str | None = None,
 ) -> Response:
     headers = {
         "Accept": "application/json",
@@ -42,6 +45,8 @@ def request_json(
         data = json.dumps(payload).encode("utf-8")
     if token:
         headers["Authorization"] = f"Bearer {token}"
+    if request_id:
+        headers["X-EnglishPlus-Request-ID"] = request_id
     request = urllib.request.Request(
         url,
         data=data,
@@ -51,14 +56,22 @@ def request_json(
     try:
         with urllib.request.urlopen(request, timeout=40) as response:
             raw = response.read()
-            return Response(response.status, json.loads(raw or b"{}"))
+            return Response(
+                response.status,
+                json.loads(raw or b"{}"),
+                {key.lower(): value for key, value in response.headers.items()},
+            )
     except urllib.error.HTTPError as error:
         raw = error.read()
         try:
             body = json.loads(raw or b"{}")
         except json.JSONDecodeError:
             body = {"error": "NON_JSON_RESPONSE"}
-        return Response(error.code, body)
+        return Response(
+            error.code,
+            body,
+            {key.lower(): value for key, value in error.headers.items()},
+        )
 
 
 def firebase_sign_in(api_key: str, email: str, password: str) -> dict[str, str]:
@@ -113,10 +126,16 @@ def main() -> int:
     results: list[dict[str, str]] = []
     health = request_json(f"{WORKER_BASE_URL}/health")
     expect(
-        health.status == 200 and health.body.get("ok") is True,
+        health.status == 200
+        and health.body.get("ok") is True
+        and health.body.get("quotaMode") == "internal"
+        and health.body.get("aiGatewayReady") is True,
         "worker_health",
         results,
-        f"HTTP {health.status}",
+        (
+            f"HTTP {health.status}; quotaMode={health.body.get('quotaMode')}; "
+            f"aiGatewayReady={health.body.get('aiGatewayReady')}"
+        ),
     )
 
     unauthenticated_ai = request_json(
@@ -139,6 +158,15 @@ def main() -> int:
         "classroom_list_requires_firebase_auth",
         results,
         f"HTTP {unauthenticated_classrooms.status}",
+    )
+
+    unauthenticated_quota = request_json(f"{WORKER_BASE_URL}/ai/quota")
+    expect(
+        unauthenticated_quota.status == 401
+        and unauthenticated_quota.body.get("error") == "AUTH_REQUIRED",
+        "ai_quota_requires_firebase_auth",
+        results,
+        f"HTTP {unauthenticated_quota.status}",
     )
 
     unauthenticated_evidence = request_json(
@@ -195,6 +223,65 @@ def main() -> int:
         classroom_lists[role] = classroom_list.body.get("classrooms", [])
 
     if student:
+        quota_before = request_json(
+            f"{WORKER_BASE_URL}/ai/quota",
+            token=student["idToken"],
+        )
+        expect(
+            quota_before.status == 200
+            and quota_before.body.get("mode") == "internal"
+            and quota_before.body.get("dailyUnitLimit") == 180
+            and isinstance(quota_before.body.get("remainingUnits"), int),
+            "authenticated_ai_quota_status",
+            results,
+            (
+                f"HTTP {quota_before.status}; mode={quota_before.body.get('mode')}; "
+                f"remaining={quota_before.body.get('remainingUnits')}"
+            ),
+        )
+
+        forbidden_teacher_task = request_json(
+            f"{WORKER_BASE_URL}/ai",
+            method="POST",
+            token=student["idToken"],
+            payload={
+                "taskType": "teacherFeedbackDraft",
+                "classId": "YILAN-CHENGZHI-8A",
+                "studentUid": student["localId"],
+                "qualityMode": "quality",
+                "locale": "zh-TW",
+                "context": {"supportThreadId": "not-a-real-thread"},
+            },
+        )
+        expect(
+            forbidden_teacher_task.status == 403
+            and forbidden_teacher_task.body.get("error") == "AI_TASK_ROLE_FORBIDDEN",
+            "student_cannot_invoke_teacher_ai",
+            results,
+            f"HTTP {forbidden_teacher_task.status}",
+        )
+
+        forged_student = request_json(
+            f"{WORKER_BASE_URL}/ai",
+            method="POST",
+            token=student["idToken"],
+            payload={
+                "taskType": "dailyMission",
+                "classId": "YILAN-CHENGZHI-8A",
+                "studentUid": "another-student-uid",
+                "qualityMode": "free",
+                "locale": "zh-TW",
+                "context": {"moodScore": 3, "availableTimeLevel": 2},
+            },
+        )
+        expect(
+            forged_student.status == 403
+            and forged_student.body.get("error") == "AI_STUDENT_IDENTITY_MISMATCH",
+            "student_cannot_forge_ai_identity",
+            results,
+            f"HTTP {forged_student.status}",
+        )
+
         forbidden_create = request_json(
             f"{WORKER_BASE_URL}/classrooms",
             method="POST",
@@ -224,6 +311,27 @@ def main() -> int:
         )
 
     if teacher:
+        forbidden_student_ai = request_json(
+            f"{WORKER_BASE_URL}/ai",
+            method="POST",
+            token=teacher["idToken"],
+            payload={
+                "taskType": "dailyMission",
+                "classId": "YILAN-CHENGZHI-8A",
+                "studentUid": teacher["localId"],
+                "qualityMode": "free",
+                "locale": "zh-TW",
+                "context": {"moodScore": 3, "availableTimeLevel": 2},
+            },
+        )
+        expect(
+            forbidden_student_ai.status == 403
+            and forbidden_student_ai.body.get("error") == "AI_TASK_ROLE_FORBIDDEN",
+            "teacher_cannot_invoke_student_ai",
+            results,
+            f"HTTP {forbidden_student_ai.status}",
+        )
+
         forbidden_join = request_json(
             f"{WORKER_BASE_URL}/classrooms/join",
             method="POST",
@@ -306,36 +414,65 @@ def main() -> int:
             f"HTTP {ai.status}; fallbackUsed={result.get('fallbackUsed')}",
         )
 
+        replay_request_id = f"smoke-{uuid.uuid4()}"
+        personal_ai_payload = {
+            "taskType": "dailyMission",
+            "classId": personal_scope_id(student["localId"]),
+            "studentUid": student["localId"],
+            "sessionId": "personal-mode-deployment-smoke-test",
+            "qualityMode": "quality",
+            "locale": "zh-TW",
+            "context": {
+                "moodScore": 3,
+                "availableTimeLevel": 2,
+                "wantsChallenge": False,
+                "preferredQuestionTypes": ["vocabulary", "fillBlank"],
+            },
+        }
         personal_ai = request_json(
             f"{WORKER_BASE_URL}/ai",
             method="POST",
             token=student["idToken"],
-            payload={
-                "taskType": "dailyMission",
-                "classId": personal_scope_id(student["localId"]),
-                "studentUid": student["localId"],
-                "sessionId": "personal-mode-deployment-smoke-test",
-                "qualityMode": "free",
-                "locale": "zh-TW",
-                "context": {
-                    "moodScore": 3,
-                    "availableTimeLevel": 2,
-                    "wantsChallenge": False,
-                    "preferredQuestionTypes": ["vocabulary", "fillBlank"],
-                },
-            },
+            payload=personal_ai_payload,
+            request_id=replay_request_id,
         )
         personal_result = personal_ai.body.get("result", {})
         expect(
             personal_ai.status == 200
             and personal_result.get("taskType") == "dailyMission"
+            and personal_result.get("qualityMode") == "free"
             and personal_result.get("fallbackUsed") is False,
-            "authenticated_personal_mode_real_ai",
+            "authenticated_personal_ai_blocks_client_quality_escalation",
             results,
             (
                 f"HTTP {personal_ai.status}; "
+                f"qualityMode={personal_result.get('qualityMode')}; "
                 f"fallbackUsed={personal_result.get('fallbackUsed')}"
             ),
+        )
+
+        request_id = personal_ai.headers.get("x-englishplus-request-id", "")
+        expect(
+            request_id == personal_result.get("requestId")
+            and len(request_id) >= 8,
+            "ai_request_id_is_correlated",
+            results,
+            f"requestId={request_id or 'missing'}",
+        )
+
+        replayed_ai = request_json(
+            f"{WORKER_BASE_URL}/ai",
+            method="POST",
+            token=student["idToken"],
+            payload=personal_ai_payload,
+            request_id=replay_request_id,
+        )
+        expect(
+            replayed_ai.status == 409
+            and replayed_ai.body.get("error") == "AI_REQUEST_ID_REUSED",
+            "ai_request_id_replay_is_rejected",
+            results,
+            f"HTTP {replayed_ai.status}",
         )
 
         student_evidence = request_json(
@@ -397,6 +534,27 @@ def main() -> int:
         )
 
     if volunteer:
+        forbidden_student_ai = request_json(
+            f"{WORKER_BASE_URL}/ai",
+            method="POST",
+            token=volunteer["idToken"],
+            payload={
+                "taskType": "dailyMission",
+                "classId": "YILAN-CHENGZHI-8A",
+                "studentUid": volunteer["localId"],
+                "qualityMode": "free",
+                "locale": "zh-TW",
+                "context": {"moodScore": 3, "availableTimeLevel": 2},
+            },
+        )
+        expect(
+            forbidden_student_ai.status == 403
+            and forbidden_student_ai.body.get("error") == "AI_TASK_ROLE_FORBIDDEN",
+            "volunteer_cannot_invoke_student_ai",
+            results,
+            f"HTTP {forbidden_student_ai.status}",
+        )
+
         volunteer_ticket = request_json(
             f"{WORKER_BASE_URL}/evidence/upload-ticket",
             method="POST",

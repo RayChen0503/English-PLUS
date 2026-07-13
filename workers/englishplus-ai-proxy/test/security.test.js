@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import test from "node:test";
+import { test } from "vitest";
 
 import worker, {
   evidenceQuotaSnapshot,
@@ -85,7 +85,11 @@ test("AI requests require a verified Firebase session", async () => {
   );
 
   assert.equal(response.status, 401);
-  assert.deepEqual(await response.json(), { ok: false, error: "AUTH_REQUIRED" });
+  const payload = await response.json();
+  assert.equal(payload.ok, false);
+  assert.equal(payload.error, "AUTH_REQUIRED");
+  assert.match(payload.requestId, /^[A-Za-z0-9-]{8,100}$/);
+  assert.equal(response.headers.get("X-EnglishPlus-Request-ID"), payload.requestId);
 });
 
 test("evidence metadata only accepts the supported private upload contract", () => {
