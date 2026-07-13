@@ -906,7 +906,7 @@ struct TeacherClassAssignmentView: View {
 
             if let classroom = activeTeacherClassroom {
                 Divider()
-                    .overlay(EPTheme.border)
+                    .overlay(EPTheme.hairline)
 
                 Button(role: .destructive) {
                     classroomPendingDeletion = classroom
