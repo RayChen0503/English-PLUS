@@ -35,7 +35,9 @@ jobs:
         with:
           node-version: 22
           cache: npm
-          cache-dependency-path: workers/englishplus-ai-proxy/package-lock.json
+          cache-dependency-path: |
+            workers/englishplus-ai-proxy/package-lock.json
+            admin-web/package-lock.json
 
       - name: Use Java 21 for Firebase Emulator
         uses: actions/setup-java@v4
@@ -49,6 +51,12 @@ jobs:
           npm ci
           npm run check
           npm test
+
+      - name: Validate administrator review portal
+        working-directory: admin-web
+        run: |
+          npm ci
+          npm run check
 
       - name: Validate Firestore rules and classroom lifecycle
         run: |
@@ -101,6 +109,7 @@ jobs:
           python3 scripts/validate_fix_a_support_sync.py
           python3 scripts/validate_fix_b_practice_flow.py
           python3 scripts/validate_fix_c_class_lifecycle.py
+          python3 scripts/validate_fix_d_admin_portal.py
 
       - name: Build iOS Simulator target
         run: |

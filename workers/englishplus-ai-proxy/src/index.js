@@ -38,6 +38,24 @@ const CLASS_STUDENT_COLLECTIONS = Object.freeze([
   "learningEvents",
 ]);
 const FINAL_REVIEW_STATUSES = new Set(["approved", "rejected", "suspended"]);
+const VOLUNTEER_REVIEW_STATUSES = new Set([
+  "draft",
+  "pendingReview",
+  "needsMoreInformation",
+  "approved",
+  "rejected",
+  "suspended",
+]);
+const VOLUNTEER_REVIEW_ACTIONS = Object.freeze({
+  approved: { applicationStatus: "approved", accountStatus: "active", active: true },
+  rejected: { applicationStatus: "rejected", accountStatus: "disabled", active: false },
+  needsMoreInformation: {
+    applicationStatus: "needsMoreInformation",
+    accountStatus: "pendingApplication",
+    active: false,
+  },
+  suspended: { applicationStatus: "suspended", accountStatus: "suspended", active: false },
+});
 const ALLOWED_EVIDENCE_MIME_TYPES = new Set([
   "application/pdf",
   "image/jpeg",
@@ -147,8 +165,16 @@ export default {
       return handleVolunteerReview(request, env, url);
     }
 
+    if (url.pathname === "/admin/session" && request.method === "GET") {
+      return handleAdminSession(request, env);
+    }
+
     if (url.pathname === "/admin/volunteer-applications" && request.method === "GET") {
-      return handleVolunteerApplicationList(request, env);
+      return handleVolunteerApplicationList(request, env, url);
+    }
+
+    if (url.pathname === "/admin/volunteer-audit" && request.method === "GET") {
+      return handleVolunteerAudit(request, env, url);
     }
 
     if (url.pathname === "/admin/evidence" && request.method === "GET") {
@@ -1845,91 +1871,173 @@ async function handleEvidenceDelete(request, env) {
 }
 
 async function handleVolunteerReview(request, env, url) {
+  const requestId = requestIdentifier(request);
   let admin;
+  let body;
   try {
-    admin = await requireFirebaseUser(request, env);
-    if (admin.admin !== true) {
-      throw httpError(403, "ADMIN_REQUIRED");
-    }
+    admin = await requireAdministrator(request, env);
+    body = normalizeAdminReviewRequest(await request.json());
   } catch (error) {
-    return authOrValidationError(error);
+    return authOrValidationError(error, requestId);
   }
 
   const uid = decodeURIComponent(url.pathname.split("/").pop() || "").trim();
   if (!/^[A-Za-z0-9_-]{8,128}$/.test(uid)) {
-    return jsonResponse({ ok: false, error: "INVALID_UID" }, 400);
+    return authOrValidationError(httpError(400, "INVALID_UID"), requestId);
   }
-
-  let body;
-  try {
-    body = await request.json();
-  } catch {
-    return jsonResponse({ ok: false, error: "INVALID_JSON" }, 400);
+  if (uid === admin.sub) {
+    return authOrValidationError(httpError(409, "SELF_REVIEW_NOT_ALLOWED"), requestId);
   }
-  const actions = {
-    approved: { applicationStatus: "approved", accountStatus: "active", active: true },
-    rejected: { applicationStatus: "rejected", accountStatus: "disabled", active: false },
-    needsMoreInformation: {
-      applicationStatus: "needsMoreInformation",
-      accountStatus: "pendingApplication",
-      active: false,
-    },
-    suspended: { applicationStatus: "suspended", accountStatus: "suspended", active: false },
-  };
-  const decision = actions[body?.action];
-  if (!decision) {
-    return jsonResponse({ ok: false, error: "INVALID_REVIEW_ACTION" }, 400);
-  }
+  const decision = VOLUNTEER_REVIEW_ACTIONS[body.action];
 
   try {
-    await commitVolunteerReview(env, {
+    const result = await commitVolunteerReview(env, {
       uid,
       action: body.action,
       reviewerUid: admin.sub,
-      note: safeString(body?.note)?.slice(0, 1000) || "",
+      reviewerEmail: safeString(admin.email)?.slice(0, 320) || "",
+      note: body.note,
+      expectedVersion: body.expectedVersion,
+      requestId,
       ...decision,
     });
-    return jsonResponse({ ok: true, uid, status: decision.applicationStatus });
+    console.log(JSON.stringify({
+      event: "volunteer_review_completed",
+      requestId,
+      reviewerUid: admin.sub,
+      applicantUid: uid,
+      action: body.action,
+      fromStatus: result.previousStatus,
+      toStatus: decision.applicationStatus,
+    }));
+    return jsonResponse(
+      {
+        ok: true,
+        uid,
+        status: decision.applicationStatus,
+        previousStatus: result.previousStatus,
+        version: result.version,
+        auditId: result.auditId,
+        requestId,
+      },
+      200,
+      { "X-EnglishPlus-Request-ID": requestId }
+    );
   } catch (error) {
-    if (error?.status) return authOrValidationError(error);
-    return jsonResponse({ ok: false, error: "REVIEW_COMMIT_FAILED" }, 502);
+    console.error(JSON.stringify({
+      event: "volunteer_review_failed",
+      requestId,
+      reviewerUid: admin.sub,
+      applicantUid: uid,
+      action: body.action,
+      errorCode: safeString(error?.code) || "REVIEW_COMMIT_FAILED",
+    }));
+    if (error?.status) return authOrValidationError(error, requestId);
+    return authOrValidationError(httpError(502, "REVIEW_COMMIT_FAILED"), requestId);
   }
 }
 
-async function handleVolunteerApplicationList(request, env) {
+async function handleAdminSession(request, env) {
+  const requestId = requestIdentifier(request);
   try {
-    const admin = await requireFirebaseUser(request, env);
-    if (admin.admin !== true) throw httpError(403, "ADMIN_REQUIRED");
-    const applications = await listVolunteerApplications(env);
-    return jsonResponse({ ok: true, applications });
+    const admin = await requireAdministrator(request, env);
+    return jsonResponse(
+      {
+        ok: true,
+        admin: {
+          uid: admin.sub,
+          email: safeString(admin.email) || "",
+          displayName: safeString(admin.name) || safeString(admin.email) || "English+ 管理員",
+        },
+        requestId,
+      },
+      200,
+      { "X-EnglishPlus-Request-ID": requestId }
+    );
   } catch (error) {
-    if (error?.status) return authOrValidationError(error);
-    return jsonResponse({ ok: false, error: "APPLICATION_LIST_FAILED" }, 502);
+    return authOrValidationError(error, requestId);
+  }
+}
+
+async function handleVolunteerApplicationList(request, env, url) {
+  const requestId = requestIdentifier(request);
+  try {
+    await requireAdministrator(request, env);
+    const query = normalizeAdminApplicationQuery(url.searchParams);
+    const result = await listVolunteerApplications(env, query);
+    return jsonResponse(
+      { ok: true, ...result, requestId },
+      200,
+      { "X-EnglishPlus-Request-ID": requestId }
+    );
+  } catch (error) {
+    if (error?.status) return authOrValidationError(error, requestId);
+    return authOrValidationError(httpError(502, "APPLICATION_LIST_FAILED"), requestId);
+  }
+}
+
+async function handleVolunteerAudit(request, env, url) {
+  const requestId = requestIdentifier(request);
+  try {
+    await requireAdministrator(request, env);
+    const uid = safeString(url.searchParams.get("uid"));
+    if (!uid || !/^[A-Za-z0-9_-]{8,128}$/.test(uid)) {
+      throw httpError(400, "INVALID_UID");
+    }
+    const events = await listVolunteerReviewEvents(env, uid);
+    return jsonResponse(
+      { ok: true, uid, events, requestId },
+      200,
+      { "X-EnglishPlus-Request-ID": requestId }
+    );
+  } catch (error) {
+    if (error?.status) return authOrValidationError(error, requestId);
+    return authOrValidationError(httpError(502, "AUDIT_LIST_FAILED"), requestId);
   }
 }
 
 async function handleAdminEvidence(request, env, url) {
+  const requestId = requestIdentifier(request);
   if (!env.VOLUNTEER_EVIDENCE) {
-    return jsonResponse({ ok: false, error: "EVIDENCE_STORAGE_NOT_CONFIGURED" }, 503);
+    return authOrValidationError(
+      httpError(503, "EVIDENCE_STORAGE_NOT_CONFIGURED"),
+      requestId
+    );
   }
   try {
-    const admin = await requireFirebaseUser(request, env);
-    if (admin.admin !== true) throw httpError(403, "ADMIN_REQUIRED");
+    await requireAdministrator(request, env);
     const objectKey = safeString(url.searchParams.get("objectKey"));
-    if (!objectKey || !objectKey.startsWith("volunteer-evidence/")) {
+    const keyMatch = objectKey?.match(
+      /^volunteer-evidence\/([A-Za-z0-9_-]{8,128})\/[^/]{1,255}$/
+    );
+    if (!objectKey || !keyMatch) {
       throw httpError(400, "INVALID_OBJECT_KEY");
+    }
+    const projectId = env.FIREBASE_PROJECT_ID || "englishplus-testflight";
+    const accessToken = await serviceAccountAccessToken(env);
+    const applicationDocument = await getVolunteerApplicationDocument(
+      projectId,
+      accessToken,
+      keyMatch[1]
+    );
+    const application = normalizeVolunteerApplicationDocument(applicationDocument);
+    const evidence = application.evidence.find((item) => item.objectKey === objectKey);
+    if (!evidence || application.evidenceDeletedAt) {
+      throw httpError(404, "EVIDENCE_NOT_FOUND");
     }
     const object = await env.VOLUNTEER_EVIDENCE.get(objectKey);
     if (!object?.body) throw httpError(404, "EVIDENCE_NOT_FOUND");
+    const filename = contentDispositionFilename(evidence.filename);
     const headers = new Headers({
       "Cache-Control": "private, no-store",
       "Content-Type": object.httpMetadata?.contentType || "application/octet-stream",
-      "Content-Disposition": "attachment",
+      "Content-Disposition": `attachment; filename="${filename}"`,
       "X-Content-Type-Options": "nosniff",
+      "X-EnglishPlus-Request-ID": requestId,
     });
     return new Response(object.body, { status: 200, headers });
   } catch (error) {
-    return authOrValidationError(error);
+    return authOrValidationError(error, requestId);
   }
 }
 
@@ -3497,6 +3605,43 @@ async function requireFirebaseUser(request, env) {
   return { ...claims, firebaseIdToken: match[1] };
 }
 
+async function requireAdministrator(request, env) {
+  const user = await requireFirebaseUser(request, env);
+  if (user.admin !== true) {
+    throw httpError(403, "ADMIN_REQUIRED");
+  }
+  return user;
+}
+
+function normalizeAdminReviewRequest(raw) {
+  if (!raw || typeof raw !== "object") {
+    throw httpError(400, "INVALID_JSON");
+  }
+  const action = safeString(raw.action);
+  if (!action || !VOLUNTEER_REVIEW_ACTIONS[action]) {
+    throw httpError(400, "INVALID_REVIEW_ACTION");
+  }
+  const note = safeString(raw.note)?.slice(0, 1000) || "";
+  if (action !== "approved" && note.length < 3) {
+    throw httpError(400, "REVIEW_NOTE_REQUIRED");
+  }
+  const expectedVersion = safeString(raw.expectedVersion) || "";
+  if (expectedVersion && !Number.isFinite(Date.parse(expectedVersion))) {
+    throw httpError(400, "INVALID_REVIEW_VERSION");
+  }
+  return { action, note, expectedVersion };
+}
+
+function normalizeAdminApplicationQuery(searchParams) {
+  const scope = searchParams.get("scope") === "all" ? "all" : "actionable";
+  const rawStatus = safeString(searchParams.get("status")) || "";
+  const status = VOLUNTEER_REVIEW_STATUSES.has(rawStatus) ? rawStatus : "";
+  const query = (safeString(searchParams.get("query")) || "")
+    .toLocaleLowerCase("zh-TW")
+    .slice(0, 120);
+  return { scope, status, query };
+}
+
 async function requireVolunteerApplicant(
   user,
   env,
@@ -3643,10 +3788,14 @@ async function commitVolunteerReview(env, review) {
     review.uid
   );
   const currentStatus = firestoreString(application.fields?.status);
+  if (review.expectedVersion && review.expectedVersion !== application.updateTime) {
+    throw httpError(409, "STALE_REVIEW_VERSION");
+  }
   if (!reviewTransitionAllowed(currentStatus, review.action)) {
     throw httpError(409, "REVIEW_STATE_CONFLICT");
   }
   const now = new Date().toISOString();
+  const auditId = crypto.randomUUID();
   const retentionUntil = FINAL_REVIEW_STATUSES.has(review.applicationStatus)
     ? new Date(Date.now() + REVIEW_EVIDENCE_RETENTION_DAYS * 24 * 60 * 60 * 1000)
         .toISOString()
@@ -3706,13 +3855,46 @@ async function commitVolunteerReview(env, review) {
             },
             currentDocument: { exists: true },
           },
+          {
+            update: {
+              name: `${root}/volunteerApplications/${review.uid}/reviewEvents/${auditId}`,
+              fields: {
+                id: { stringValue: auditId },
+                applicantUid: { stringValue: review.uid },
+                reviewerUid: { stringValue: review.reviewerUid },
+                reviewerEmail: { stringValue: review.reviewerEmail },
+                action: { stringValue: review.action },
+                previousStatus: { stringValue: currentStatus },
+                resultingStatus: { stringValue: review.applicationStatus },
+                note: { stringValue: review.note },
+                requestId: { stringValue: review.requestId },
+                createdAt: { timestampValue: now },
+              },
+            },
+            currentDocument: { exists: false },
+          },
         ],
       }),
     }
   );
   if (!response.ok) {
-    throw new Error("Firestore review commit failed.");
+    const payload = await response.json().catch(() => ({}));
+    const status = safeString(payload?.error?.status);
+    if (
+      response.status === 409 ||
+      status === "FAILED_PRECONDITION" ||
+      status === "ABORTED"
+    ) {
+      throw httpError(409, "STALE_REVIEW_VERSION");
+    }
+    throw httpError(502, "REVIEW_COMMIT_FAILED");
   }
+  const payload = await response.json();
+  return {
+    previousStatus: currentStatus,
+    version: payload.writeResults?.[0]?.updateTime || now,
+    auditId,
+  };
 }
 
 async function getVolunteerApplicationDocument(projectId, accessToken, uid) {
@@ -3739,13 +3921,64 @@ function reviewTransitionAllowed(currentStatus, action) {
   return false;
 }
 
-async function listVolunteerApplications(env) {
+async function listVolunteerApplications(env, query = { scope: "actionable", status: "", query: "" }) {
   const accessToken = await serviceAccountAccessToken(env);
   const documents = await listVolunteerApplicationDocuments(env, accessToken);
-  return documents
-    .map(normalizeVolunteerApplicationDocument)
-    .filter((item) => ["pendingReview", "needsMoreInformation"].includes(item.status))
-    .sort((left, right) => right.submittedAt.localeCompare(left.submittedAt));
+  const allApplications = documents.map(normalizeVolunteerApplicationDocument);
+  const applications = filterVolunteerApplications(allApplications, query).sort(
+    (left, right) => {
+      const priority = { pendingReview: 0, needsMoreInformation: 1 };
+      const leftPriority = priority[left.status] ?? 2;
+      const rightPriority = priority[right.status] ?? 2;
+      if (leftPriority !== rightPriority) return leftPriority - rightPriority;
+      return right.submittedAt.localeCompare(left.submittedAt);
+    }
+  );
+  return {
+    applications,
+    total: applications.length,
+    summary: summarizeVolunteerApplications(allApplications),
+  };
+}
+
+function filterVolunteerApplications(applications, query) {
+  const actionable = new Set(["pendingReview", "needsMoreInformation"]);
+  return applications.filter((application) => {
+    if (query.scope !== "all" && !actionable.has(application.status)) return false;
+    if (query.status && application.status !== query.status) return false;
+    if (!query.query) return true;
+    const haystack = [
+      application.displayName,
+      application.uid,
+      application.motivation,
+      application.status,
+    ]
+      .join(" ")
+      .toLocaleLowerCase("zh-TW");
+    return haystack.includes(query.query);
+  });
+}
+
+function summarizeVolunteerApplications(applications) {
+  const summary = {
+    total: applications.length,
+    actionable: 0,
+    draft: 0,
+    pendingReview: 0,
+    needsMoreInformation: 0,
+    approved: 0,
+    rejected: 0,
+    suspended: 0,
+  };
+  for (const application of applications) {
+    if (Object.hasOwn(summary, application.status)) {
+      summary[application.status] += 1;
+    }
+    if (["pendingReview", "needsMoreInformation"].includes(application.status)) {
+      summary.actionable += 1;
+    }
+  }
+  return summary;
 }
 
 async function listVolunteerApplicationDocuments(env, accessToken) {
@@ -3775,15 +4008,21 @@ function normalizeVolunteerApplicationDocument(document) {
   const fields = document.fields || {};
   const evidenceValues = fields.evidence?.arrayValue?.values || [];
   return {
-    uid: firestoreString(fields.uid),
-    displayName: firestoreString(fields.displayName) || "志工申請者",
-    status: firestoreString(fields.status),
+    uid: firestoreString(fields.uid) || document.name?.split("/").pop() || "",
+    displayName: firestoreString(fields.displayName) || "未提供姓名",
+    status: firestoreString(fields.status) || "draft",
     motivation: firestoreString(fields.motivation),
+    confirmsAge18OrOlder: Boolean(fields.confirmsAge18OrOlder?.booleanValue),
+    acceptedConductVersion: firestoreString(fields.acceptedConductVersion),
     submittedAt:
       fields.submittedAt?.timestampValue || fields.updatedAt?.timestampValue || "",
+    updatedAt: fields.updatedAt?.timestampValue || document.updateTime || "",
     reviewedAt: fields.reviewedAt?.timestampValue || "",
+    reviewedByUid: firestoreString(fields.reviewedByUid),
+    reviewNote: firestoreString(fields.reviewNote),
     evidenceRetentionUntil: fields.evidenceRetentionUntil?.timestampValue || "",
     evidenceDeletedAt: fields.evidenceDeletedAt?.timestampValue || "",
+    version: document.updateTime || "",
     evidence: evidenceValues.map((value) => {
       const item = value.mapValue?.fields || {};
       return {
@@ -3793,9 +4032,50 @@ function normalizeVolunteerApplicationDocument(document) {
         filename: firestoreString(item.originalFilename),
         mimeType: firestoreString(item.mimeType),
         sizeBytes: Number(item.sizeBytes?.integerValue || 0),
+        uploadedAt: item.uploadedAt?.timestampValue || "",
       };
     }),
   };
+}
+
+async function listVolunteerReviewEvents(env, uid) {
+  const projectId = env.FIREBASE_PROJECT_ID || "englishplus-testflight";
+  const accessToken = await serviceAccountAccessToken(env);
+  const endpoint = new URL(
+    `https://firestore.googleapis.com/v1/projects/${projectId}/databases/(default)/documents/volunteerApplications/${encodeURIComponent(uid)}/reviewEvents`
+  );
+  endpoint.searchParams.set("pageSize", "100");
+  endpoint.searchParams.set("orderBy", "createdAt desc");
+  const response = await fetch(endpoint, {
+    headers: { Authorization: `Bearer ${accessToken}` },
+  });
+  if (!response.ok) {
+    throw httpError(502, "AUDIT_LIST_FAILED");
+  }
+  const payload = await response.json();
+  return (payload.documents || []).map((document) => {
+    const fields = document.fields || {};
+    return {
+      id: firestoreString(fields.id) || document.name?.split("/").pop() || "",
+      reviewerUid: firestoreString(fields.reviewerUid),
+      reviewerEmail: firestoreString(fields.reviewerEmail),
+      action: firestoreString(fields.action),
+      previousStatus: firestoreString(fields.previousStatus),
+      resultingStatus: firestoreString(fields.resultingStatus),
+      note: firestoreString(fields.note),
+      requestId: firestoreString(fields.requestId),
+      createdAt: fields.createdAt?.timestampValue || document.createTime || "",
+    };
+  });
+}
+
+function contentDispositionFilename(filename) {
+  const normalized = safeString(filename) || "volunteer-evidence";
+  return normalized
+    .normalize("NFKD")
+    .replace(/[^A-Za-z0-9._-]+/g, "_")
+    .replace(/^\.+/, "")
+    .slice(0, 120) || "volunteer-evidence";
 }
 
 async function cleanupExpiredReviewedEvidence(env, now = new Date()) {
@@ -4463,6 +4743,8 @@ export {
   listClassroomsForUser,
   membershipIsActiveDocument,
   normalizeEvidenceTicketRequest,
+  normalizeAdminApplicationQuery,
+  normalizeAdminReviewRequest,
   normalizeAccountDeletionRequest,
   normalizeAiQuotaCommand,
   normalizeClassroomCode,
@@ -4478,12 +4760,14 @@ export {
   reserveAiQuota,
   quotaDecision,
   quotaStateForDate,
+  filterVolunteerApplications,
   reviewTransitionAllowed,
   requireRecentAuthentication,
   resetClassroomCode,
   selectExpiredReviewedApplications,
   signUploadTicket,
   stageAccountDeletionSummary,
+  summarizeVolunteerApplications,
   verifyUploadTicket,
   updateClassroom,
 };
