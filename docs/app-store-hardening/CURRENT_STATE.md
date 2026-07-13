@@ -32,7 +32,9 @@ learning must remain usable without joining a class.
   - Round 10 - executable AI learning and staff actions (`round-10-executable-ai-actions.md`)
   - Round 11 - account deletion and explicit human help
     (`round-11-account-deletion-human-help.md`)
-- Hardening progress: **11/20 fully signed off**.
+  - Round 12 - privacy, support and Block C audit
+    (`round-12-privacy-support-block-c-audit.md`)
+- Hardening progress: **12/20 fully signed off**.
 - Do not merge to `main` or trigger Xcode Cloud until the end of a four-round
   block: 4, 8, 12, 16, and 20.
 - Never reset, overwrite, or silently discard user work.
@@ -135,6 +137,14 @@ learning must remain usable without joining a class.
   `scanned: 1`, `completed: 1`, `failed: 0`; the deleted account could not sign
   in again. Final Worker version `addf0fc7-f6cc-41a0-ac49-04d32b76f48d`
   restores the daily Cron and contains no temporary test route.
+- Round 12 has made the public privacy and support terms executable in the App:
+  legal/support links are available before sign-in, during consent and from
+  account settings; consent is role-specific, versioned and confirmed by an
+  atomic server write before entry; and AI, minor-use and no-automatic-alert
+  boundaries are explicit. `PrivacyInfo.xcprivacy` declares six data types,
+  tracking is disabled, the full validator sweep passes `72/72`, Worker tests
+  pass `22/22`, Firestore Emulator tests pass `18/18`, and isolated macOS run
+  `29261085031` passed a clean Xcode 16.4 iOS Simulator build.
 
 ## Current technical constraints
 
@@ -143,9 +153,10 @@ learning must remain usable without joining a class.
   both pass.
 - Swift compilation is not available on this Windows host. The isolated macOS
   GitHub Actions gate passed the Round 9 clean iOS Simulator build in run
-  `29241754603`; Round 10 branch-only run `29243976304` and Round 11 run
-  `29252015455` also passed clean Xcode 16.4 iOS Simulator builds. Xcode Cloud
-  remains the release-level gate at the agreed checkpoint.
+  `29241754603`; Round 10 branch-only run `29243976304`, Round 11 run
+  `29252015455`, and Round 12 run `29261085031` also passed clean Xcode 16.4
+  iOS Simulator builds. Xcode Cloud remains the release-level gate at the
+  agreed checkpoint.
 - Existing legacy validators can fail because they assert removed UI or old
   copy. Preserve useful behavioral coverage by replacing them, not by reviving
   obsolete UI.
@@ -176,10 +187,10 @@ learning must remain usable without joining a class.
 
 ## Next gate
 
-Round 11 is fully signed off on `codex/app-store-hardening-c`. Round 12 adds the
-final privacy policy, third-party AI disclosure and support entry, then performs
-the Block C four-round checkpoint audit. The branch stays separate from `main`
-until that checkpoint, when one deliberate merge will trigger Xcode Cloud.
+Round 12 and the Block C four-round audit are fully signed off on
+`codex/app-store-hardening-c`. The next action is one deliberate merge to
+`main` to trigger Xcode Cloud. Round 13 starts only after that checkpoint is
+recorded and uses a fresh Block D branch.
 
 ## Maintenance rule
 

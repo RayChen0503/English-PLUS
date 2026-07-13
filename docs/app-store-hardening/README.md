@@ -37,9 +37,12 @@ evidence in the round reports.
 | 7 - Teacher class management | Complete | `round-07-teacher-class-management.md` |
 | 8 - Firestore synchronization and Block B audit | Complete | `round-08-firestore-sync-audit.md` |
 | 9 - Authenticated AI gateway, quota and monitoring | Complete | `round-09-ai-gateway-hardening.md` |
+| 10 - Executable AI learning and staff actions | Complete | `round-10-executable-ai-actions.md` |
+| 11 - Account deletion and explicit human help | Complete | `round-11-account-deletion-human-help.md` |
+| 12 - Privacy, support and Block C audit | Complete | `round-12-privacy-support-block-c-audit.md` |
 
 ## Main-branch safety
 
-Block C commits are made on `codex/app-store-hardening-c`. They do not
-represent a TestFlight release until the hardening branch is deliberately
-merged into `main` after Round 12 and Xcode Cloud passes.
+Block C commits are made on `codex/app-store-hardening-c`. Round 12 has passed
+the branch-level macOS compile gate; the block represents a release candidate
+only after one deliberate merge to `main` triggers and passes Xcode Cloud.

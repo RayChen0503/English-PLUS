@@ -1,6 +1,6 @@
 # Round 12 - privacy, support and Block C audit
 
-Status: In progress.
+Status: Complete.
 
 ## Scope
 
@@ -37,5 +37,7 @@ passes `18/18`. The privacy manifest is a valid property list, all `61` Swift
 sources are present in the Xcode project, and `git diff --check` reports no
 whitespace errors.
 
-Isolated macOS compilation and the deliberate Block C merge to `main` remain
-the final release gates before this report is signed off.
+Isolated macOS GitHub Actions run `29261085031` passed the clean Xcode 16.4
+iOS Simulator build for commit `eba0065`. Block C is therefore ready for its
+single deliberate merge to `main`; the release-level Xcode Cloud run starts
+only after that merge.
