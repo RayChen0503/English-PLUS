@@ -1,6 +1,6 @@
 # Round 9 - authenticated AI gateway, quota and monitoring
 
-Status: Source and production gateway complete; isolated macOS compile pending.
+Status: Complete.
 
 ## Decision A
 
@@ -83,6 +83,7 @@ threads are rejected.
 
 ## Remaining gate
 
-The isolated GitHub macOS Simulator compile will verify the iOS transport and
-user-facing fallback changes. Round 9 is complete only after that gate passes
-and this report records the run.
+The isolated GitHub macOS gate passed in run `29241754603`. It performed a
+portable npm clean install, all Worker runtime and hardening validators, then a
+clean English+ iOS Simulator build with Xcode 16.4. No Xcode Cloud or TestFlight
+release was triggered.

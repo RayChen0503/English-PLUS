@@ -121,6 +121,7 @@ def main() -> int:
     markers(decisions, ("D-18", "180 weighted units", "60 units"), "Decision register", errors)
     markers(report, (
         "Round 9",
+        "Status: Complete",
         "Decision A",
         "cf6dfb11-0644-4680-9fb9-f66e86e26996",
         "15/15",
@@ -128,6 +129,7 @@ def main() -> int:
         "Firebase identity",
         "Taipei midnight",
         "No Xcode Cloud",
+        "29241754603",
     ), "Round 9 report", errors)
 
     if errors:

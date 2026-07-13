@@ -17,8 +17,8 @@ learning must remain usable without joining a class.
 ## Repository and release safety
 
 - Repository: `RayChen0503/English-PLUS`
-- Stable Block A baseline: `main` at `9bb6307`
-- Active Block B branch: `codex/app-store-hardening-b`
+- Stable Block B baseline: `main` at `8b1db6c`
+- Active Block C branch: `codex/app-store-hardening-c`
 - Completed hardening rounds:
   - Round 1 - baseline audit (`round-01-baseline-audit.md`)
   - Round 2 - personal and multi-class domain (`round-02-personal-and-class-domain.md`)
@@ -28,7 +28,8 @@ learning must remain usable without joining a class.
   - Round 6 - classroom lifecycle (`round-06-classroom-lifecycle.md`)
   - Round 7 - teacher class management (`round-07-teacher-class-management.md`)
   - Round 8 - Firestore synchronization and Block B audit (`round-08-firestore-sync-audit.md`)
-- Hardening progress: **8/20 complete; Round 9 is next**.
+  - Round 9 - authenticated AI gateway, quota and monitoring (`round-09-ai-gateway-hardening.md`)
+- Hardening progress: **9/20 complete; Round 10 is next**.
 - Do not merge to `main` or trigger Xcode Cloud until the end of a four-round
   block: 4, 8, 12, 16, and 20.
 - Never reset, overwrite, or silently discard user work.
@@ -102,6 +103,15 @@ learning must remain usable without joining a class.
   complete validator sweep passes `68/68`, the Emulator matrix passes `16/16`,
   the production Firebase/Worker suite passes `26/26`, and isolated macOS run
   `29236759213` passed a clean iOS Simulator build.
+- Round 9 has made every AI request an authenticated, least-privilege server
+  decision. Role, class, student and support-thread scope are checked before
+  Groq; client-selected quality escalation and request-ID replay are rejected;
+  per-user burst and atomic Taipei-day quotas are active in internal mode; and
+  iOS degrades to clear local guidance on quota or provider failures. Worker
+  version `cf6dfb11-0644-4680-9fb9-f66e86e26996` is deployed. Runtime tests
+  pass `15/15`, production Firebase/Groq smoke tests pass `34/34`, the complete
+  Python validator sweep passes `69/69`, and isolated macOS run `29241754603`
+  passed the clean iOS Simulator build.
 
 ## Current technical constraints
 
@@ -109,8 +119,8 @@ learning must remain usable without joining a class.
   access-boundary smoke tests and the isolated Firestore Emulator role matrix
   both pass.
 - Swift compilation is not available on this Windows host. The isolated macOS
-  GitHub Actions gate passed the Round 8 clean iOS Simulator build in run
-  `29236759213`; Xcode Cloud remains the release-level gate at the agreed
+  GitHub Actions gate passed the Round 9 clean iOS Simulator build in run
+  `29241754603`; Xcode Cloud remains the release-level gate at the agreed
   checkpoint.
 - Existing legacy validators can fail because they assert removed UI or old
   copy. Preserve useful behavioral coverage by replacing them, not by reviving
@@ -142,11 +152,12 @@ learning must remain usable without joining a class.
 
 ## Next gate
 
-Block B is complete on `codex/app-store-hardening-b`. Round 8 passed the full
-source audit, Worker tests, Functions build, Firestore Emulator role matrix,
-production authenticated smoke suite and isolated macOS Simulator build. Its
-one deliberate merge to `main` is the Xcode Cloud checkpoint for Rounds 5-8.
-Round 9 begins Block C only after that merge is pushed.
+Round 9 is complete on `codex/app-store-hardening-c`. The authenticated AI
+gateway, internal/public quota policies, structured monitoring, iOS fallback
+boundary, production smoke suite and isolated macOS compile gate all pass.
+Round 10 can now connect AI recommendations to executable learning actions.
+The branch stays separate from `main` until the Block C checkpoint after Round
+12, when one deliberate merge will trigger Xcode Cloud.
 
 ## Maintenance rule
 

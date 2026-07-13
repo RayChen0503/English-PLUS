@@ -17,8 +17,8 @@ evidence in the round reports.
 ## Working agreement
 
 - Baseline branch: `main`
-- Current Block B branch: `codex/app-store-hardening-b`
-- Block B baseline commit: `9bb6307`
+- Current Block C branch: `codex/app-store-hardening-c`
+- Block C baseline commit: `8b1db6c`
 - Xcode Cloud gate: merge to `main` only after the agreed checkpoints.
 - Verification cadence: focused checks every round, mini regression every two
   rounds, and full audits after rounds 4, 8, 12, 16, and 20.
@@ -36,9 +36,10 @@ evidence in the round reports.
 | 6 - Classroom lifecycle | Complete | `round-06-classroom-lifecycle.md` |
 | 7 - Teacher class management | Complete | `round-07-teacher-class-management.md` |
 | 8 - Firestore synchronization and Block B audit | Complete | `round-08-firestore-sync-audit.md` |
+| 9 - Authenticated AI gateway, quota and monitoring | Complete | `round-09-ai-gateway-hardening.md` |
 
 ## Main-branch safety
 
-Block B commits are made on `codex/app-store-hardening-b`. They do not
+Block C commits are made on `codex/app-store-hardening-c`. They do not
 represent a TestFlight release until the hardening branch is deliberately
-merged into `main` and Xcode Cloud passes.
+merged into `main` after Round 12 and Xcode Cloud passes.
