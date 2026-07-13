@@ -231,15 +231,6 @@ final class MockLearningRepository: ObservableObject {
         )
         missionAttempts = []
         persistSnapshot()
-
-        if let profile, moodScore <= 2 {
-            sendSupportRequest(
-                from: user,
-                profile: profile,
-                option: recoverySupportOption,
-                message: "我今天狀態比較低，想先完成小任務。"
-            )
-        }
     }
 
     func submitMissionAnswer(_ answer: String) -> MissionAttempt? {
@@ -498,7 +489,7 @@ final class MockLearningRepository: ObservableObject {
             status: .waitingForStaff,
             studentMessage: message ?? option.studentText,
             moodScore: moodScore,
-            latestQuestionId: nextMissionQuestion?.id ?? latestMissionAttempt?.questionId,
+            latestQuestionId: nil,
             questionSnapshot: nil,
             createdAt: date,
             updatedAt: date,
@@ -650,17 +641,6 @@ final class MockLearningRepository: ObservableObject {
 
     private var uniqueCorrectQuestionIds: Set<String> {
         Set(missionAttempts.filter(\.isCorrect).map(\.questionId))
-    }
-
-    private var recoverySupportOption: SupportOption {
-        seedSnapshot.supportOptions.first { $0.route == .recovery }
-            ?? SupportOption(
-                id: "low-energy",
-                reason: "今天狀態不好",
-                studentText: "我想先做很小的任務。",
-                platformAction: "先完成一小步，再慢慢回到練習。",
-                route: .recovery
-            )
     }
 
     private func addReply(
@@ -1027,6 +1007,17 @@ final class MockLearningRepository: ObservableObject {
         }
     }
 
+    func eraseLocalData(for uid: String) {
+        localPersistence.clearAllScopes(for: uid)
+        activePersistenceScopeKey = nil
+        currentCheckIn = nil
+        currentMission = nil
+        missionAttempts = []
+        supportRequests = []
+        assignedPracticeTasks = []
+        learningFlow = .initial(dateKey: Self.dateKey(from: now()), updatedAt: now())
+    }
+
     private func questionLevels(from aiDifficulty: String, fallbackTrack: MissionTrack) -> [QuestionLevel] {
         switch aiDifficulty.lowercased() {
         case "foundation", "a1":
@@ -1070,7 +1061,7 @@ final class MockLearningRepository: ObservableObject {
     }
 
     private func automaticReplies(for option: SupportOption, at date: Date) -> [SupportReply] {
-        guard option.route == .aiCoach || option.route == .readingBreakdown || option.route == .recovery else {
+        guard option.route == .aiCoach || option.route == .readingBreakdown else {
             return []
         }
         return [
@@ -1183,12 +1174,17 @@ protocol LocalLearningPersistence {
     func loadSnapshot() -> LocalLearningSnapshot?
     func saveSnapshot(_ snapshot: LocalLearningSnapshot)
     func clearSnapshot()
+    func clearAllScopes(for uid: String)
     func scoped(for uid: String) -> any LocalLearningPersistence
 }
 
 extension LocalLearningPersistence {
     func scoped(for uid: String) -> any LocalLearningPersistence {
         self
+    }
+
+    func clearAllScopes(for uid: String) {
+        clearSnapshot()
     }
 }
 
@@ -1252,6 +1248,28 @@ struct UserDefaultsLearningPersistence: LocalLearningPersistence {
         if let fallbackKey {
             defaults.removeObject(forKey: fallbackKey)
         }
+    }
+
+    func clearAllScopes(for uid: String) {
+        let normalizedUid = uid.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !normalizedUid.isEmpty else { return }
+        let scopedPrefix = "\(baseKey).scope."
+        for candidateKey in defaults.dictionaryRepresentation().keys where candidateKey.hasPrefix(scopedPrefix) {
+            let encodedScope = String(candidateKey.dropFirst(scopedPrefix.count))
+                .replacingOccurrences(of: "_", with: "/")
+                .replacingOccurrences(of: "-", with: "+")
+            let paddingCount = (4 - encodedScope.count % 4) % 4
+            let padded = encodedScope + String(repeating: "=", count: paddingCount)
+            guard let data = Data(base64Encoded: padded),
+                  let scope = String(data: data, encoding: .utf8),
+                  scope == normalizedUid || scope.hasPrefix("\(normalizedUid)--") else {
+                continue
+            }
+            defaults.removeObject(forKey: candidateKey)
+        }
+        let legacyPersonalKey = "\(baseKey).\(FirebaseBackendConfig.personalScopeId(uid: normalizedUid).lowercased())"
+        defaults.removeObject(forKey: legacyPersonalKey)
+        clearSnapshot()
     }
 
     func scoped(for uid: String) -> any LocalLearningPersistence {

@@ -74,6 +74,8 @@
 		100000000000000000000165 /* VolunteerReviewView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 100000000000000000000064 /* VolunteerReviewView.swift */; };
 		100000000000000000000166 /* GoogleSignInSwift in Frameworks */ = {isa = PBXBuildFile; productRef = 100000000000000000000707 /* GoogleSignInSwift */; };
 		100000000000000000000167 /* ClassroomService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 100000000000000000000065 /* ClassroomService.swift */; };
+		100000000000000000000168 /* AccountLifecycleService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 100000000000000000000066 /* AccountLifecycleService.swift */; };
+		100000000000000000000169 /* AccountDataView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 100000000000000000000067 /* AccountDataView.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -142,6 +144,8 @@
 		100000000000000000000063 /* VolunteerReviewService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VolunteerReviewService.swift; sourceTree = "<group>"; };
 		100000000000000000000064 /* VolunteerReviewView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VolunteerReviewView.swift; sourceTree = "<group>"; };
 		100000000000000000000065 /* ClassroomService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ClassroomService.swift; sourceTree = "<group>"; };
+		100000000000000000000066 /* AccountLifecycleService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AccountLifecycleService.swift; sourceTree = "<group>"; };
+		100000000000000000000067 /* AccountDataView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AccountDataView.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -242,6 +246,7 @@
 				100000000000000000000060 /* EvidenceUploadService.swift */,
 				100000000000000000000063 /* VolunteerReviewService.swift */,
 				100000000000000000000065 /* ClassroomService.swift */,
+				100000000000000000000066 /* AccountLifecycleService.swift */,
 				100000000000000000000045 /* FirebaseAppConfigurator.swift */,
 				100000000000000000000034 /* AiProxyService.swift */,
 				100000000000000000000035 /* MockAiProxyService.swift */,
@@ -363,6 +368,7 @@
 			children = (
 				100000000000000000000054 /* SupportQuestionSnapshotCard.swift */,
 				100000000000000000000055 /* StaffSupportActionBar.swift */,
+				100000000000000000000067 /* AccountDataView.swift */,
 			);
 			path = Shared;
 			sourceTree = "<group>";
@@ -494,6 +500,7 @@
 				100000000000000000000163 /* VolunteerApplicationView.swift in Sources */,
 				100000000000000000000164 /* VolunteerReviewService.swift in Sources */,
 				100000000000000000000167 /* ClassroomService.swift in Sources */,
+				100000000000000000000168 /* AccountLifecycleService.swift in Sources */,
 				100000000000000000000165 /* VolunteerReviewView.swift in Sources */,
 				100000000000000000000134 /* PrivacyConsent.swift in Sources */,
 				100000000000000000000138 /* LearningModels.swift in Sources */,
@@ -516,6 +523,7 @@
 				100000000000000000000117 /* SupportView.swift in Sources */,
 				100000000000000000000155 /* SupportQuestionSnapshotCard.swift in Sources */,
 				100000000000000000000156 /* StaffSupportActionBar.swift in Sources */,
+				100000000000000000000169 /* AccountDataView.swift in Sources */,
 				100000000000000000000154 /* RuntimeDiagnosticsView.swift in Sources */,
 				100000000000000000000118 /* TeacherShellView.swift in Sources */,
 				100000000000000000000119 /* TeacherHomeView.swift in Sources */,

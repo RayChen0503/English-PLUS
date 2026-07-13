@@ -472,3 +472,18 @@ test("assigned volunteers read class learning context while unassigned volunteer
   await assertSucceeds(getDoc(doc(dbFor("volunteerA"), ...path)));
   await assertFails(getDoc(doc(dbFor("volunteerB"), ...path)));
 });
+
+test("account deletion jobs and anonymous metrics are backend-only", async () => {
+  for (const uid of ["studentA", "teacherA", "volunteerA"]) {
+    const db = dbFor(uid);
+    await assertFails(getDoc(doc(db, "accountDeletionJobs", uid)));
+    await assertFails(setDoc(doc(db, "accountDeletionJobs", uid), {
+      uid,
+      phase: "cleaning",
+    }));
+    await assertFails(getDoc(doc(db, "anonymousProductMetrics", "account-deletions-2026-07")));
+    await assertFails(setDoc(doc(db, "anonymousProductMetrics", "account-deletions-2026-07"), {
+      totalAccountsDeleted: 999,
+    }));
+  }
+});

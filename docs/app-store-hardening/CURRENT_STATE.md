@@ -30,7 +30,11 @@ learning must remain usable without joining a class.
   - Round 8 - Firestore synchronization and Block B audit (`round-08-firestore-sync-audit.md`)
   - Round 9 - authenticated AI gateway, quota and monitoring (`round-09-ai-gateway-hardening.md`)
   - Round 10 - executable AI learning and staff actions (`round-10-executable-ai-actions.md`)
-- Hardening progress: **10/20 complete; Round 11 is next**.
+  - Round 11 implementation - account deletion and explicit human help
+    (`round-11-account-deletion-human-help.md`); final scheduled-recovery IAM
+    sign-off remains pending.
+- Hardening progress: **10/20 fully signed off; Round 11 implementation is
+  complete and awaiting one production IAM recovery check**.
 - Do not merge to `main` or trigger Xcode Cloud until the end of a four-round
   block: 4, 8, 12, 16, and 20.
 - Never reset, overwrite, or silently discard user work.
@@ -121,6 +125,15 @@ learning must remain usable without joining a class.
   `8db50781-98b4-4ef7-89e4-a8ff4e9319a6` is deployed. Runtime tests pass
   `19/19`, production Firebase/Groq smoke tests pass `36/36`, and the complete
   Python validator sweep passes `70/70`.
+- Round 11 has added two-step in-app account deletion, UID-scoped local erasure,
+  anonymous-only retained metrics, staged cleanup for multi-class accounts and
+  an explicit student-controlled human-help route without automatic mood
+  alerts. Firestore Rules and indexes are deployed; Worker version
+  `c4cf2872-26ca-4829-90a2-66102a055eb4` passes production smoke checks `46/46`,
+  the Firestore Emulator suite passes `18/18`, Worker tests pass `22/22`, and
+  the complete validator sweep passes `71/71`. The normal signed-in deletion
+  path is complete; scheduled crash recovery still needs Firebase Auth delete
+  permission for the Worker service account.
 
 ## Current technical constraints
 
@@ -162,12 +175,12 @@ learning must remain usable without joining a class.
 
 ## Next gate
 
-Round 10 is complete on `codex/app-store-hardening-c`. AI recommendations now
-launch validated question sets, wrong-answer help opens finite repair practice,
-and staff AI remains an editable draft rather than an automatic message.
-Round 11 can now implement account deletion, retention and human-help rules.
-The branch stays separate from `main` until the Block C checkpoint after Round
-12, when one deliberate merge will trigger Xcode Cloud.
+Round 11 implementation is complete on `codex/app-store-hardening-c`. Before it
+is fully signed off, grant the Worker service account Firebase Authentication
+user-delete permission and verify the scheduled retry path. Round 12 then adds
+the final privacy policy, third-party AI disclosure and support entry. The
+branch stays separate from `main` until that Block C checkpoint, when one
+deliberate merge will trigger Xcode Cloud.
 
 ## Maintenance rule
 

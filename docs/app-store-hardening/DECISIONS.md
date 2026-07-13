@@ -33,3 +33,5 @@ already depend on.
 
 - No unresolved product decision remains for Rounds 1-11. Raw volunteer
   evidence must never be stored in a user profile document.
+- Before Round 12, provide or confirm the public privacy-policy URL and support
+  email address used in the App and App Store metadata.

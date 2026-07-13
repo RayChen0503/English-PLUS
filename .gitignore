@@ -20,5 +20,6 @@ ui-debug.log
 workers/**/.dev.vars
 workers/**/.wrangler/
 workers/**/node_modules/
+workers/**/wrangler-*.log
 **/__pycache__/
 *.pyc

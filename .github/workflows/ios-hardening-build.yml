@@ -7,6 +7,7 @@ on:
       - codex/app-store-hardening-c
     paths:
       - .github/ci-triggers/round10-ios-build
+      - .github/ci-triggers/round11-ios-build
 
 permissions:
   contents: read
@@ -78,6 +79,7 @@ jobs:
           python3 scripts/validate_app_store_hardening_round8.py
           python3 scripts/validate_app_store_hardening_round9.py
           python3 scripts/validate_app_store_hardening_round10.py
+          python3 scripts/validate_app_store_hardening_round11.py
           python3 scripts/validate_ios_xcode_project_sources.py
 
       - name: Build iOS Simulator target

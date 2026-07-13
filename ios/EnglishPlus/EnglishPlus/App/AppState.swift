@@ -35,6 +35,7 @@ final class AppState: ObservableObject {
     private let evidenceUploadService: EvidenceUploadService
     private let volunteerReviewService: VolunteerReviewService
     private let classroomService: ClassroomService
+    private let accountLifecycleService: AccountLifecycleService
     private var classroomRosterListener: ClassroomRosterListenerToken?
     private var didAttemptSessionRestore = false
     private var pendingIdentityCredential: FederatedIdentityCredential?
@@ -47,6 +48,7 @@ final class AppState: ObservableObject {
         evidenceUploadService: EvidenceUploadService,
         volunteerReviewService: VolunteerReviewService,
         classroomService: ClassroomService,
+        accountLifecycleService: AccountLifecycleService,
         runtimeDiagnostics: RuntimeDiagnosticsSnapshot
     ) {
         self.authService = authService
@@ -55,6 +57,7 @@ final class AppState: ObservableObject {
         self.evidenceUploadService = evidenceUploadService
         self.volunteerReviewService = volunteerReviewService
         self.classroomService = classroomService
+        self.accountLifecycleService = accountLifecycleService
         self.runtimeDiagnostics = runtimeDiagnostics
     }
 
@@ -325,6 +328,26 @@ final class AppState: ObservableObject {
             signInErrorMessage = userMessage(for: error)
         }
         isManagingAccount = false
+    }
+
+    func loadAccountDeletionPreview() async throws -> AccountDeletionPreview {
+        guard currentUser != nil else {
+            throw AccountLifecycleError.unauthenticated
+        }
+        return try await accountLifecycleService.deletionPreview()
+    }
+
+    func deleteCurrentAccount() async throws -> AccountDeletionReceipt {
+        guard currentUser != nil, !isManagingAccount else {
+            throw AccountLifecycleError.unauthenticated
+        }
+        isManagingAccount = true
+        defer { isManagingAccount = false }
+        return try await accountLifecycleService.deleteAccount()
+    }
+
+    func completeAccountDeletion() {
+        signOut()
     }
 
     func restoreSessionIfPossible() async {

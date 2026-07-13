@@ -3,6 +3,7 @@
 struct VolunteerHomeView: View {
     @EnvironmentObject private var appState: AppState
     @EnvironmentObject private var learningRepository: LearningRepositoryStore
+    @State private var showsAccountData = false
 
     var body: some View {
         NavigationStack {
@@ -25,12 +26,25 @@ struct VolunteerHomeView: View {
             .navigationTitle("志工工作台")
             .toolbar {
                 ToolbarItem(placement: .topBarTrailing) {
-                    Button {
-                        appState.signOut()
+                    Menu {
+                        Button {
+                            showsAccountData = true
+                        } label: {
+                            Label("帳號與資料", systemImage: "person.text.rectangle")
+                        }
+
+                        Button(role: .destructive) {
+                            appState.signOut()
+                        } label: {
+                            Label("登出", systemImage: "rectangle.portrait.and.arrow.right")
+                        }
                     } label: {
-                        Label("登出", systemImage: "rectangle.portrait.and.arrow.right")
+                        Label("帳號", systemImage: "person.crop.circle")
                     }
                 }
+            }
+            .sheet(isPresented: $showsAccountData) {
+                AccountDataView()
             }
         }
     }
@@ -49,7 +63,7 @@ struct VolunteerHandoffWorkspaceView: View {
                             .font(.title.bold())
                             .foregroundStyle(EPTheme.ink)
 
-                        Text("排序規則：學生主動求助、高風險心情、閱讀卡點會先排在前面。")
+                        Text("排序規則：只顯示學生主動送出的求助；需要真人陪伴與閱讀卡點會優先排列。")
                             .font(.subheadline)
                             .foregroundStyle(EPTheme.secondaryInk)
                             .fixedSize(horizontal: false, vertical: true)
@@ -123,6 +137,8 @@ private struct VolunteerSupportRequestCard: View {
                     title: "學生卡住的題目",
                     showsExplanation: true
                 )
+            } else if request.hasActionableHumanSupportContext {
+                StaffHumanSupportRequestCard(message: request.studentMessage)
             } else {
                 VolunteerMissingQuestionSnapshotLabel()
             }
@@ -412,6 +428,8 @@ private struct VolunteerTodayPriorityCard: View {
                     .foregroundStyle(EPTheme.ink)
                     .lineLimit(3)
                     .fixedSize(horizontal: false, vertical: true)
+            } else if request.hasActionableHumanSupportContext {
+                StaffHumanSupportRequestCard(message: request.studentMessage)
             } else {
                 VolunteerMissingQuestionSnapshotLabel()
             }

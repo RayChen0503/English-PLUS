@@ -253,7 +253,8 @@ private struct SupportRequestInboxCard: View {
                     title: "你送出的題目",
                     showsExplanation: true
                 )
-            } else if request.latestQuestionId?.isEmpty == false {
+            } else if request.latestQuestionId?.isEmpty == false
+                        && !request.hasActionableHumanSupportContext {
                 Label("這筆求助有題目紀錄，但目前缺少完整題目快照。", systemImage: "doc.text")
                     .font(.caption.bold())
                     .foregroundStyle(EPTheme.secondaryInk)
@@ -431,7 +432,7 @@ private struct SupportWaitingReplyCard: View {
         case .aiCoach:
             return "AI 建議會顯示在這裡。"
         case .recovery:
-            return "先休息一下，AI 或老師回覆後會出現在這裡。"
+            return "你已主動送給老師與志工；有人回覆後會顯示在這裡。這不是即時緊急服務。"
         }
     }
 }

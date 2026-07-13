@@ -807,5 +807,16 @@ service cloud.firestore {
     match /classJoinAttempts/{uid} {
       allow read, write: if false;
     }
+
+    // Account deletion is a trusted-backend workflow. Jobs may temporarily
+    // contain a UID only while cleanup is retryable; anonymous metrics contain
+    // no user identifier. Neither collection is client-readable or writable.
+    match /accountDeletionJobs/{uid} {
+      allow read, write: if false;
+    }
+
+    match /anonymousProductMetrics/{metricId} {
+      allow read, write: if false;
+    }
   }
 }

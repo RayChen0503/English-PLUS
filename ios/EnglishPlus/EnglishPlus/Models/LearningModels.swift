@@ -359,6 +359,11 @@ struct StudentSupportRequest: Identifiable, Codable, Equatable {
             && !questionSnapshot.explanation.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
     }
 
+    var hasActionableHumanSupportContext: Bool {
+        reason == .emotionalSupport
+            && !studentMessage.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    }
+
     var requiresStaffTeachingResponse: Bool {
         countsTowardSharedStaffBadge(for: .teacher)
             || countsTowardSharedStaffBadge(for: .volunteer)
@@ -379,7 +384,7 @@ struct StudentSupportRequest: Identifiable, Codable, Equatable {
         guard role != .student else { return false }
         guard !isWithdrawn else { return false }
         guard status != .archived && status != .closed else { return false }
-        guard hasCompleteQuestionSnapshotForStaff else { return false }
+        guard hasCompleteQuestionSnapshotForStaff || hasActionableHumanSupportContext else { return false }
         return !isArchivedForStaffRole(role)
     }
 
@@ -543,7 +548,7 @@ struct StaffStudentSummary: Identifiable, Equatable {
 
 struct StaffDashboardMetrics: Equatable {
     let studentCount: Int
-    let highRiskCount: Int
+    let priorityHelpCount: Int
     let waitingHelpCount: Int
     let repliedCount: Int
     let questionCount: Int
@@ -789,11 +794,11 @@ extension RiskLevel {
     var uiTitle: String {
         switch self {
         case .low:
-            return "低風險"
+            return "一般"
         case .medium:
-            return "中風險"
+            return "較優先"
         case .high:
-            return "高風險"
+            return "優先回覆"
         }
     }
 }

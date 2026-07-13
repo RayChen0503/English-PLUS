@@ -17,6 +17,8 @@ struct StudentHomeView: View {
     @State private var latestWrongAnswerAIResponse: AiProxyResponse?
     @State private var missionSupportConfirmation: String?
     @State private var missionSupportSentQuestionIds = Set<String>()
+    @State private var showsHumanSupportConfirmation = false
+    @State private var showsAccountData = false
 
     init(
         onOpenSupport: @escaping () -> Void = {},
@@ -48,14 +50,35 @@ struct StudentHomeView: View {
             .navigationTitle("首頁")
             .toolbar {
                 ToolbarItem(placement: .topBarTrailing) {
-                    Button {
-                        appState.signOut()
+                    Menu {
+                        Button {
+                            showsAccountData = true
+                        } label: {
+                            Label("帳號與資料", systemImage: "person.text.rectangle")
+                        }
+
+                        Button(role: .destructive) {
+                            appState.signOut()
+                        } label: {
+                            Label("登出", systemImage: "rectangle.portrait.and.arrow.right")
+                        }
                     } label: {
-                        Label("登出", systemImage: "rectangle.portrait.and.arrow.right")
+                        Label("帳號", systemImage: "person.crop.circle")
                     }
                 }
             }
+            .sheet(isPresented: $showsAccountData) {
+                AccountDataView()
+            }
             .onAppear(perform: initializePreferredTypes)
+            .alert("送出真人求助？", isPresented: $showsHumanSupportConfirmation) {
+                Button("取消", role: .cancel) {}
+                Button("送給老師與志工") {
+                    sendHumanSupportRequest()
+                }
+            } message: {
+                Text("只有按下送出後，班級中的老師與志工才會看到這則訊息。心情分數本身不會自動通知任何人。")
+            }
         }
     }
 
@@ -69,8 +92,14 @@ struct StudentHomeView: View {
             checkInCard
         case .missionActive:
             missionCard
+            if shouldOfferHumanSupport {
+                humanSupportCard
+            }
         case .missionCompleted:
             missionCompletionActions
+            if shouldOfferHumanSupport {
+                humanSupportCard
+            }
         case .freePractice:
             freePracticeModeCard
         }
@@ -515,6 +544,53 @@ struct StudentHomeView: View {
             questionIds: repairSelection.items.map(\.id)
         )
         openFreePractice()
+    }
+
+    private var humanSupportCard: some View {
+        StudentHumanHelpCard(
+            canSendToClass: appState.currentProfile?.activeClassId != nil,
+            hasSentRequest: hasActiveHumanSupportRequest,
+            onSend: {
+                showsHumanSupportConfirmation = true
+            },
+            onOpenSupport: onOpenSupport
+        )
+    }
+
+    private var shouldOfferHumanSupport: Bool {
+        guard let moodScore = learningRepository.currentCheckIn?.moodScore else { return false }
+        return moodScore <= 2
+    }
+
+    private var hasActiveHumanSupportRequest: Bool {
+        learningRepository.supportRequests(forStudentUid: appState.currentUser?.id).contains { request in
+            request.reason == .emotionalSupport
+                && request.withdrawnAt == nil
+                && request.studentArchivedAt == nil
+                && request.status != .closed
+        }
+    }
+
+    private func sendHumanSupportRequest() {
+        guard appState.currentProfile?.activeClassId != nil,
+              !hasActiveHumanSupportRequest else { return }
+        learningRepository.sendSupportRequest(
+            from: appState.currentUser,
+            profile: appState.currentProfile,
+            option: humanSupportOption(),
+            message: "我今天狀態比較低，想主動請老師或志工陪我一下。"
+        )
+    }
+
+    private func humanSupportOption() -> SupportOption {
+        SeedData.supportOptions.first { $0.route == .recovery }
+            ?? SupportOption(
+                id: "student-human-support",
+                reason: "我想找真人陪我",
+                studentText: "我今天狀態比較低，想找人陪我一下。",
+                platformAction: "等待班級中的老師或志工回覆。",
+                route: .recovery
+            )
     }
 
     private func openFreePractice() {
@@ -985,5 +1061,91 @@ private struct CompletionCard: View {
         .padding(14)
         .background(EPTheme.support.opacity(0.10))
         .clipShape(RoundedRectangle(cornerRadius: EPTheme.cardRadius))
+    }
+}
+
+private struct StudentHumanHelpCard: View {
+    let canSendToClass: Bool
+    let hasSentRequest: Bool
+    let onSend: () -> Void
+    let onOpenSupport: () -> Void
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Label("今天先不用硬撐", systemImage: "heart.circle.fill")
+                .font(.headline)
+                .foregroundStyle(EPTheme.support)
+
+            Text("心情檢測只用來調整學習任務，不會自動通知老師、志工或其他人。需要陪伴時，由你決定要不要主動送出。")
+                .font(.subheadline)
+                .foregroundStyle(EPTheme.ink)
+                .fixedSize(horizontal: false, vertical: true)
+
+            if hasSentRequest {
+                Label("已送給老師與志工，可到支持頁查看回覆或收回。", systemImage: "checkmark.circle.fill")
+                    .font(.subheadline.bold())
+                    .foregroundStyle(EPTheme.support)
+
+                Button("查看支持回覆", action: onOpenSupport)
+                    .buttonStyle(SecondaryActionButtonStyle())
+            } else if canSendToClass {
+                Button(action: onSend) {
+                    Label("主動請老師或志工陪我", systemImage: "person.2.fill")
+                        .frame(maxWidth: .infinity)
+                }
+                .buttonStyle(PrimaryActionButtonStyle())
+            } else {
+                Text("目前是個人學習模式，因此不會把訊息傳給老師或志工；你仍可直接使用下方的官方求助資源。")
+                    .font(.caption)
+                    .foregroundStyle(EPTheme.secondaryInk)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+
+            Divider()
+
+            Text("需要立即協助")
+                .font(.caption.bold())
+                .foregroundStyle(EPTheme.secondaryInk)
+
+            ViewThatFits(in: .horizontal) {
+                HStack(spacing: 8) {
+                    HumanHelpPhoneLink(title: "安心專線 1925", number: "1925")
+                    HumanHelpPhoneLink(title: "保護專線 113", number: "113")
+                }
+                VStack(spacing: 8) {
+                    HumanHelpPhoneLink(title: "安心專線 1925", number: "1925")
+                    HumanHelpPhoneLink(title: "保護專線 113", number: "113")
+                }
+            }
+
+            HumanHelpPhoneLink(title: "有立即危險請撥 119", number: "119", isEmergency: true)
+
+            Text("English+ 不是 24 小時緊急服務，也無法保證老師或志工立即看到訊息。遇到立即危險，請直接找身邊可信任的大人或撥 119。")
+                .font(.caption)
+                .foregroundStyle(EPTheme.secondaryInk)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        .padding(16)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(EPTheme.support.opacity(0.10))
+        .clipShape(RoundedRectangle(cornerRadius: EPTheme.cardRadius))
+    }
+}
+
+private struct HumanHelpPhoneLink: View {
+    let title: String
+    let number: String
+    var isEmergency = false
+
+    var body: some View {
+        Link(destination: URL(string: "tel:\(number)")!) {
+            Label(title, systemImage: "phone.fill")
+                .font(.caption.bold())
+                .foregroundStyle(isEmergency ? EPTheme.warning : EPTheme.primary)
+                .frame(maxWidth: .infinity, minHeight: 44)
+                .background((isEmergency ? EPTheme.warning : EPTheme.primary).opacity(0.10))
+                .clipShape(RoundedRectangle(cornerRadius: 10))
+        }
+        .accessibilityHint("撥打 \(number)")
     }
 }

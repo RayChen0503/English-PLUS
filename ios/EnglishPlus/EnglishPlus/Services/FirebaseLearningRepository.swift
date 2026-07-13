@@ -52,6 +52,16 @@ final class FirebaseLearningRepository: LearningRepositoryBackend {
         fallback.questionPracticeSets
     }
 
+    func eraseLocalData(for uid: String) {
+        removeRealtimeRegistrations()
+        fallback.eraseLocalData(for: uid)
+        currentSnapshot = fallback.snapshot
+        activeClassId = nil
+        activeUserUid = nil
+        activeUserDisplayName = nil
+        activeUserRole = nil
+    }
+
     func refresh() async throws {
         currentSnapshot = fallback.snapshot
         normalizeCurrentSnapshotForToday()
@@ -533,12 +543,6 @@ final class FirebaseLearningRepository: LearningRepositoryBackend {
         let checkIn = currentSnapshot.currentCheckIn
         let mission = currentSnapshot.currentMission
         let moodScore = checkIn?.moodScore
-        let riskLevel: RiskLevel
-        switch moodScore {
-        case .some(...2): riskLevel = .high
-        case .some(3): riskLevel = .medium
-        default: riskLevel = .low
-        }
         let currentLevel = mission?.questions
             .map(\.level)
             .max { levelRank($0) < levelRank($1) }?
@@ -554,7 +558,8 @@ final class FirebaseLearningRepository: LearningRepositoryBackend {
                 "lastMoodScore": nullable(moodScore),
                 "lastMissionStatus": mission?.status.rawValue ?? "notStarted",
                 "lastActivityAt": Date(),
-                "riskLevel": riskLevel.rawValue,
+                // Mood can tune the student's own mission, but never creates a staff alert.
+                "riskLevel": RiskLevel.low.rawValue,
                 "membershipStatus": "active",
                 "updatedAt": Date(),
             ]
@@ -632,7 +637,7 @@ final class FirebaseLearningRepository: LearningRepositoryBackend {
                     threadId: request.id,
                     messageId: reply.id
                 ),
-                data: firestoreData(from: reply)
+                data: firestoreData(from: reply, request: request)
             )
         }
     }
@@ -1170,6 +1175,7 @@ final class FirebaseLearningRepository: LearningRepositoryBackend {
             "studentUid": request.studentUid,
             "studentName": request.studentName,
             "classId": request.classCode,
+            "messageContextVersion": 2,
             "status": request.status.rawValue,
             "reason": request.reason.rawValue,
             "route": request.route.rawValue,
@@ -1219,9 +1225,16 @@ final class FirebaseLearningRepository: LearningRepositoryBackend {
         return value
     }
 
-    private func firestoreData(from reply: SupportReply) -> [String: Any] {
+    private func firestoreData(
+        from reply: SupportReply,
+        request: StudentSupportRequest
+    ) -> [String: Any] {
         [
             "messageId": reply.id,
+            "threadId": request.id,
+            "classId": request.classCode,
+            "studentUid": request.studentUid,
+            "contextVersion": 2,
             "authorUid": reply.authorUid,
             "authorName": reply.authorName,
             "authorRole": reply.authorRole.rawValue,
@@ -1265,6 +1278,10 @@ final class FirebaseLearningRepository: LearningRepositoryBackend {
     private func firestoreData(fromStudentRequest request: StudentSupportRequest) -> [String: Any] {
         [
             "messageId": "\(request.id)-student-request",
+            "threadId": request.id,
+            "classId": request.classCode,
+            "studentUid": request.studentUid,
+            "contextVersion": 2,
             "authorUid": request.studentUid,
             "authorName": request.studentName,
             "authorRole": UserRole.student.rawValue,

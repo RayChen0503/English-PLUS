@@ -7,6 +7,7 @@ import UIKit
 struct TeacherHomeView: View {
     @EnvironmentObject private var appState: AppState
     @EnvironmentObject private var learningRepository: LearningRepositoryStore
+    @State private var showsAccountData = false
 
     var body: some View {
         NavigationStack {
@@ -40,12 +41,25 @@ struct TeacherHomeView: View {
             .navigationTitle("教師工作台")
             .toolbar {
                 ToolbarItem(placement: .topBarTrailing) {
-                    Button {
-                        appState.signOut()
+                    Menu {
+                        Button {
+                            showsAccountData = true
+                        } label: {
+                            Label("帳號與資料", systemImage: "person.text.rectangle")
+                        }
+
+                        Button(role: .destructive) {
+                            appState.signOut()
+                        } label: {
+                            Label("登出", systemImage: "rectangle.portrait.and.arrow.right")
+                        }
                     } label: {
-                        Label("登出", systemImage: "rectangle.portrait.and.arrow.right")
+                        Label("帳號", systemImage: "person.crop.circle")
                     }
                 }
+            }
+            .sheet(isPresented: $showsAccountData) {
+                AccountDataView()
             }
         }
     }
@@ -64,7 +78,7 @@ struct TeacherHandoffView: View {
                             .font(.title.bold())
                             .foregroundStyle(EPTheme.ink)
 
-                        Text("排序規則：學生主動求助、高風險心情、閱讀卡點會先排在前面。")
+                        Text("排序規則：只顯示學生主動送出的求助；需要真人陪伴與閱讀卡點會優先排列。")
                             .font(.subheadline)
                             .foregroundStyle(EPTheme.secondaryInk)
                             .fixedSize(horizontal: false, vertical: true)
@@ -138,6 +152,8 @@ struct TeacherSupportRequestCard: View {
                     title: "學生卡住的題目",
                     showsExplanation: true
                 )
+            } else if request.hasActionableHumanSupportContext {
+                StaffHumanSupportRequestCard(message: request.studentMessage)
             } else {
                 StaffMissingQuestionSnapshotLabel()
             }
@@ -1043,7 +1059,7 @@ private struct TeacherClassRosterSummaryCard: View {
                     Label("班級概況", systemImage: "person.3.sequence.fill")
                         .font(.headline)
                         .foregroundStyle(EPTheme.ink)
-                    Text("這裡是老師派任務前的總覽：先看誰需要照顧，再決定要派基礎修復、穩定練習或挑戰題。")
+                    Text("這裡是老師派任務前的總覽：先看學生主動送出的求助與任務狀態，再決定要派基礎修復、穩定練習或挑戰題。")
                         .font(.subheadline)
                         .foregroundStyle(EPTheme.secondaryInk)
                         .fixedSize(horizontal: false, vertical: true)
@@ -1053,12 +1069,13 @@ private struct TeacherClassRosterSummaryCard: View {
             }
 
             HStack(spacing: 10) {
-                TeacherStatusTile(title: "高風險", value: "\(metrics.highRiskCount)", color: EPTheme.warning)
+                TeacherStatusTile(title: "優先回覆", value: "\(metrics.priorityHelpCount)", color: EPTheme.warning)
                 TeacherStatusTile(title: "待回覆", value: "\(metrics.waitingHelpCount)", color: EPTheme.primary)
                 TeacherStatusTile(title: "平均心情", value: metrics.averageMoodText, color: EPTheme.support)
             }
 
-            if let firstPriority = students.sorted(by: prioritySort).first {
+            if metrics.priorityHelpCount > 0,
+               let firstPriority = students.sorted(by: prioritySort).first(where: { $0.riskLevel == .high }) {
                 Text("建議先看 \(firstPriority.studentName)：\(firstPriority.nextAction)")
                     .font(.footnote)
                     .foregroundStyle(EPTheme.ink)
@@ -1066,6 +1083,11 @@ private struct TeacherClassRosterSummaryCard: View {
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .background(EPTheme.primary.opacity(0.08))
                     .clipShape(RoundedRectangle(cornerRadius: 10))
+            } else {
+                Text("目前沒有學生主動送出的優先求助，可依任務進度安排下一組練習。")
+                    .font(.footnote)
+                    .foregroundStyle(EPTheme.secondaryInk)
+                    .fixedSize(horizontal: false, vertical: true)
             }
         }
         .padding(16)
@@ -2001,8 +2023,8 @@ private struct TeacherStatusStrip: View {
     var body: some View {
         HStack(spacing: 10) {
             TeacherStatusTile(
-                title: "高風險",
-                value: "\(learningRepository.staffDashboardMetrics.highRiskCount)",
+                title: "優先回覆",
+                value: "\(learningRepository.staffDashboardMetrics.priorityHelpCount)",
                 color: EPTheme.warning
             )
             TeacherStatusTile(

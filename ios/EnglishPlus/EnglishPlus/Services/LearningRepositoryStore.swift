@@ -95,6 +95,7 @@ protocol LearningRepositoryBackend: AnyObject {
     func assignPracticeSet(_ set: QuestionPracticeSet, to student: StaffStudentSummary, by teacher: DemoUser?)
     func startAssignedPracticeTask(_ assignment: TeacherAssignedPracticeTask)
     func withdrawAssignedPracticeTask(_ assignmentId: String)
+    func eraseLocalData(for uid: String)
 }
 
 @MainActor
@@ -224,7 +225,7 @@ final class LearningRepositoryStore: ObservableObject {
 
         return StaffDashboardMetrics(
             studentCount: max(staffStudentSummaries.count, 1),
-            highRiskCount: supportRequests.filter { $0.priority == .high }.count,
+            priorityHelpCount: teacherQueue.filter { $0.priority == .high }.count,
             waitingHelpCount: supportRequests.filter { $0.countsTowardSharedStaffBadge(for: .teacher) }.count,
             repliedCount: supportRequests.filter { $0.status == .replied || $0.status == .readByStudent || $0.status == .staffHandledNoReply }.count,
             questionCount: SeedData.approvedQuestionBankItems.count,
@@ -295,9 +296,9 @@ final class LearningRepositoryStore: ObservableObject {
                     detail: "位"
                 ),
                 ClassroomReportMetric(
-                    id: "high-risk",
+                    id: "priority-help",
                     label: "優先關懷",
-                    value: "\(metrics.highRiskCount)",
+                    value: "\(metrics.priorityHelpCount)",
                     detail: "位"
                 ),
                 ClassroomReportMetric(
@@ -344,6 +345,15 @@ final class LearningRepositoryStore: ObservableObject {
         listener?.cancel()
         listener = nil
         updateSyncStatus(.idle)
+    }
+
+    func eraseLocalData(for uid: String) {
+        listener?.cancel()
+        listener = nil
+        backend.eraseLocalData(for: uid)
+        pendingPracticeLaunch = nil
+        updateSyncStatus(.idle)
+        apply(backend.snapshot)
     }
 
     func refresh() async {
@@ -562,8 +572,8 @@ final class LearningRepositoryStore: ObservableObject {
         if staffDashboardMetrics.waitingHelpCount > 0 {
             actions.append("先回應待處理求助，讓學生知道有人接住。")
         }
-        if staffDashboardMetrics.highRiskCount > 0 {
-            actions.append("高風險學生先安排短回覆或志工接力，不急著增加題量。")
+        if staffDashboardMetrics.priorityHelpCount > 0 {
+            actions.append("先回覆學生主動送出的優先求助，再決定是否需要志工接力。")
         }
         if visibleVolunteerReplies.isEmpty {
             actions.append("可請志工先使用陪伴腳本，補上學生看得到的鼓勵。")

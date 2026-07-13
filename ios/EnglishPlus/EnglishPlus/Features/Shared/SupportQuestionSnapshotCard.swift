@@ -108,3 +108,29 @@ struct SupportQuestionSnapshotCard: View {
         }
     }
 }
+
+struct StaffHumanSupportRequestCard: View {
+    let message: String
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Label("學生主動提出真人求助", systemImage: "person.2.fill")
+                .font(.subheadline.bold())
+                .foregroundStyle(EPTheme.support)
+
+            Text(message)
+                .font(.subheadline)
+                .foregroundStyle(EPTheme.ink)
+                .fixedSize(horizontal: false, vertical: true)
+
+            Text("這是學生主動送出的訊息，不是系統依心情分數自動通報。若內容涉及立即危險，請依校方程序聯絡適當成人或緊急服務。")
+                .font(.caption)
+                .foregroundStyle(EPTheme.secondaryInk)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        .padding(12)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(EPTheme.support.opacity(0.10))
+        .clipShape(RoundedRectangle(cornerRadius: 10))
+    }
+}

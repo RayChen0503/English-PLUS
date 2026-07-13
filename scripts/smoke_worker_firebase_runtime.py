@@ -1,9 +1,11 @@
 #!/usr/bin/env python3
 import argparse
+import datetime
 import json
 import plistlib
 import re
 import sys
+import time
 import urllib.error
 import urllib.request
 import uuid
@@ -94,6 +96,67 @@ def firebase_sign_in(api_key: str, email: str, password: str) -> dict[str, str]:
     }
 
 
+def firebase_sign_up(api_key: str, email: str, password: str) -> dict[str, str]:
+    response = request_json(
+        "https://identitytoolkit.googleapis.com/v1/accounts:signUp"
+        f"?key={api_key}",
+        method="POST",
+        payload={
+            "email": email,
+            "password": password,
+            "returnSecureToken": True,
+        },
+    )
+    if response.status != 200:
+        message = response.body.get("error", {}).get("message", "SIGN_UP_FAILED")
+        raise RuntimeError(f"Firebase temporary account creation failed: {message}")
+    return {
+        "idToken": str(response.body["idToken"]),
+        "localId": str(response.body["localId"]),
+        "email": email,
+        "password": password,
+    }
+
+
+def firebase_delete_temporary_account(api_key: str, id_token: str) -> Response:
+    return request_json(
+        "https://identitytoolkit.googleapis.com/v1/accounts:delete"
+        f"?key={api_key}",
+        method="POST",
+        payload={"idToken": id_token},
+    )
+
+
+def create_temporary_student_profile(session: dict[str, str]) -> Response:
+    now = datetime.datetime.now(datetime.timezone.utc).isoformat(timespec="milliseconds").replace(
+        "+00:00", "Z"
+    )
+    return request_json(
+        "https://firestore.googleapis.com/v1/projects/"
+        f"{PROJECT_ID}/databases/(default)/documents/users/{session['localId']}",
+        method="PATCH",
+        token=session["idToken"],
+        payload={
+            "fields": {
+                "displayName": {"stringValue": "刪除流程測試帳號"},
+                "preferredName": {"stringValue": "刪除流程測試帳號"},
+                "primaryRole": {"stringValue": "student"},
+                "activeClassId": {"nullValue": None},
+                "createdAt": {"timestampValue": now},
+                "updatedAt": {"timestampValue": now},
+                "lastLoginAt": {"timestampValue": now},
+                "active": {"booleanValue": True},
+                "accountStatus": {"stringValue": "active"},
+                "emailVerificationRequired": {"booleanValue": True},
+                "provisioningSource": {"stringValue": "selfServiceStudent"},
+                "identityProviders": {
+                    "arrayValue": {"values": [{"stringValue": "emailPassword"}]}
+                },
+            }
+        },
+    )
+
+
 def personal_scope_id(uid: str) -> str:
     compact = re.sub(r"[^A-Za-z0-9]+", "-", uid.upper()).strip("-")[:48]
     return f"PERSONAL-{compact}"
@@ -117,11 +180,35 @@ def expect(
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--plist", required=True, type=Path)
+    parser.add_argument(
+        "--exercise-account-deletion",
+        action="store_true",
+        help="Create and permanently delete one disposable Firebase account.",
+    )
+    parser.add_argument(
+        "--account-preview-only",
+        choices=tuple(TEST_ACCOUNTS),
+        help="Run only one authenticated account-deletion preview for diagnosis.",
+    )
     args = parser.parse_args()
     config = plistlib.loads(args.plist.read_bytes())
     api_key = config.get("API_KEY")
     if not isinstance(api_key, str) or not api_key:
         raise SystemExit("Firebase API_KEY is missing from the supplied plist.")
+
+    if args.account_preview_only:
+        email, password = TEST_ACCOUNTS[args.account_preview_only]
+        session = firebase_sign_in(api_key, email, password)
+        response = request_json(
+            f"{WORKER_BASE_URL}/account/deletion-preview",
+            token=session["idToken"],
+        )
+        print(json.dumps({
+            "role": args.account_preview_only,
+            "status": response.status,
+            "body": response.body,
+        }, ensure_ascii=False, indent=2))
+        return 0 if response.status == 200 else 1
 
     results: list[dict[str, str]] = []
     health = request_json(f"{WORKER_BASE_URL}/health")
@@ -182,6 +269,30 @@ def main() -> int:
         f"HTTP {unauthenticated_evidence.status}",
     )
 
+    unauthenticated_deletion_preview = request_json(
+        f"{WORKER_BASE_URL}/account/deletion-preview"
+    )
+    expect(
+        unauthenticated_deletion_preview.status == 401
+        and unauthenticated_deletion_preview.body.get("error") == "AUTH_REQUIRED",
+        "account_deletion_preview_requires_firebase_auth",
+        results,
+        f"HTTP {unauthenticated_deletion_preview.status}",
+    )
+
+    unauthenticated_deletion = request_json(
+        f"{WORKER_BASE_URL}/account",
+        method="DELETE",
+        payload={"confirmation": "DELETE", "policyVersion": "2026-07-13"},
+    )
+    expect(
+        unauthenticated_deletion.status == 401
+        and unauthenticated_deletion.body.get("error") == "AUTH_REQUIRED",
+        "account_deletion_requires_firebase_auth",
+        results,
+        f"HTTP {unauthenticated_deletion.status}",
+    )
+
     sessions: dict[str, dict[str, str]] = {}
     for role, (email, password) in TEST_ACCOUNTS.items():
         try:
@@ -221,6 +332,22 @@ def main() -> int:
             f"HTTP {classroom_list.status}",
         )
         classroom_lists[role] = classroom_list.body.get("classrooms", [])
+
+        deletion_preview = request_json(
+            f"{WORKER_BASE_URL}/account/deletion-preview",
+            token=session["idToken"],
+        )
+        expect(
+            deletion_preview.status == 200
+            and deletion_preview.body.get("preview", {}).get("removesIdentifiableData") is True
+            and deletion_preview.body.get("preview", {}).get("retainsAnonymousAggregateOnly") is True,
+            f"authenticated_{role}_account_deletion_preview",
+            results,
+            (
+                f"HTTP {deletion_preview.status}; "
+                f"error={deletion_preview.body.get('error', 'none')}"
+            ),
+        )
 
     if student:
         quota_before = request_json(
@@ -666,6 +793,97 @@ def main() -> int:
                 results,
                 f"HTTP {cleanup.status}",
             )
+
+    if args.exercise_account_deletion:
+        suffix = uuid.uuid4().hex
+        temporary = firebase_sign_up(
+            api_key,
+            f"account-delete-{suffix}@englishplus.test",
+            f"EnglishPlus-{suffix}!A1",
+        )
+        profile_create = create_temporary_student_profile(temporary)
+        expect(
+            profile_create.status == 200,
+            "temporary_deletion_account_profile_created",
+            results,
+            f"HTTP {profile_create.status}",
+        )
+
+        deletion_preview = request_json(
+            f"{WORKER_BASE_URL}/account/deletion-preview",
+            token=temporary["idToken"],
+        )
+        expect(
+            deletion_preview.status == 200
+            and deletion_preview.body.get("preview", {}).get("classMembershipCount") == 0,
+            "temporary_account_deletion_preview",
+            results,
+            f"HTTP {deletion_preview.status}",
+        )
+
+        deletion_attempts = 0
+        while deletion_attempts < 120:
+            deletion_attempts += 1
+            deletion = request_json(
+                f"{WORKER_BASE_URL}/account",
+                method="DELETE",
+                token=temporary["idToken"],
+                payload={"confirmation": "DELETE", "policyVersion": "2026-07-13"},
+            )
+            if deletion.status != 202:
+                break
+            time.sleep(0.25)
+        expect(
+            deletion.status == 200
+            and deletion.body.get("result", {}).get("completed") is True
+            and deletion.body.get("result", {}).get("retainedData") == "anonymousAggregateOnly",
+            "temporary_account_deleted_across_worker_and_firebase_auth",
+            results,
+            (
+                f"HTTP {deletion.status}; attempts={deletion_attempts}; "
+                f"result={deletion.body.get('result')}"
+            ),
+        )
+        if deletion.status != 200 or deletion.body.get("result", {}).get("completed") is not True:
+            emergency_cleanup = firebase_delete_temporary_account(
+                api_key,
+                temporary["idToken"],
+            )
+            expect(
+                emergency_cleanup.status == 200,
+                "failed_deletion_test_account_is_still_cleaned_up",
+                results,
+                f"HTTP {emergency_cleanup.status}",
+            )
+
+        sign_in_after_delete = request_json(
+            "https://identitytoolkit.googleapis.com/v1/accounts:signInWithPassword"
+            f"?key={api_key}",
+            method="POST",
+            payload={
+                "email": temporary["email"],
+                "password": temporary["password"],
+                "returnSecureToken": True,
+            },
+        )
+        expect(
+            sign_in_after_delete.status == 400,
+            "deleted_account_cannot_sign_in_again",
+            results,
+            f"HTTP {sign_in_after_delete.status}",
+        )
+
+        deleted_profile = request_json(
+            "https://firestore.googleapis.com/v1/projects/"
+            f"{PROJECT_ID}/databases/(default)/documents/users/{temporary['localId']}",
+            token=temporary["idToken"],
+        )
+        expect(
+            deleted_profile.status == 404,
+            "deleted_account_profile_is_absent",
+            results,
+            f"HTTP {deleted_profile.status}",
+        )
 
     print(json.dumps({"tests": results}, ensure_ascii=True, indent=2))
     return 1 if any(item["status"] == "failed" for item in results) else 0

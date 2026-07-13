@@ -11,6 +11,32 @@ const REVIEW_EVIDENCE_RETENTION_DAYS = 30;
 const CLASS_JOIN_WINDOW_SECONDS = 15 * 60;
 const CLASS_JOIN_MAX_ATTEMPTS = 12;
 const TAIPEI_TIMEZONE_OFFSET_MS = 8 * 60 * 60 * 1000;
+const ACCOUNT_DELETION_CONFIRMATION = "DELETE";
+const ACCOUNT_DELETION_POLICY_VERSION = "2026-07-13";
+const ACCOUNT_DELETION_RECENT_AUTH_SECONDS = 10 * 60;
+const ACCOUNT_DELETION_JOB_LIMIT = 20;
+const ACCOUNT_DELETION_LEGACY_THREAD_BATCH = 20;
+const ACCOUNT_DELETION_OWNED_CLASS_BATCH = 1;
+const ACCOUNT_DELETION_CLASS_STUDENT_BATCH = 1;
+const SUPPORT_MESSAGE_CONTEXT_VERSION = 2;
+const FIRESTORE_COMMIT_WRITE_LIMIT = 350;
+const USER_OWNED_COLLECTIONS = Object.freeze([
+  "classMemberships",
+  "settings",
+  "personalCheckIns",
+  "personalDailyMissions",
+  "personalAnswerEvents",
+  "personalLearningEvents",
+  "consents",
+]);
+const CLASS_STUDENT_COLLECTIONS = Object.freeze([
+  "checkIns",
+  "consents",
+  "deletionRequests",
+  "dailyMissions",
+  "answerEvents",
+  "learningEvents",
+]);
 const FINAL_REVIEW_STATUSES = new Set(["approved", "rejected", "suspended"]);
 const ALLOWED_EVIDENCE_MIME_TYPES = new Set([
   "application/pdf",
@@ -94,6 +120,14 @@ export default {
       return handleAiQuotaStatus(request, env);
     }
 
+    if (url.pathname === "/account/deletion-preview" && request.method === "GET") {
+      return handleAccountDeletionPreview(request, env);
+    }
+
+    if (url.pathname === "/account" && request.method === "DELETE") {
+      return handleAccountDeletion(request, env);
+    }
+
     if (url.pathname === "/evidence/upload-ticket" && request.method === "POST") {
       return handleEvidenceUploadTicket(request, env);
     }
@@ -165,13 +199,20 @@ export default {
 
   async scheduled(_controller, env, ctx) {
     ctx.waitUntil(
-      cleanupExpiredReviewedEvidence(env)
-        .then((result) => {
-          console.log(JSON.stringify({ event: "evidence_retention_cleanup", ...result }));
+      Promise.all([
+        cleanupExpiredReviewedEvidence(env),
+        retryPendingAccountDeletions(env),
+      ])
+        .then(([evidence, accountDeletion]) => {
+          console.log(JSON.stringify({
+            event: "scheduled_privacy_cleanup",
+            evidence,
+            accountDeletion,
+          }));
         })
         .catch((error) => {
           console.error(JSON.stringify({
-            event: "evidence_retention_cleanup_failed",
+            event: "scheduled_privacy_cleanup_failed",
             error: error instanceof Error ? error.message : "unknown",
           }));
           throw error;
@@ -358,6 +399,937 @@ async function handleAiQuotaStatus(request, env) {
   } catch (error) {
     return authOrValidationError(error, requestId);
   }
+}
+
+async function handleAccountDeletionPreview(request, env) {
+  const requestId = requestIdentifier(request);
+  try {
+    const user = await requireFirebaseUser(request, env);
+    const context = await accountDeletionContext(env, user.sub, user.firebaseIdToken);
+    const summary = await discoverAccountDeletionSummary(context);
+    return jsonResponse(
+      { ok: true, preview: accountDeletionPreview(summary), requestId },
+      200,
+      { "X-EnglishPlus-Request-ID": requestId }
+    );
+  } catch (error) {
+    console.error(JSON.stringify({
+      event: "account_deletion_preview_failed",
+      requestId,
+      errorName: safeString(error?.name) || "Error",
+      errorCode: safeString(error?.code) || "unclassified",
+      errorMessage: (safeString(error?.message) || "unknown").slice(0, 400),
+    }));
+    return authOrValidationError(error, requestId);
+  }
+}
+
+async function handleAccountDeletion(request, env) {
+  const requestId = requestIdentifier(request);
+  try {
+    const user = await requireFirebaseUser(request, env);
+    const body = await request.json();
+    normalizeAccountDeletionRequest(body);
+    const context = await accountDeletionContext(env, user.sub, user.firebaseIdToken);
+    const existingPhase = firestoreString(context.job?.fields?.phase);
+
+    if (!existingPhase) {
+      requireRecentAuthentication(user);
+      const summary = await discoverAccountDeletionSummary(context);
+      await stageAccountDeletionSummary(context, summary, false);
+      return accountDeletionPendingResponse(requestId, accountDeletionJobProgress(context.job));
+    }
+
+    if (existingPhase === "legacySupportMessages") {
+      const progress = await processLegacySupportMessageBatch(context);
+      return accountDeletionPendingResponse(requestId, progress);
+    }
+
+    if (existingPhase === "ownedClasses") {
+      const progress = await processOwnedClassBatch(context);
+      return accountDeletionPendingResponse(requestId, progress);
+    }
+
+    if (existingPhase === "classStudentData") {
+      const progress = await processClassStudentDataBatch(context);
+      return accountDeletionPendingResponse(requestId, progress);
+    }
+
+    if (existingPhase === "ready") {
+      const lateData = await discoverAccountDeletionSummary(context);
+      if (accountDeletionPhase(lateData) !== "ready") {
+        await stageAccountDeletionSummary(context, lateData, true);
+        return accountDeletionPendingResponse(requestId, accountDeletionJobProgress(context.job));
+      }
+    }
+
+    const result = await executeAccountDeletion(env, user.sub, context);
+    return jsonResponse(
+      { ok: true, result, requestId },
+      200,
+      { "X-EnglishPlus-Request-ID": requestId }
+    );
+  } catch (error) {
+    return authOrValidationError(error, requestId);
+  }
+}
+
+function accountDeletionPendingResponse(requestId, progress) {
+  const completed = Math.max(0, progress.total - progress.remaining);
+  return jsonResponse(
+    {
+      ok: true,
+      result: {
+        completed: false,
+        phase: progress.phase,
+        processedItems: completed,
+        remainingItems: progress.remaining,
+        totalItems: progress.total,
+      },
+      requestId,
+    },
+    202,
+    {
+      "Retry-After": "1",
+      "X-EnglishPlus-Request-ID": requestId,
+    }
+  );
+}
+
+function accountDeletionPhase(summary) {
+  if (summary.legacyThreadPaths.length > 0) return "legacySupportMessages";
+  if (summary.ownedClassPaths.length > 0) return "ownedClasses";
+  if (summary.classStudentPaths.length > 0) return "classStudentData";
+  return "ready";
+}
+
+async function stageAccountDeletionSummary(context, summary, appendToExisting) {
+  const existingLegacyTotal = appendToExisting
+    ? firestoreInteger(context.job?.fields?.legacyThreadTotal)
+    : 0;
+  const existingOwnedClassTotal = appendToExisting
+    ? firestoreInteger(context.job?.fields?.ownedClassTotal)
+    : 0;
+  const existingClassStudentTotal = appendToExisting
+    ? firestoreInteger(context.job?.fields?.classStudentTotal)
+    : 0;
+  await writeAccountDeletionJob(context, {
+    phase: accountDeletionPhase(summary),
+    metricRecorded: context.job?.fields?.metricRecorded?.booleanValue === true,
+    legacyThreadPaths: summary.legacyThreadPaths,
+    legacyThreadTotal: existingLegacyTotal + summary.legacyThreadPaths.length,
+    ownedClassPaths: summary.ownedClassPaths,
+    ownedClassTotal: existingOwnedClassTotal + summary.ownedClassPaths.length,
+    classStudentPaths: summary.classStudentPaths,
+    classStudentTotal: existingClassStudentTotal + summary.classStudentPaths.length,
+  });
+}
+
+function accountDeletionJobProgress(job) {
+  const phase = firestoreString(job?.fields?.phase) || "ready";
+  const progressFields = {
+    legacySupportMessages: ["legacyThreadPaths", "legacyThreadTotal"],
+    ownedClasses: ["ownedClassPaths", "ownedClassTotal"],
+    classStudentData: ["classStudentPaths", "classStudentTotal"],
+  };
+  const [pathField, totalField] = progressFields[phase] || [];
+  if (!pathField) return { phase, remaining: 0, total: 0 };
+  const remaining = firestoreStringArray(job?.fields?.[pathField]).length;
+  return {
+    phase,
+    remaining,
+    total: Math.max(firestoreInteger(job?.fields?.[totalField]), remaining),
+  };
+}
+
+function normalizeAccountDeletionRequest(raw) {
+  const confirmation = safeString(raw?.confirmation);
+  const policyVersion = safeString(raw?.policyVersion);
+  if (confirmation !== ACCOUNT_DELETION_CONFIRMATION) {
+    throw httpError(400, "ACCOUNT_DELETION_CONFIRMATION_REQUIRED");
+  }
+  if (policyVersion !== ACCOUNT_DELETION_POLICY_VERSION) {
+    throw httpError(409, "ACCOUNT_DELETION_POLICY_CHANGED");
+  }
+  return { confirmation, policyVersion };
+}
+
+function requireRecentAuthentication(user, nowSeconds = Math.floor(Date.now() / 1000)) {
+  const authTime = Number(user?.auth_time);
+  if (
+    !Number.isFinite(authTime)
+    || authTime > nowSeconds + 30
+    || nowSeconds - authTime > ACCOUNT_DELETION_RECENT_AUTH_SECONDS
+  ) {
+    throw httpError(409, "ACCOUNT_RECENT_SIGN_IN_REQUIRED");
+  }
+}
+
+async function accountDeletionContext(env, uid, firebaseIdToken = null) {
+  const projectId = env.FIREBASE_PROJECT_ID || "englishplus-testflight";
+  const firestoreBaseURL = firestoreEmulatorBaseURL(env);
+  const accessToken = firestoreBaseURL ? "owner" : await serviceAccountAccessToken(env);
+  const [profile, job] = await Promise.all([
+    getFirestoreDocument(
+      projectId,
+      accessToken,
+      `users/${uid}`,
+      firestoreBaseURL
+    ),
+    getFirestoreDocument(
+      projectId,
+      accessToken,
+      `accountDeletionJobs/${uid}`,
+      firestoreBaseURL
+    ),
+  ]);
+  if (!profile && !job) {
+    throw httpError(404, "ACCOUNT_PROFILE_NOT_FOUND");
+  }
+  const role = firestoreString(profile?.fields?.primaryRole)
+    || firestoreString(job?.fields?.role);
+  if (!new Set(["student", "teacher", "volunteer"]).has(role)) {
+    throw httpError(409, "ACCOUNT_ROLE_INVALID");
+  }
+  return {
+    env,
+    uid,
+    role,
+    projectId,
+    accessToken,
+    firestoreBaseURL,
+    firebaseIdToken,
+    profile,
+    job,
+  };
+}
+
+async function discoverAccountDeletionSummary(context) {
+  const [memberDocuments, studentDocuments, ownedClasses, studentThreads] = await Promise.all([
+    runFirestoreEqualQuery(context, "members", "uid", context.uid),
+    runFirestoreEqualQuery(context, "students", "uid", context.uid),
+    listFirestoreCollection(
+      context.projectId,
+      context.accessToken,
+      "classes",
+      context.firestoreBaseURL
+    ).then((documents) => documents.filter(
+      (document) => firestoreString(document.fields?.ownerTeacherUid) === context.uid
+    )),
+    runFirestoreEqualQuery(context, "supportThreads", "studentUid", context.uid),
+  ]);
+  const legacyThreadPaths = studentThreads
+    .filter((thread) => firestoreInteger(thread.fields?.messageContextVersion) < SUPPORT_MESSAGE_CONTEXT_VERSION)
+    .map((thread) => relativeFirestorePath(thread.name))
+    .sort();
+  return {
+    role: context.role,
+    membershipCount: memberDocuments.length,
+    ownedClassCount: ownedClasses.length,
+    legacyThreadPaths,
+    ownedClassPaths: ownedClasses
+      .map((classroom) => relativeFirestorePath(classroom.name))
+      .sort(),
+    classStudentPaths: studentDocuments
+      .map((student) => relativeFirestorePath(student.name))
+      .sort(),
+  };
+}
+
+async function discoverAccountDeletionPlan(context) {
+  const deletePaths = new Set([
+    `users/${context.uid}`,
+    `teacherProfiles/${context.uid}`,
+    `volunteerApplications/${context.uid}`,
+    `classJoinAttempts/${context.uid}`,
+  ]);
+  const updates = new Map();
+
+  for (const collectionId of USER_OWNED_COLLECTIONS) {
+    const documents = await listFirestoreCollection(
+      context.projectId,
+      context.accessToken,
+      `users/${context.uid}/${collectionId}`,
+      context.firestoreBaseURL
+    );
+    documents.forEach((document) => deletePaths.add(relativeFirestorePath(document.name)));
+  }
+
+  const [memberDocuments, studentDocuments, ownedClasses] = await Promise.all([
+    runFirestoreEqualQuery(context, "members", "uid", context.uid),
+    runFirestoreEqualQuery(context, "students", "uid", context.uid),
+    listFirestoreCollection(
+      context.projectId,
+      context.accessToken,
+      "classes",
+      context.firestoreBaseURL
+    ).then((documents) => documents.filter(
+      (document) => firestoreString(document.fields?.ownerTeacherUid) === context.uid
+    )),
+  ]);
+
+  memberDocuments.forEach((document) => deletePaths.add(relativeFirestorePath(document.name)));
+
+  for (const studentDocument of studentDocuments) {
+    const studentPath = relativeFirestorePath(studentDocument.name);
+    for (const collectionId of CLASS_STUDENT_COLLECTIONS) {
+      const documents = await listFirestoreCollection(
+        context.projectId,
+        context.accessToken,
+        `${studentPath}/${collectionId}`,
+        context.firestoreBaseURL
+      );
+      documents.forEach((document) => deletePaths.add(relativeFirestorePath(document.name)));
+    }
+    deletePaths.add(studentPath);
+  }
+
+  const studentThreads = await runFirestoreEqualQuery(
+    context,
+    "supportThreads",
+    "studentUid",
+    context.uid
+  );
+  studentThreads.forEach((thread) => deletePaths.add(relativeFirestorePath(thread.name)));
+
+  const deleteQueryPairs = [
+    ["messages", "studentUid"],
+    ["practiceAssignments", "studentUid"],
+    ["staffAssignments", "studentUid"],
+    ["staffAssignments", "assignedToUid"],
+    ["aiUsage", "uid"],
+    ["aiEvents", "uid"],
+    ["privacyAuditLogs", "uid"],
+    ["privacyAuditLogs", "studentUid"],
+    ["privacyAuditLogs", "actorUid"],
+    ["syncQueue", "uid"],
+    ["syncQueue", "studentUid"],
+    ["reports", "uid"],
+    ["reports", "studentUid"],
+  ];
+  const deleteQueryResults = await Promise.all(
+    deleteQueryPairs.map(([collectionId, fieldPath]) =>
+      runFirestoreEqualQuery(context, collectionId, fieldPath, context.uid)
+    )
+  );
+  deleteQueryResults.flat().forEach((document) => {
+    deletePaths.add(relativeFirestorePath(document.name));
+  });
+
+  const [authoredMessages, authoredAssignments, handledThreads] = await Promise.all([
+    runFirestoreEqualQuery(context, "messages", "authorUid", context.uid),
+    runFirestoreEqualQuery(context, "practiceAssignments", "assignedByUid", context.uid),
+    runFirestoreEqualQuery(context, "supportThreads", "handledByUid", context.uid),
+  ]);
+  authoredMessages.forEach((document) => addAccountDeletionUpdate(
+    updates,
+    relativeFirestorePath(document.name),
+    {
+      authorUid: { stringValue: "deleted-account" },
+      authorName: { stringValue: "已刪除帳號" },
+      body: { stringValue: "此回覆已因帳號刪除移除。" },
+      messageType: { stringValue: "systemStatus" },
+    }
+  ));
+  authoredAssignments.forEach((document) => addAccountDeletionUpdate(
+    updates,
+    relativeFirestorePath(document.name),
+    {
+      assignedByUid: { stringValue: "deleted-account" },
+      assignedByName: { stringValue: "已刪除的老師" },
+    }
+  ));
+  handledThreads.forEach((document) => addAccountDeletionUpdate(
+    updates,
+    relativeFirestorePath(document.name),
+    {
+      handledByUid: { nullValue: null },
+      handledByName: { stringValue: "已刪除帳號" },
+    }
+  ));
+
+  for (const classroom of ownedClasses) {
+    await appendOwnedClassArchivePlan(context, classroom, deletePaths, updates);
+  }
+
+  for (const path of deletePaths) {
+    updates.delete(path);
+  }
+
+  return {
+    uid: context.uid,
+    role: context.role,
+    deletePaths: [...deletePaths].sort(compareFirestoreDeletionPaths),
+    updates: [...updates.values()],
+    membershipCount: memberDocuments.length,
+    ownedClassCount: Math.max(
+      ownedClasses.length,
+      firestoreInteger(context.job?.fields?.ownedClassTotal)
+    ),
+    hadVolunteerEvidence: Boolean(context.env.VOLUNTEER_EVIDENCE),
+  };
+}
+
+async function appendOwnedClassArchivePlan(
+  context,
+  classroom,
+  deletePaths,
+  updates
+) {
+  const classId = documentId(classroom.name);
+  if (!classId) return;
+  const now = new Date().toISOString();
+  addAccountDeletionUpdate(updates, `classes/${classId}`, {
+    ownerTeacherUid: { stringValue: "deleted-account" },
+    active: { booleanValue: false },
+    archivedReason: { stringValue: "ownerAccountDeleted" },
+    archivedAt: { timestampValue: now },
+    updatedAt: { timestampValue: now },
+  });
+
+  const [admin, members, assignments, supportThreads, activeClassProfiles] = await Promise.all([
+    getFirestoreDocument(
+      context.projectId,
+      context.accessToken,
+      `classAdmins/${classId}`,
+      context.firestoreBaseURL
+    ),
+    listFirestoreCollection(
+      context.projectId,
+      context.accessToken,
+      `classes/${classId}/members`,
+      context.firestoreBaseURL
+    ),
+    listFirestoreCollection(
+      context.projectId,
+      context.accessToken,
+      `classes/${classId}/practiceAssignments`,
+      context.firestoreBaseURL
+    ),
+    listFirestoreCollection(
+      context.projectId,
+      context.accessToken,
+      `classes/${classId}/supportThreads`,
+      context.firestoreBaseURL
+    ),
+    runFirestoreEqualQuery(context, "users", "activeClassId", classId),
+  ]);
+  const joinCode = firestoreString(admin?.fields?.joinCode);
+  deletePaths.add(`classAdmins/${classId}`);
+  if (joinCode) deletePaths.add(`classJoinCodes/${joinCode}`);
+
+  for (const member of members) {
+    const memberUid = firestoreString(member.fields?.uid) || documentId(member.name);
+    if (!memberUid || memberUid === context.uid) continue;
+    addAccountDeletionUpdate(updates, relativeFirestorePath(member.name), {
+      status: { stringValue: "left" },
+      active: { booleanValue: false },
+      leftAt: { timestampValue: now },
+      updatedAt: { timestampValue: now },
+    });
+    deletePaths.add(`users/${memberUid}/classMemberships/${classId}`);
+  }
+  activeClassProfiles.forEach((profile) => addAccountDeletionUpdate(
+    updates,
+    relativeFirestorePath(profile.name),
+    {
+      activeClassId: { nullValue: null },
+      updatedAt: { timestampValue: now },
+    }
+  ));
+
+  assignments
+    .filter((assignment) => new Set(["pending", "active"]).has(
+      firestoreString(assignment.fields?.status)
+    ))
+    .forEach((assignment) => addAccountDeletionUpdate(
+      updates,
+      relativeFirestorePath(assignment.name),
+      {
+        status: { stringValue: "withdrawn" },
+        updatedAt: { timestampValue: now },
+      }
+    ));
+  supportThreads
+    .filter((thread) => new Set(["open", "waitingForStaff"]).has(
+      firestoreString(thread.fields?.status)
+    ))
+    .forEach((thread) => addAccountDeletionUpdate(
+      updates,
+      relativeFirestorePath(thread.name),
+      {
+        status: { stringValue: "closed" },
+        updatedAt: { timestampValue: now },
+      }
+    ));
+}
+
+function addAccountDeletionUpdate(updates, path, fields) {
+  const existing = updates.get(path);
+  updates.set(path, {
+    path,
+    fields: { ...(existing?.fields || {}), ...fields },
+  });
+}
+
+function compareFirestoreDeletionPaths(left, right) {
+  const depthDifference = right.split("/").length - left.split("/").length;
+  return depthDifference || left.localeCompare(right);
+}
+
+function accountDeletionPreview(plan) {
+  return {
+    role: plan.role,
+    classMembershipCount: plan.membershipCount,
+    ownedClassCount: plan.ownedClassCount,
+    archivesOwnedClasses: plan.ownedClassCount > 0,
+    removesIdentifiableData: true,
+    retainsAnonymousAggregateOnly: true,
+    requiresRecentSignIn: true,
+  };
+}
+
+async function processLegacySupportMessageBatch(context) {
+  const storedPaths = firestoreStringArray(context.job?.fields?.legacyThreadPaths);
+  const total = Math.max(
+    firestoreInteger(context.job?.fields?.legacyThreadTotal),
+    storedPaths.length
+  );
+  const batch = storedPaths.slice(0, ACCOUNT_DELETION_LEGACY_THREAD_BATCH);
+  const remainingPaths = storedPaths.slice(batch.length);
+  const messagePaths = [];
+
+  for (const threadPath of batch) {
+    const messages = await listFirestoreCollection(
+      context.projectId,
+      context.accessToken,
+      `${threadPath}/messages`,
+      context.firestoreBaseURL
+    );
+    messages.forEach((message) => messagePaths.push(relativeFirestorePath(message.name)));
+  }
+  await commitAccountDeletionDeletes(context, messagePaths);
+  await commitAccountDeletionUpdates(
+    context,
+    batch.map((threadPath) => ({
+      path: threadPath,
+      fields: {
+        messageContextVersion: { integerValue: String(SUPPORT_MESSAGE_CONTEXT_VERSION) },
+      },
+    })),
+    []
+  );
+  const ownedClassPaths = firestoreStringArray(context.job?.fields?.ownedClassPaths);
+  const classStudentPaths = firestoreStringArray(context.job?.fields?.classStudentPaths);
+  await writeAccountDeletionJob(context, {
+    phase: remainingPaths.length > 0
+      ? "legacySupportMessages"
+      : ownedClassPaths.length > 0
+        ? "ownedClasses"
+        : classStudentPaths.length > 0
+          ? "classStudentData"
+          : "ready",
+    metricRecorded: false,
+    legacyThreadPaths: remainingPaths,
+    legacyThreadTotal: total,
+  });
+  return accountDeletionJobProgress(context.job);
+}
+
+async function processOwnedClassBatch(context) {
+  const storedPaths = firestoreStringArray(context.job?.fields?.ownedClassPaths);
+  const batch = storedPaths.slice(0, ACCOUNT_DELETION_OWNED_CLASS_BATCH);
+  const remainingPaths = storedPaths.slice(batch.length);
+  const updates = new Map();
+  const deletePaths = new Set();
+
+  for (const classPath of batch) {
+    const classroom = await getFirestoreDocument(
+      context.projectId,
+      context.accessToken,
+      classPath,
+      context.firestoreBaseURL
+    );
+    if (classroom) {
+      await appendOwnedClassArchivePlan(context, classroom, deletePaths, updates);
+    }
+  }
+  await commitAccountDeletionUpdates(context, [...updates.values()], [...deletePaths]);
+  await commitAccountDeletionDeletes(context, [...deletePaths]);
+
+  const classStudentPaths = firestoreStringArray(context.job?.fields?.classStudentPaths);
+  await writeAccountDeletionJob(context, {
+    phase: remainingPaths.length > 0
+      ? "ownedClasses"
+      : classStudentPaths.length > 0
+        ? "classStudentData"
+        : "ready",
+    metricRecorded: false,
+    ownedClassPaths: remainingPaths,
+  });
+  return accountDeletionJobProgress(context.job);
+}
+
+async function processClassStudentDataBatch(context) {
+  const storedPaths = firestoreStringArray(context.job?.fields?.classStudentPaths);
+  const batch = storedPaths.slice(0, ACCOUNT_DELETION_CLASS_STUDENT_BATCH);
+  const remainingPaths = storedPaths.slice(batch.length);
+  const deletePaths = [];
+
+  for (const studentPath of batch) {
+    for (const collectionId of CLASS_STUDENT_COLLECTIONS) {
+      const documents = await listFirestoreCollection(
+        context.projectId,
+        context.accessToken,
+        `${studentPath}/${collectionId}`,
+        context.firestoreBaseURL
+      );
+      documents.forEach((document) => deletePaths.push(relativeFirestorePath(document.name)));
+    }
+    deletePaths.push(studentPath);
+  }
+  deletePaths.sort(compareFirestoreDeletionPaths);
+  await commitAccountDeletionDeletes(context, deletePaths);
+  await writeAccountDeletionJob(context, {
+    phase: remainingPaths.length > 0 ? "classStudentData" : "ready",
+    metricRecorded: false,
+    classStudentPaths: remainingPaths,
+  });
+  return accountDeletionJobProgress(context.job);
+}
+
+async function executeAccountDeletion(env, uid, existingContext = null) {
+  const context = existingContext || await accountDeletionContext(env, uid);
+  const plan = await discoverAccountDeletionPlan(context);
+  const existingMetricRecorded = context.job?.fields?.metricRecorded?.booleanValue === true;
+  await writeAccountDeletionJob(context, {
+    phase: "cleaning",
+    metricRecorded: existingMetricRecorded,
+  });
+
+  await deleteVolunteerEvidenceForAccount(env, uid);
+  await commitAccountDeletionUpdates(context, plan.updates, plan.deletePaths);
+  await commitAccountDeletionDeletes(context, plan.deletePaths);
+
+  if (!existingMetricRecorded) {
+    await commitFirestoreWrites(context, [
+      accountDeletionMetricWrite(context.projectId, plan),
+      accountDeletionJobWrite(context, {
+        phase: "authPending",
+        metricRecorded: true,
+      }),
+    ]);
+  } else {
+    await writeAccountDeletionJob(context, {
+      phase: "authPending",
+      metricRecorded: true,
+    });
+  }
+
+  await deleteFirebaseAuthAccount(context, uid);
+  try {
+    await commitFirestoreWrites(context, [
+      { delete: `${firestoreRoot(context.projectId)}/accountDeletionJobs/${uid}` },
+    ]);
+  } catch (error) {
+    console.error(JSON.stringify({
+      event: "account_deletion_job_cleanup_pending",
+      error: error instanceof Error ? error.message : "unknown",
+    }));
+  }
+
+  console.log(JSON.stringify({
+    event: "account_deleted",
+    role: plan.role,
+    deletedDocuments: plan.deletePaths.length,
+    redactedDocuments: plan.updates.length,
+    archivedOwnedClasses: plan.ownedClassCount,
+  }));
+  return {
+    completed: true,
+    deletedDocuments: plan.deletePaths.length,
+    redactedDocuments: plan.updates.length,
+    archivedOwnedClasses: plan.ownedClassCount,
+    retainedData: "anonymousAggregateOnly",
+  };
+}
+
+async function writeAccountDeletionJob(context, state) {
+  await commitFirestoreWrites(context, [accountDeletionJobWrite(context, state)]);
+  context.job = await getFirestoreDocument(
+    context.projectId,
+    context.accessToken,
+    `accountDeletionJobs/${context.uid}`,
+    context.firestoreBaseURL
+  );
+  if (!context.job) {
+    throw httpError(502, "ACCOUNT_DELETION_JOB_WRITE_FAILED");
+  }
+}
+
+function accountDeletionJobWrite(context, state) {
+  const now = new Date().toISOString();
+  const existing = context.job;
+  const attempts = Number(existing?.fields?.attempts?.integerValue || 0) + 1;
+  const fields = {
+    uid: { stringValue: context.uid },
+    role: { stringValue: context.role },
+    phase: { stringValue: state.phase },
+    policyVersion: { stringValue: ACCOUNT_DELETION_POLICY_VERSION },
+    metricRecorded: { booleanValue: state.metricRecorded === true },
+    attempts: { integerValue: String(attempts) },
+    createdAt: existing?.fields?.createdAt || { timestampValue: now },
+    updatedAt: { timestampValue: now },
+  };
+  const legacyThreadPaths = state.legacyThreadPaths
+    ?? firestoreStringArray(existing?.fields?.legacyThreadPaths);
+  const legacyThreadTotal = Number.isInteger(state.legacyThreadTotal)
+    ? state.legacyThreadTotal
+    : Math.max(
+        firestoreInteger(existing?.fields?.legacyThreadTotal),
+        legacyThreadPaths.length
+      );
+  fields.legacyThreadPaths = {
+    arrayValue: {
+      values: legacyThreadPaths.map((path) => ({ stringValue: path })),
+    },
+  };
+  fields.legacyThreadTotal = { integerValue: String(legacyThreadTotal) };
+  const ownedClassPaths = state.ownedClassPaths
+    ?? firestoreStringArray(existing?.fields?.ownedClassPaths);
+  const ownedClassTotal = Number.isInteger(state.ownedClassTotal)
+    ? state.ownedClassTotal
+    : Math.max(
+        firestoreInteger(existing?.fields?.ownedClassTotal),
+        ownedClassPaths.length
+      );
+  fields.ownedClassPaths = {
+    arrayValue: {
+      values: ownedClassPaths.map((path) => ({ stringValue: path })),
+    },
+  };
+  fields.ownedClassTotal = { integerValue: String(ownedClassTotal) };
+  const classStudentPaths = state.classStudentPaths
+    ?? firestoreStringArray(existing?.fields?.classStudentPaths);
+  const classStudentTotal = Number.isInteger(state.classStudentTotal)
+    ? state.classStudentTotal
+    : Math.max(
+        firestoreInteger(existing?.fields?.classStudentTotal),
+        classStudentPaths.length
+      );
+  fields.classStudentPaths = {
+    arrayValue: {
+      values: classStudentPaths.map((path) => ({ stringValue: path })),
+    },
+  };
+  fields.classStudentTotal = { integerValue: String(classStudentTotal) };
+  return {
+    update: {
+      name: `${firestoreRoot(context.projectId)}/accountDeletionJobs/${context.uid}`,
+      fields,
+    },
+    currentDocument: existing?.updateTime
+      ? { updateTime: existing.updateTime }
+      : { exists: false },
+  };
+}
+
+function accountDeletionMetricWrite(projectId, plan) {
+  const month = new Date().toISOString().slice(0, 7);
+  return {
+    update: {
+      name: `${firestoreRoot(projectId)}/anonymousProductMetrics/account-deletions-${month}`,
+      fields: {
+        metricKind: { stringValue: "accountDeletion" },
+        month: { stringValue: month },
+        updatedAt: { timestampValue: new Date().toISOString() },
+      },
+    },
+    updateMask: { fieldPaths: ["metricKind", "month", "updatedAt"] },
+    updateTransforms: [
+      { fieldPath: "totalAccountsDeleted", increment: { integerValue: "1" } },
+      { fieldPath: `role_${plan.role}`, increment: { integerValue: "1" } },
+      ...(plan.membershipCount > 0
+        ? [{ fieldPath: "accountsWithClasses", increment: { integerValue: "1" } }]
+        : []),
+    ],
+  };
+}
+
+async function commitAccountDeletionUpdates(context, updates, deletePaths) {
+  const deleting = new Set(deletePaths);
+  const writes = updates
+    .filter((update) => !deleting.has(update.path))
+    .map((update) => maskedUpdateWrite(
+      `${firestoreRoot(context.projectId)}/${update.path}`,
+      update.fields,
+      Object.keys(update.fields)
+    ));
+  await commitFirestoreWriteChunks(context, writes);
+}
+
+async function commitAccountDeletionDeletes(context, deletePaths) {
+  const writes = deletePaths.map((path) => ({
+    delete: `${firestoreRoot(context.projectId)}/${path}`,
+  }));
+  await commitFirestoreWriteChunks(context, writes);
+}
+
+async function commitFirestoreWriteChunks(context, writes) {
+  for (let index = 0; index < writes.length; index += FIRESTORE_COMMIT_WRITE_LIMIT) {
+    await commitFirestoreWrites(
+      context,
+      writes.slice(index, index + FIRESTORE_COMMIT_WRITE_LIMIT)
+    );
+  }
+}
+
+async function deleteVolunteerEvidenceForAccount(env, uid) {
+  if (!env.VOLUNTEER_EVIDENCE) {
+    throw httpError(503, "ACCOUNT_EVIDENCE_STORAGE_UNAVAILABLE");
+  }
+  const objects = await listEvidenceObjectsForUid(env, uid);
+  await Promise.all(objects.map((object) => env.VOLUNTEER_EVIDENCE.delete(object.key)));
+}
+
+async function deleteFirebaseAuthAccount(context, uid) {
+  if (context.firestoreBaseURL) return;
+  if (context.firebaseIdToken) {
+    const apiKey = safeString(context.env?.FIREBASE_WEB_API_KEY);
+    const endpoint = apiKey
+      ? `https://identitytoolkit.googleapis.com/v1/accounts:delete?key=${encodeURIComponent(apiKey)}`
+      : "https://identitytoolkit.googleapis.com/v1/accounts:delete";
+    const selfDeleteResponse = await fetch(endpoint, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ idToken: context.firebaseIdToken }),
+    });
+    if (selfDeleteResponse.ok) return;
+    const selfDeletePayload = await selfDeleteResponse.json().catch(() => ({}));
+    console.error(JSON.stringify({
+      event: "account_self_auth_deletion_failed",
+      status: selfDeleteResponse.status,
+      providerCode: (
+        safeString(selfDeletePayload?.error?.message) || "unknown"
+      ).slice(0, 160),
+    }));
+  }
+
+  const response = await fetch(
+    `https://identitytoolkit.googleapis.com/v1/projects/${context.projectId}/accounts:batchDelete`,
+    {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${context.accessToken}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        localIds: [uid],
+        force: true,
+      }),
+    }
+  );
+  const payload = await response.json().catch(() => ({}));
+  if (response.ok && !Array.isArray(payload?.errors)) return;
+  if (response.ok && payload.errors.length === 0) return;
+  const message = safeString(payload?.error?.message) || "";
+  console.error(JSON.stringify({
+    event: "account_auth_deletion_failed",
+    status: response.status,
+    providerCode: (
+      safeString(message)
+      || safeString(payload?.errors?.[0]?.message)
+      || "unknown"
+    ).slice(0, 160),
+  }));
+  throw httpError(502, "ACCOUNT_AUTH_DELETION_FAILED");
+}
+
+async function retryPendingAccountDeletions(env) {
+  const projectId = env.FIREBASE_PROJECT_ID || "englishplus-testflight";
+  const firestoreBaseURL = firestoreEmulatorBaseURL(env);
+  const accessToken = firestoreBaseURL ? "owner" : await serviceAccountAccessToken(env);
+  const jobs = await listFirestoreCollection(
+    projectId,
+    accessToken,
+    "accountDeletionJobs",
+    firestoreBaseURL
+  );
+  let completed = 0;
+  let failed = 0;
+  for (const job of jobs.slice(0, ACCOUNT_DELETION_JOB_LIMIT)) {
+    const uid = firestoreString(job.fields?.uid) || documentId(job.name);
+    if (!uid) continue;
+    try {
+      const context = await accountDeletionContext(env, uid);
+      const phase = firestoreString(context.job?.fields?.phase);
+      if (phase === "legacySupportMessages") {
+        await processLegacySupportMessageBatch(context);
+      } else if (phase === "ownedClasses") {
+        await processOwnedClassBatch(context);
+      } else if (phase === "classStudentData") {
+        await processClassStudentDataBatch(context);
+      } else {
+        await executeAccountDeletion(env, uid, context);
+        completed += 1;
+      }
+    } catch (error) {
+      failed += 1;
+      console.error(JSON.stringify({
+        event: "account_deletion_retry_failed",
+        phase: firestoreString(job.fields?.phase) || "unknown",
+        error: error instanceof Error ? error.message : "unknown",
+      }));
+    }
+  }
+  return { scanned: Math.min(jobs.length, ACCOUNT_DELETION_JOB_LIMIT), completed, failed };
+}
+
+async function runFirestoreEqualQuery(context, collectionId, fieldPath, value) {
+  const endpoint = context.firestoreBaseURL
+    ? `${context.firestoreBaseURL}/v1/projects/${context.projectId}/databases/(default)/documents:runQuery`
+    : `https://firestore.googleapis.com/v1/projects/${context.projectId}/databases/(default)/documents:runQuery`;
+  const headers = { "Content-Type": "application/json" };
+  if (context.accessToken) headers.Authorization = `Bearer ${context.accessToken}`;
+  const response = await fetch(endpoint, {
+    method: "POST",
+    headers,
+    body: JSON.stringify({
+      structuredQuery: {
+        from: [{ collectionId, allDescendants: true }],
+        where: {
+          fieldFilter: {
+            field: { fieldPath },
+            op: "EQUAL",
+            value: { stringValue: value },
+          },
+        },
+      },
+    }),
+  });
+  const payload = await response.json();
+  if (!response.ok) {
+    const firestoreError = Array.isArray(payload) ? payload[0]?.error : payload?.error;
+    console.error(JSON.stringify({
+      event: "firestore_query_failed",
+      collectionId,
+      fieldPath,
+      status: response.status,
+      firestoreStatus: safeString(firestoreError?.status) || "unknown",
+      firestoreMessage: (safeString(firestoreError?.message) || "unknown").slice(0, 400),
+    }));
+    throw httpError(502, "FIRESTORE_QUERY_FAILED");
+  }
+  return (Array.isArray(payload) ? payload : [])
+    .map((item) => item.document)
+    .filter(Boolean);
+}
+
+function relativeFirestorePath(name) {
+  const marker = "/documents/";
+  const index = String(name || "").indexOf(marker);
+  if (index < 0) throw httpError(502, "FIRESTORE_DOCUMENT_NAME_INVALID");
+  return String(name).slice(index + marker.length);
 }
 
 export class AIQuotaCoordinator extends DurableObject {
@@ -2579,6 +3551,17 @@ function firestoreString(value) {
   return value?.stringValue || "";
 }
 
+function firestoreInteger(value) {
+  const parsed = Number(value?.integerValue);
+  return Number.isFinite(parsed) ? parsed : 0;
+}
+
+function firestoreStringArray(value) {
+  return (value?.arrayValue?.values || [])
+    .map(firestoreString)
+    .filter(Boolean);
+}
+
 async function serviceAccountAccessToken(env) {
   if (!env.FIREBASE_SERVICE_ACCOUNT_EMAIL || !env.FIREBASE_SERVICE_ACCOUNT_PRIVATE_KEY) {
     throw new Error("Firebase service account is not configured.");
@@ -2587,7 +3570,7 @@ async function serviceAccountAccessToken(env) {
   const assertion = await signServiceAccountJwt(
     {
       iss: env.FIREBASE_SERVICE_ACCOUNT_EMAIL,
-      scope: "https://www.googleapis.com/auth/datastore",
+      scope: "https://www.googleapis.com/auth/cloud-platform",
       aud: "https://oauth2.googleapis.com/token",
       iat: now,
       exp: now + 3600,
@@ -2732,7 +3715,8 @@ function buildMessages(request) {
         "Use Traditional Chinese for student-facing output unless locale is en-US.",
         "Never mention APIs, providers, keys, backend internals, or implementation details.",
         "Return compact JSON only. Do not use markdown fences.",
-        "Do not diagnose mental health. If risk is high, recommend teacher or trusted adult support.",
+        "Do not diagnose mental health and never claim that a teacher, volunteer, or guardian was notified automatically.",
+        "For emotional distress, offer low-pressure language and let the student choose whether to contact a trusted adult. For immediate danger, direct them to a nearby trusted adult or Taiwan emergency service 119; 1925 and 113 may also be offered when relevant.",
       ].join(" "),
     },
     {
@@ -2835,10 +3819,7 @@ function normalizeOutput(taskType, output) {
         : typeof output.tryAgain === "boolean"
           ? output.tryAgain
           : undefined,
-    staffEscalationNeeded:
-      typeof output.staffEscalationNeeded === "boolean"
-        ? output.staffEscalationNeeded
-        : undefined,
+    staffEscalationNeeded: false,
     supportLevel: safeString(output.supportLevel),
     teacherSummary: safeString(output.teacherSummary),
     studentFacingFeedback: safeString(output.studentFacingFeedback),
@@ -3125,13 +4106,21 @@ function jsonResponse(body, status = 200, extraHeaders = {}) {
 }
 
 export {
+  accountDeletionContext,
+  accountDeletionJobProgress,
+  accountDeletionJobWrite,
+  accountDeletionMetricWrite,
+  accountDeletionPhase,
+  accountDeletionPreview,
   aiQuotaPolicy,
   aiTaskCost,
   assertAiTaskRole,
   evidenceQuotaSnapshot,
   createClassroom,
+  discoverAccountDeletionSummary,
   enforceEvidenceQuota,
   ensureLegacyClassroomAccount,
+  executeAccountDeletion,
   generateClassCode,
   joinClassroom,
   leaveClassroom,
@@ -3139,6 +4128,7 @@ export {
   listClassroomsForUser,
   membershipIsActiveDocument,
   normalizeEvidenceTicketRequest,
+  normalizeAccountDeletionRequest,
   normalizeAiQuotaCommand,
   normalizeClassroomCode,
   normalizeClassroomCreateRequest,
@@ -3147,13 +4137,18 @@ export {
   normalizeOutput,
   normalizeRequest,
   personalScopeIdForUid,
+  processClassStudentDataBatch,
+  processLegacySupportMessageBatch,
+  processOwnedClassBatch,
   reserveAiQuota,
   quotaDecision,
   quotaStateForDate,
   reviewTransitionAllowed,
+  requireRecentAuthentication,
   resetClassroomCode,
   selectExpiredReviewedApplications,
   signUploadTicket,
+  stageAccountDeletionSummary,
   verifyUploadTicket,
   updateClassroom,
 };
