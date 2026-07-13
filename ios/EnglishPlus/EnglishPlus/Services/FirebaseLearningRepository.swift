@@ -11,6 +11,7 @@ final class FirebaseLearningRepository: LearningRepositoryBackend {
     private var activeClassId: String?
     private var activeUserUid: String?
     private var activeUserDisplayName: String?
+    private var activeUserRole: UserRole?
 
     #if canImport(FirebaseFirestore)
     private let db: Firestore?
@@ -68,6 +69,7 @@ final class FirebaseLearningRepository: LearningRepositoryBackend {
         activeClassId = isPersonalMode ? nil : classId
         activeUserUid = profile?.id ?? user?.id
         activeUserDisplayName = profile?.displayName ?? user?.displayName
+        activeUserRole = profile?.role ?? user?.role
 
         if let profile, !profile.isDemo {
             fallback.activatePersistenceScope(
@@ -78,6 +80,8 @@ final class FirebaseLearningRepository: LearningRepositoryBackend {
         }
         if isPersonalMode {
             currentSnapshot.supportRequests = []
+            currentSnapshot.assignedPracticeTasks = []
+        } else if user?.role == .volunteer {
             currentSnapshot.assignedPracticeTasks = []
         }
         normalizeCurrentSnapshotForToday()
@@ -102,11 +106,14 @@ final class FirebaseLearningRepository: LearningRepositoryBackend {
                 self?.activeClassId = nil
                 self?.activeUserUid = nil
                 self?.activeUserDisplayName = nil
+                self?.activeUserRole = nil
             }
         }
 
         listenSupportThreads(classId: classId, user: user, onChange: onChange, onError: onError)
-        listenPracticeAssignments(classId: classId, user: user, onChange: onChange, onError: onError)
+        if user?.role != .volunteer {
+            listenPracticeAssignments(classId: classId, user: user, onChange: onChange, onError: onError)
+        }
         listenStudentMissions(classId: classId, user: user, onChange: onChange, onError: onError)
 
         return AnyLearningRepositoryListenerToken { [weak self] in
@@ -114,6 +121,7 @@ final class FirebaseLearningRepository: LearningRepositoryBackend {
             self?.activeClassId = nil
             self?.activeUserUid = nil
             self?.activeUserDisplayName = nil
+            self?.activeUserRole = nil
         }
         #else
         return AnyLearningRepositoryListenerToken {}
@@ -326,20 +334,22 @@ final class FirebaseLearningRepository: LearningRepositoryBackend {
     }
 
     func addTeacherReply(to requestId: String, body: String) {
+        guard activeUserRole == .teacher, let activeUserUid else { return }
         appendSupportReply(
             to: requestId,
-            authorUid: "demo-teacher-1",
-            authorName: "老師",
+            authorUid: activeUserUid,
+            authorName: activeUserDisplayName ?? "老師",
             authorRole: .teacher,
             body: body
         )
     }
 
     func addVolunteerReply(to requestId: String, body: String) {
+        guard activeUserRole == .volunteer, let activeUserUid else { return }
         appendSupportReply(
             to: requestId,
-            authorUid: "demo-volunteer-1",
-            authorName: "志工",
+            authorUid: activeUserUid,
+            authorName: activeUserDisplayName ?? "志工",
             authorRole: .volunteer,
             body: body
         )
@@ -493,6 +503,7 @@ final class FirebaseLearningRepository: LearningRepositoryBackend {
         activeClassId = profile.activeClassId
         activeUserUid = profile.id
         activeUserDisplayName = profile.displayName
+        activeUserRole = profile.role
         if let checkIn = currentSnapshot.currentCheckIn {
             let path: String
             if let classId = profile.activeClassId {
@@ -902,6 +913,7 @@ final class FirebaseLearningRepository: LearningRepositoryBackend {
         case .student:
             supportQuery = db.collection("\(FirestorePath.classDocument(classId: classId))/supportThreads")
                 .whereField("studentUid", isEqualTo: user?.id ?? "")
+                .whereField("studentVisible", isEqualTo: true)
         case .volunteer:
             supportQuery = db.collection("\(FirestorePath.classDocument(classId: classId))/supportThreads")
         case .teacher, nil:

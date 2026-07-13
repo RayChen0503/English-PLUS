@@ -186,7 +186,7 @@ def main() -> int:
             "class data and private join-code collections enforce membership boundaries",
             "students keep personal mode but cannot cross class or write memberships",
             "teachers see only the retained membership window",
-            "volunteer support access ends when the student leaves",
+            "volunteers retain in-window support history but not general learning access",
             "Worker classroom lifecycle completes in isolated Firestore",
             "createClassroom",
             "joinClassroom",

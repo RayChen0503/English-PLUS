@@ -9,7 +9,8 @@
     }
   ],
   "firestore": {
-    "rules": "docs/ios-testflight/firebase/firestore.rules.draft"
+    "rules": "docs/ios-testflight/firebase/firestore.rules.draft",
+    "indexes": "docs/ios-testflight/firebase/firestore.indexes.draft.json"
   },
   "emulators": {
     "firestore": {

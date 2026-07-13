@@ -56,9 +56,18 @@ def validate_indexes(errors):
     with INDEXES_PATH.open(encoding="utf-8") as handle:
         data = json.load(handle)
     require(isinstance(data.get("indexes"), list), "firestore.indexes.draft.json must contain indexes[]", errors)
-    collection_groups = {index.get("collectionGroup") for index in data.get("indexes", [])}
-    for required in ["supportThreads", "staffAssignments", "students", "questionBank", "answerEvents"]:
-        require(required in collection_groups, f"missing index collectionGroup {required}", errors)
+    indexes = data.get("indexes", [])
+    by_group = {index.get("collectionGroup"): index for index in indexes}
+    for required in ["supportThreads", "staffAssignments"]:
+        require(required in by_group, f"missing index collectionGroup {required}", errors)
+    for group, fields in {
+        "supportThreads": ["studentUid", "studentVisible"],
+        "staffAssignments": ["assignedToUid", "studentUid", "status"],
+    }.items():
+        index = by_group.get(group, {})
+        require(index.get("queryScope") == "COLLECTION", f"{group} index must use COLLECTION scope", errors)
+        actual_fields = [field.get("fieldPath") for field in index.get("fields", [])]
+        require(actual_fields == fields, f"{group} index fields do not match runtime query", errors)
 
 
 def validate_rules(errors):

@@ -176,6 +176,12 @@ service cloud.firestore {
         && get(memberPath(classId, studentUid)).data.role == "student";
     }
 
+    function isActiveVolunteerMember(classId, volunteerUid) {
+      return exists(memberPath(classId, volunteerUid))
+        && membershipIsActive(get(memberPath(classId, volunteerUid)).data)
+        && get(memberPath(classId, volunteerUid)).data.role == "volunteer";
+    }
+
     function isStudentMembershipRecord(classId, studentUid) {
       return exists(memberPath(classId, studentUid))
         && get(memberPath(classId, studentUid)).data.role == "student";
@@ -228,10 +234,7 @@ service cloud.firestore {
       return isInsideStudentMembershipWindow(classId, studentUid, createdAt)
         && (
           isClassTeacher(classId)
-          || (
-            isActiveStudentMember(classId, studentUid)
-            && isClassVolunteer(classId)
-          )
+          || isClassVolunteer(classId)
         );
     }
 
@@ -277,8 +280,7 @@ service cloud.firestore {
         );
     }
 
-    function canReadThread(classId, threadId) {
-      let thread = get(threadPath(classId, threadId)).data;
+    function canReadSupportThread(classId, thread) {
       return classStaffCanReadSupportTimeline(
           classId,
           thread.studentUid,
@@ -290,6 +292,13 @@ service cloud.firestore {
           && thread.studentVisible == true
         )
         ;
+    }
+
+    function canReadThread(classId, threadId) {
+      return canReadSupportThread(
+        classId,
+        get(threadPath(classId, threadId)).data
+      );
     }
 
     function canWriteStaffReply(classId, threadId) {
@@ -494,10 +503,27 @@ service cloud.firestore {
         allow get: if canReadStudentRecord(classId, studentUid);
         allow list: if isClassTeacher(classId)
           && resource.data.membershipStatus == "active";
-        allow create: if isOwnerStudent(studentUid) && isClassStudent(classId);
-        allow update: if (
-            isOwnerStudent(studentUid) && isClassStudent(classId)
-          ) || isClassTeacher(classId);
+        allow create: if isOwnerStudent(studentUid)
+          && isClassStudent(classId)
+          && request.resource.data.uid == studentUid
+          && request.resource.data.classCode == classId
+          && request.resource.data.membershipStatus == "active";
+        allow update: if isOwnerStudent(studentUid)
+          && isClassStudent(classId)
+          && request.resource.data.uid == resource.data.uid
+          && request.resource.data.classCode == resource.data.classCode
+          && request.resource.data.membershipStatus == "active"
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+            "displayName",
+            "currentLevel",
+            "recommendedTrack",
+            "lastMoodScore",
+            "lastMissionStatus",
+            "lastActivityAt",
+            "riskLevel",
+            "membershipStatus",
+            "updatedAt"
+          ]);
         allow delete: if false;
 
         match /checkIns/{dateKey} {
@@ -534,9 +560,25 @@ service cloud.firestore {
         match /dailyMissions/{missionId} {
           allow read: if (isOwnerStudent(studentUid) && isClassStudent(classId))
             || staffCanReadStudentTimeline(classId, studentUid, resource.data.createdAt);
-          allow create: if isOwnerStudent(studentUid) && isClassStudent(classId);
-          allow update: if (isOwnerStudent(studentUid) && isClassStudent(classId))
-            || staffCanWriteStudentTimeline(classId, studentUid, resource.data.createdAt);
+          allow create: if isOwnerStudent(studentUid)
+            && isClassStudent(classId)
+            && request.resource.data.studentUid == studentUid
+            && request.resource.data.missionId == missionId
+            && request.resource.data.questionIds is list
+            && request.resource.data.questionIds.size() > 0
+            && request.resource.data.questionIds.size() <= 20
+            && request.resource.data.createdAt is timestamp;
+          allow update: if isOwnerStudent(studentUid)
+            && isClassStudent(classId)
+            && request.resource.data.studentUid == resource.data.studentUid
+            && request.resource.data.missionId == resource.data.missionId
+            && request.resource.data.createdAt == resource.data.createdAt
+            && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+              "status",
+              "correctCount",
+              "progressPercent",
+              "completedAt"
+            ]);
           allow delete: if false;
         }
 
@@ -556,20 +598,48 @@ service cloud.firestore {
       }
 
       match /supportThreads/{threadId} {
-        allow read: if canReadThread(classId, threadId);
+        allow get: if canReadSupportThread(classId, resource.data);
+        allow list: if isClassTeacher(classId)
+          || isClassVolunteer(classId)
+          || (
+            isClassStudent(classId)
+            && resource.data.studentUid == request.auth.uid
+            && resource.data.studentVisible == true
+          );
 
         allow create: if isClassStudent(classId)
           && request.resource.data.studentUid == request.auth.uid
           && request.resource.data.classId == classId
-          && request.resource.data.studentVisible == true;
+          && request.resource.data.studentVisible == true
+          && request.resource.data.threadId == threadId
+          && request.resource.data.createdAt is timestamp;
 
-        allow update: if canWriteStaffReply(classId, threadId)
-          || (
-            isSelf(resource.data.studentUid)
+        allow update: if (
+            canWriteStaffReply(classId, threadId)
             && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
               "status",
-              "updatedAt",
-              "latestMessagePreview"
+              "latestMessagePreview",
+              "staffArchivedAt",
+              "teacherArchivedAt",
+              "volunteerArchivedAt",
+              "handledWithoutReplyAt",
+              "teacherHandledWithoutReplyAt",
+              "volunteerHandledWithoutReplyAt",
+              "handledByUid",
+              "handledByName",
+              "handledByRole",
+              "updatedAt"
+            ])
+          )
+          || (
+            isSelf(resource.data.studentUid)
+            && isClassStudent(classId)
+            && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+              "status",
+              "studentArchivedAt",
+              "withdrawnAt",
+              "studentLastReadAt",
+              "updatedAt"
             ])
           );
 
@@ -584,15 +654,31 @@ service cloud.firestore {
 
           allow create: if (
               isSelf(get(threadPath(classId, threadId)).data.studentUid)
+              && isClassStudent(classId)
               && request.resource.data.authorUid == request.auth.uid
               && request.resource.data.authorRole == "student"
               && request.resource.data.visibility == "studentVisible"
+              && request.resource.data.messageType == "studentRequest"
+              && request.resource.data.body is string
+              && request.resource.data.createdAt is timestamp
             )
             || (
               canWriteStaffReply(classId, threadId)
               && request.resource.data.authorUid == request.auth.uid
-              && request.resource.data.authorRole in ["teacher", "volunteer"]
+              && request.resource.data.authorRole == memberRole(classId)
+              && (
+                (
+                  request.resource.data.authorRole == "teacher"
+                  && request.resource.data.messageType == "teacherReply"
+                )
+                || (
+                  request.resource.data.authorRole == "volunteer"
+                  && request.resource.data.messageType == "volunteerReply"
+                )
+              )
               && request.resource.data.visibility in ["studentVisible", "staffOnly"]
+              && request.resource.data.body is string
+              && request.resource.data.createdAt is timestamp
             );
 
           allow update, delete: if false;
@@ -604,19 +690,73 @@ service cloud.firestore {
           || (isClassVolunteer(classId) && resource.data.assignedToUid == request.auth.uid)
           || (isSelf(resource.data.studentUid) && isClassStudent(classId));
 
-        allow create, update: if isClassTeacher(classId);
+        allow create: if isClassTeacher(classId)
+          && request.resource.data.classId == classId
+          && request.resource.data.assignedToUid is string
+          && request.resource.data.studentUid is string
+          && isActiveVolunteerMember(classId, request.resource.data.assignedToUid)
+          && isActiveStudentMember(classId, request.resource.data.studentUid);
+        allow update: if isClassTeacher(classId)
+          && request.resource.data.classId == resource.data.classId
+          && request.resource.data.assignedToUid == resource.data.assignedToUid
+          && request.resource.data.studentUid == resource.data.studentUid
+          && request.resource.data.createdAt == resource.data.createdAt
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+            "status",
+            "nextAction",
+            "updatedAt"
+          ]);
         allow delete: if false;
       }
 
       match /practiceAssignments/{assignmentId} {
-        allow read: if (isSelf(resource.data.studentUid) && isClassStudent(classId))
+        allow get: if (isSelf(resource.data.studentUid) && isClassStudent(classId))
           || staffCanReadStudentTimeline(
             classId,
             resource.data.studentUid,
             resource.data.createdAt
           );
-        allow create, update: if isClassTeacher(classId)
-          && isActiveStudentMember(classId, request.resource.data.studentUid);
+        allow list: if isClassTeacher(classId)
+          || (
+            isClassStudent(classId)
+            && resource.data.studentUid == request.auth.uid
+          );
+        allow create: if isClassTeacher(classId)
+          && isActiveStudentMember(classId, request.resource.data.studentUid)
+          && request.resource.data.assignmentId == assignmentId
+          && request.resource.data.classId == classId
+          && request.resource.data.assignedByUid == request.auth.uid
+          && request.resource.data.status == "pending"
+          && request.resource.data.questionIds is list
+          && request.resource.data.questionIds.size() > 0
+          && request.resource.data.questionIds.size() <= 12
+          && request.resource.data.createdAt is timestamp;
+        allow update: if (
+            isClassTeacher(classId)
+            && request.resource.data.studentUid == resource.data.studentUid
+            && request.resource.data.classId == resource.data.classId
+            && request.resource.data.assignmentId == resource.data.assignmentId
+            && request.resource.data.createdAt == resource.data.createdAt
+            && request.resource.data.status == "withdrawn"
+            && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+              "status",
+              "updatedAt"
+            ])
+          )
+          || (
+            isSelf(resource.data.studentUid)
+            && isClassStudent(classId)
+            && resource.data.status in ["pending", "active"]
+            && request.resource.data.status in ["active", "completed"]
+            && request.resource.data.questionResults is list
+            && request.resource.data.questionResults.size()
+              <= resource.data.questionIds.size()
+            && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+              "status",
+              "questionResults",
+              "updatedAt"
+            ])
+          );
         allow delete: if false;
       }
 

@@ -249,10 +249,10 @@ test("teachers see only the retained membership window and cannot mutate left hi
   }));
 });
 
-test("volunteer support access ends when the student leaves", async () => {
+test("volunteers retain in-window support history but not general learning access", async () => {
   const volunteer = dbFor("volunteerA");
   await assertSucceeds(getDoc(doc(volunteer, "classes", CLASS_ID, "supportThreads", "active-thread")));
-  await assertFails(getDoc(doc(volunteer, "classes", CLASS_ID, "supportThreads", "left-thread")));
+  await assertSucceeds(getDoc(doc(volunteer, "classes", CLASS_ID, "supportThreads", "left-thread")));
   await assertSucceeds(getDoc(doc(
     volunteer,
     "classes",
@@ -271,12 +271,26 @@ test("teachers can assign only active students and clients cannot create classes
     ownerTeacherUid: "teacherA",
   }));
   await assertSucceeds(setDoc(doc(teacher, "classes", CLASS_ID, "practiceAssignments", "active"), {
+    assignmentId: "active",
+    classId: CLASS_ID,
     studentUid: "studentA",
+    assignedByUid: "teacherA",
+    status: "pending",
+    questionIds: ["q-1"],
+    questionResults: [],
     createdAt: duringMembership,
+    updatedAt: duringMembership,
   }));
   await assertFails(setDoc(doc(teacher, "classes", CLASS_ID, "practiceAssignments", "left"), {
+    assignmentId: "left",
+    classId: CLASS_ID,
     studentUid: "leftStudent",
+    assignedByUid: "teacherA",
+    status: "pending",
+    questionIds: ["q-1"],
+    questionResults: [],
     createdAt: duringMembership,
+    updatedAt: duringMembership,
   }));
 });
 
