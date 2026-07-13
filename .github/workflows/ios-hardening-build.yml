@@ -5,10 +5,14 @@ on:
   push:
     branches:
       - codex/app-store-hardening-c
+      - codex/fix-d-admin-portal
     paths:
       - .github/ci-triggers/round10-ios-build
       - .github/ci-triggers/round11-ios-build
       - .github/ci-triggers/round12-ios-build
+      - .github/ci-triggers/fix-d-admin-portal
+      - admin-web/**
+      - workers/englishplus-ai-proxy/**
 
 permissions:
   contents: read
