@@ -129,9 +129,9 @@ learning must remain usable without joining a class.
   both pass.
 - Swift compilation is not available on this Windows host. The isolated macOS
   GitHub Actions gate passed the Round 9 clean iOS Simulator build in run
-  `29241754603`; Round 10 branch-only compile evidence is added after its
-  isolated run. Xcode Cloud remains the release-level gate at the agreed
-  checkpoint.
+  `29241754603`; Round 10 branch-only run `29243976304` also passed the clean
+  Xcode 16.4 iOS Simulator build. Xcode Cloud remains the release-level gate
+  at the agreed checkpoint.
 - Existing legacy validators can fail because they assert removed UI or old
   copy. Preserve useful behavioral coverage by replacing them, not by reviving
   obsolete UI.

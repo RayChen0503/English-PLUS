@@ -68,8 +68,8 @@ three explicit action contracts:
 - Authenticated production Firebase/Groq smoke suite: 36/36 passed. The real AI
   returned a non-fallback structured practice plan with target 8 and planned
   total 8, plus a non-fallback wrong-answer repair response with `tryAgain`.
-- Isolated macOS compile evidence is recorded in `CURRENT_STATE.md` after the
-  branch-only GitHub Actions gate completes.
+- Isolated macOS run `29243976304` passed the clean Xcode 16.4 iOS Simulator
+  build after running the Worker and hardening gates.
 - No Xcode Cloud or TestFlight release was triggered. The work remains on
   `codex/app-store-hardening-c` until the Block C checkpoint after Round 12.
 
