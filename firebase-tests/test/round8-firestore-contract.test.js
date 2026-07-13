@@ -449,7 +449,7 @@ test("production listener query shapes are authorized for each intended role", a
   await assertFails(getDocs(assignmentCollection(volunteer)));
 });
 
-test("assigned volunteers read class learning context while unassigned volunteers cannot", async () => {
+test("even assigned volunteers cannot read private class learning context", async () => {
   await testEnv.withSecurityRulesDisabled(async (context) => {
     const db = context.firestore();
     await setDoc(
@@ -469,7 +469,7 @@ test("assigned volunteers read class learning context while unassigned volunteer
   });
 
   const path = ["classes", CLASS_ID, "students", "studentA", "dailyMissions", "mission-context"];
-  await assertSucceeds(getDoc(doc(dbFor("volunteerA"), ...path)));
+  await assertFails(getDoc(doc(dbFor("volunteerA"), ...path)));
   await assertFails(getDoc(doc(dbFor("volunteerB"), ...path)));
 });
 

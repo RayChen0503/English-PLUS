@@ -891,6 +891,11 @@ struct TeacherClassAssignmentView: View {
                 .disabled(appState.isManagingClassroom)
             }
 
+
+            if let classroom = activeTeacherClassroom {
+                TeacherVolunteerServiceCard(classroom: classroom)
+            }
+
             if showsCreateClassroom || teacherClassrooms.isEmpty {
                 createClassroomForm
             } else {
@@ -1034,6 +1039,195 @@ struct TeacherClassAssignmentView: View {
             return "建議先給穩定題組，再視答題狀況補一組會考挑戰。"
         case .low:
             return "可以給會考挑戰或進階挑戰，讓學生維持成就感與挑戰感。"
+        }
+    }
+}
+
+private struct TeacherVolunteerServiceCard: View {
+    @EnvironmentObject private var appState: AppState
+    let classroom: ClassroomSummary
+    @State private var volunteerPendingRemoval: VolunteerServiceSummary?
+    @State private var copiedCode = false
+
+    private var pending: [VolunteerServiceSummary] {
+        appState.classroomVolunteerServices.filter { $0.status == .pendingApproval }
+    }
+
+    private var active: [VolunteerServiceSummary] {
+        appState.classroomVolunteerServices.filter { $0.status == .active }
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Divider()
+                .overlay(EPTheme.hairline)
+
+            HStack(alignment: .top, spacing: 10) {
+                Image(systemName: "person.2.badge.gearshape")
+                    .foregroundStyle(EPTheme.support)
+                    .frame(width: 36, height: 36)
+                    .background(EPTheme.support.opacity(0.10))
+                    .clipShape(RoundedRectangle(cornerRadius: 9))
+                VStack(alignment: .leading, spacing: 3) {
+                    Text("志工服務範圍")
+                        .font(.headline)
+                        .foregroundStyle(EPTheme.ink)
+                    Text("平台審核通過不代表能看本班資料；志工還要用專用邀請碼申請，並由你核准。")
+                        .font(.footnote)
+                        .foregroundStyle(EPTheme.secondaryInk)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+            }
+
+            if let invitation = appState.volunteerInviteCodes[classroom.classId] {
+                VStack(alignment: .leading, spacing: 8) {
+                    Text("志工邀請碼")
+                        .font(.caption.bold())
+                        .foregroundStyle(EPTheme.secondaryInk)
+                    Text(invitation.formattedCode)
+                        .font(.title3.monospaced().bold())
+                        .foregroundStyle(EPTheme.ink)
+                        .textSelection(.enabled)
+                    HStack(spacing: 8) {
+                        Button {
+                            #if canImport(UIKit)
+                            UIPasteboard.general.string = invitation.code
+                            #endif
+                            copiedCode = true
+                        } label: {
+                            Label(copiedCode ? "已複製" : "複製", systemImage: copiedCode ? "checkmark" : "doc.on.doc")
+                                .frame(maxWidth: .infinity, minHeight: 44)
+                        }
+                        .buttonStyle(PrimaryActionButtonStyle())
+
+                        Button {
+                            Task { _ = await appState.resetVolunteerInviteCode(classId: classroom.classId) }
+                        } label: {
+                            Label("重設", systemImage: "arrow.triangle.2.circlepath")
+                                .frame(maxWidth: .infinity, minHeight: 44)
+                        }
+                        .buttonStyle(SecondaryActionButtonStyle())
+                    }
+                }
+                .padding(12)
+                .background(EPTheme.support.opacity(0.06))
+                .clipShape(RoundedRectangle(cornerRadius: EPTheme.cardRadius))
+            } else {
+                Button {
+                    Task { _ = await appState.resetVolunteerInviteCode(classId: classroom.classId) }
+                } label: {
+                    Label("建立志工邀請碼", systemImage: "key.fill")
+                        .frame(maxWidth: .infinity, minHeight: 44)
+                }
+                .buttonStyle(PrimaryActionButtonStyle())
+            }
+
+            if appState.isLoadingVolunteerServices {
+                ProgressView("正在更新志工名單...")
+                    .font(.footnote)
+            }
+
+            if !pending.isEmpty {
+                Text("等待核准")
+                    .font(.subheadline.bold())
+                    .foregroundStyle(EPTheme.ink)
+                ForEach(pending) { service in
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text(service.volunteerName)
+                            .font(.subheadline.bold())
+                            .foregroundStyle(EPTheme.ink)
+                        Text("此帳號已通過平台資格審核，但尚未取得本班資料權限。")
+                            .font(.caption)
+                            .foregroundStyle(EPTheme.secondaryInk)
+                        HStack(spacing: 8) {
+                            Button("核准") {
+                                Task {
+                                    _ = await appState.reviewVolunteerService(
+                                        classId: classroom.classId,
+                                        volunteerUid: service.volunteerUid,
+                                        approve: true
+                                    )
+                                }
+                            }
+                            .buttonStyle(PrimaryActionButtonStyle())
+                            Button("拒絕", role: .destructive) {
+                                Task {
+                                    _ = await appState.reviewVolunteerService(
+                                        classId: classroom.classId,
+                                        volunteerUid: service.volunteerUid,
+                                        approve: false
+                                    )
+                                }
+                            }
+                            .buttonStyle(SecondaryActionButtonStyle())
+                        }
+                    }
+                    .padding(12)
+                    .background(EPTheme.secondarySurface)
+                    .clipShape(RoundedRectangle(cornerRadius: EPTheme.cardRadius))
+                }
+            }
+
+            if !active.isEmpty {
+                Text("服務中")
+                    .font(.subheadline.bold())
+                    .foregroundStyle(EPTheme.ink)
+                ForEach(active) { service in
+                    HStack(spacing: 10) {
+                        VStack(alignment: .leading, spacing: 3) {
+                            Text(service.volunteerName)
+                                .font(.subheadline.bold())
+                                .foregroundStyle(EPTheme.ink)
+                            Text("只能查看本班學生主動送出的求助")
+                                .font(.caption)
+                                .foregroundStyle(EPTheme.secondaryInk)
+                        }
+                        Spacer()
+                        Button("移除", role: .destructive) {
+                            volunteerPendingRemoval = service
+                        }
+                        .font(.caption.bold())
+                    }
+                    .padding(12)
+                    .background(EPTheme.secondarySurface)
+                    .clipShape(RoundedRectangle(cornerRadius: EPTheme.cardRadius))
+                }
+            } else if pending.isEmpty && !appState.isLoadingVolunteerServices {
+                Text("目前沒有志工服務這個班級。")
+                    .font(.footnote)
+                    .foregroundStyle(EPTheme.secondaryInk)
+            }
+
+            if let notice = appState.volunteerServiceNoticeMessage {
+                TeacherClassroomMessage(text: notice, isError: false)
+            }
+            if let error = appState.volunteerServiceErrorMessage {
+                TeacherClassroomMessage(text: error, isError: true)
+            }
+        }
+        .task(id: classroom.classId) {
+            await appState.loadClassroomVolunteers(classId: classroom.classId)
+        }
+        .alert(
+            "移除「\(volunteerPendingRemoval?.volunteerName ?? "志工")」？",
+            isPresented: Binding(
+                get: { volunteerPendingRemoval != nil },
+                set: { if !$0 { volunteerPendingRemoval = nil } }
+            )
+        ) {
+            Button("取消", role: .cancel) { volunteerPendingRemoval = nil }
+            Button("移除志工", role: .destructive) {
+                guard let service = volunteerPendingRemoval else { return }
+                volunteerPendingRemoval = nil
+                Task {
+                    _ = await appState.removeVolunteerService(
+                        classId: classroom.classId,
+                        volunteerUid: service.volunteerUid
+                    )
+                }
+            }
+        } message: {
+            Text("移除後，對方會立即失去本班求助資料與通知權限。")
         }
     }
 }

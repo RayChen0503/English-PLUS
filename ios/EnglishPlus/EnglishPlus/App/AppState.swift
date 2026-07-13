@@ -31,6 +31,13 @@ final class AppState: ObservableObject {
     @Published private(set) var classroomErrorMessage: String?
     @Published private(set) var classroomRosterErrorMessage: String?
     @Published private(set) var classroomNoticeMessage: String?
+    @Published private(set) var volunteerServices: [VolunteerServiceSummary] = []
+    @Published private(set) var classroomVolunteerServices: [VolunteerServiceSummary] = []
+    @Published private(set) var volunteerInviteCodes: [String: VolunteerInviteCodeSummary] = [:]
+    @Published private(set) var isLoadingVolunteerServices = false
+    @Published private(set) var isManagingVolunteerService = false
+    @Published private(set) var volunteerServiceErrorMessage: String?
+    @Published private(set) var volunteerServiceNoticeMessage: String?
     @Published private(set) var runtimeDiagnostics: RuntimeDiagnosticsSnapshot
 
     private let authService: AuthService
@@ -43,6 +50,10 @@ final class AppState: ObservableObject {
     private var classroomRosterListener: ClassroomRosterListenerToken?
     private var classroomMembershipListener: ClassroomRosterListenerToken?
     private var classroomMembershipListenerUid: String?
+    private var volunteerServiceListener: ClassroomRosterListenerToken?
+    private var volunteerServiceListenerUid: String?
+    private var classroomVolunteerListener: ClassroomRosterListenerToken?
+    private var classroomVolunteerListenerClassId: String?
     private var isReconcilingClassroomMemberships = false
     private var didAttemptSessionRestore = false
     private var pendingIdentityCredential: FederatedIdentityCredential?
@@ -469,11 +480,24 @@ final class AppState: ObservableObject {
         classroomErrorMessage = nil
         classroomRosterErrorMessage = nil
         classroomNoticeMessage = nil
+        volunteerServices = []
+        classroomVolunteerServices = []
+        volunteerInviteCodes = [:]
+        isLoadingVolunteerServices = false
+        isManagingVolunteerService = false
+        volunteerServiceErrorMessage = nil
+        volunteerServiceNoticeMessage = nil
         classroomRosterListener?.cancel()
         classroomRosterListener = nil
         classroomMembershipListener?.cancel()
         classroomMembershipListener = nil
         classroomMembershipListenerUid = nil
+        volunteerServiceListener?.cancel()
+        volunteerServiceListener = nil
+        volunteerServiceListenerUid = nil
+        classroomVolunteerListener?.cancel()
+        classroomVolunteerListener = nil
+        classroomVolunteerListenerClassId = nil
         isReconcilingClassroomMemberships = false
         pendingIdentityCredential = nil
         pendingIdentityRole = nil
@@ -505,12 +529,18 @@ final class AppState: ObservableObject {
                 ? "已切換到個人學習模式。"
                 : "已切換班級。"
             if session.user.role == .teacher, let classId {
+                classroomVolunteerServices = []
+                startClassroomVolunteerSyncIfNeeded(classId: classId)
                 startClassroomRosterSync(classId: classId)
             } else {
                 classroomRosterListener?.cancel()
                 classroomRosterListener = nil
                 classroomStudents = []
                 classroomRosterErrorMessage = nil
+                classroomVolunteerListener?.cancel()
+                classroomVolunteerListener = nil
+                classroomVolunteerListenerClassId = nil
+                classroomVolunteerServices = []
             }
         } catch {
             signInErrorMessage = "無法切換班級，請確認你仍是該班級的成員。"
@@ -648,6 +678,13 @@ final class AppState: ObservableObject {
             classroomStudents = []
             classroomRosterErrorMessage = nil
             classrooms.removeAll { $0.classId == classId }
+            classroomVolunteerServices = []
+            volunteerInviteCodes[classId] = nil
+            if classroomVolunteerListenerClassId == classId {
+                classroomVolunteerListener?.cancel()
+                classroomVolunteerListener = nil
+                classroomVolunteerListenerClassId = nil
+            }
             await refreshClassSessionAfterLeaving(classId: classId)
             await refreshClassroomListAfterMutation()
             classroomNoticeMessage = "已刪除「\(deletedName)」。所有成員已退出，個人學習紀錄不受影響。"
@@ -799,6 +836,10 @@ final class AppState: ObservableObject {
         currentProfile = session.profile
         selectedRole = session.user.role
         startClassroomMembershipSyncIfNeeded(userUid: session.user.id)
+        startVolunteerServiceSyncIfNeeded(
+            userUid: session.user.id,
+            role: session.profile.role
+        )
         runtimeDiagnostics = runtimeDiagnostics.withSession(user: session.user, profile: session.profile)
         isAdministrator = await authService.currentUserIsAdministrator()
         if session.user.role == .volunteer,
@@ -867,11 +908,189 @@ final class AppState: ObservableObject {
         currentProfile = session.profile
         selectedRole = session.user.role
         startClassroomMembershipSyncIfNeeded(userUid: session.user.id)
+        startVolunteerServiceSyncIfNeeded(
+            userUid: session.user.id,
+            role: session.profile.role
+        )
         runtimeDiagnostics = runtimeDiagnostics.withSession(
             user: session.user,
             profile: session.profile
         )
         route = .home(session.user.role)
+    }
+
+    func loadVolunteerServices() async {
+        guard currentProfile?.role == .volunteer, !isLoadingVolunteerServices else { return }
+        isLoadingVolunteerServices = true
+        volunteerServiceErrorMessage = nil
+        do {
+            volunteerServices = try await classroomService.listVolunteerServices()
+            classrooms = try await classroomService.listClassrooms()
+        } catch {
+            volunteerServiceErrorMessage = classroomMessage(for: error)
+        }
+        isLoadingVolunteerServices = false
+    }
+
+    @discardableResult
+    func requestVolunteerService(code: String) async -> Bool {
+        guard currentProfile?.role == .volunteer, !isManagingVolunteerService else { return false }
+        isManagingVolunteerService = true
+        clearVolunteerServiceFeedback()
+        do {
+            let service = try await classroomService.requestVolunteerService(code: code)
+            volunteerServices.removeAll { $0.classId == service.classId }
+            volunteerServices.append(service)
+            volunteerServiceNoticeMessage = "申請已送給「\(service.className)」的老師；核准前不會顯示任何學生資料。"
+            isManagingVolunteerService = false
+            return true
+        } catch {
+            volunteerServiceErrorMessage = classroomMessage(for: error)
+            isManagingVolunteerService = false
+            return false
+        }
+    }
+
+    @discardableResult
+    func leaveVolunteerService(classId: String) async -> Bool {
+        guard currentProfile?.role == .volunteer, !isManagingVolunteerService else { return false }
+        isManagingVolunteerService = true
+        clearVolunteerServiceFeedback()
+        do {
+            try await classroomService.leaveVolunteerService(classId: classId)
+            volunteerServices = try await classroomService.listVolunteerServices()
+            classrooms = try await classroomService.listClassrooms()
+            await refreshClassSessionAfterLeaving(classId: classId)
+            volunteerServiceNoticeMessage = "已離開服務班級，學生求助與通知已立即停止。"
+            isManagingVolunteerService = false
+            return true
+        } catch {
+            volunteerServiceErrorMessage = classroomMessage(for: error)
+            isManagingVolunteerService = false
+            return false
+        }
+    }
+
+    func loadClassroomVolunteers(classId: String) async {
+        guard currentProfile?.role == .teacher,
+              currentProfile?.activeClassId == classId,
+              !isLoadingVolunteerServices
+        else { return }
+        startClassroomVolunteerSyncIfNeeded(classId: classId)
+        isLoadingVolunteerServices = true
+        volunteerServiceErrorMessage = nil
+        do {
+            classroomVolunteerServices = try await classroomService.listClassroomVolunteers(classId: classId)
+            volunteerInviteCodes[classId] = try await classroomService.volunteerInviteCode(classId: classId)
+        } catch {
+            volunteerServiceErrorMessage = classroomMessage(for: error)
+        }
+        isLoadingVolunteerServices = false
+    }
+
+    @discardableResult
+    func resetVolunteerInviteCode(classId: String) async -> Bool {
+        guard currentProfile?.role == .teacher, !isManagingVolunteerService else { return false }
+        isManagingVolunteerService = true
+        clearVolunteerServiceFeedback()
+        do {
+            let invitation = try await classroomService.resetVolunteerInviteCode(classId: classId)
+            volunteerInviteCodes[classId] = invitation
+            volunteerServiceNoticeMessage = "已建立新的志工邀請碼；舊碼已失效。"
+            isManagingVolunteerService = false
+            return true
+        } catch {
+            volunteerServiceErrorMessage = classroomMessage(for: error)
+            isManagingVolunteerService = false
+            return false
+        }
+    }
+
+    @discardableResult
+    func reviewVolunteerService(
+        classId: String,
+        volunteerUid: String,
+        approve: Bool
+    ) async -> Bool {
+        guard currentProfile?.role == .teacher, !isManagingVolunteerService else { return false }
+        isManagingVolunteerService = true
+        clearVolunteerServiceFeedback()
+        do {
+            try await classroomService.reviewVolunteerService(
+                classId: classId,
+                volunteerUid: volunteerUid,
+                approve: approve
+            )
+            classroomVolunteerServices = try await classroomService.listClassroomVolunteers(classId: classId)
+            volunteerServiceNoticeMessage = approve
+                ? "已核准志工加入；對方現在只能看到本班學生主動送出的求助。"
+                : "已拒絕這筆服務申請。"
+            isManagingVolunteerService = false
+            return true
+        } catch {
+            volunteerServiceErrorMessage = classroomMessage(for: error)
+            isManagingVolunteerService = false
+            return false
+        }
+    }
+
+    @discardableResult
+    func removeVolunteerService(classId: String, volunteerUid: String) async -> Bool {
+        guard currentProfile?.role == .teacher, !isManagingVolunteerService else { return false }
+        isManagingVolunteerService = true
+        clearVolunteerServiceFeedback()
+        do {
+            try await classroomService.removeVolunteerService(
+                classId: classId,
+                volunteerUid: volunteerUid
+            )
+            classroomVolunteerServices = try await classroomService.listClassroomVolunteers(classId: classId)
+            volunteerServiceNoticeMessage = "已移除志工；學生求助權限與通知已立即撤回。"
+            isManagingVolunteerService = false
+            return true
+        } catch {
+            volunteerServiceErrorMessage = classroomMessage(for: error)
+            isManagingVolunteerService = false
+            return false
+        }
+    }
+
+    func clearVolunteerServiceFeedback() {
+        volunteerServiceErrorMessage = nil
+        volunteerServiceNoticeMessage = nil
+    }
+
+    private func startVolunteerServiceSyncIfNeeded(userUid: String, role: UserRole) {
+        guard role == .volunteer else {
+            volunteerServiceListener?.cancel()
+            volunteerServiceListener = nil
+            volunteerServiceListenerUid = nil
+            return
+        }
+        guard volunteerServiceListenerUid != userUid else { return }
+        volunteerServiceListener?.cancel()
+        volunteerServiceListenerUid = userUid
+        volunteerServiceListener = classroomService.startVolunteerServiceListener(
+            userUid: userUid
+        ) { [weak self] services in
+            self?.volunteerServices = services
+        } onError: { [weak self] _ in
+            self?.volunteerServiceErrorMessage = "服務班級狀態暫時無法同步，請檢查網路後重新整理。"
+        }
+    }
+
+    private func startClassroomVolunteerSyncIfNeeded(classId: String) {
+        guard classroomVolunteerListenerClassId != classId else { return }
+        classroomVolunteerListener?.cancel()
+        classroomVolunteerListenerClassId = classId
+        classroomVolunteerListener = classroomService.startClassroomVolunteerListener(
+            classId: classId
+        ) { [weak self] services in
+            guard self?.currentProfile?.activeClassId == classId else { return }
+            self?.classroomVolunteerServices = services
+        } onError: { [weak self] _ in
+            self?.volunteerServiceErrorMessage = "志工申請暫時無法同步，請檢查網路後重新整理。"
+        }
     }
 
     private func startClassroomMembershipSyncIfNeeded(userUid: String) {
@@ -976,11 +1195,24 @@ final class AppState: ObservableObject {
         signingInRole = nil
         classrooms = []
         classroomStudents = []
+        volunteerServices = []
+        classroomVolunteerServices = []
+        volunteerInviteCodes = [:]
+        isLoadingVolunteerServices = false
+        isManagingVolunteerService = false
+        volunteerServiceErrorMessage = nil
+        volunteerServiceNoticeMessage = nil
         classroomRosterListener?.cancel()
         classroomRosterListener = nil
         classroomMembershipListener?.cancel()
         classroomMembershipListener = nil
         classroomMembershipListenerUid = nil
+        volunteerServiceListener?.cancel()
+        volunteerServiceListener = nil
+        volunteerServiceListenerUid = nil
+        classroomVolunteerListener?.cancel()
+        classroomVolunteerListener = nil
+        classroomVolunteerListenerClassId = nil
         isReconcilingClassroomMemberships = false
         classroomErrorMessage = nil
         classroomRosterErrorMessage = nil

@@ -231,23 +231,14 @@ service cloud.firestore {
 
     function staffCanReadStudentTimeline(classId, studentUid, createdAt) {
       return isInsideStudentMembershipWindow(classId, studentUid, createdAt)
-        && (
-          isClassTeacher(classId)
-          || (
-            isActiveStudentMember(classId, studentUid)
-            && assignedToStudent(classId, studentUid)
-          )
-        );
+        && isClassTeacher(classId);
     }
 
     function staffCanWriteStudentTimeline(classId, studentUid, createdAt) {
       return isActiveStudentMember(classId, studentUid)
         && createdAt is timestamp
         && createdAt >= studentVisibilityStartsAt(classId, studentUid)
-        && (
-          isClassTeacher(classId)
-          || assignedToStudent(classId, studentUid)
-        );
+        && isClassTeacher(classId);
     }
 
     function classStaffCanReadSupportTimeline(classId, studentUid, createdAt) {
@@ -291,13 +282,7 @@ service cloud.firestore {
       return (isOwnerStudent(studentUid) && isClassStudent(classId))
         || (
           isStudentMembershipRecord(classId, studentUid)
-          && (
-            isClassTeacher(classId)
-            || (
-              isActiveStudentMember(classId, studentUid)
-              && assignedToStudent(classId, studentUid)
-            )
-          )
+          && isClassTeacher(classId)
         );
     }
 
@@ -340,6 +325,10 @@ service cloud.firestore {
     }
 
     match /staffInvitations/{invitationId} {
+      allow read, write: if false;
+    }
+
+    match /volunteerJoinCodes/{code} {
       allow read, write: if false;
     }
 
@@ -481,6 +470,11 @@ service cloud.firestore {
         allow create, update, delete: if false;
       }
 
+      match /volunteerServices/{classId} {
+        allow read: if isSelf(uid);
+        allow create, update, delete: if false;
+      }
+
       match /settings/{settingId} {
         allow read, create, update, delete: if hasAccountAccess(uid);
       }
@@ -519,6 +513,11 @@ service cloud.firestore {
       allow write: if false;
 
       match /members/{uid} {
+        allow read: if isSelf(uid) || isClassTeacher(classId);
+        allow create, update, delete: if false;
+      }
+
+      match /volunteerRequests/{uid} {
         allow read: if isSelf(uid) || isClassTeacher(classId);
         allow create, update, delete: if false;
       }

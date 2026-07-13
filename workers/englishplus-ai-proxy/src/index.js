@@ -197,11 +197,56 @@ export default {
       return handleClassroomJoin(request, env);
     }
 
+    if (url.pathname === "/volunteer-services" && request.method === "GET") {
+      return handleVolunteerServiceList(request, env);
+    }
+
+    if (url.pathname === "/volunteer-services/request" && request.method === "POST") {
+      return handleVolunteerServiceRequest(request, env);
+    }
+
+    const volunteerServiceLeave = url.pathname.match(
+      /^\/volunteer-services\/([A-Z0-9-]{3,64})\/leave$/
+    );
+    if (volunteerServiceLeave && request.method === "POST") {
+      return handleVolunteerServiceLeave(request, env, volunteerServiceLeave[1]);
+    }
+
     const classroomStudents = url.pathname.match(
       /^\/classrooms\/([A-Z0-9-]{3,64})\/students$/
     );
     if (classroomStudents && request.method === "GET") {
       return handleClassroomStudentList(request, env, classroomStudents[1]);
+    }
+
+    const classroomVolunteerList = url.pathname.match(
+      /^\/classrooms\/([A-Z0-9-]{3,64})\/volunteers$/
+    );
+    if (classroomVolunteerList && request.method === "GET") {
+      return handleClassroomVolunteerList(request, env, classroomVolunteerList[1]);
+    }
+
+    const classroomVolunteerCode = url.pathname.match(
+      /^\/classrooms\/([A-Z0-9-]{3,64})\/volunteer-code(?:\/(reset))?$/
+    );
+    if (classroomVolunteerCode && request.method === "GET" && !classroomVolunteerCode[2]) {
+      return handleVolunteerInviteCodeGet(request, env, classroomVolunteerCode[1]);
+    }
+    if (classroomVolunteerCode && request.method === "POST" && classroomVolunteerCode[2] === "reset") {
+      return handleVolunteerInviteCodeReset(request, env, classroomVolunteerCode[1]);
+    }
+
+    const classroomVolunteerAction = url.pathname.match(
+      /^\/classrooms\/([A-Z0-9-]{3,64})\/volunteers\/([^/]{1,160})\/(approve|reject|remove)$/
+    );
+    if (classroomVolunteerAction && request.method === "POST") {
+      return handleClassroomVolunteerAction(
+        request,
+        env,
+        classroomVolunteerAction[1],
+        decodeURIComponent(classroomVolunteerAction[2]),
+        classroomVolunteerAction[3]
+      );
     }
 
     const classroomSettings = url.pathname.match(
@@ -816,7 +861,14 @@ async function appendOwnedClassArchivePlan(
     updatedAt: { timestampValue: now },
   });
 
-  const [admin, members, assignments, supportThreads, activeClassProfiles] = await Promise.all([
+  const [
+    admin,
+    members,
+    assignments,
+    supportThreads,
+    volunteerRequests,
+    activeClassProfiles,
+  ] = await Promise.all([
     getFirestoreDocument(
       context.projectId,
       context.accessToken,
@@ -841,11 +893,19 @@ async function appendOwnedClassArchivePlan(
       `classes/${classId}/supportThreads`,
       context.firestoreBaseURL
     ),
+    listFirestoreCollection(
+      context.projectId,
+      context.accessToken,
+      `classes/${classId}/volunteerRequests`,
+      context.firestoreBaseURL
+    ),
     runFirestoreEqualQuery(context, "users", "activeClassId", classId),
   ]);
   const joinCode = firestoreString(admin?.fields?.joinCode);
+  const volunteerJoinCode = firestoreString(admin?.fields?.volunteerJoinCode);
   deletePaths.add(`classAdmins/${classId}`);
   if (joinCode) deletePaths.add(`classJoinCodes/${joinCode}`);
+  if (volunteerJoinCode) deletePaths.add(`volunteerJoinCodes/${volunteerJoinCode}`);
 
   for (const member of members) {
     const memberUid = firestoreString(member.fields?.uid) || documentId(member.name);
@@ -891,6 +951,22 @@ async function appendOwnedClassArchivePlan(
         updatedAt: { timestampValue: now },
       }
     ));
+  volunteerRequests.forEach((request) => {
+    const volunteerUid = firestoreString(request.fields?.volunteerUid) || documentId(request.name);
+    if (!volunteerUid) return;
+    const fields = {
+      status: { stringValue: "removed" },
+      decidedAt: { timestampValue: now },
+      decisionReason: { stringValue: "ownerAccountDeleted" },
+      updatedAt: { timestampValue: now },
+    };
+    addAccountDeletionUpdate(updates, relativeFirestorePath(request.name), fields);
+    addAccountDeletionUpdate(
+      updates,
+      `users/${volunteerUid}/volunteerServices/${classId}`,
+      fields
+    );
+  });
 }
 
 function addAccountDeletionUpdate(updates, path, fields) {
@@ -2143,6 +2219,84 @@ async function handleClassroomDelete(request, env, classId) {
   }
 }
 
+async function handleVolunteerServiceList(request, env) {
+  try {
+    const user = await requireFirebaseUser(request, env);
+    const services = await listVolunteerServices(env, user);
+    return jsonResponse({ ok: true, services });
+  } catch (error) {
+    if (error?.status) return authOrValidationError(error);
+    return jsonResponse({ ok: false, error: "VOLUNTEER_SERVICE_LIST_FAILED" }, 502);
+  }
+}
+
+async function handleVolunteerServiceRequest(request, env) {
+  try {
+    const user = await requireFirebaseUser(request, env);
+    const input = normalizeClassroomJoinRequest(await request.json());
+    const service = await requestVolunteerService(env, user, input.code);
+    return jsonResponse({ ok: true, service }, 201);
+  } catch (error) {
+    if (error?.status) return authOrValidationError(error);
+    return jsonResponse({ ok: false, error: "VOLUNTEER_SERVICE_REQUEST_FAILED" }, 502);
+  }
+}
+
+async function handleVolunteerServiceLeave(request, env, classId) {
+  try {
+    const user = await requireFirebaseUser(request, env);
+    const result = await leaveVolunteerService(env, user, classId);
+    return jsonResponse({ ok: true, ...result });
+  } catch (error) {
+    if (error?.status) return authOrValidationError(error);
+    return jsonResponse({ ok: false, error: "VOLUNTEER_SERVICE_LEAVE_FAILED" }, 502);
+  }
+}
+
+async function handleClassroomVolunteerList(request, env, classId) {
+  try {
+    const user = await requireFirebaseUser(request, env);
+    const services = await listClassroomVolunteers(env, user, classId);
+    return jsonResponse({ ok: true, services });
+  } catch (error) {
+    if (error?.status) return authOrValidationError(error);
+    return jsonResponse({ ok: false, error: "CLASSROOM_VOLUNTEER_LIST_FAILED" }, 502);
+  }
+}
+
+async function handleVolunteerInviteCodeReset(request, env, classId) {
+  try {
+    const user = await requireFirebaseUser(request, env);
+    const invitation = await resetVolunteerInviteCode(env, user, classId);
+    return jsonResponse({ ok: true, invitation });
+  } catch (error) {
+    if (error?.status) return authOrValidationError(error);
+    return jsonResponse({ ok: false, error: "VOLUNTEER_CODE_RESET_FAILED" }, 502);
+  }
+}
+
+async function handleVolunteerInviteCodeGet(request, env, classId) {
+  try {
+    const user = await requireFirebaseUser(request, env);
+    const invitation = await getVolunteerInviteCode(env, user, classId);
+    return jsonResponse({ ok: true, invitation });
+  } catch (error) {
+    if (error?.status) return authOrValidationError(error);
+    return jsonResponse({ ok: false, error: "VOLUNTEER_CODE_LOOKUP_FAILED" }, 502);
+  }
+}
+
+async function handleClassroomVolunteerAction(request, env, classId, volunteerUid, action) {
+  try {
+    const user = await requireFirebaseUser(request, env);
+    const result = await reviewVolunteerService(env, user, classId, volunteerUid, action);
+    return jsonResponse({ ok: true, ...result });
+  } catch (error) {
+    if (error?.status) return authOrValidationError(error);
+    return jsonResponse({ ok: false, error: "VOLUNTEER_SERVICE_ACTION_FAILED" }, 502);
+  }
+}
+
 function normalizeClassroomCreateRequest(raw) {
   const name = safeString(raw?.name)?.normalize("NFKC").replace(/\s+/g, " ");
   if (!name || name.length < 2 || name.length > 40 || /[\u0000-\u001F]/.test(name)) {
@@ -2325,6 +2479,369 @@ async function joinClassroom(env, user, joinCode) {
     leftAt: "",
     joinCode: "",
   });
+}
+
+async function listVolunteerServices(env, user) {
+  const context = await classroomUserContext(env, user);
+  requireActiveRole(context.profile, "volunteer", "VOLUNTEER_APPROVAL_REQUIRED");
+  const documents = await listFirestoreCollection(
+    context.projectId,
+    context.accessToken,
+    `users/${user.sub}/volunteerServices`,
+    context.firestoreBaseURL
+  );
+  return documents
+    .map(volunteerServiceSummaryFromDocument)
+    .filter(Boolean)
+    .sort((left, right) => right.requestedAt.localeCompare(left.requestedAt));
+}
+
+async function requestVolunteerService(env, user, inviteCode) {
+  const context = await classroomUserContext(env, user);
+  requireActiveRole(context.profile, "volunteer", "VOLUNTEER_APPROVAL_REQUIRED");
+  await assertClassJoinRateLimit(context, user.sub);
+  const mapping = await getFirestoreDocument(
+    context.projectId,
+    context.accessToken,
+    `volunteerJoinCodes/${inviteCode}`,
+    context.firestoreBaseURL
+  );
+  if (!mapping || mapping.fields?.active?.booleanValue !== true) {
+    throw httpError(404, "CLASSROOM_CODE_NOT_FOUND");
+  }
+  const classId = firestoreString(mapping.fields?.classId);
+  if (!/^[A-Z0-9-]{3,64}$/.test(classId)) {
+    throw httpError(404, "CLASSROOM_CODE_NOT_FOUND");
+  }
+  const classroom = await getFirestoreDocument(
+    context.projectId,
+    context.accessToken,
+    `classes/${classId}`,
+    context.firestoreBaseURL
+  );
+  if (!classroomIsOperationalDocument(classroom)) {
+    throw httpError(410, "CLASSROOM_UNAVAILABLE");
+  }
+  const requestPath = `classes/${classId}/volunteerRequests/${user.sub}`;
+  const existing = await getFirestoreDocument(
+    context.projectId,
+    context.accessToken,
+    requestPath,
+    context.firestoreBaseURL
+  );
+  const existingStatus = firestoreString(existing?.fields?.status);
+  if (existingStatus === "pendingApproval" || existingStatus === "active") {
+    throw httpError(409, "VOLUNTEER_SERVICE_ALREADY_REQUESTED");
+  }
+
+  const now = new Date().toISOString();
+  const className = firestoreString(classroom.fields?.name) || "English+ 班級";
+  const volunteerName = firestoreString(context.profile.fields?.displayName) || "志工";
+  const fields = volunteerServiceFields({
+    classId,
+    className,
+    volunteerUid: user.sub,
+    volunteerName,
+    status: "pendingApproval",
+    requestedAt: existing?.fields?.requestedAt?.timestampValue || now,
+    decidedAt: null,
+    joinedAt: null,
+    updatedAt: now,
+  });
+  const root = firestoreRoot(context.projectId);
+  await commitFirestoreWrites(context, [
+    {
+      update: { name: `${root}/${requestPath}`, fields },
+      currentDocument: existing ? { updateTime: existing.updateTime } : { exists: false },
+    },
+    {
+      update: {
+        name: `${root}/users/${user.sub}/volunteerServices/${classId}`,
+        fields,
+      },
+    },
+  ]);
+  return volunteerServiceSummaryFromFields(fields, `${classId}-${user.sub}`);
+}
+
+async function listClassroomVolunteers(env, user, classId) {
+  const context = await classroomUserContext(env, user);
+  await requireOwnedTeacherClassroom(context, user.sub, classId);
+  const documents = await listFirestoreCollection(
+    context.projectId,
+    context.accessToken,
+    `classes/${classId}/volunteerRequests`,
+    context.firestoreBaseURL
+  );
+  return documents
+    .map(volunteerServiceSummaryFromDocument)
+    .filter(Boolean)
+    .sort((left, right) => {
+      if (left.status === right.status) return right.requestedAt.localeCompare(left.requestedAt);
+      if (left.status === "pendingApproval") return -1;
+      if (right.status === "pendingApproval") return 1;
+      if (left.status === "active") return -1;
+      if (right.status === "active") return 1;
+      return 0;
+    });
+}
+
+async function resetVolunteerInviteCode(env, user, classId) {
+  const context = await classroomUserContext(env, user);
+  const { admin } = await requireOwnedTeacherClassroom(context, user.sub, classId);
+  const code = await unusedVolunteerCode(context);
+  const oldCode = firestoreString(admin.fields?.volunteerJoinCode);
+  const version = Number(admin.fields?.volunteerCodeVersion?.integerValue || 0) + 1;
+  const now = new Date().toISOString();
+  const root = firestoreRoot(context.projectId);
+  const writes = [
+    maskedUpdateWrite(
+      `${root}/classAdmins/${classId}`,
+      {
+        volunteerJoinCode: { stringValue: code },
+        volunteerCodeVersion: { integerValue: String(version) },
+        updatedAt: { timestampValue: now },
+      },
+      ["volunteerJoinCode", "volunteerCodeVersion", "updatedAt"],
+      admin.updateTime
+    ),
+    {
+      update: {
+        name: `${root}/volunteerJoinCodes/${code}`,
+        fields: {
+          classId: { stringValue: classId },
+          active: { booleanValue: true },
+          codeVersion: { integerValue: String(version) },
+          createdAt: { timestampValue: now },
+        },
+      },
+      currentDocument: { exists: false },
+    },
+  ];
+  if (oldCode && oldCode !== code) {
+    writes.push({ delete: `${root}/volunteerJoinCodes/${oldCode}` });
+  }
+  await commitFirestoreWrites(context, writes);
+  return { classId, code };
+}
+
+async function getVolunteerInviteCode(env, user, classId) {
+  const context = await classroomUserContext(env, user);
+  const { admin } = await requireOwnedTeacherClassroom(context, user.sub, classId);
+  const code = firestoreString(admin?.fields?.volunteerJoinCode);
+  return code ? { classId, code } : null;
+}
+
+async function reviewVolunteerService(env, user, classId, volunteerUid, action) {
+  if (!/^[A-Za-z0-9:_-]{1,160}$/.test(volunteerUid)) {
+    throw httpError(400, "INVALID_VOLUNTEER_UID");
+  }
+  if (!new Set(["approve", "reject", "remove"]).has(action)) {
+    throw httpError(400, "INVALID_VOLUNTEER_ACTION");
+  }
+  const context = await classroomUserContext(env, user);
+  const { classroom } = await requireOwnedTeacherClassroom(context, user.sub, classId);
+  const [service, volunteerProfile, membership, mirror] = await Promise.all([
+    getFirestoreDocument(
+      context.projectId,
+      context.accessToken,
+      `classes/${classId}/volunteerRequests/${volunteerUid}`,
+      context.firestoreBaseURL
+    ),
+    getFirestoreDocument(
+      context.projectId,
+      context.accessToken,
+      `users/${volunteerUid}`,
+      context.firestoreBaseURL
+    ),
+    getFirestoreDocument(
+      context.projectId,
+      context.accessToken,
+      `classes/${classId}/members/${volunteerUid}`,
+      context.firestoreBaseURL
+    ),
+    getFirestoreDocument(
+      context.projectId,
+      context.accessToken,
+      `users/${volunteerUid}/classMemberships/${classId}`,
+      context.firestoreBaseURL
+    ),
+  ]);
+  if (!service) throw httpError(404, "VOLUNTEER_SERVICE_NOT_FOUND");
+  const previousStatus = firestoreString(service.fields?.status);
+  if (action === "approve" && previousStatus !== "pendingApproval") {
+    throw httpError(409, "VOLUNTEER_SERVICE_NOT_PENDING");
+  }
+  if (action === "reject" && previousStatus !== "pendingApproval") {
+    throw httpError(409, "VOLUNTEER_SERVICE_NOT_PENDING");
+  }
+  if (action === "remove" && previousStatus !== "active") {
+    throw httpError(409, "VOLUNTEER_SERVICE_NOT_ACTIVE");
+  }
+  if (
+    action === "approve"
+    && (
+      firestoreString(volunteerProfile?.fields?.primaryRole) !== "volunteer"
+      || firestoreString(volunteerProfile?.fields?.accountStatus) !== "active"
+      || volunteerProfile?.fields?.active?.booleanValue !== true
+    )
+  ) {
+    throw httpError(403, "VOLUNTEER_APPROVAL_REQUIRED");
+  }
+
+  const now = new Date().toISOString();
+  const className = firestoreString(classroom.fields?.name) || "English+ 班級";
+  const volunteerName = firestoreString(service.fields?.volunteerName)
+    || firestoreString(volunteerProfile?.fields?.displayName)
+    || "志工";
+  const status = action === "approve" ? "active" : action === "reject" ? "rejected" : "removed";
+  const joinedAt = action === "approve"
+    ? service.fields?.joinedAt?.timestampValue || now
+    : service.fields?.joinedAt?.timestampValue || null;
+  const fields = volunteerServiceFields({
+    classId,
+    className,
+    volunteerUid,
+    volunteerName,
+    status,
+    requestedAt: service.fields?.requestedAt?.timestampValue || now,
+    decidedAt: now,
+    joinedAt,
+    updatedAt: now,
+  });
+  const root = firestoreRoot(context.projectId);
+  const writes = [
+    {
+      update: {
+        name: `${root}/classes/${classId}/volunteerRequests/${volunteerUid}`,
+        fields,
+      },
+      currentDocument: { updateTime: service.updateTime },
+    },
+    {
+      update: {
+        name: `${root}/users/${volunteerUid}/volunteerServices/${classId}`,
+        fields,
+      },
+    },
+  ];
+
+  if (action === "approve") {
+    const membershipFieldsValue = membershipFields({
+      uid: volunteerUid,
+      classId,
+      className,
+      role: "volunteer",
+      displayName: volunteerName,
+      joinedAt,
+      visibilityStartsAt: now,
+      leftAt: null,
+    });
+    writes.push({
+      update: {
+        name: `${root}/classes/${classId}/members/${volunteerUid}`,
+        fields: membershipFieldsValue,
+      },
+      ...(membership ? { currentDocument: { updateTime: membership.updateTime } } : { currentDocument: { exists: false } }),
+    });
+    writes.push({
+      update: {
+        name: `${root}/users/${volunteerUid}/classMemberships/${classId}`,
+        fields: userMembershipFields({
+          classId,
+          className,
+          role: "volunteer",
+          joinedAt,
+          visibilityStartsAt: now,
+          leftAt: null,
+        }),
+      },
+      ...(mirror ? { currentDocument: { updateTime: mirror.updateTime } } : {}),
+    });
+  } else if (action === "remove") {
+    writes.push(...volunteerMembershipExitWrites(
+      root,
+      classId,
+      volunteerUid,
+      membership,
+      mirror,
+      volunteerProfile,
+      now,
+      "teacherRemoved"
+    ));
+  }
+  await commitFirestoreWrites(context, writes);
+  return { classId, volunteerUid, status };
+}
+
+async function leaveVolunteerService(env, user, classId) {
+  const context = await classroomUserContext(env, user);
+  requireActiveRole(context.profile, "volunteer", "VOLUNTEER_APPROVAL_REQUIRED");
+  const [service, membership, mirror] = await Promise.all([
+    getFirestoreDocument(
+      context.projectId,
+      context.accessToken,
+      `classes/${classId}/volunteerRequests/${user.sub}`,
+      context.firestoreBaseURL
+    ),
+    getFirestoreDocument(
+      context.projectId,
+      context.accessToken,
+      `classes/${classId}/members/${user.sub}`,
+      context.firestoreBaseURL
+    ),
+    getFirestoreDocument(
+      context.projectId,
+      context.accessToken,
+      `users/${user.sub}/classMemberships/${classId}`,
+      context.firestoreBaseURL
+    ),
+  ]);
+  const serviceStatus = firestoreString(service?.fields?.status);
+  if (!service || !new Set(["pendingApproval", "active"]).has(serviceStatus)) {
+    throw httpError(404, "VOLUNTEER_SERVICE_NOT_FOUND");
+  }
+  const now = new Date().toISOString();
+  const fields = volunteerServiceFields({
+    classId,
+    className: firestoreString(service.fields?.className) || "English+ 班級",
+    volunteerUid: user.sub,
+    volunteerName: firestoreString(service.fields?.volunteerName) || "志工",
+    status: "left",
+    requestedAt: service.fields?.requestedAt?.timestampValue || now,
+    decidedAt: now,
+    joinedAt: service.fields?.joinedAt?.timestampValue || null,
+    updatedAt: now,
+  });
+  const root = firestoreRoot(context.projectId);
+  await commitFirestoreWrites(context, [
+    {
+      update: {
+        name: `${root}/classes/${classId}/volunteerRequests/${user.sub}`,
+        fields,
+      },
+      currentDocument: { updateTime: service.updateTime },
+    },
+    {
+      update: {
+        name: `${root}/users/${user.sub}/volunteerServices/${classId}`,
+        fields,
+      },
+    },
+    ...(serviceStatus === "active"
+      ? volunteerMembershipExitWrites(
+          root,
+          classId,
+          user.sub,
+          membership,
+          mirror,
+          context.profile,
+          now,
+          "volunteerLeft"
+        )
+      : []),
+  ]);
+  return { classId, volunteerUid: user.sub, status: "left" };
 }
 
 async function leaveClassroom(env, user, classId) {
@@ -2537,13 +3054,21 @@ async function updateClassroom(env, user, classId, input) {
     user.sub,
     classId
   );
-  const memberships = await listFirestoreCollection(
-    context.projectId,
-    context.accessToken,
-    `classes/${classId}/members`,
-    context.firestoreBaseURL
-  );
-  if (memberships.length > 240) {
+  const [memberships, volunteerRequests] = await Promise.all([
+    listFirestoreCollection(
+      context.projectId,
+      context.accessToken,
+      `classes/${classId}/members`,
+      context.firestoreBaseURL
+    ),
+    listFirestoreCollection(
+      context.projectId,
+      context.accessToken,
+      `classes/${classId}/volunteerRequests`,
+      context.firestoreBaseURL
+    ),
+  ]);
+  if (memberships.length + volunteerRequests.length > 240) {
     throw httpError(409, "CLASSROOM_TOO_LARGE_TO_RENAME");
   }
 
@@ -2575,6 +3100,25 @@ async function updateClassroom(env, user, classId, input) {
         ["className", "updatedAt"]
       )
     );
+  }
+  for (const service of volunteerRequests) {
+    const volunteerUid = firestoreString(service.fields?.volunteerUid) || documentId(service.name);
+    if (!volunteerUid) continue;
+    const fields = {
+      className: { stringValue: input.name },
+      updatedAt: { timestampValue: now },
+    };
+    writes.push(maskedUpdateWrite(
+      `${root}/classes/${classId}/volunteerRequests/${volunteerUid}`,
+      fields,
+      ["className", "updatedAt"],
+      service.updateTime
+    ));
+    writes.push(maskedUpdateWrite(
+      `${root}/users/${volunteerUid}/volunteerServices/${classId}`,
+      fields,
+      ["className", "updatedAt"]
+    ));
   }
   await commitFirestoreWrites(context, writes);
 
@@ -2611,6 +3155,7 @@ async function deleteClassroom(env, user, classId) {
   const root = firestoreRoot(context.projectId);
   const ownerTeacherUid = firestoreString(classroom.fields?.ownerTeacherUid) || user.sub;
   const oldJoinCode = firestoreString(admin?.fields?.joinCode);
+  const oldVolunteerJoinCode = firestoreString(admin?.fields?.volunteerJoinCode);
 
   if (classroom.fields?.deletionPending?.booleanValue !== true) {
     const controlPlaneWrites = [
@@ -2641,9 +3186,10 @@ async function deleteClassroom(env, user, classId) {
             active: { booleanValue: false },
             deletionPending: { booleanValue: true },
             joinCode: { nullValue: null },
+            volunteerJoinCode: { nullValue: null },
             updatedAt: { timestampValue: now },
           },
-          ["active", "deletionPending", "joinCode", "updatedAt"],
+          ["active", "deletionPending", "joinCode", "volunteerJoinCode", "updatedAt"],
           admin.updateTime
         )
       );
@@ -2651,21 +3197,32 @@ async function deleteClassroom(env, user, classId) {
     if (oldJoinCode) {
       controlPlaneWrites.push({ delete: `${root}/classJoinCodes/${oldJoinCode}` });
     }
+    if (oldVolunteerJoinCode) {
+      controlPlaneWrites.push({ delete: `${root}/volunteerJoinCodes/${oldVolunteerJoinCode}` });
+    }
     await commitFirestoreWrites(context, controlPlaneWrites);
   }
 
-  const members = await listFirestoreCollection(
-    context.projectId,
-    context.accessToken,
-    `classes/${classId}/members`,
-    context.firestoreBaseURL
-  );
+  const [members, volunteerRequests] = await Promise.all([
+    listFirestoreCollection(
+      context.projectId,
+      context.accessToken,
+      `classes/${classId}/members`,
+      context.firestoreBaseURL
+    ),
+    listFirestoreCollection(
+      context.projectId,
+      context.accessToken,
+      `classes/${classId}/volunteerRequests`,
+      context.firestoreBaseURL
+    ),
+  ]);
   const activeMembers = members.filter(membershipIsActiveDocument);
   const preparedMembers = await Promise.all(activeMembers.map(async (member) => {
     const uid = documentId(member.name);
     const role = firestoreString(member.fields?.role);
     if (!uid) return null;
-    const [profile, membershipMirror, studentSummary] = await Promise.all([
+    const [profile, membershipMirror, studentSummary, volunteerRequest, volunteerServiceMirror] = await Promise.all([
       getFirestoreDocument(
         context.projectId,
         context.accessToken,
@@ -2686,8 +3243,33 @@ async function deleteClassroom(env, user, classId) {
             context.firestoreBaseURL
           )
         : Promise.resolve(null),
+      role === "volunteer"
+        ? getFirestoreDocument(
+            context.projectId,
+            context.accessToken,
+            `classes/${classId}/volunteerRequests/${uid}`,
+            context.firestoreBaseURL
+          )
+        : Promise.resolve(null),
+      role === "volunteer"
+        ? getFirestoreDocument(
+            context.projectId,
+            context.accessToken,
+            `users/${uid}/volunteerServices/${classId}`,
+            context.firestoreBaseURL
+          )
+        : Promise.resolve(null),
     ]);
-    return { uid, role, member, profile, membershipMirror, studentSummary };
+    return {
+      uid,
+      role,
+      member,
+      profile,
+      membershipMirror,
+      studentSummary,
+      volunteerRequest,
+      volunteerServiceMirror,
+    };
   }));
 
   const validMembers = preparedMembers.filter(Boolean);
@@ -2711,6 +3293,50 @@ async function deleteClassroom(env, user, classId) {
     .filter((item) => item.uid !== ownerTeacherUid)
     .flatMap((item) => classroomMemberExitWrites(root, classId, item, now));
   await commitFirestoreWriteChunks(context, nonOwnerWrites);
+
+  const activeVolunteerUids = new Set(
+    validMembers
+      .filter((item) => item.role === "volunteer")
+      .map((item) => item.uid)
+  );
+  const inactiveVolunteerRequests = volunteerRequests.filter((request) => {
+    const uid = firestoreString(request.fields?.volunteerUid) || documentId(request.name);
+    return uid && !activeVolunteerUids.has(uid);
+  });
+  const pendingServiceWrites = (
+    await Promise.all(inactiveVolunteerRequests.map(async (request) => {
+      const volunteerUid = firestoreString(request.fields?.volunteerUid) || documentId(request.name);
+      if (!volunteerUid) return [];
+      const serviceMirror = await getFirestoreDocument(
+        context.projectId,
+        context.accessToken,
+        `users/${volunteerUid}/volunteerServices/${classId}`,
+        context.firestoreBaseURL
+      );
+      const serviceExitFields = {
+        status: { stringValue: "removed" },
+        decidedAt: { timestampValue: now },
+        decisionReason: { stringValue: "classDeleted" },
+        updatedAt: { timestampValue: now },
+      };
+      const requestWrites = [maskedUpdateWrite(
+        `${root}/classes/${classId}/volunteerRequests/${volunteerUid}`,
+        serviceExitFields,
+        Object.keys(serviceExitFields),
+        request.updateTime
+      )];
+      if (serviceMirror) {
+        requestWrites.push(maskedUpdateWrite(
+          `${root}/users/${volunteerUid}/volunteerServices/${classId}`,
+          serviceExitFields,
+          Object.keys(serviceExitFields),
+          serviceMirror.updateTime
+        ));
+      }
+      return requestWrites;
+    }))
+  ).flat();
+  await commitFirestoreWriteChunks(context, pendingServiceWrites);
 
   const ownerState = validMembers.find((item) => item.uid === ownerTeacherUid);
   const finalWrites = ownerState
@@ -2761,10 +3387,18 @@ async function deleteClassroom(env, user, classId) {
           active: { booleanValue: false },
           deletionPending: { booleanValue: false },
           joinCode: { nullValue: null },
+          volunteerJoinCode: { nullValue: null },
           deletedAt: { timestampValue: now },
           updatedAt: { timestampValue: now },
         },
-        ["active", "deletionPending", "joinCode", "deletedAt", "updatedAt"]
+        [
+          "active",
+          "deletionPending",
+          "joinCode",
+          "volunteerJoinCode",
+          "deletedAt",
+          "updatedAt",
+        ]
       )
     );
   }
@@ -2830,6 +3464,32 @@ function classroomMemberExitWrites(root, classId, item, deletedAt) {
         item.studentSummary.updateTime
       )
     );
+  }
+  if (item.volunteerRequest) {
+    const volunteerExitFields = {
+      status: { stringValue: "removed" },
+      decidedAt: { timestampValue: deletedAt },
+      updatedAt: { timestampValue: deletedAt },
+    };
+    writes.push(maskedUpdateWrite(
+      `${root}/classes/${classId}/volunteerRequests/${item.uid}`,
+      volunteerExitFields,
+      Object.keys(volunteerExitFields),
+      item.volunteerRequest.updateTime
+    ));
+  }
+  if (item.volunteerServiceMirror) {
+    const volunteerExitFields = {
+      status: { stringValue: "removed" },
+      decidedAt: { timestampValue: deletedAt },
+      updatedAt: { timestampValue: deletedAt },
+    };
+    writes.push(maskedUpdateWrite(
+      `${root}/users/${item.uid}/volunteerServices/${classId}`,
+      volunteerExitFields,
+      Object.keys(volunteerExitFields),
+      item.volunteerServiceMirror.updateTime
+    ));
   }
   if (firestoreString(item.profile?.fields?.activeClassId) === classId) {
     writes.push(
@@ -3223,6 +3883,96 @@ function userMembershipFields(input) {
   };
 }
 
+function volunteerServiceFields(input) {
+  return {
+    classId: { stringValue: input.classId },
+    className: { stringValue: input.className },
+    volunteerUid: { stringValue: input.volunteerUid },
+    volunteerName: { stringValue: input.volunteerName },
+    status: { stringValue: input.status },
+    requestedAt: { timestampValue: input.requestedAt },
+    decidedAt: input.decidedAt ? { timestampValue: input.decidedAt } : { nullValue: null },
+    joinedAt: input.joinedAt ? { timestampValue: input.joinedAt } : { nullValue: null },
+    updatedAt: { timestampValue: input.updatedAt },
+  };
+}
+
+function volunteerServiceSummaryFromDocument(document) {
+  if (!document?.fields) return null;
+  return volunteerServiceSummaryFromFields(document.fields, documentId(document.name));
+}
+
+function volunteerServiceSummaryFromFields(fields, id) {
+  const classId = firestoreString(fields?.classId);
+  const volunteerUid = firestoreString(fields?.volunteerUid);
+  const status = firestoreString(fields?.status);
+  if (!classId || !volunteerUid || !status) return null;
+  return {
+    id: id || `${classId}-${volunteerUid}`,
+    classId,
+    className: firestoreString(fields?.className) || "English+ 班級",
+    volunteerUid,
+    volunteerName: firestoreString(fields?.volunteerName) || "志工",
+    status,
+    requestedAt: fields?.requestedAt?.timestampValue || "",
+    decidedAt: fields?.decidedAt?.timestampValue || null,
+    joinedAt: fields?.joinedAt?.timestampValue || null,
+  };
+}
+
+function volunteerMembershipExitWrites(
+  root,
+  classId,
+  volunteerUid,
+  membership,
+  mirror,
+  profile,
+  now,
+  exitReason
+) {
+  const writes = [];
+  if (membership) {
+    writes.push(maskedUpdateWrite(
+      `${root}/classes/${classId}/members/${volunteerUid}`,
+      {
+        status: { stringValue: "left" },
+        active: { booleanValue: false },
+        leftAt: { timestampValue: now },
+        exitReason: { stringValue: exitReason },
+        updatedAt: { timestampValue: now },
+      },
+      ["status", "active", "leftAt", "exitReason", "updatedAt"],
+      membership.updateTime
+    ));
+  }
+  if (mirror) {
+    writes.push(maskedUpdateWrite(
+      `${root}/users/${volunteerUid}/classMemberships/${classId}`,
+      {
+        status: { stringValue: "left" },
+        active: { booleanValue: false },
+        leftAt: { timestampValue: now },
+        exitReason: { stringValue: exitReason },
+        updatedAt: { timestampValue: now },
+      },
+      ["status", "active", "leftAt", "exitReason", "updatedAt"],
+      mirror.updateTime
+    ));
+  }
+  if (firestoreString(profile?.fields?.activeClassId) === classId) {
+    writes.push(maskedUpdateWrite(
+      `${root}/users/${volunteerUid}`,
+      {
+        activeClassId: { nullValue: null },
+        updatedAt: { timestampValue: now },
+      },
+      ["activeClassId", "updatedAt"],
+      profile.updateTime
+    ));
+  }
+  return writes;
+}
+
 function userActiveClassWrite(root, uid, classId, now, context) {
   if (context?.profileExists === false) {
     const displayName = firestoreString(context.profile?.fields?.displayName) || "English+";
@@ -3297,6 +4047,20 @@ async function unusedClassroomCode(context) {
       context.projectId,
       context.accessToken,
       `classJoinCodes/${code}`,
+      context.firestoreBaseURL
+    );
+    if (!existing) return code;
+  }
+  throw httpError(503, "CLASSROOM_CODE_UNAVAILABLE");
+}
+
+async function unusedVolunteerCode(context) {
+  for (let attempt = 0; attempt < 8; attempt += 1) {
+    const code = generateClassCode();
+    const existing = await getFirestoreDocument(
+      context.projectId,
+      context.accessToken,
+      `volunteerJoinCodes/${code}`,
       context.firestoreBaseURL
     );
     if (!existing) return code;
@@ -4738,9 +5502,13 @@ export {
   executeAccountDeletion,
   generateClassCode,
   joinClassroom,
+  getVolunteerInviteCode,
   leaveClassroom,
+  leaveVolunteerService,
   listClassroomStudents,
+  listClassroomVolunteers,
   listClassroomsForUser,
+  listVolunteerServices,
   membershipIsActiveDocument,
   normalizeEvidenceTicketRequest,
   normalizeAdminApplicationQuery,
@@ -4764,10 +5532,14 @@ export {
   reviewTransitionAllowed,
   requireRecentAuthentication,
   resetClassroomCode,
+  resetVolunteerInviteCode,
+  requestVolunteerService,
+  reviewVolunteerService,
   selectExpiredReviewedApplications,
   signUploadTicket,
   stageAccountDeletionSummary,
   summarizeVolunteerApplications,
   verifyUploadTicket,
   updateClassroom,
+  volunteerServiceSummaryFromFields,
 };

@@ -12,12 +12,16 @@ struct VolunteerHomeView: View {
                 ScrollView {
                     VStack(alignment: .leading, spacing: 16) {
                         VolunteerHeaderCard()
-                        VolunteerMetricStrip()
-
-                        if let firstRequest = learningRepository.volunteerQueue.first {
-                            VolunteerTodayPriorityCard(request: firstRequest)
+                        if appState.currentProfile?.activeClassId == nil {
+                            VolunteerNoActiveServiceCard()
                         } else {
-                            VolunteerEmptyQueueCard()
+                            VolunteerMetricStrip()
+
+                            if let firstRequest = learningRepository.volunteerQueue.first {
+                                VolunteerTodayPriorityCard(request: firstRequest)
+                            } else {
+                                VolunteerEmptyQueueCard()
+                            }
                         }
                     }
                     .padding(EPTheme.pagePadding)
@@ -50,7 +54,247 @@ struct VolunteerHomeView: View {
     }
 }
 
+struct VolunteerServiceClassesView: View {
+    @EnvironmentObject private var appState: AppState
+    @State private var inviteCode = ""
+    @State private var classPendingLeave: VolunteerServiceSummary?
+
+    private var activeServices: [VolunteerServiceSummary] {
+        appState.volunteerServices.filter { $0.status == .active }
+    }
+
+    private var pendingServices: [VolunteerServiceSummary] {
+        appState.volunteerServices.filter { $0.status == .pendingApproval }
+    }
+
+    var body: some View {
+        NavigationStack {
+            ZStack {
+                EPTheme.background.ignoresSafeArea()
+                ScrollView {
+                    VStack(alignment: .leading, spacing: 16) {
+                        serviceScopeCard
+                        joinCard
+
+                        if appState.isLoadingVolunteerServices && appState.volunteerServices.isEmpty {
+                            ProgressView("正在載入服務班級...")
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                                .padding(16)
+                        }
+
+                        if !pendingServices.isEmpty {
+                            serviceSection(title: "等待老師核准", services: pendingServices)
+                        }
+
+                        if activeServices.isEmpty && pendingServices.isEmpty && !appState.isLoadingVolunteerServices {
+                            emptyServiceCard
+                        } else if !activeServices.isEmpty {
+                            serviceSection(title: "我服務的班級", services: activeServices)
+                        }
+
+                        if let notice = appState.volunteerServiceNoticeMessage {
+                            VolunteerServiceMessage(text: notice, isError: false)
+                        }
+                        if let error = appState.volunteerServiceErrorMessage {
+                            VolunteerServiceMessage(text: error, isError: true)
+                        }
+                    }
+                    .padding(EPTheme.pagePadding)
+                }
+                .refreshable { await appState.loadVolunteerServices() }
+            }
+            .navigationTitle("服務班級")
+            .task { await appState.loadVolunteerServices() }
+            .alert(
+                classPendingLeave?.status == .pendingApproval
+                    ? "撤回「\(classPendingLeave?.className ?? "班級")」的申請？"
+                    : "離開「\(classPendingLeave?.className ?? "班級")」？",
+                isPresented: Binding(
+                    get: { classPendingLeave != nil },
+                    set: { if !$0 { classPendingLeave = nil } }
+                )
+            ) {
+                Button("取消", role: .cancel) { classPendingLeave = nil }
+                Button(
+                    classPendingLeave?.status == .pendingApproval ? "撤回申請" : "離開班級",
+                    role: .destructive
+                ) {
+                    guard let service = classPendingLeave else { return }
+                    classPendingLeave = nil
+                    Task { _ = await appState.leaveVolunteerService(classId: service.classId) }
+                }
+            } message: {
+                Text(
+                    classPendingLeave?.status == .pendingApproval
+                        ? "撤回後老師不會再看到這筆待核准申請；需要時可重新輸入邀請碼。"
+                        : "離開後會立即停止接收這個班級的學生求助，且不能再查看原有接力內容。"
+                )
+            }
+        }
+    }
+
+    private var serviceScopeCard: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Label("先加入服務班級，再開始接力", systemImage: "person.badge.key")
+                .font(.headline)
+                .foregroundStyle(EPTheme.ink)
+            Text("平台資格審核只確認你可以擔任志工。輸入老師提供的志工邀請碼並經老師核准後，你才會看到該班學生主動送出的求助；不會看到完整學習紀錄或心情資料。")
+                .font(.subheadline)
+                .foregroundStyle(EPTheme.secondaryInk)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        .padding(16)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(EPTheme.card)
+        .clipShape(RoundedRectangle(cornerRadius: EPTheme.cardRadius))
+    }
+
+    private var joinCard: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text("加入新的服務班級")
+                .font(.headline)
+                .foregroundStyle(EPTheme.ink)
+            TextField("輸入老師提供的 8 碼志工邀請碼", text: $inviteCode)
+                .textInputAutocapitalization(.characters)
+                .autocorrectionDisabled()
+                .padding(12)
+                .background(EPTheme.secondarySurface)
+                .clipShape(RoundedRectangle(cornerRadius: EPTheme.cardRadius))
+
+            Button {
+                Task {
+                    if await appState.requestVolunteerService(code: inviteCode) {
+                        inviteCode = ""
+                    }
+                }
+            } label: {
+                if appState.isManagingVolunteerService {
+                    ProgressView().frame(maxWidth: .infinity, minHeight: 44)
+                } else {
+                    Label("送出加入申請", systemImage: "paperplane.fill")
+                        .frame(maxWidth: .infinity, minHeight: 44)
+                }
+            }
+            .buttonStyle(PrimaryActionButtonStyle())
+            .disabled(normalizedInviteCode.count != 8 || appState.isManagingVolunteerService)
+            .opacity(normalizedInviteCode.count == 8 && !appState.isManagingVolunteerService ? 1 : 0.45)
+        }
+        .padding(16)
+        .background(EPTheme.card)
+        .clipShape(RoundedRectangle(cornerRadius: EPTheme.cardRadius))
+    }
+
+    private var emptyServiceCard: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Label("目前沒有服務班級", systemImage: "person.3")
+                .font(.headline)
+                .foregroundStyle(EPTheme.ink)
+            Text("在老師核准前，接力頁不會顯示任何學生資料。")
+                .font(.subheadline)
+                .foregroundStyle(EPTheme.secondaryInk)
+        }
+        .padding(16)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(EPTheme.card)
+        .clipShape(RoundedRectangle(cornerRadius: EPTheme.cardRadius))
+    }
+
+    private func serviceSection(title: String, services: [VolunteerServiceSummary]) -> some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text(title)
+                .font(.headline)
+                .foregroundStyle(EPTheme.ink)
+            ForEach(services) { service in
+                VolunteerServiceRow(
+                    service: service,
+                    isCurrent: appState.currentProfile?.activeClassId == service.classId,
+                    isBusy: appState.isManagingVolunteerService,
+                    select: {
+                        Task { await appState.selectActiveClass(service.classId) }
+                    },
+                    leave: { classPendingLeave = service }
+                )
+            }
+        }
+    }
+
+    private var normalizedInviteCode: String {
+        inviteCode.uppercased().filter { $0.isLetter || $0.isNumber }
+    }
+}
+
+private struct VolunteerServiceRow: View {
+    let service: VolunteerServiceSummary
+    let isCurrent: Bool
+    let isBusy: Bool
+    let select: () -> Void
+    let leave: () -> Void
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(alignment: .top) {
+                VStack(alignment: .leading, spacing: 3) {
+                    Text(service.className)
+                        .font(.headline)
+                        .foregroundStyle(EPTheme.ink)
+                    Text(service.status.title)
+                        .font(.caption.bold())
+                        .foregroundStyle(service.status == .active ? EPTheme.support : EPTheme.warning)
+                }
+                Spacer()
+                if isCurrent {
+                    Label("目前", systemImage: "checkmark.circle.fill")
+                        .font(.caption.bold())
+                        .foregroundStyle(EPTheme.support)
+                }
+            }
+
+            if service.status == .active {
+                HStack(spacing: 8) {
+                    if !isCurrent {
+                        Button("切換到這個班級", action: select)
+                            .buttonStyle(PrimaryActionButtonStyle())
+                    }
+                    Button("離開", role: .destructive, action: leave)
+                        .buttonStyle(SecondaryActionButtonStyle())
+                }
+                .disabled(isBusy)
+            } else {
+                HStack(alignment: .center, spacing: 8) {
+                    Text("老師核准後，這裡會出現切換班級與接力入口。")
+                        .font(.footnote)
+                        .foregroundStyle(EPTheme.secondaryInk)
+                    Spacer()
+                    Button("撤回申請", role: .destructive, action: leave)
+                        .font(.footnote.bold())
+                }
+                .disabled(isBusy)
+            }
+        }
+        .padding(16)
+        .background(EPTheme.card)
+        .clipShape(RoundedRectangle(cornerRadius: EPTheme.cardRadius))
+    }
+}
+
+private struct VolunteerServiceMessage: View {
+    let text: String
+    let isError: Bool
+
+    var body: some View {
+        Label(text, systemImage: isError ? "exclamationmark.circle.fill" : "checkmark.circle.fill")
+            .font(.footnote)
+            .foregroundStyle(isError ? EPTheme.warning : EPTheme.support)
+            .fixedSize(horizontal: false, vertical: true)
+            .padding(12)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background((isError ? EPTheme.warning : EPTheme.support).opacity(0.10))
+            .clipShape(RoundedRectangle(cornerRadius: 10))
+    }
+}
+
 struct VolunteerHandoffWorkspaceView: View {
+    @EnvironmentObject private var appState: AppState
     @EnvironmentObject private var learningRepository: LearningRepositoryStore
 
     var body: some View {
@@ -68,19 +312,23 @@ struct VolunteerHandoffWorkspaceView: View {
                             .foregroundStyle(EPTheme.secondaryInk)
                             .fixedSize(horizontal: false, vertical: true)
 
-                        StaffSupportQueueHeaderCard(
-                            title: "待回覆接力",
-                            subtitle: "學生把卡住的題目送出後，老師與志工都會收到同一筆接力。任何一端回覆都會消除雙方紅點；收起只影響自己的待辦。",
-                            waitingCount: learningRepository.volunteerDashboardMetrics.waitingCount,
-                            highPriorityCount: learningRepository.volunteerQueue.filter { $0.priority == .high }.count,
-                            handledCount: learningRepository.volunteerDashboardMetrics.repliedByVolunteerCount,
-                            tint: EPTheme.primary
-                        )
+                        if appState.currentProfile?.activeClassId == nil {
+                            VolunteerNoActiveServiceCard()
+                        } else {
+                            StaffSupportQueueHeaderCard(
+                                title: "待回覆接力",
+                                subtitle: "只顯示目前服務班級中，學生主動送出的求助。老師或志工任一方回覆後，雙方提醒會同步更新。",
+                                waitingCount: learningRepository.volunteerDashboardMetrics.waitingCount,
+                                highPriorityCount: learningRepository.volunteerQueue.filter { $0.priority == .high }.count,
+                                handledCount: learningRepository.volunteerDashboardMetrics.repliedByVolunteerCount,
+                                tint: EPTheme.primary
+                            )
 
-                        VolunteerHandoffSummaryCard()
+                            VolunteerHandoffSummaryCard()
 
-                        ForEach(learningRepository.volunteerQueue) { request in
-                            VolunteerSupportRequestCard(request: request)
+                            ForEach(learningRepository.volunteerQueue) { request in
+                                VolunteerSupportRequestCard(request: request)
+                            }
                         }
                     }
                     .padding(EPTheme.pagePadding)
@@ -88,6 +336,24 @@ struct VolunteerHandoffWorkspaceView: View {
             }
             .navigationTitle("接力")
         }
+    }
+}
+
+private struct VolunteerNoActiveServiceCard: View {
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Label("尚未選擇服務班級", systemImage: "person.3")
+                .font(.headline)
+                .foregroundStyle(EPTheme.ink)
+            Text("請先到「班級」輸入老師提供的志工邀請碼。經老師核准並選擇服務班級後，這裡才會顯示學生主動送出的求助。")
+                .font(.subheadline)
+                .foregroundStyle(EPTheme.secondaryInk)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        .padding(16)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(EPTheme.card)
+        .clipShape(RoundedRectangle(cornerRadius: EPTheme.cardRadius))
     }
 }
 

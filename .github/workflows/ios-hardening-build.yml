@@ -6,12 +6,17 @@ on:
     branches:
       - codex/app-store-hardening-c
       - codex/fix-d-admin-portal
+      - codex/fix-e-volunteer-service-scope
     paths:
       - .github/ci-triggers/round10-ios-build
       - .github/ci-triggers/round11-ios-build
       - .github/ci-triggers/round12-ios-build
       - .github/ci-triggers/fix-d-admin-portal
+      - .github/ci-triggers/fix-e-volunteer-service-scope
       - admin-web/**
+      - firebase-tests/**
+      - ios/EnglishPlus/**
+      - docs/ios-testflight/firebase/**
       - workers/englishplus-ai-proxy/**
 
 permissions:
@@ -114,6 +119,7 @@ jobs:
           python3 scripts/validate_fix_b_practice_flow.py
           python3 scripts/validate_fix_c_class_lifecycle.py
           python3 scripts/validate_fix_d_admin_portal.py
+          python3 scripts/validate_fix_e_volunteer_service_scope.py
 
       - name: Build iOS Simulator target
         run: |

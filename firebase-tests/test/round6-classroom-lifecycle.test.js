@@ -291,7 +291,7 @@ test("volunteers retain in-window support history but not general learning acces
   const volunteer = dbFor("volunteerA");
   await assertSucceeds(getDoc(doc(volunteer, "classes", CLASS_ID, "supportThreads", "active-thread")));
   await assertSucceeds(getDoc(doc(volunteer, "classes", CLASS_ID, "supportThreads", "left-thread")));
-  await assertSucceeds(getDoc(doc(
+  await assertFails(getDoc(doc(
     volunteer,
     "classes",
     CLASS_ID,

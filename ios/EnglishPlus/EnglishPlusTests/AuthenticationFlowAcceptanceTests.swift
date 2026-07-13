@@ -672,6 +672,73 @@ final class ClassroomLifecycleAcceptanceTests: XCTestCase {
     }
 }
 
+@MainActor
+final class VolunteerServiceScopeAcceptanceTests: XCTestCase {
+    func testVolunteerRequiresTeacherApprovalBeforeServiceBecomesActive() async throws {
+        let service = MockClassroomService()
+        let classroom = try await service.createClassroom(name: "志工服務測試班")
+        let invitation = try await service.resetVolunteerInviteCode(classId: classroom.classId)
+
+        let request = try await service.requestVolunteerService(code: invitation.code)
+        XCTAssertEqual(request.status, .pendingApproval)
+        let classroomsBeforeApproval = try await service.listClassrooms()
+        XCTAssertTrue(classroomsBeforeApproval.allSatisfy { $0.role != .volunteer })
+
+        try await service.reviewVolunteerService(
+            classId: classroom.classId,
+            volunteerUid: request.volunteerUid,
+            approve: true
+        )
+        let approvedServices = try await service.listClassroomVolunteers(classId: classroom.classId)
+        let classroomsAfterApproval = try await service.listClassrooms()
+        XCTAssertEqual(approvedServices.first?.status, .active)
+        XCTAssertTrue(classroomsAfterApproval.contains { $0.role == .volunteer })
+    }
+
+    func testVolunteerCanWithdrawPendingServiceRequestWithoutReceivingClassAccess() async throws {
+        let service = MockClassroomService()
+        let classroom = try await service.createClassroom(name: "志工申請撤回測試班")
+        let invitation = try await service.resetVolunteerInviteCode(classId: classroom.classId)
+
+        let request = try await service.requestVolunteerService(code: invitation.code)
+        XCTAssertEqual(request.status, .pendingApproval)
+        try await service.leaveVolunteerService(classId: classroom.classId)
+
+        let services = try await service.listVolunteerServices()
+        let classrooms = try await service.listClassrooms()
+        XCTAssertEqual(services.first?.status, .left)
+        XCTAssertTrue(classrooms.allSatisfy { $0.role != .volunteer })
+    }
+
+    func testLeavingOrDeletingClassRevokesVolunteerService() async throws {
+        let service = MockClassroomService()
+        let classroom = try await service.createClassroom(name: "志工撤權測試班")
+        let invitation = try await service.resetVolunteerInviteCode(classId: classroom.classId)
+        let request = try await service.requestVolunteerService(code: invitation.code)
+        try await service.reviewVolunteerService(
+            classId: classroom.classId,
+            volunteerUid: request.volunteerUid,
+            approve: true
+        )
+
+        try await service.leaveVolunteerService(classId: classroom.classId)
+        let servicesAfterLeaving = try await service.listVolunteerServices()
+        XCTAssertEqual(servicesAfterLeaving.first?.status, .left)
+
+        let secondRequest = try await service.requestVolunteerService(code: invitation.code)
+        try await service.reviewVolunteerService(
+            classId: classroom.classId,
+            volunteerUid: secondRequest.volunteerUid,
+            approve: true
+        )
+        try await service.deleteClassroom(classId: classroom.classId)
+        let servicesAfterDeletion = try await service.listVolunteerServices()
+        let invitationAfterDeletion = try await service.volunteerInviteCode(classId: classroom.classId)
+        XCTAssertEqual(servicesAfterDeletion.first?.status, .removed)
+        XCTAssertNil(invitationAfterDeletion)
+    }
+}
+
 private final class RecordingAuthService: AuthService {
     var providerSignInResult: Result<AuthSession, AuthServiceError> = .failure(.profileUnavailable)
     var providerCreationResult: Result<AccountCreationOutcome, AuthServiceError> = .failure(.operationUnavailable)

@@ -68,6 +68,84 @@ private final class ClassroomMembershipRealtimeBridge {
 }
 
 @MainActor
+private final class VolunteerServiceRealtimeBridge {
+    private let collectionPath: String
+    private let onChange: @MainActor ([VolunteerServiceSummary]) -> Void
+    private let onError: @MainActor (Error) -> Void
+    private var registration: ListenerRegistration?
+
+    init(
+        collectionPath: String,
+        onChange: @escaping @MainActor ([VolunteerServiceSummary]) -> Void,
+        onError: @escaping @MainActor (Error) -> Void
+    ) {
+        self.collectionPath = collectionPath
+        self.onChange = onChange
+        self.onError = onError
+    }
+
+    func start() {
+        registration = Firestore.firestore()
+            .collection(collectionPath)
+            .addSnapshotListener { [weak self] snapshot, error in
+                Task { @MainActor in
+                    guard let self else { return }
+                    if let error {
+                        self.onError(error)
+                        return
+                    }
+                    let services = (snapshot?.documents ?? [])
+                        .compactMap(Self.summary)
+                        .sorted { left, right in
+                            if left.status == right.status {
+                                return left.requestedAt > right.requestedAt
+                            }
+                            return left.status == .pendingApproval
+                        }
+                    self.onChange(services)
+                }
+            }
+    }
+
+    func cancel() {
+        registration?.remove()
+        registration = nil
+    }
+
+    private static func summary(from document: QueryDocumentSnapshot) -> VolunteerServiceSummary? {
+        let data = document.data()
+        guard let classId = data["classId"] as? String,
+              let className = data["className"] as? String,
+              let volunteerUid = data["volunteerUid"] as? String,
+              let statusValue = data["status"] as? String,
+              let status = VolunteerServiceStatus(rawValue: statusValue)
+        else { return nil }
+        return VolunteerServiceSummary(
+            id: document.documentID,
+            classId: classId,
+            className: className,
+            volunteerUid: volunteerUid,
+            volunteerName: data["volunteerName"] as? String ?? "志工",
+            status: status,
+            requestedAt: dateString(data["requestedAt"]),
+            decidedAt: optionalDateString(data["decidedAt"]),
+            joinedAt: optionalDateString(data["joinedAt"])
+        )
+    }
+
+    private static func dateString(_ value: Any?) -> String {
+        optionalDateString(value) ?? ""
+    }
+
+    private static func optionalDateString(_ value: Any?) -> String? {
+        if let timestamp = value as? Timestamp {
+            return ISO8601DateFormatter().string(from: timestamp.dateValue())
+        }
+        return value as? String
+    }
+}
+
+@MainActor
 private final class ClassroomRosterRealtimeBridge {
     private let classId: String
     private let onChange: @MainActor ([ClassroomStudentSummary]) -> Void
@@ -283,6 +361,47 @@ struct ClassroomStudentSummary: Identifiable, Codable, Equatable {
     }
 }
 
+enum VolunteerServiceStatus: String, Codable, Equatable {
+    case pendingApproval
+    case active
+    case rejected
+    case left
+    case removed
+
+    var title: String {
+        switch self {
+        case .pendingApproval: return "等待老師核准"
+        case .active: return "服務中"
+        case .rejected: return "未通過"
+        case .left: return "已離開"
+        case .removed: return "已移除"
+        }
+    }
+}
+
+struct VolunteerServiceSummary: Identifiable, Codable, Equatable {
+    let id: String
+    let classId: String
+    let className: String
+    let volunteerUid: String
+    let volunteerName: String
+    let status: VolunteerServiceStatus
+    let requestedAt: String
+    let decidedAt: String?
+    let joinedAt: String?
+}
+
+struct VolunteerInviteCodeSummary: Codable, Equatable {
+    let classId: String
+    let code: String
+
+    var formattedCode: String {
+        guard code.count == 8 else { return code }
+        let split = code.index(code.startIndex, offsetBy: 4)
+        return "\(code[..<split]) \(code[split...])"
+    }
+}
+
 enum ClassroomServiceError: LocalizedError, Equatable {
     case unavailable
     case unauthenticated
@@ -295,6 +414,9 @@ enum ClassroomServiceError: LocalizedError, Equatable {
     case conflict
     case tooManyAttempts
     case classTooLarge
+    case volunteerApprovalRequired
+    case volunteerRequestNotFound
+    case volunteerAlreadyRequested
     case invalidResponse
     case network
 
@@ -322,6 +444,12 @@ enum ClassroomServiceError: LocalizedError, Equatable {
             return "班級代碼嘗試次數過多，請 15 分鐘後再試。"
         case .classTooLarge:
             return "班級成員較多，暫時無法重新命名。請稍後再試。"
+        case .volunteerApprovalRequired:
+            return "志工帳號需先通過平台資格審核。"
+        case .volunteerRequestNotFound:
+            return "找不到這筆志工服務申請，請重新載入。"
+        case .volunteerAlreadyRequested:
+            return "你已申請或正在服務這個班級。"
         case .invalidResponse:
             return "班級服務回應不完整，請稍後再試。"
         case .network:
@@ -340,6 +468,24 @@ protocol ClassroomService {
     func joinClassroom(code: String) async throws -> ClassroomSummary
     func leaveClassroom(classId: String) async throws
     func resetJoinCode(classId: String) async throws -> ClassroomSummary
+    func listVolunteerServices() async throws -> [VolunteerServiceSummary]
+    func requestVolunteerService(code: String) async throws -> VolunteerServiceSummary
+    func leaveVolunteerService(classId: String) async throws
+    func listClassroomVolunteers(classId: String) async throws -> [VolunteerServiceSummary]
+    func volunteerInviteCode(classId: String) async throws -> VolunteerInviteCodeSummary?
+    func resetVolunteerInviteCode(classId: String) async throws -> VolunteerInviteCodeSummary
+    func reviewVolunteerService(classId: String, volunteerUid: String, approve: Bool) async throws
+    func removeVolunteerService(classId: String, volunteerUid: String) async throws
+    func startVolunteerServiceListener(
+        userUid: String,
+        onChange: @escaping @MainActor ([VolunteerServiceSummary]) -> Void,
+        onError: @escaping @MainActor (Error) -> Void
+    ) -> ClassroomRosterListenerToken
+    func startClassroomVolunteerListener(
+        classId: String,
+        onChange: @escaping @MainActor ([VolunteerServiceSummary]) -> Void,
+        onError: @escaping @MainActor (Error) -> Void
+    ) -> ClassroomRosterListenerToken
     func startMembershipListener(
         userUid: String,
         onChange: @escaping @MainActor ([String]) -> Void,
@@ -385,6 +531,54 @@ struct UnavailableClassroomService: ClassroomService {
         throw ClassroomServiceError.unavailable
     }
 
+    func listVolunteerServices() async throws -> [VolunteerServiceSummary] {
+        throw ClassroomServiceError.unavailable
+    }
+
+    func requestVolunteerService(code: String) async throws -> VolunteerServiceSummary {
+        throw ClassroomServiceError.unavailable
+    }
+
+    func leaveVolunteerService(classId: String) async throws {
+        throw ClassroomServiceError.unavailable
+    }
+
+    func listClassroomVolunteers(classId: String) async throws -> [VolunteerServiceSummary] {
+        throw ClassroomServiceError.unavailable
+    }
+
+    func volunteerInviteCode(classId: String) async throws -> VolunteerInviteCodeSummary? {
+        throw ClassroomServiceError.unavailable
+    }
+
+    func resetVolunteerInviteCode(classId: String) async throws -> VolunteerInviteCodeSummary {
+        throw ClassroomServiceError.unavailable
+    }
+
+    func reviewVolunteerService(classId: String, volunteerUid: String, approve: Bool) async throws {
+        throw ClassroomServiceError.unavailable
+    }
+
+    func removeVolunteerService(classId: String, volunteerUid: String) async throws {
+        throw ClassroomServiceError.unavailable
+    }
+
+    func startVolunteerServiceListener(
+        userUid: String,
+        onChange: @escaping @MainActor ([VolunteerServiceSummary]) -> Void,
+        onError: @escaping @MainActor (Error) -> Void
+    ) -> ClassroomRosterListenerToken {
+        AnyClassroomRosterListenerToken {}
+    }
+
+    func startClassroomVolunteerListener(
+        classId: String,
+        onChange: @escaping @MainActor ([VolunteerServiceSummary]) -> Void,
+        onError: @escaping @MainActor (Error) -> Void
+    ) -> ClassroomRosterListenerToken {
+        AnyClassroomRosterListenerToken {}
+    }
+
     func startMembershipListener(
         userUid: String,
         onChange: @escaping @MainActor ([String]) -> Void,
@@ -407,6 +601,10 @@ final class MockClassroomService: ClassroomService {
     private var classrooms: [ClassroomSummary] = []
     private var studentsByClass: [String: [ClassroomStudentSummary]] = [:]
     private var membershipChangeHandler: (@MainActor ([String]) -> Void)?
+    private var volunteerServiceChangeHandler: (@MainActor ([VolunteerServiceSummary]) -> Void)?
+    private var classroomVolunteerChangeHandlers: [String: @MainActor ([VolunteerServiceSummary]) -> Void] = [:]
+    private var volunteerInviteCodes: [String: String] = [:]
+    private var volunteerServices: [VolunteerServiceSummary] = []
 
     func listClassrooms() async throws -> [ClassroomSummary] {
         classrooms.filter { $0.status == .active }
@@ -487,6 +685,25 @@ final class MockClassroomService: ClassroomService {
             )
         }
         studentsByClass[classId] = []
+        volunteerInviteCodes[classId] = nil
+        let now = ISO8601DateFormatter().string(from: Date())
+        volunteerServices = volunteerServices.map { service in
+            guard service.classId == classId,
+                  service.status == .active || service.status == .pendingApproval
+            else { return service }
+            return VolunteerServiceSummary(
+                id: service.id,
+                classId: service.classId,
+                className: service.className,
+                volunteerUid: service.volunteerUid,
+                volunteerName: service.volunteerName,
+                status: .removed,
+                requestedAt: service.requestedAt,
+                decidedAt: now,
+                joinedAt: service.joinedAt
+            )
+        }
+        publishVolunteerServiceChanges(classId: classId)
     }
 
     func joinClassroom(code: String) async throws -> ClassroomSummary {
@@ -568,6 +785,148 @@ final class MockClassroomService: ClassroomService {
         )
         classrooms[index] = updated
         return updated
+    }
+
+    func listVolunteerServices() async throws -> [VolunteerServiceSummary] {
+        volunteerServices
+    }
+
+    func requestVolunteerService(code: String) async throws -> VolunteerServiceSummary {
+        let normalized = Self.normalizedCode(code)
+        guard let classId = volunteerInviteCodes.first(where: { $0.value == normalized })?.key,
+              let classroom = classrooms.first(where: { $0.classId == classId })
+        else { throw ClassroomServiceError.codeNotFound }
+        guard !volunteerServices.contains(where: {
+            $0.classId == classId && ($0.status == .pendingApproval || $0.status == .active)
+        }) else { throw ClassroomServiceError.volunteerAlreadyRequested }
+
+        let now = ISO8601DateFormatter().string(from: Date())
+        let summary = VolunteerServiceSummary(
+            id: "\(classId)-mock-volunteer",
+            classId: classId,
+            className: classroom.name,
+            volunteerUid: "mock-volunteer",
+            volunteerName: "志工",
+            status: .pendingApproval,
+            requestedAt: now,
+            decidedAt: nil,
+            joinedAt: nil
+        )
+        volunteerServices.removeAll { $0.classId == classId && $0.volunteerUid == summary.volunteerUid }
+        volunteerServices.append(summary)
+        publishVolunteerServiceChanges(classId: classId)
+        return summary
+    }
+
+    func leaveVolunteerService(classId: String) async throws {
+        try updateVolunteerService(classId: classId, volunteerUid: "mock-volunteer", status: .left)
+    }
+
+    func listClassroomVolunteers(classId: String) async throws -> [VolunteerServiceSummary] {
+        volunteerServices.filter { $0.classId == classId }
+    }
+
+    func volunteerInviteCode(classId: String) async throws -> VolunteerInviteCodeSummary? {
+        volunteerInviteCodes[classId].map { VolunteerInviteCodeSummary(classId: classId, code: $0) }
+    }
+
+    func resetVolunteerInviteCode(classId: String) async throws -> VolunteerInviteCodeSummary {
+        guard classrooms.contains(where: {
+            $0.classId == classId && $0.role == .teacher && $0.status == .active
+        }) else { throw ClassroomServiceError.permissionDenied }
+        let code = Self.code()
+        volunteerInviteCodes[classId] = code
+        return VolunteerInviteCodeSummary(classId: classId, code: code)
+    }
+
+    func reviewVolunteerService(classId: String, volunteerUid: String, approve: Bool) async throws {
+        try updateVolunteerService(
+            classId: classId,
+            volunteerUid: volunteerUid,
+            status: approve ? .active : .rejected
+        )
+    }
+
+    func removeVolunteerService(classId: String, volunteerUid: String) async throws {
+        try updateVolunteerService(classId: classId, volunteerUid: volunteerUid, status: .removed)
+    }
+
+    private func updateVolunteerService(
+        classId: String,
+        volunteerUid: String,
+        status: VolunteerServiceStatus
+    ) throws {
+        guard let index = volunteerServices.firstIndex(where: {
+            $0.classId == classId && $0.volunteerUid == volunteerUid
+        }) else { throw ClassroomServiceError.volunteerRequestNotFound }
+        let existing = volunteerServices[index]
+        let now = ISO8601DateFormatter().string(from: Date())
+        volunteerServices[index] = VolunteerServiceSummary(
+            id: existing.id,
+            classId: existing.classId,
+            className: existing.className,
+            volunteerUid: existing.volunteerUid,
+            volunteerName: existing.volunteerName,
+            status: status,
+            requestedAt: existing.requestedAt,
+            decidedAt: now,
+            joinedAt: status == .active ? now : existing.joinedAt
+        )
+        publishVolunteerServiceChanges(classId: classId)
+        if status == .active,
+           let teacherClassroom = classrooms.first(where: {
+               $0.classId == classId && $0.role == .teacher
+           }) {
+            classrooms.removeAll { $0.classId == classId && $0.role == .volunteer }
+            classrooms.append(ClassroomSummary(
+                id: classId,
+                classId: classId,
+                name: teacherClassroom.name,
+                role: .volunteer,
+                status: .active,
+                joinedAt: now,
+                visibilityStartsAt: now,
+                leftAt: nil,
+                joinCode: nil
+            ))
+        } else if status == .left || status == .removed {
+            classrooms.removeAll { $0.classId == classId && $0.role == .volunteer }
+        }
+    }
+
+    func startVolunteerServiceListener(
+        userUid: String,
+        onChange: @escaping @MainActor ([VolunteerServiceSummary]) -> Void,
+        onError: @escaping @MainActor (Error) -> Void
+    ) -> ClassroomRosterListenerToken {
+        volunteerServiceChangeHandler = onChange
+        onChange(volunteerServices)
+        return AnyClassroomRosterListenerToken { [weak self] in
+            Task { @MainActor [weak self] in
+                self?.volunteerServiceChangeHandler = nil
+            }
+        }
+    }
+
+    func startClassroomVolunteerListener(
+        classId: String,
+        onChange: @escaping @MainActor ([VolunteerServiceSummary]) -> Void,
+        onError: @escaping @MainActor (Error) -> Void
+    ) -> ClassroomRosterListenerToken {
+        classroomVolunteerChangeHandlers[classId] = onChange
+        onChange(volunteerServices.filter { $0.classId == classId })
+        return AnyClassroomRosterListenerToken { [weak self] in
+            Task { @MainActor [weak self] in
+                self?.classroomVolunteerChangeHandlers[classId] = nil
+            }
+        }
+    }
+
+    private func publishVolunteerServiceChanges(classId: String) {
+        volunteerServiceChangeHandler?(volunteerServices)
+        classroomVolunteerChangeHandlers[classId]?(
+            volunteerServices.filter { $0.classId == classId }
+        )
     }
 
     func startMembershipListener(
@@ -694,6 +1053,117 @@ struct RemoteClassroomService: ClassroomService {
         return response.classroom
     }
 
+    func listVolunteerServices() async throws -> [VolunteerServiceSummary] {
+        let response: VolunteerServiceListResponse = try await send(
+            path: "volunteer-services",
+            method: "GET",
+            body: Optional<EmptyRequest>.none
+        )
+        return response.services
+    }
+
+    func requestVolunteerService(code: String) async throws -> VolunteerServiceSummary {
+        let response: VolunteerServiceMutationResponse = try await send(
+            path: "volunteer-services/request",
+            method: "POST",
+            body: ClassroomCodeRequest(code: code)
+        )
+        return response.service
+    }
+
+    func leaveVolunteerService(classId: String) async throws {
+        let _: VolunteerServiceActionResponse = try await send(
+            path: "volunteer-services/\(classId)/leave",
+            method: "POST",
+            body: EmptyRequest()
+        )
+    }
+
+    func listClassroomVolunteers(classId: String) async throws -> [VolunteerServiceSummary] {
+        let response: VolunteerServiceListResponse = try await send(
+            path: "classrooms/\(classId)/volunteers",
+            method: "GET",
+            body: Optional<EmptyRequest>.none
+        )
+        return response.services
+    }
+
+    func volunteerInviteCode(classId: String) async throws -> VolunteerInviteCodeSummary? {
+        let response: VolunteerInviteCodeResponse = try await send(
+            path: "classrooms/\(classId)/volunteer-code",
+            method: "GET",
+            body: Optional<EmptyRequest>.none
+        )
+        return response.invitation
+    }
+
+    func resetVolunteerInviteCode(classId: String) async throws -> VolunteerInviteCodeSummary {
+        let response: VolunteerInviteCodeResponse = try await send(
+            path: "classrooms/\(classId)/volunteer-code/reset",
+            method: "POST",
+            body: EmptyRequest()
+        )
+        guard let invitation = response.invitation else {
+            throw ClassroomServiceError.invalidResponse
+        }
+        return invitation
+    }
+
+    func reviewVolunteerService(classId: String, volunteerUid: String, approve: Bool) async throws {
+        let action = approve ? "approve" : "reject"
+        let _: VolunteerServiceActionResponse = try await send(
+            path: "classrooms/\(classId)/volunteers/\(volunteerUid)/\(action)",
+            method: "POST",
+            body: EmptyRequest()
+        )
+    }
+
+    func removeVolunteerService(classId: String, volunteerUid: String) async throws {
+        let _: VolunteerServiceActionResponse = try await send(
+            path: "classrooms/\(classId)/volunteers/\(volunteerUid)/remove",
+            method: "POST",
+            body: EmptyRequest()
+        )
+    }
+
+    func startVolunteerServiceListener(
+        userUid: String,
+        onChange: @escaping @MainActor ([VolunteerServiceSummary]) -> Void,
+        onError: @escaping @MainActor (Error) -> Void
+    ) -> ClassroomRosterListenerToken {
+        #if canImport(FirebaseFirestore)
+        if FirebaseAppConfigurator.hasBundledConfig {
+            let bridge = VolunteerServiceRealtimeBridge(
+                collectionPath: "users/\(userUid)/volunteerServices",
+                onChange: onChange,
+                onError: onError
+            )
+            bridge.start()
+            return AnyClassroomRosterListenerToken { bridge.cancel() }
+        }
+        #endif
+        return AnyClassroomRosterListenerToken {}
+    }
+
+    func startClassroomVolunteerListener(
+        classId: String,
+        onChange: @escaping @MainActor ([VolunteerServiceSummary]) -> Void,
+        onError: @escaping @MainActor (Error) -> Void
+    ) -> ClassroomRosterListenerToken {
+        #if canImport(FirebaseFirestore)
+        if FirebaseAppConfigurator.hasBundledConfig {
+            let bridge = VolunteerServiceRealtimeBridge(
+                collectionPath: "classes/\(classId)/volunteerRequests",
+                onChange: onChange,
+                onError: onError
+            )
+            bridge.start()
+            return AnyClassroomRosterListenerToken { bridge.cancel() }
+        }
+        #endif
+        return AnyClassroomRosterListenerToken {}
+    }
+
     func startMembershipListener(
         userUid: String,
         onChange: @escaping @MainActor ([String]) -> Void,
@@ -788,6 +1258,9 @@ struct RemoteClassroomService: ClassroomService {
         case "FIRESTORE_CONFLICT": return .conflict
         case "CLASSROOM_JOIN_RATE_LIMIT": return .tooManyAttempts
         case "CLASSROOM_TOO_LARGE_TO_RENAME": return .classTooLarge
+        case "VOLUNTEER_APPROVAL_REQUIRED": return .volunteerApprovalRequired
+        case "VOLUNTEER_SERVICE_NOT_FOUND": return .volunteerRequestNotFound
+        case "VOLUNTEER_SERVICE_ALREADY_REQUESTED": return .volunteerAlreadyRequested
         case "AUTH_REQUIRED", "INVALID_TOKEN", "INVALID_TOKEN_CLAIMS": return .unauthenticated
         case "TEACHER_ACCOUNT_REQUIRED", "STUDENT_ACCOUNT_REQUIRED", "CLASSROOM_OWNER_REQUIRED":
             return .permissionDenied
@@ -810,4 +1283,12 @@ private struct ClassroomBootstrapResponse: Decodable { let migrated: Bool }
 private struct ClassroomMutationResponse: Decodable { let classroom: ClassroomSummary }
 private struct ClassroomLeaveResponse: Decodable { let classId: String; let left: Bool }
 private struct ClassroomDeleteResponse: Decodable { let classId: String; let deleted: Bool }
+private struct VolunteerServiceListResponse: Decodable { let services: [VolunteerServiceSummary] }
+private struct VolunteerServiceMutationResponse: Decodable { let service: VolunteerServiceSummary }
+private struct VolunteerServiceActionResponse: Decodable {
+    let classId: String
+    let volunteerUid: String
+    let status: VolunteerServiceStatus
+}
+private struct VolunteerInviteCodeResponse: Decodable { let invitation: VolunteerInviteCodeSummary? }
 private struct ClassroomErrorResponse: Decodable { let error: String }
