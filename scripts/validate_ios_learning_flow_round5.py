@@ -58,7 +58,10 @@ require_markers(
         "filteredPracticeSets",
         "selectedQuestionType",
         "selectedLevel",
-        "learningRepository.assignPracticeSet(set, to: selectedStudent, by: appState.currentUser)",
+        "assignmentAudience == .entireClass",
+        "? activeClassStudents",
+        ": [selectedStudent]",
+        "learningRepository.assignPracticeSet(set, to: $0, by: appState.currentUser)",
     ],
 )
 

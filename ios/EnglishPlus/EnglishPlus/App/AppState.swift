@@ -20,9 +20,12 @@ final class AppState: ObservableObject {
     @Published private(set) var volunteerReviewErrorMessage: String?
     @Published private(set) var isLoadingVolunteerReviews = false
     @Published private(set) var classrooms: [ClassroomSummary] = []
+    @Published private(set) var classroomStudents: [ClassroomStudentSummary] = []
     @Published private(set) var isLoadingClassrooms = false
+    @Published private(set) var isLoadingClassroomStudents = false
     @Published private(set) var isManagingClassroom = false
     @Published private(set) var classroomErrorMessage: String?
+    @Published private(set) var classroomRosterErrorMessage: String?
     @Published private(set) var classroomNoticeMessage: String?
     @Published private(set) var runtimeDiagnostics: RuntimeDiagnosticsSnapshot
 
@@ -32,6 +35,7 @@ final class AppState: ObservableObject {
     private let evidenceUploadService: EvidenceUploadService
     private let volunteerReviewService: VolunteerReviewService
     private let classroomService: ClassroomService
+    private var classroomRosterListener: ClassroomRosterListenerToken?
     private var didAttemptSessionRestore = false
     private var pendingIdentityCredential: FederatedIdentityCredential?
     private var pendingIdentityRole: UserRole?
@@ -375,10 +379,15 @@ final class AppState: ObservableObject {
         volunteerReviewErrorMessage = nil
         isLoadingVolunteerReviews = false
         classrooms = []
+        classroomStudents = []
         isLoadingClassrooms = false
+        isLoadingClassroomStudents = false
         isManagingClassroom = false
         classroomErrorMessage = nil
+        classroomRosterErrorMessage = nil
         classroomNoticeMessage = nil
+        classroomRosterListener?.cancel()
+        classroomRosterListener = nil
         pendingIdentityCredential = nil
         pendingIdentityRole = nil
         runtimeDiagnostics = runtimeDiagnostics.clearingSession()
@@ -406,6 +415,14 @@ final class AppState: ObservableObject {
             classroomNoticeMessage = classId == nil
                 ? "已切換到個人學習模式。"
                 : "已切換班級。"
+            if session.user.role == .teacher, let classId {
+                startClassroomRosterSync(classId: classId)
+            } else {
+                classroomRosterListener?.cancel()
+                classroomRosterListener = nil
+                classroomStudents = []
+                classroomRosterErrorMessage = nil
+            }
         } catch {
             signInErrorMessage = "無法切換班級，請確認你仍是該班級的成員。"
             classroomErrorMessage = signInErrorMessage
@@ -422,10 +439,62 @@ final class AppState: ObservableObject {
                currentUser?.id == restored.user.id {
                 applyClassSession(restored)
             }
+            if currentProfile?.role == .teacher,
+               let classId = currentProfile?.activeClassId {
+                startClassroomRosterSync(classId: classId)
+            } else {
+                classroomRosterListener?.cancel()
+                classroomRosterListener = nil
+                classroomStudents = []
+            }
         } catch {
             classroomErrorMessage = classroomMessage(for: error)
         }
         isLoadingClassrooms = false
+    }
+
+    func loadClassroomStudents(classId: String) async {
+        guard currentProfile?.role == .teacher,
+              currentProfile?.activeClassId == classId
+        else { return }
+        isLoadingClassroomStudents = true
+        classroomRosterErrorMessage = nil
+        do {
+            let students = try await classroomService.listStudents(classId: classId)
+            guard currentProfile?.activeClassId == classId else {
+                isLoadingClassroomStudents = false
+                return
+            }
+            classroomStudents = students
+        } catch {
+            if currentProfile?.activeClassId == classId,
+               classroomStudents.isEmpty {
+                classroomRosterErrorMessage = classroomMessage(for: error)
+            }
+        }
+        isLoadingClassroomStudents = false
+    }
+
+    private func startClassroomRosterSync(classId: String) {
+        classroomRosterListener?.cancel()
+        classroomStudents = []
+        classroomRosterErrorMessage = nil
+        isLoadingClassroomStudents = true
+        classroomRosterListener = classroomService.startStudentListener(
+            classId: classId
+        ) { [weak self] students in
+            guard let self, self.currentProfile?.activeClassId == classId else { return }
+            self.classroomStudents = students
+            self.classroomRosterErrorMessage = nil
+            self.isLoadingClassroomStudents = false
+        } onError: { [weak self] error in
+            guard let self, self.currentProfile?.activeClassId == classId else { return }
+            self.classroomRosterErrorMessage = self.classroomMessage(for: error)
+            self.isLoadingClassroomStudents = false
+        }
+        Task { [weak self] in
+            await self?.loadClassroomStudents(classId: classId)
+        }
     }
 
     @discardableResult
@@ -438,7 +507,33 @@ final class AppState: ObservableObject {
             upsertClassroom(classroom)
             await refreshClassSession(fallback: classroom)
             await refreshClassroomListAfterMutation()
+            startClassroomRosterSync(classId: classroom.classId)
             classroomNoticeMessage = "班級已建立，可以把代碼分享給學生。"
+            isManagingClassroom = false
+            return true
+        } catch {
+            classroomErrorMessage = classroomMessage(for: error)
+            isManagingClassroom = false
+            return false
+        }
+    }
+
+    @discardableResult
+    func updateClassroom(classId: String, name: String) async -> Bool {
+        guard !isManagingClassroom,
+              currentProfile?.role == .teacher,
+              currentProfile?.activeClassId == classId
+        else { return false }
+        isManagingClassroom = true
+        clearClassroomFeedback()
+        do {
+            let classroom = try await classroomService.updateClassroom(
+                classId: classId,
+                name: name
+            )
+            upsertClassroom(classroom)
+            await refreshClassroomListAfterMutation()
+            classroomNoticeMessage = "班級名稱已更新。"
             isManagingClassroom = false
             return true
         } catch {
@@ -683,7 +778,11 @@ final class AppState: ObservableObject {
         hasAcceptedConsent = false
         signingInRole = nil
         classrooms = []
+        classroomStudents = []
+        classroomRosterListener?.cancel()
+        classroomRosterListener = nil
         classroomErrorMessage = nil
+        classroomRosterErrorMessage = nil
         classroomNoticeMessage = nil
         runtimeDiagnostics = runtimeDiagnostics.clearingSession()
     }

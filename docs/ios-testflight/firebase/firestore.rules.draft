@@ -491,7 +491,9 @@ service cloud.firestore {
       }
 
       match /students/{studentUid} {
-        allow read: if canReadStudentRecord(classId, studentUid);
+        allow get: if canReadStudentRecord(classId, studentUid);
+        allow list: if isClassTeacher(classId)
+          && resource.data.membershipStatus == "active";
         allow create: if isOwnerStudent(studentUid) && isClassStudent(classId);
         allow update: if (
             isOwnerStudent(studentUid) && isClassStudent(classId)

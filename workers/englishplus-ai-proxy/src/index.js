@@ -33,7 +33,7 @@ const TASKS = new Set([
 
 const CORS_HEADERS = {
   "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Methods": "GET,POST,PUT,DELETE,OPTIONS",
+  "Access-Control-Allow-Methods": "GET,POST,PATCH,PUT,DELETE,OPTIONS",
   "Access-Control-Allow-Headers": "Authorization,Content-Type",
   "Access-Control-Max-Age": "86400",
 };
@@ -95,6 +95,20 @@ export default {
 
     if (url.pathname === "/classrooms/join" && request.method === "POST") {
       return handleClassroomJoin(request, env);
+    }
+
+    const classroomStudents = url.pathname.match(
+      /^\/classrooms\/([A-Z0-9-]{3,64})\/students$/
+    );
+    if (classroomStudents && request.method === "GET") {
+      return handleClassroomStudentList(request, env, classroomStudents[1]);
+    }
+
+    const classroomSettings = url.pathname.match(
+      /^\/classrooms\/([A-Z0-9-]{3,64})$/
+    );
+    if (classroomSettings && request.method === "PATCH") {
+      return handleClassroomUpdate(request, env, classroomSettings[1]);
     }
 
     const classroomAction = url.pathname.match(
@@ -492,12 +506,40 @@ async function handleClassroomCodeReset(request, env, classId) {
   }
 }
 
+async function handleClassroomStudentList(request, env, classId) {
+  try {
+    const user = await requireFirebaseUser(request, env);
+    const students = await listClassroomStudents(env, user, classId);
+    return jsonResponse({ ok: true, classId, students });
+  } catch (error) {
+    if (error?.status) return authOrValidationError(error);
+    return jsonResponse({ ok: false, error: "CLASSROOM_STUDENT_LIST_FAILED" }, 502);
+  }
+}
+
+async function handleClassroomUpdate(request, env, classId) {
+  try {
+    const user = await requireFirebaseUser(request, env);
+    const input = normalizeClassroomUpdateRequest(await request.json());
+    const classroom = await updateClassroom(env, user, classId, input);
+    return jsonResponse({ ok: true, classroom });
+  } catch (error) {
+    if (error?.status) return authOrValidationError(error);
+    return jsonResponse({ ok: false, error: "CLASSROOM_UPDATE_FAILED" }, 502);
+  }
+}
+
 function normalizeClassroomCreateRequest(raw) {
   const name = safeString(raw?.name)?.normalize("NFKC").replace(/\s+/g, " ");
   if (!name || name.length < 2 || name.length > 40 || /[\u0000-\u001F]/.test(name)) {
     throw httpError(400, "INVALID_CLASSROOM_NAME");
   }
   return { name };
+}
+
+function normalizeClassroomUpdateRequest(raw) {
+  const normalized = normalizeClassroomCreateRequest({ name: raw?.name });
+  return { name: normalized.name };
 }
 
 function normalizeClassroomCode(value) {
@@ -824,6 +866,151 @@ async function resetClassroomCode(env, user, classId) {
     leftAt: "",
     joinCode: newCode,
   });
+}
+
+async function listClassroomStudents(env, user, classId) {
+  const context = await classroomUserContext(env, user);
+  await requireOwnedTeacherClassroom(context, user.sub, classId);
+  const memberships = await listFirestoreCollection(
+    context.projectId,
+    context.accessToken,
+    `classes/${classId}/members`,
+    context.firestoreBaseURL
+  );
+  const activeStudents = memberships.filter((membership) =>
+    membershipIsActiveDocument(membership)
+      && firestoreString(membership.fields?.role) === "student"
+  );
+
+  const students = await Promise.all(activeStudents.map(async (membership) => {
+    const uid = documentId(membership.name);
+    const summary = await getFirestoreDocument(
+      context.projectId,
+      context.accessToken,
+      `classes/${classId}/students/${uid}`,
+      context.firestoreBaseURL
+    );
+    const fields = summary?.fields || {};
+    const moodValue = Number(fields.lastMoodScore?.integerValue);
+    return {
+      id: uid,
+      studentUid: uid,
+      studentName: firestoreString(fields.displayName)
+        || firestoreString(membership.fields?.displayName)
+        || "學生",
+      classId,
+      gradeBand: firestoreString(fields.gradeBand),
+      currentLevel: firestoreString(fields.currentLevel) || "待評估",
+      recommendedTrack: firestoreString(fields.recommendedTrack) || "steady",
+      moodScore: Number.isInteger(moodValue) ? moodValue : null,
+      riskLevel: firestoreString(fields.riskLevel) || "low",
+      missionStatus: firestoreString(fields.lastMissionStatus) || "notStarted",
+      membershipStatus: firestoreString(fields.membershipStatus) || "active",
+      lastActivityAt: fields.lastActivityAt?.timestampValue || null,
+      joinedAt: membership.fields?.joinedAt?.timestampValue || "",
+    };
+  }));
+
+  return students.sort((left, right) =>
+    left.studentName.localeCompare(right.studentName, "zh-Hant")
+  );
+}
+
+async function updateClassroom(env, user, classId, input) {
+  const context = await classroomUserContext(env, user);
+  const { classroom, membership, admin } = await requireOwnedTeacherClassroom(
+    context,
+    user.sub,
+    classId
+  );
+  const memberships = await listFirestoreCollection(
+    context.projectId,
+    context.accessToken,
+    `classes/${classId}/members`,
+    context.firestoreBaseURL
+  );
+  if (memberships.length > 240) {
+    throw httpError(409, "CLASSROOM_TOO_LARGE_TO_RENAME");
+  }
+
+  const now = new Date().toISOString();
+  const root = firestoreRoot(context.projectId);
+  const writes = [
+    maskedUpdateWrite(
+      `${root}/classes/${classId}`,
+      {
+        name: { stringValue: input.name },
+        ownerTeacherUid: { stringValue: user.sub },
+        updatedAt: { timestampValue: now },
+      },
+      ["name", "ownerTeacherUid", "updatedAt"],
+      classroom.updateTime
+    ),
+  ];
+  for (const member of memberships) {
+    const uid = documentId(member.name);
+    const role = firestoreString(member.fields?.role);
+    if (!uid || !new Set(["student", "teacher", "volunteer"]).has(role)) continue;
+    writes.push(
+      maskedUpdateWrite(
+        `${root}/classes/${classId}/members/${uid}`,
+        {
+          className: { stringValue: input.name },
+          updatedAt: { timestampValue: now },
+        },
+        ["className", "updatedAt"]
+      )
+    );
+  }
+  await commitFirestoreWrites(context, writes);
+
+  return classroomSummary({
+    classId,
+    name: input.name,
+    role: "teacher",
+    status: "active",
+    joinedAt: membership.fields?.joinedAt?.timestampValue || now,
+    visibilityStartsAt: membership.fields?.visibilityStartsAt?.timestampValue || now,
+    leftAt: "",
+    joinCode: firestoreString(admin?.fields?.joinCode),
+  });
+}
+
+async function requireOwnedTeacherClassroom(context, teacherUid, classId) {
+  requireActiveRole(context.profile, "teacher", "TEACHER_ACCOUNT_REQUIRED");
+  const [classroom, membership, admin] = await Promise.all([
+    getFirestoreDocument(
+      context.projectId,
+      context.accessToken,
+      `classes/${classId}`,
+      context.firestoreBaseURL
+    ),
+    getFirestoreDocument(
+      context.projectId,
+      context.accessToken,
+      `classes/${classId}/members/${teacherUid}`,
+      context.firestoreBaseURL
+    ),
+    getFirestoreDocument(
+      context.projectId,
+      context.accessToken,
+      `classAdmins/${classId}`,
+      context.firestoreBaseURL
+    ),
+  ]);
+  if (!classroom || classroom.fields?.active?.booleanValue !== true || !membership) {
+    throw httpError(404, "CLASSROOM_NOT_FOUND");
+  }
+  const ownerTeacherUid = firestoreString(classroom.fields?.ownerTeacherUid)
+    || firestoreString(admin?.fields?.ownerTeacherUid);
+  if (
+    (ownerTeacherUid && ownerTeacherUid !== teacherUid)
+    || firestoreString(membership.fields?.role) !== "teacher"
+    || !membershipIsActiveDocument(membership)
+  ) {
+    throw httpError(403, "CLASSROOM_OWNER_REQUIRED");
+  }
+  return { classroom, membership, admin };
 }
 
 async function listClassroomsForUser(env, user) {
@@ -2287,16 +2474,19 @@ export {
   generateClassCode,
   joinClassroom,
   leaveClassroom,
+  listClassroomStudents,
   listClassroomsForUser,
   membershipIsActiveDocument,
   normalizeEvidenceTicketRequest,
   normalizeClassroomCode,
   normalizeClassroomCreateRequest,
   normalizeClassroomJoinRequest,
+  normalizeClassroomUpdateRequest,
   normalizeRequest,
   reviewTransitionAllowed,
   resetClassroomCode,
   selectExpiredReviewedApplications,
   signUploadTicket,
   verifyUploadTicket,
+  updateClassroom,
 };

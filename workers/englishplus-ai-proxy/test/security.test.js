@@ -9,6 +9,7 @@ import worker, {
   normalizeClassroomCode,
   normalizeClassroomCreateRequest,
   normalizeClassroomJoinRequest,
+  normalizeClassroomUpdateRequest,
   normalizeEvidenceTicketRequest,
   reviewTransitionAllowed,
   selectExpiredReviewedApplications,
@@ -26,6 +27,10 @@ test("classroom names and join codes are normalized without weakening validation
     { code: "ABCDEFGH" }
   );
   assert.equal(normalizeClassroomCode("ABCD-EFGH"), "ABCDEFGH");
+  assert.deepEqual(
+    normalizeClassroomUpdateRequest({ name: "  九年級英文 B 班  " }),
+    { name: "九年級英文 B 班" }
+  );
   assert.throws(
     () => normalizeClassroomCreateRequest({ name: "A" }),
     (error) => error.code === "INVALID_CLASSROOM_NAME"
@@ -33,6 +38,10 @@ test("classroom names and join codes are normalized without weakening validation
   assert.throws(
     () => normalizeClassroomJoinRequest({ code: "OOOO-1111" }),
     (error) => error.code === "INVALID_CLASSROOM_CODE"
+  );
+  assert.throws(
+    () => normalizeClassroomUpdateRequest({ name: "A" }),
+    (error) => error.code === "INVALID_CLASSROOM_NAME"
   );
 });
 

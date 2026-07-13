@@ -166,6 +166,7 @@ def main() -> int:
     teacher = sessions.get("teacher")
     volunteer = sessions.get("volunteer")
 
+    classroom_lists: dict[str, list[dict]] = {}
     for role, session in sessions.items():
         bootstrap = request_json(
             f"{WORKER_BASE_URL}/classrooms/bootstrap",
@@ -191,6 +192,7 @@ def main() -> int:
             results,
             f"HTTP {classroom_list.status}",
         )
+        classroom_lists[role] = classroom_list.body.get("classrooms", [])
 
     if student:
         forbidden_create = request_json(
@@ -234,6 +236,44 @@ def main() -> int:
             "teacher_cannot_join_with_student_code",
             results,
             f"HTTP {forbidden_join.status}",
+        )
+
+        teacher_classes = classroom_lists.get("teacher", [])
+        if teacher_classes:
+            teacher_class_id = teacher_classes[0].get("classId")
+            roster = request_json(
+                f"{WORKER_BASE_URL}/classrooms/{teacher_class_id}/students",
+                token=teacher["idToken"],
+            )
+            expect(
+                roster.status == 200 and isinstance(roster.body.get("students"), list),
+                "teacher_can_list_owned_class_roster",
+                results,
+                f"HTTP {roster.status}; students={len(roster.body.get('students', []))}",
+            )
+            if student:
+                forbidden_roster = request_json(
+                    f"{WORKER_BASE_URL}/classrooms/{teacher_class_id}/students",
+                    token=student["idToken"],
+                )
+                expect(
+                    forbidden_roster.status == 403,
+                    "student_cannot_list_teacher_roster",
+                    results,
+                    f"HTTP {forbidden_roster.status}",
+                )
+
+        missing_class_update = request_json(
+            f"{WORKER_BASE_URL}/classrooms/CLS-NOT-FOUND",
+            method="PATCH",
+            token=teacher["idToken"],
+            payload={"name": "No mutation smoke test"},
+        )
+        expect(
+            missing_class_update.status == 404,
+            "teacher_class_update_checks_ownership_before_write",
+            results,
+            f"HTTP {missing_class_update.status}",
         )
 
     if student:

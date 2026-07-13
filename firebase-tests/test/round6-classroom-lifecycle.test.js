@@ -8,17 +8,23 @@ import {
 } from "@firebase/rules-unit-testing";
 import {
   Timestamp,
+  collection,
   doc,
   getDoc,
+  getDocs,
+  query,
   setDoc,
   updateDoc,
+  where,
 } from "firebase/firestore";
 import {
   createClassroom,
   joinClassroom,
   leaveClassroom,
+  listClassroomStudents,
   listClassroomsForUser,
   resetClassroomCode,
+  updateClassroom,
 } from "../../workers/englishplus-ai-proxy/src/index.js";
 
 const PROJECT_ID = "demo-englishplus-round6";
@@ -274,6 +280,31 @@ test("teachers can assign only active students and clients cannot create classes
   }));
 });
 
+test("teacher roster query is realtime-compatible and excludes inactive summaries", async () => {
+  const teacher = dbFor("teacherA");
+  const outsider = dbFor("teacherB");
+  const summaryQuery = (db) => query(
+    collection(db, "classes", CLASS_ID, "students"),
+    where("membershipStatus", "==", "active")
+  );
+
+  const summaries = await assertSucceeds(getDocs(summaryQuery(teacher)));
+  const members = await assertSucceeds(
+    getDocs(collection(teacher, "classes", CLASS_ID, "members"))
+  );
+  const activeStudentIds = new Set(
+    members.docs
+      .filter((item) => item.data().role === "student" && item.data().status === "active")
+      .map((item) => item.id)
+  );
+  const visibleRoster = summaries.docs
+    .map((item) => item.id)
+    .filter((uid) => activeStudentIds.has(uid));
+  assert.deepEqual(visibleRoster, ["studentA"]);
+  await assertFails(getDocs(summaryQuery(outsider)));
+  await assertFails(getDocs(collection(outsider, "classes", CLASS_ID, "members")));
+});
+
 test("Worker classroom lifecycle completes in isolated Firestore and preserves history", async () => {
   await testEnv.clearFirestore();
   await testEnv.withSecurityRulesDisabled(async (context) => {
@@ -300,6 +331,27 @@ test("Worker classroom lifecycle completes in isolated Firestore and preserves h
   assert.equal(joined.classId, classroom.classId);
   assert.equal(joined.joinCode, null);
   assert.equal((await listClassroomsForUser(env, student)).length, 1);
+  const roster = await listClassroomStudents(env, teacher, classroom.classId);
+  assert.equal(roster.length, 1);
+  assert.equal(roster[0].studentUid, student.sub);
+  assert.equal(roster[0].classId, classroom.classId);
+  await assert.rejects(
+    () => listClassroomStudents(env, student, classroom.classId),
+    (error) => error?.code === "TEACHER_ACCOUNT_REQUIRED"
+  );
+
+  const renamed = await updateClassroom(
+    env,
+    teacher,
+    classroom.classId,
+    { name: "Round 7 renamed class" }
+  );
+  assert.equal(renamed.name, "Round 7 renamed class");
+  assert.equal((await listClassroomsForUser(env, student))[0].name, "Round 7 renamed class");
+  await assert.rejects(
+    () => updateClassroom(env, student, classroom.classId, { name: "Blocked" }),
+    (error) => error?.code === "TEACHER_ACCOUNT_REQUIRED"
+  );
 
   const studentDb = dbFor("studentFlow");
   await assertSucceeds(updateDoc(doc(studentDb, "users", "studentFlow"), {

@@ -60,6 +60,7 @@ jobs:
         run: |
           python3 scripts/validate_app_store_hardening_round5.py
           python3 scripts/validate_app_store_hardening_round6.py
+          python3 scripts/validate_app_store_hardening_round7.py
           python3 scripts/validate_ios_xcode_project_sources.py
 
       - name: Build iOS Simulator target

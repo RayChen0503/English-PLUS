@@ -10,6 +10,7 @@ final class FirebaseLearningRepository: LearningRepositoryBackend {
     private var currentSnapshot: LearningRepositorySnapshot
     private var activeClassId: String?
     private var activeUserUid: String?
+    private var activeUserDisplayName: String?
 
     #if canImport(FirebaseFirestore)
     private let db: Firestore?
@@ -66,6 +67,7 @@ final class FirebaseLearningRepository: LearningRepositoryBackend {
             || FirebaseBackendConfig.isPersonalScopeId(classId)
         activeClassId = isPersonalMode ? nil : classId
         activeUserUid = profile?.id ?? user?.id
+        activeUserDisplayName = profile?.displayName ?? user?.displayName
 
         if let profile, !profile.isDemo {
             fallback.activatePersistenceScope(
@@ -99,6 +101,7 @@ final class FirebaseLearningRepository: LearningRepositoryBackend {
                 self?.removeRealtimeRegistrations()
                 self?.activeClassId = nil
                 self?.activeUserUid = nil
+                self?.activeUserDisplayName = nil
             }
         }
 
@@ -110,6 +113,7 @@ final class FirebaseLearningRepository: LearningRepositoryBackend {
             self?.removeRealtimeRegistrations()
             self?.activeClassId = nil
             self?.activeUserUid = nil
+            self?.activeUserDisplayName = nil
         }
         #else
         return AnyLearningRepositoryListenerToken {}
@@ -209,6 +213,7 @@ final class FirebaseLearningRepository: LearningRepositoryBackend {
                 lastFreePracticeCompletedAt: currentSnapshot.learningFlow.lastFreePracticeCompletedAt
             )
             mirrorLearningFlowIfPossible()
+            mirrorStudentSummaryIfPossible()
             return
         }
 
@@ -230,6 +235,7 @@ final class FirebaseLearningRepository: LearningRepositoryBackend {
             lastFreePracticeCompletedAt: currentSnapshot.learningFlow.lastFreePracticeCompletedAt
         )
         mirrorLearningFlowIfPossible()
+        mirrorStudentSummaryIfPossible()
     }
 
     func completeFreePracticeSession(correctCount: Int, totalCount: Int) {
@@ -251,6 +257,7 @@ final class FirebaseLearningRepository: LearningRepositoryBackend {
             mirrorAttemptIfPossible(attempt)
             mirrorMissionIfPossible()
             mirrorLearningFlowIfPossible()
+            mirrorStudentSummaryIfPossible()
             currentSnapshot.assignedPracticeTasks
                 .first { $0.id == currentSnapshot.currentMission?.sourceCheckInId }
                 .map(mirrorPracticeAssignmentIfPossible)
@@ -465,6 +472,7 @@ final class FirebaseLearningRepository: LearningRepositoryBackend {
             .first { $0.id == assignment.id }
             .map(mirrorPracticeAssignmentIfPossible)
         mirrorMissionIfPossible()
+        mirrorStudentSummaryIfPossible()
     }
 
     func withdrawAssignedPracticeTask(_ assignmentId: String) {
@@ -484,6 +492,7 @@ final class FirebaseLearningRepository: LearningRepositoryBackend {
         guard let profile else { return }
         activeClassId = profile.activeClassId
         activeUserUid = profile.id
+        activeUserDisplayName = profile.displayName
         if let checkIn = currentSnapshot.currentCheckIn {
             let path: String
             if let classId = profile.activeClassId {
@@ -505,6 +514,44 @@ final class FirebaseLearningRepository: LearningRepositoryBackend {
         }
         mirrorMissionIfPossible()
         mirrorLearningFlowIfPossible()
+        mirrorStudentSummaryIfPossible()
+    }
+
+    private func mirrorStudentSummaryIfPossible() {
+        guard let activeClassId, let activeUserUid else { return }
+        let checkIn = currentSnapshot.currentCheckIn
+        let mission = currentSnapshot.currentMission
+        let moodScore = checkIn?.moodScore
+        let riskLevel: RiskLevel
+        switch moodScore {
+        case .some(...2): riskLevel = .high
+        case .some(3): riskLevel = .medium
+        default: riskLevel = .low
+        }
+        let currentLevel = mission?.questions
+            .map(\.level)
+            .max { levelRank($0) < levelRank($1) }?
+            .rawValue ?? "pending"
+        setDocumentIfPossible(
+            path: FirestorePath.student(classId: activeClassId, studentUid: activeUserUid),
+            data: [
+                "uid": activeUserUid,
+                "displayName": activeUserDisplayName ?? "學生",
+                "classCode": activeClassId,
+                "currentLevel": currentLevel,
+                "recommendedTrack": mission?.track.rawValue ?? MissionTrack.steady.rawValue,
+                "lastMoodScore": nullable(moodScore),
+                "lastMissionStatus": mission?.status.rawValue ?? "notStarted",
+                "lastActivityAt": Date(),
+                "riskLevel": riskLevel.rawValue,
+                "membershipStatus": "active",
+                "updatedAt": Date(),
+            ]
+        )
+    }
+
+    private func levelRank(_ level: QuestionLevel) -> Int {
+        QuestionLevel.allCases.firstIndex(of: level) ?? 0
     }
 
     private func mirrorMissionIfPossible() {
