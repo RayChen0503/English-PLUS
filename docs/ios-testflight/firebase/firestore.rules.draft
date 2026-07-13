@@ -132,8 +132,26 @@ service cloud.firestore {
       return /databases/$(database)/documents/classes/$(classId)/members/$(uid);
     }
 
+    function classPath(classId) {
+      return /databases/$(database)/documents/classes/$(classId);
+    }
+
+    function classIsOperational(classId) {
+      let classroom = get(classPath(classId)).data;
+      return classroom.active == true
+        && (
+          !("deletionPending" in classroom)
+          || classroom.deletionPending != true
+        )
+        && (
+          !("lifecycleStatus" in classroom)
+          || classroom.lifecycleStatus == "active"
+        );
+    }
+
     function isClassMember(classId) {
       return hasAccountAccess(request.auth.uid)
+        && classIsOperational(classId)
         && exists(memberPath(classId, request.auth.uid))
         && membershipIsActive(get(memberPath(classId, request.auth.uid)).data);
     }
@@ -171,13 +189,15 @@ service cloud.firestore {
     }
 
     function isActiveStudentMember(classId, studentUid) {
-      return exists(memberPath(classId, studentUid))
+      return classIsOperational(classId)
+        && exists(memberPath(classId, studentUid))
         && membershipIsActive(get(memberPath(classId, studentUid)).data)
         && get(memberPath(classId, studentUid)).data.role == "student";
     }
 
     function isActiveVolunteerMember(classId, volunteerUid) {
-      return exists(memberPath(classId, volunteerUid))
+      return classIsOperational(classId)
+        && exists(memberPath(classId, volunteerUid))
         && membershipIsActive(get(memberPath(classId, volunteerUid)).data)
         && get(memberPath(classId, volunteerUid)).data.role == "volunteer";
     }
@@ -250,6 +270,7 @@ service cloud.firestore {
         || request.resource.data.activeClassId == null
         || (
           request.resource.data.activeClassId is string
+          && classIsOperational(request.resource.data.activeClassId)
           && exists(memberPath(request.resource.data.activeClassId, uid))
           && membershipIsActive(
             get(memberPath(request.resource.data.activeClassId, uid)).data

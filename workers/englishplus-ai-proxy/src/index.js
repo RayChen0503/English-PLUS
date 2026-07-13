@@ -184,6 +184,9 @@ export default {
     if (classroomSettings && request.method === "PATCH") {
       return handleClassroomUpdate(request, env, classroomSettings[1]);
     }
+    if (classroomSettings && request.method === "DELETE") {
+      return handleClassroomDelete(request, env, classroomSettings[1]);
+    }
 
     const classroomAction = url.pathname.match(
       /^\/classrooms\/([A-Z0-9-]{3,64})\/(leave|reset-code)$/
@@ -1589,6 +1592,15 @@ function assertAiTaskRole(role, taskType) {
 }
 
 async function getAiMembership(context, classId, uid) {
+  const classroom = await getFirestoreDocument(
+    context.projectId,
+    context.accessToken,
+    `classes/${classId}`,
+    context.firestoreBaseURL
+  );
+  if (!classroomIsOperationalDocument(classroom)) {
+    throw httpError(410, "CLASSROOM_UNAVAILABLE");
+  }
   if (
     context.legacyClassId === classId
     && context.firebaseUser.sub === uid
@@ -2012,6 +2024,17 @@ async function handleClassroomUpdate(request, env, classId) {
   }
 }
 
+async function handleClassroomDelete(request, env, classId) {
+  try {
+    const user = await requireFirebaseUser(request, env);
+    const result = await deleteClassroom(env, user, classId);
+    return jsonResponse({ ok: true, ...result });
+  } catch (error) {
+    if (error?.status) return authOrValidationError(error);
+    return jsonResponse({ ok: false, error: "CLASSROOM_DELETE_FAILED" }, 502);
+  }
+}
+
 function normalizeClassroomCreateRequest(raw) {
   const name = safeString(raw?.name)?.normalize("NFKC").replace(/\s+/g, " ");
   if (!name || name.length < 2 || name.length > 40 || /[\u0000-\u001F]/.test(name)) {
@@ -2104,7 +2127,7 @@ async function joinClassroom(env, user, joinCode) {
     `classes/${classId}`,
     context.firestoreBaseURL
   );
-  if (!classroom || classroom.fields?.active?.booleanValue !== true) {
+  if (!classroomIsOperationalDocument(classroom)) {
     throw httpError(410, "CLASSROOM_UNAVAILABLE");
   }
 
@@ -2459,6 +2482,305 @@ async function updateClassroom(env, user, classId, input) {
   });
 }
 
+async function deleteClassroom(env, user, classId) {
+  const context = await classroomUserContext(env, user);
+  const { classroom, membership, admin } = await requireOwnedTeacherClassroomForDeletion(
+    context,
+    user.sub,
+    classId
+  );
+  const lifecycleStatus = firestoreString(classroom.fields?.lifecycleStatus);
+  if (lifecycleStatus === "deleted" || classroom.fields?.active?.booleanValue === false) {
+    return {
+      classId,
+      deleted: true,
+      alreadyDeleted: true,
+      deletedAt: classroom.fields?.deletedAt?.timestampValue || null,
+    };
+  }
+
+  const now = new Date().toISOString();
+  const root = firestoreRoot(context.projectId);
+  const ownerTeacherUid = firestoreString(classroom.fields?.ownerTeacherUid) || user.sub;
+  const oldJoinCode = firestoreString(admin?.fields?.joinCode);
+
+  if (classroom.fields?.deletionPending?.booleanValue !== true) {
+    const controlPlaneWrites = [
+      maskedUpdateWrite(
+        `${root}/classes/${classId}`,
+        {
+          lifecycleStatus: { stringValue: "deleting" },
+          deletionPending: { booleanValue: true },
+          deletionRequestedAt: { timestampValue: now },
+          deletionRequestedByUid: { stringValue: user.sub },
+          updatedAt: { timestampValue: now },
+        },
+        [
+          "lifecycleStatus",
+          "deletionPending",
+          "deletionRequestedAt",
+          "deletionRequestedByUid",
+          "updatedAt",
+        ],
+        classroom.updateTime
+      ),
+    ];
+    if (admin) {
+      controlPlaneWrites.push(
+        maskedUpdateWrite(
+          `${root}/classAdmins/${classId}`,
+          {
+            active: { booleanValue: false },
+            deletionPending: { booleanValue: true },
+            joinCode: { nullValue: null },
+            updatedAt: { timestampValue: now },
+          },
+          ["active", "deletionPending", "joinCode", "updatedAt"],
+          admin.updateTime
+        )
+      );
+    }
+    if (oldJoinCode) {
+      controlPlaneWrites.push({ delete: `${root}/classJoinCodes/${oldJoinCode}` });
+    }
+    await commitFirestoreWrites(context, controlPlaneWrites);
+  }
+
+  const members = await listFirestoreCollection(
+    context.projectId,
+    context.accessToken,
+    `classes/${classId}/members`,
+    context.firestoreBaseURL
+  );
+  const activeMembers = members.filter(membershipIsActiveDocument);
+  const preparedMembers = await Promise.all(activeMembers.map(async (member) => {
+    const uid = documentId(member.name);
+    const role = firestoreString(member.fields?.role);
+    if (!uid) return null;
+    const [profile, membershipMirror, studentSummary] = await Promise.all([
+      getFirestoreDocument(
+        context.projectId,
+        context.accessToken,
+        `users/${uid}`,
+        context.firestoreBaseURL
+      ),
+      getFirestoreDocument(
+        context.projectId,
+        context.accessToken,
+        `users/${uid}/classMemberships/${classId}`,
+        context.firestoreBaseURL
+      ),
+      role === "student"
+        ? getFirestoreDocument(
+            context.projectId,
+            context.accessToken,
+            `classes/${classId}/students/${uid}`,
+            context.firestoreBaseURL
+          )
+        : Promise.resolve(null),
+    ]);
+    return { uid, role, member, profile, membershipMirror, studentSummary };
+  }));
+
+  const validMembers = preparedMembers.filter(Boolean);
+  const recordedMemberCount = firestoreInteger(
+    classroom.fields?.deletionAffectedMemberCount
+  );
+  const affectedMemberCount = Math.max(recordedMemberCount, validMembers.length);
+  if (recordedMemberCount === 0 && validMembers.length > 0) {
+    await commitFirestoreWrites(context, [
+      maskedUpdateWrite(
+        `${root}/classes/${classId}`,
+        {
+          deletionAffectedMemberCount: { integerValue: String(validMembers.length) },
+          updatedAt: { timestampValue: now },
+        },
+        ["deletionAffectedMemberCount", "updatedAt"]
+      ),
+    ]);
+  }
+  const nonOwnerWrites = validMembers
+    .filter((item) => item.uid !== ownerTeacherUid)
+    .flatMap((item) => classroomMemberExitWrites(root, classId, item, now));
+  await commitFirestoreWriteChunks(context, nonOwnerWrites);
+
+  const ownerState = validMembers.find((item) => item.uid === ownerTeacherUid);
+  const finalWrites = ownerState
+    ? classroomMemberExitWrites(root, classId, ownerState, now)
+    : [];
+  finalWrites.push(
+    maskedUpdateWrite(
+      `${root}/classes/${classId}`,
+      {
+        active: { booleanValue: false },
+        lifecycleStatus: { stringValue: "deleted" },
+        deletionPending: { booleanValue: false },
+        deletedAt: { timestampValue: now },
+        deletedByUid: { stringValue: user.sub },
+        updatedAt: { timestampValue: now },
+      },
+      [
+        "active",
+        "lifecycleStatus",
+        "deletionPending",
+        "deletedAt",
+        "deletedByUid",
+        "updatedAt",
+      ]
+    ),
+    {
+      update: {
+        name: `${root}/classDeletionAudits/${classId}`,
+        fields: {
+          classId: { stringValue: classId },
+          className: {
+            stringValue: firestoreString(classroom.fields?.name) || "English+ 班級",
+          },
+          ownerTeacherUid: { stringValue: ownerTeacherUid },
+          deletedByUid: { stringValue: user.sub },
+          deletedAt: { timestampValue: now },
+          affectedActiveMemberCount: { integerValue: String(affectedMemberCount) },
+          dataDisposition: { stringValue: "softDeletedRetainedForAudit" },
+        },
+      },
+    }
+  );
+  if (admin) {
+    finalWrites.push(
+      maskedUpdateWrite(
+        `${root}/classAdmins/${classId}`,
+        {
+          active: { booleanValue: false },
+          deletionPending: { booleanValue: false },
+          joinCode: { nullValue: null },
+          deletedAt: { timestampValue: now },
+          updatedAt: { timestampValue: now },
+        },
+        ["active", "deletionPending", "joinCode", "deletedAt", "updatedAt"]
+      )
+    );
+  }
+  await commitFirestoreWrites(context, finalWrites);
+
+  return {
+    classId,
+    deleted: true,
+    alreadyDeleted: false,
+    deletedAt: now,
+    affectedMemberCount,
+  };
+}
+
+function classroomMemberExitWrites(root, classId, item, deletedAt) {
+  const exitFields = {
+    status: { stringValue: "left" },
+    active: { booleanValue: false },
+    leftAt: { timestampValue: deletedAt },
+    exitReason: { stringValue: "classDeleted" },
+    updatedAt: { timestampValue: deletedAt },
+  };
+  const writes = [
+    maskedUpdateWrite(
+      `${root}/classes/${classId}/members/${item.uid}`,
+      exitFields,
+      Object.keys(exitFields),
+      item.member.updateTime
+    ),
+  ];
+  if (item.membershipMirror) {
+    writes.push(
+      maskedUpdateWrite(
+        `${root}/users/${item.uid}/classMemberships/${classId}`,
+        exitFields,
+        Object.keys(exitFields),
+        item.membershipMirror.updateTime
+      )
+    );
+  } else {
+    writes.push({
+      update: {
+        name: `${root}/users/${item.uid}/classMemberships/${classId}`,
+        fields: {
+          classId: { stringValue: classId },
+          role: { stringValue: item.role || "unknown" },
+          ...exitFields,
+        },
+      },
+    });
+  }
+  if (item.studentSummary) {
+    writes.push(
+      maskedUpdateWrite(
+        `${root}/classes/${classId}/students/${item.uid}`,
+        {
+          membershipStatus: { stringValue: "left" },
+          leftAt: { timestampValue: deletedAt },
+          exitReason: { stringValue: "classDeleted" },
+          updatedAt: { timestampValue: deletedAt },
+        },
+        ["membershipStatus", "leftAt", "exitReason", "updatedAt"],
+        item.studentSummary.updateTime
+      )
+    );
+  }
+  if (firestoreString(item.profile?.fields?.activeClassId) === classId) {
+    writes.push(
+      maskedUpdateWrite(
+        `${root}/users/${item.uid}`,
+        {
+          activeClassId: { nullValue: null },
+          updatedAt: { timestampValue: deletedAt },
+        },
+        ["activeClassId", "updatedAt"],
+        item.profile.updateTime
+      )
+    );
+  }
+  return writes;
+}
+
+async function requireOwnedTeacherClassroomForDeletion(context, teacherUid, classId) {
+  requireActiveRole(context.profile, "teacher", "TEACHER_ACCOUNT_REQUIRED");
+  const [classroom, membership, admin] = await Promise.all([
+    getFirestoreDocument(
+      context.projectId,
+      context.accessToken,
+      `classes/${classId}`,
+      context.firestoreBaseURL
+    ),
+    getFirestoreDocument(
+      context.projectId,
+      context.accessToken,
+      `classes/${classId}/members/${teacherUid}`,
+      context.firestoreBaseURL
+    ),
+    getFirestoreDocument(
+      context.projectId,
+      context.accessToken,
+      `classAdmins/${classId}`,
+      context.firestoreBaseURL
+    ),
+  ]);
+  if (!classroom) throw httpError(404, "CLASSROOM_NOT_FOUND");
+  const ownerTeacherUid = firestoreString(classroom.fields?.ownerTeacherUid)
+    || firestoreString(admin?.fields?.ownerTeacherUid);
+  if (ownerTeacherUid !== teacherUid) {
+    throw httpError(403, "CLASSROOM_OWNER_REQUIRED");
+  }
+  const lifecycleStatus = firestoreString(classroom.fields?.lifecycleStatus);
+  if (
+    lifecycleStatus !== "deleted"
+    && (
+      !membership
+      || firestoreString(membership.fields?.role) !== "teacher"
+      || !membershipIsActiveDocument(membership)
+    )
+  ) {
+    throw httpError(403, "CLASSROOM_OWNER_REQUIRED");
+  }
+  return { classroom, membership, admin };
+}
+
 async function requireOwnedTeacherClassroom(context, teacherUid, classId) {
   requireActiveRole(context.profile, "teacher", "TEACHER_ACCOUNT_REQUIRED");
   const [classroom, membership, admin] = await Promise.all([
@@ -2481,7 +2803,7 @@ async function requireOwnedTeacherClassroom(context, teacherUid, classId) {
       context.firestoreBaseURL
     ),
   ]);
-  if (!classroom || classroom.fields?.active?.booleanValue !== true || !membership) {
+  if (!classroomIsOperationalDocument(classroom) || !membership) {
     throw httpError(404, "CLASSROOM_NOT_FOUND");
   }
   const ownerTeacherUid = firestoreString(classroom.fields?.ownerTeacherUid)
@@ -2533,7 +2855,7 @@ async function listClassroomsForUser(env, user) {
       `classes/${classId}`,
       context.firestoreBaseURL
     );
-    if (!classroom || classroom.fields?.active?.booleanValue !== true) return null;
+    if (!classroomIsOperationalDocument(classroom)) return null;
     const admin = role === "teacher"
       ? await getFirestoreDocument(
           context.projectId,
@@ -2688,6 +3010,8 @@ async function commitClassroomCreation(input) {
           name: { stringValue: input.name },
           ownerTeacherUid: { stringValue: input.teacherUid },
           active: { booleanValue: true },
+          lifecycleStatus: { stringValue: "active" },
+          deletionPending: { booleanValue: false },
           createdAt: { timestampValue: input.now },
           updatedAt: { timestampValue: input.now },
         },
@@ -2701,6 +3025,7 @@ async function commitClassroomCreation(input) {
           classId: { stringValue: input.classId },
           ownerTeacherUid: { stringValue: input.teacherUid },
           joinCode: { stringValue: input.joinCode },
+          active: { booleanValue: true },
           codeVersion: { integerValue: "1" },
           createdAt: { timestampValue: input.now },
           updatedAt: { timestampValue: input.now },
@@ -3000,6 +3325,15 @@ function membershipIsActiveDocument(document) {
   return (status === "active" || (!status && fields.active?.booleanValue === true))
     && fields.active?.booleanValue !== false
     && !fields.leftAt?.timestampValue;
+}
+
+function classroomIsOperationalDocument(document) {
+  const fields = document?.fields || {};
+  const lifecycleStatus = firestoreString(fields.lifecycleStatus);
+  return Boolean(document)
+    && fields.active?.booleanValue === true
+    && fields.deletionPending?.booleanValue !== true
+    && (!lifecycleStatus || lifecycleStatus === "active");
 }
 
 function classroomSummary(input) {
@@ -4117,6 +4451,7 @@ export {
   assertAiTaskRole,
   evidenceQuotaSnapshot,
   createClassroom,
+  deleteClassroom,
   discoverAccountDeletionSummary,
   enforceEvidenceQuota,
   ensureLegacyClassroomAccount,

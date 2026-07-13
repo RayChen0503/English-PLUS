@@ -41,6 +41,9 @@ final class AppState: ObservableObject {
     private let classroomService: ClassroomService
     private let accountLifecycleService: AccountLifecycleService
     private var classroomRosterListener: ClassroomRosterListenerToken?
+    private var classroomMembershipListener: ClassroomRosterListenerToken?
+    private var classroomMembershipListenerUid: String?
+    private var isReconcilingClassroomMemberships = false
     private var didAttemptSessionRestore = false
     private var pendingIdentityCredential: FederatedIdentityCredential?
     private var pendingIdentityRole: UserRole?
@@ -468,6 +471,10 @@ final class AppState: ObservableObject {
         classroomNoticeMessage = nil
         classroomRosterListener?.cancel()
         classroomRosterListener = nil
+        classroomMembershipListener?.cancel()
+        classroomMembershipListener = nil
+        classroomMembershipListenerUid = nil
+        isReconcilingClassroomMemberships = false
         pendingIdentityCredential = nil
         pendingIdentityRole = nil
         clearFederatedOnboardingState()
@@ -488,6 +495,7 @@ final class AppState: ObservableObject {
             self.currentUser = session.user
             self.currentProfile = session.profile
             selectedRole = session.user.role
+            startClassroomMembershipSyncIfNeeded(userUid: session.user.id)
             runtimeDiagnostics = runtimeDiagnostics.withSession(
                 user: session.user,
                 profile: session.profile
@@ -615,6 +623,34 @@ final class AppState: ObservableObject {
             upsertClassroom(classroom)
             await refreshClassroomListAfterMutation()
             classroomNoticeMessage = "班級名稱已更新。"
+            isManagingClassroom = false
+            return true
+        } catch {
+            classroomErrorMessage = classroomMessage(for: error)
+            isManagingClassroom = false
+            return false
+        }
+    }
+
+    @discardableResult
+    func deleteClassroom(classId: String) async -> Bool {
+        guard !isManagingClassroom,
+              currentProfile?.role == .teacher,
+              currentProfile?.activeClassId == classId
+        else { return false }
+        isManagingClassroom = true
+        clearClassroomFeedback()
+        let deletedName = classrooms.first { $0.classId == classId }?.name ?? "這個班級"
+        do {
+            try await classroomService.deleteClassroom(classId: classId)
+            classroomRosterListener?.cancel()
+            classroomRosterListener = nil
+            classroomStudents = []
+            classroomRosterErrorMessage = nil
+            classrooms.removeAll { $0.classId == classId }
+            await refreshClassSessionAfterLeaving(classId: classId)
+            await refreshClassroomListAfterMutation()
+            classroomNoticeMessage = "已刪除「\(deletedName)」。所有成員已退出，個人學習紀錄不受影響。"
             isManagingClassroom = false
             return true
         } catch {
@@ -762,6 +798,7 @@ final class AppState: ObservableObject {
         currentUser = session.user
         currentProfile = session.profile
         selectedRole = session.user.role
+        startClassroomMembershipSyncIfNeeded(userUid: session.user.id)
         runtimeDiagnostics = runtimeDiagnostics.withSession(user: session.user, profile: session.profile)
         isAdministrator = await authService.currentUserIsAdministrator()
         if session.user.role == .volunteer,
@@ -829,11 +866,90 @@ final class AppState: ObservableObject {
         currentUser = session.user
         currentProfile = session.profile
         selectedRole = session.user.role
+        startClassroomMembershipSyncIfNeeded(userUid: session.user.id)
         runtimeDiagnostics = runtimeDiagnostics.withSession(
             user: session.user,
             profile: session.profile
         )
         route = .home(session.user.role)
+    }
+
+    private func startClassroomMembershipSyncIfNeeded(userUid: String) {
+        guard classroomMembershipListenerUid != userUid else { return }
+        classroomMembershipListener?.cancel()
+        classroomMembershipListenerUid = userUid
+        classroomMembershipListener = classroomService.startMembershipListener(
+            userUid: userUid
+        ) { [weak self] activeClassIds in
+            Task { @MainActor [weak self] in
+                await self?.reconcileClassroomMemberships(activeClassIds: Set(activeClassIds))
+            }
+        } onError: { [weak self] _ in
+            guard let self else { return }
+            if self.currentProfile?.activeClassId != nil {
+                self.classroomErrorMessage = "班級狀態暫時無法同步，請檢查網路後重新整理。"
+            }
+        }
+    }
+
+    private func reconcileClassroomMemberships(activeClassIds: Set<String>) async {
+        guard !isReconcilingClassroomMemberships,
+              let currentUser,
+              let currentProfile
+        else { return }
+        let localActiveClassIds = Set(
+            currentProfile.memberships.filter(\.isActive).map(\.classId)
+        )
+        guard localActiveClassIds != activeClassIds else { return }
+
+        isReconcilingClassroomMemberships = true
+        defer { isReconcilingClassroomMemberships = false }
+        let removedClassIds = localActiveClassIds.subtracting(activeClassIds)
+        let previousActiveClassId = currentProfile.activeClassId
+        let previousActiveClassName = previousActiveClassId.flatMap { classId in
+            classrooms.first { $0.classId == classId }?.name
+        }
+
+        let restored = try? await authService.restorePreviousSession()
+        let baseSession = restored?.user.id == currentUser.id ? restored : nil
+        var reconciledProfile = baseSession?.profile ?? currentProfile
+        for classId in removedClassIds {
+            reconciledProfile = reconciledProfile.markingMembershipLeft(
+                classId: classId,
+                at: Date()
+            )
+        }
+
+        let refreshedClassrooms = try? await classroomService.listClassrooms()
+        for classroom in refreshedClassrooms ?? [] where activeClassIds.contains(classroom.classId) {
+            reconciledProfile = reconciledProfile.upsertingMembership(
+                classroom.membership,
+                makeActive: reconciledProfile.activeClassId == classroom.classId
+            )
+        }
+        let reconciledUser = baseSession?.user ?? DemoUser(
+            id: currentUser.id,
+            displayName: currentUser.displayName,
+            role: reconciledProfile.role
+        )
+        applyClassSession(
+            AuthSession(user: reconciledUser, profile: reconciledProfile)
+        )
+
+        if let refreshedClassrooms {
+            classrooms = refreshedClassrooms
+        } else {
+            classrooms.removeAll { removedClassIds.contains($0.classId) }
+        }
+        if let previousActiveClassId,
+           !activeClassIds.contains(previousActiveClassId) {
+            classroomRosterListener?.cancel()
+            classroomRosterListener = nil
+            classroomStudents = []
+            classroomRosterErrorMessage = nil
+            let className = previousActiveClassName.map { "「\($0)」" } ?? "原班級"
+            classroomNoticeMessage = "\(className)已結束，你已自動回到個人模式；個人學習紀錄仍會保留。"
+        }
     }
 
     private func refreshClassroomListAfterMutation() async {
@@ -862,6 +978,10 @@ final class AppState: ObservableObject {
         classroomStudents = []
         classroomRosterListener?.cancel()
         classroomRosterListener = nil
+        classroomMembershipListener?.cancel()
+        classroomMembershipListener = nil
+        classroomMembershipListenerUid = nil
+        isReconcilingClassroomMemberships = false
         classroomErrorMessage = nil
         classroomRosterErrorMessage = nil
         classroomNoticeMessage = nil

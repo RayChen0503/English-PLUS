@@ -19,6 +19,7 @@ import {
 } from "firebase/firestore";
 import {
   createClassroom,
+  deleteClassroom,
   joinClassroom,
   leaveClassroom,
   listClassroomStudents,
@@ -218,6 +219,43 @@ test("class data and private join-code collections enforce membership boundaries
   }
 });
 
+test("a deleting or deleted class immediately revokes every class-scoped client permission", async () => {
+  const student = dbFor("studentA");
+  const teacher = dbFor("teacherA");
+  const volunteer = dbFor("volunteerA");
+
+  await testEnv.withSecurityRulesDisabled(async (context) => {
+    await updateDoc(doc(context.firestore(), "classes", CLASS_ID), {
+      lifecycleStatus: "deleting",
+      deletionPending: true,
+      updatedAt: Timestamp.now(),
+    });
+  });
+
+  await assertFails(getDoc(doc(student, "classes", CLASS_ID)));
+  await assertFails(getDoc(doc(teacher, "classes", CLASS_ID)));
+  await assertFails(getDoc(doc(volunteer, "classes", CLASS_ID, "supportThreads", "active-thread")));
+  await assertFails(setDoc(doc(teacher, "classes", CLASS_ID, "practiceAssignments", "blocked"), {
+    assignmentId: "blocked",
+    classId: CLASS_ID,
+    studentUid: "studentA",
+    assignedByUid: "teacherA",
+    status: "pending",
+    questionIds: ["q-1"],
+    questionResults: [],
+    createdAt: duringMembership,
+    updatedAt: duringMembership,
+  }));
+  await assertSucceeds(updateDoc(doc(student, "users", "studentA"), {
+    activeClassId: null,
+    updatedAt: Timestamp.now(),
+  }));
+  await assertFails(updateDoc(doc(student, "users", "studentA"), {
+    activeClassId: CLASS_ID,
+    updatedAt: Timestamp.now(),
+  }));
+});
+
 test("students keep personal mode but cannot cross class or write memberships", async () => {
   const student = dbFor("studentA");
   const noClassStudent = dbFor("studentB");
@@ -394,4 +432,125 @@ test("Worker classroom lifecycle completes in isolated Firestore and preserves h
   const rejoined = await joinClassroom(env, student, reset.joinCode);
   assert.equal(rejoined.visibilityStartsAt, joined.visibilityStartsAt);
   assert.equal((await listClassroomsForUser(env, student)).length, 1);
+
+  await testEnv.withSecurityRulesDisabled(async (context) => {
+    const db = context.firestore();
+    await setDoc(doc(db, "users", "legacyVolunteer"), activeProfile(
+      "volunteer",
+      classroom.classId
+    ));
+    await setDoc(doc(
+      db,
+      "classes",
+      classroom.classId,
+      "members",
+      "legacyVolunteer"
+    ), {
+      uid: "legacyVolunteer",
+      classId: classroom.classId,
+      displayName: "Legacy Volunteer",
+      role: "volunteer",
+      status: "active",
+      active: true,
+      joinedAt: Timestamp.now(),
+      visibilityStartsAt: Timestamp.now(),
+      leftAt: null,
+      updatedAt: Timestamp.now(),
+    });
+    await setDoc(doc(db, "classes", classroom.classId, "supportThreads", "retained-thread"), {
+      classId: classroom.classId,
+      studentUid: student.sub,
+      status: "open",
+      studentVisible: true,
+      createdAt: Timestamp.now(),
+    });
+    await setDoc(doc(db, "classes", classroom.classId, "practiceAssignments", "retained-task"), {
+      assignmentId: "retained-task",
+      classId: classroom.classId,
+      studentUid: student.sub,
+      assignedByUid: teacher.sub,
+      status: "pending",
+      questionIds: ["q-1"],
+      questionResults: [],
+      createdAt: Timestamp.now(),
+      updatedAt: Timestamp.now(),
+    });
+  });
+
+  const deletion = await deleteClassroom(env, teacher, classroom.classId);
+  assert.equal(deletion.deleted, true);
+  assert.equal(deletion.alreadyDeleted, false);
+  assert.equal((await listClassroomsForUser(env, teacher)).length, 0);
+  assert.equal((await listClassroomsForUser(env, student)).length, 0);
+  await assert.rejects(
+    () => joinClassroom(env, otherStudent, reset.joinCode),
+    (error) => error?.code === "CLASSROOM_CODE_NOT_FOUND"
+  );
+
+  await testEnv.withSecurityRulesDisabled(async (context) => {
+    const db = context.firestore();
+    const deletedClass = (await getDoc(doc(db, "classes", classroom.classId))).data();
+    const teacherProfile = (await getDoc(doc(db, "users", teacher.sub))).data();
+    const studentProfile = (await getDoc(doc(db, "users", student.sub))).data();
+    const teacherMembership = (await getDoc(doc(
+      db,
+      "users",
+      teacher.sub,
+      "classMemberships",
+      classroom.classId
+    ))).data();
+    const studentMembership = (await getDoc(doc(
+      db,
+      "users",
+      student.sub,
+      "classMemberships",
+      classroom.classId
+    ))).data();
+    const legacyVolunteerProfile = (await getDoc(doc(
+      db,
+      "users",
+      "legacyVolunteer"
+    ))).data();
+    const legacyVolunteerMembership = (await getDoc(doc(
+      db,
+      "users",
+      "legacyVolunteer",
+      "classMemberships",
+      classroom.classId
+    ))).data();
+    const audit = (await getDoc(doc(db, "classDeletionAudits", classroom.classId))).data();
+
+    assert.equal(deletedClass.active, false);
+    assert.equal(deletedClass.lifecycleStatus, "deleted");
+    assert.equal(deletedClass.deletionPending, false);
+    assert.equal(teacherProfile.activeClassId, null);
+    assert.equal(studentProfile.activeClassId, null);
+    assert.equal(teacherMembership.status, "left");
+    assert.equal(teacherMembership.exitReason, "classDeleted");
+    assert.equal(studentMembership.status, "left");
+    assert.equal(studentMembership.exitReason, "classDeleted");
+    assert.equal(legacyVolunteerProfile.activeClassId, null);
+    assert.equal(legacyVolunteerMembership.status, "left");
+    assert.equal(legacyVolunteerMembership.exitReason, "classDeleted");
+    assert.equal(audit.affectedActiveMemberCount, 3);
+    assert.equal(audit.dataDisposition, "softDeletedRetainedForAudit");
+    assert.equal((await getDoc(doc(
+      db,
+      "classes",
+      classroom.classId,
+      "supportThreads",
+      "retained-thread"
+    ))).exists(), true);
+    assert.equal((await getDoc(doc(
+      db,
+      "classes",
+      classroom.classId,
+      "practiceAssignments",
+      "retained-task"
+    ))).exists(), true);
+  });
+
+  const retry = await deleteClassroom(env, teacher, classroom.classId);
+  assert.equal(retry.deleted, true);
+  assert.equal(retry.alreadyDeleted, true);
 });

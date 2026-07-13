@@ -37,12 +37,26 @@ jobs:
           cache: npm
           cache-dependency-path: workers/englishplus-ai-proxy/package-lock.json
 
+      - name: Use Java 21 for Firebase Emulator
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 21
+
       - name: Validate Cloudflare AI gateway
         working-directory: workers/englishplus-ai-proxy
         run: |
           npm ci
           npm run check
           npm test
+
+      - name: Validate Firestore rules and classroom lifecycle
+        run: |
+          npm --prefix firebase-tests ci
+          npx --yes firebase-tools@15.23.0 emulators:exec \
+            --only firestore \
+            --project demo-englishplus-round6 \
+            "npm --prefix firebase-tests test"
 
       - name: Create non-production Firebase build config
         shell: bash
@@ -86,6 +100,7 @@ jobs:
           python3 scripts/validate_ios_xcode_project_sources.py
           python3 scripts/validate_fix_a_support_sync.py
           python3 scripts/validate_fix_b_practice_flow.py
+          python3 scripts/validate_fix_c_class_lifecycle.py
 
       - name: Build iOS Simulator target
         run: |

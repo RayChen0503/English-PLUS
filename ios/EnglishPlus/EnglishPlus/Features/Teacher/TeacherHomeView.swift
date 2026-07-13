@@ -564,6 +564,7 @@ struct TeacherClassAssignmentView: View {
     @State private var showsCreateClassroom = false
     @State private var showsRenameClassroom = false
     @State private var classIdPendingCodeReset: String?
+    @State private var classroomPendingDeletion: ClassroomSummary?
     @State private var copiedClassCode: String?
 
     var body: some View {
@@ -598,6 +599,7 @@ struct TeacherClassAssignmentView: View {
                 assignmentConfirmation = nil
                 copiedClassCode = nil
                 showsRenameClassroom = false
+                classroomPendingDeletion = nil
                 editingClassroomName = activeTeacherClassroom?.name ?? ""
             }
             .alert(
@@ -619,6 +621,32 @@ struct TeacherClassAssignmentView: View {
                 Text(codeResetHasExistingCode
                     ? "舊代碼會立即失效；已加入的學生不受影響。"
                     : "建立後，學生可以用這組 8 碼代碼加入班級。")
+            }
+            .alert(
+                "刪除「\(classroomPendingDeletion?.name ?? "班級")」？",
+                isPresented: Binding(
+                    get: { classroomPendingDeletion != nil },
+                    set: { if !$0 { classroomPendingDeletion = nil } }
+                )
+            ) {
+                Button("取消", role: .cancel) {
+                    classroomPendingDeletion = nil
+                }
+                Button("刪除班級", role: .destructive) {
+                    guard let classroom = classroomPendingDeletion else { return }
+                    classroomPendingDeletion = nil
+                    Task {
+                        let deleted = await appState.deleteClassroom(classId: classroom.classId)
+                        if deleted {
+                            showsRenameClassroom = false
+                            editingClassroomName = ""
+                            selectedStudentUid = nil
+                            showsCreateClassroom = teacherClassrooms.isEmpty
+                        }
+                    }
+                }
+            } message: {
+                Text("學生與志工會立即退出，未完成的班級任務也會停止。這個動作無法在 App 內復原；必要的稽核紀錄仍會保留。")
             }
         }
     }
@@ -874,6 +902,22 @@ struct TeacherClassAssignmentView: View {
                         .frame(maxWidth: .infinity, minHeight: 44)
                 }
                 .buttonStyle(SecondaryActionButtonStyle())
+            }
+
+            if let classroom = activeTeacherClassroom {
+                Divider()
+                    .overlay(EPTheme.border)
+
+                Button(role: .destructive) {
+                    classroomPendingDeletion = classroom
+                } label: {
+                    Label("刪除這個班級", systemImage: "trash")
+                        .font(.subheadline.bold())
+                        .foregroundStyle(EPTheme.warning)
+                        .frame(maxWidth: .infinity, minHeight: 44)
+                }
+                .buttonStyle(SecondaryActionButtonStyle())
+                .disabled(appState.isManagingClassroom)
             }
 
             if let notice = appState.classroomNoticeMessage {

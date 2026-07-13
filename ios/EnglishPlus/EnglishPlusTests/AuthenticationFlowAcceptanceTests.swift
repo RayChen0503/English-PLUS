@@ -261,9 +261,59 @@ final class AuthenticationFlowAcceptanceTests: XCTestCase {
         XCTAssertEqual(appState.route, .home(.student))
     }
 
+    func testMembershipListenerOverridesAStaleRestoredProfileAfterClassDeletion() async {
+        let auth = RecordingAuthService()
+        let classroomService = MockClassroomService()
+        let now = Date(timeIntervalSince1970: 1_800_000_000)
+        let membership = ClassMembership(
+            classId: "CLASS-DELETED",
+            className: "Deleted class",
+            role: .student,
+            groupId: nil,
+            status: .active,
+            joinedAt: now,
+            visibilityStartsAt: now,
+            leftAt: nil
+        )
+        let profile = AppUserProfile(
+            id: "student-listener",
+            displayName: "Student",
+            role: .student,
+            classId: membership.classId,
+            groupId: nil,
+            consentStatus: .pending,
+            isDemo: false,
+            createdAt: now,
+            updatedAt: now,
+            memberships: [membership],
+            activeClassId: membership.classId
+        )
+        let staleSession = AuthSession(
+            user: DemoUser(id: profile.id, displayName: profile.displayName, role: .student),
+            profile: profile
+        )
+        auth.restoredSession = staleSession
+        let appState = makeAppState(auth: auth, classroomService: classroomService)
+
+        await appState.restoreSessionIfPossible()
+        classroomService.simulateMembershipChange(activeClassIds: [])
+        for _ in 0..<20 where appState.currentProfile?.activeClassId != nil {
+            await Task.yield()
+        }
+
+        XCTAssertNil(appState.currentProfile?.activeClassId)
+        XCTAssertTrue(appState.currentProfile?.isPersonalMode == true)
+        XCTAssertEqual(
+            appState.currentProfile?.memberships.first?.status,
+            ClassMembershipStatus.left
+        )
+        XCTAssertTrue(appState.classroomNoticeMessage?.contains("自動回到個人模式") == true)
+    }
+
     private func makeAppState(
         auth: RecordingAuthService,
-        firestore: MockFirestoreService = MockFirestoreService()
+        firestore: MockFirestoreService = MockFirestoreService(),
+        classroomService: ClassroomService = MockClassroomService()
     ) -> AppState {
         AppState(
             authService: auth,
@@ -271,7 +321,7 @@ final class AuthenticationFlowAcceptanceTests: XCTestCase {
             aiService: MockAIService(),
             evidenceUploadService: UnavailableEvidenceUploadService(),
             volunteerReviewService: UnavailableVolunteerReviewService(),
-            classroomService: MockClassroomService(),
+            classroomService: classroomService,
             accountLifecycleService: MockAccountLifecycleService(),
             runtimeDiagnostics: RuntimeDiagnosticsSnapshot(
                 backendMode: .firebase,
@@ -550,6 +600,75 @@ final class PracticeSessionDraftAcceptanceTests: XCTestCase {
 
         XCTAssertNil(store.load(ownerId: "student-a"))
         XCTAssertNil(defaults.data(forKey: "englishplus.practice.primary.v1.student-a"))
+    }
+}
+
+@MainActor
+final class ClassroomLifecycleAcceptanceTests: XCTestCase {
+    func testDeletingClassroomRemovesItFromEveryActiveMockMembership() async throws {
+        let service = MockClassroomService()
+        let classroom = try await service.createClassroom(name: "八年級英文 A 班")
+        let activeClassrooms = try await service.listClassrooms()
+
+        XCTAssertEqual(activeClassrooms.map(\.classId), [classroom.classId])
+
+        try await service.deleteClassroom(classId: classroom.classId)
+        let remainingClassrooms = try await service.listClassrooms()
+
+        XCTAssertTrue(remainingClassrooms.isEmpty)
+        do {
+            _ = try await service.resetJoinCode(classId: classroom.classId)
+            XCTFail("A deleted classroom must not allow join-code rotation.")
+        } catch {
+            XCTAssertEqual(error as? ClassroomServiceError, .permissionDenied)
+        }
+    }
+
+    func testDeletedActiveMembershipFallsBackToPersonalModeWithoutErasingOtherClasses() {
+        let now = Date(timeIntervalSince1970: 1_800_000_000)
+        let deletedMembership = ClassMembership(
+            classId: "CLASS-DELETED",
+            className: "Deleted class",
+            role: .student,
+            groupId: nil,
+            status: .active,
+            joinedAt: now,
+            visibilityStartsAt: now,
+            leftAt: nil
+        )
+        let retainedMembership = ClassMembership(
+            classId: "CLASS-RETAINED",
+            className: "Retained class",
+            role: .student,
+            groupId: nil,
+            status: .active,
+            joinedAt: now,
+            visibilityStartsAt: now,
+            leftAt: nil
+        )
+        let profile = AppUserProfile(
+            id: "student-a",
+            displayName: "Student",
+            role: .student,
+            classId: deletedMembership.classId,
+            groupId: nil,
+            consentStatus: .granted,
+            isDemo: false,
+            createdAt: now,
+            updatedAt: now,
+            memberships: [deletedMembership, retainedMembership],
+            activeClassId: deletedMembership.classId
+        )
+
+        let reconciled = profile.markingMembershipLeft(
+            classId: deletedMembership.classId,
+            at: now.addingTimeInterval(60)
+        )
+
+        XCTAssertNil(reconciled.activeClassId)
+        XCTAssertTrue(reconciled.isPersonalMode)
+        XCTAssertEqual(reconciled.memberships.first { $0.classId == "CLASS-DELETED" }?.status, .left)
+        XCTAssertTrue(reconciled.memberships.first { $0.classId == "CLASS-RETAINED" }?.isActive == true)
     }
 }
 

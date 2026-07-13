@@ -22,6 +22,52 @@ final class AnyClassroomRosterListenerToken: ClassroomRosterListenerToken {
 
 #if canImport(FirebaseFirestore)
 @MainActor
+private final class ClassroomMembershipRealtimeBridge {
+    private let userUid: String
+    private let onChange: @MainActor ([String]) -> Void
+    private let onError: @MainActor (Error) -> Void
+    private var registration: ListenerRegistration?
+
+    init(
+        userUid: String,
+        onChange: @escaping @MainActor ([String]) -> Void,
+        onError: @escaping @MainActor (Error) -> Void
+    ) {
+        self.userUid = userUid
+        self.onChange = onChange
+        self.onError = onError
+    }
+
+    func start() {
+        registration = Firestore.firestore()
+            .collection("users/\(userUid)/classMemberships")
+            .addSnapshotListener { [weak self] snapshot, error in
+                Task { @MainActor in
+                    guard let self else { return }
+                    if let error {
+                        self.onError(error)
+                        return
+                    }
+                    let activeClassIds = (snapshot?.documents ?? []).compactMap { document in
+                        let data = document.data()
+                        let hasActiveStatus = data["status"] as? String == ClassMembershipStatus.active.rawValue
+                            || (data["status"] == nil && data["active"] as? Bool == true)
+                        let hasLeftAt = data["leftAt"] != nil && !(data["leftAt"] is NSNull)
+                        return hasActiveStatus && !hasLeftAt ? document.documentID : nil
+                    }
+                    .sorted()
+                    self.onChange(activeClassIds)
+                }
+            }
+    }
+
+    func cancel() {
+        registration?.remove()
+        registration = nil
+    }
+}
+
+@MainActor
 private final class ClassroomRosterRealtimeBridge {
     private let classId: String
     private let onChange: @MainActor ([ClassroomStudentSummary]) -> Void
@@ -290,9 +336,15 @@ protocol ClassroomService {
     func listStudents(classId: String) async throws -> [ClassroomStudentSummary]
     func createClassroom(name: String) async throws -> ClassroomSummary
     func updateClassroom(classId: String, name: String) async throws -> ClassroomSummary
+    func deleteClassroom(classId: String) async throws
     func joinClassroom(code: String) async throws -> ClassroomSummary
     func leaveClassroom(classId: String) async throws
     func resetJoinCode(classId: String) async throws -> ClassroomSummary
+    func startMembershipListener(
+        userUid: String,
+        onChange: @escaping @MainActor ([String]) -> Void,
+        onError: @escaping @MainActor (Error) -> Void
+    ) -> ClassroomRosterListenerToken
     func startStudentListener(
         classId: String,
         onChange: @escaping @MainActor ([ClassroomStudentSummary]) -> Void,
@@ -317,6 +369,10 @@ struct UnavailableClassroomService: ClassroomService {
         throw ClassroomServiceError.unavailable
     }
 
+    func deleteClassroom(classId: String) async throws {
+        throw ClassroomServiceError.unavailable
+    }
+
     func joinClassroom(code: String) async throws -> ClassroomSummary {
         throw ClassroomServiceError.unavailable
     }
@@ -327,6 +383,14 @@ struct UnavailableClassroomService: ClassroomService {
 
     func resetJoinCode(classId: String) async throws -> ClassroomSummary {
         throw ClassroomServiceError.unavailable
+    }
+
+    func startMembershipListener(
+        userUid: String,
+        onChange: @escaping @MainActor ([String]) -> Void,
+        onError: @escaping @MainActor (Error) -> Void
+    ) -> ClassroomRosterListenerToken {
+        AnyClassroomRosterListenerToken {}
     }
 
     func startStudentListener(
@@ -342,6 +406,7 @@ struct UnavailableClassroomService: ClassroomService {
 final class MockClassroomService: ClassroomService {
     private var classrooms: [ClassroomSummary] = []
     private var studentsByClass: [String: [ClassroomStudentSummary]] = [:]
+    private var membershipChangeHandler: (@MainActor ([String]) -> Void)?
 
     func listClassrooms() async throws -> [ClassroomSummary] {
         classrooms.filter { $0.status == .active }
@@ -398,6 +463,30 @@ final class MockClassroomService: ClassroomService {
         )
         classrooms[index] = updated
         return updated
+    }
+
+    func deleteClassroom(classId: String) async throws {
+        guard classrooms.contains(where: {
+            $0.classId == classId && $0.role == .teacher && $0.status == .active
+        }) else {
+            throw ClassroomServiceError.permissionDenied
+        }
+        let deletedAt = ISO8601DateFormatter().string(from: Date())
+        classrooms = classrooms.map { classroom in
+            guard classroom.classId == classId else { return classroom }
+            return ClassroomSummary(
+                id: classroom.id,
+                classId: classroom.classId,
+                name: classroom.name,
+                role: classroom.role,
+                status: .left,
+                joinedAt: classroom.joinedAt,
+                visibilityStartsAt: classroom.visibilityStartsAt,
+                leftAt: deletedAt,
+                joinCode: nil
+            )
+        }
+        studentsByClass[classId] = []
     }
 
     func joinClassroom(code: String) async throws -> ClassroomSummary {
@@ -481,6 +570,19 @@ final class MockClassroomService: ClassroomService {
         return updated
     }
 
+    func startMembershipListener(
+        userUid: String,
+        onChange: @escaping @MainActor ([String]) -> Void,
+        onError: @escaping @MainActor (Error) -> Void
+    ) -> ClassroomRosterListenerToken {
+        membershipChangeHandler = onChange
+        return AnyClassroomRosterListenerToken {}
+    }
+
+    func simulateMembershipChange(activeClassIds: [String]) {
+        membershipChangeHandler?(activeClassIds.sorted())
+    }
+
     func startStudentListener(
         classId: String,
         onChange: @escaping @MainActor ([ClassroomStudentSummary]) -> Void,
@@ -558,6 +660,14 @@ struct RemoteClassroomService: ClassroomService {
         return response.classroom
     }
 
+    func deleteClassroom(classId: String) async throws {
+        let _: ClassroomDeleteResponse = try await send(
+            path: "classrooms/\(classId)",
+            method: "DELETE",
+            body: Optional<EmptyRequest>.none
+        )
+    }
+
     func joinClassroom(code: String) async throws -> ClassroomSummary {
         let response: ClassroomMutationResponse = try await send(
             path: "classrooms/join",
@@ -582,6 +692,26 @@ struct RemoteClassroomService: ClassroomService {
             body: EmptyRequest()
         )
         return response.classroom
+    }
+
+    func startMembershipListener(
+        userUid: String,
+        onChange: @escaping @MainActor ([String]) -> Void,
+        onError: @escaping @MainActor (Error) -> Void
+    ) -> ClassroomRosterListenerToken {
+        #if canImport(FirebaseFirestore)
+        if FirebaseAppConfigurator.hasBundledConfig {
+            let bridge = ClassroomMembershipRealtimeBridge(
+                userUid: userUid,
+                onChange: onChange,
+                onError: onError
+            )
+            bridge.start()
+            return AnyClassroomRosterListenerToken { bridge.cancel() }
+        }
+        #endif
+
+        return AnyClassroomRosterListenerToken {}
     }
 
     func startStudentListener(
@@ -679,4 +809,5 @@ private struct ClassroomStudentListResponse: Decodable { let students: [Classroo
 private struct ClassroomBootstrapResponse: Decodable { let migrated: Bool }
 private struct ClassroomMutationResponse: Decodable { let classroom: ClassroomSummary }
 private struct ClassroomLeaveResponse: Decodable { let classId: String; let left: Bool }
+private struct ClassroomDeleteResponse: Decodable { let classId: String; let deleted: Bool }
 private struct ClassroomErrorResponse: Decodable { let error: String }

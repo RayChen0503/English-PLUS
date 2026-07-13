@@ -125,10 +125,20 @@ function normalizeRequest(raw: unknown): AiProxyRequest {
 }
 
 async function loadMembership(classId: string, uid: string): Promise<Membership> {
-  const snap = await admin
-    .firestore()
-    .doc(`classes/${classId}/members/${uid}`)
-    .get();
+  const [classroomSnap, snap] = await Promise.all([
+    admin.firestore().doc(`classes/${classId}`).get(),
+    admin.firestore().doc(`classes/${classId}/members/${uid}`).get(),
+  ]);
+
+  const classroom = classroomSnap.data() ?? {};
+  if (
+    !classroomSnap.exists
+    || classroom.active !== true
+    || classroom.deletionPending === true
+    || (classroom.lifecycleStatus && classroom.lifecycleStatus !== "active")
+  ) {
+    throw new HttpsError("permission-denied", "An active class is required.");
+  }
 
   if (!snap.exists) {
     throw new HttpsError("permission-denied", "Class membership is required.");
