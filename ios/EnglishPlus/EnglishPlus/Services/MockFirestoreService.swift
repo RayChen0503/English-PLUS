@@ -14,7 +14,7 @@ final class MockFirestoreService: FirestoreService {
         consentRecord(uid: uid)
     }
 
-    func saveConsent(_ record: PrivacyConsentRecord) {
+    func saveConsent(_ record: PrivacyConsentRecord) async throws {
         consentRecords[record.acceptedByUid] = record
     }
 

@@ -50,8 +50,9 @@ learning must remain usable without joining a class.
    student's class `visibilityStartsAt` timestamp. Personal history is not
    imported into a class.
 5. Technical implementation details, provider names, mock status, diagnostics,
-   API keys, and internal fallback language must not be shown in student,
-   teacher, or volunteer UI.
+   API keys, and internal fallback language must not be shown in ordinary
+   student, teacher, or volunteer tasks. The consent and privacy settings must
+   still name third-party processors when accurate disclosure requires it.
 6. User-visible flows must have one clear next action. Avoid duplicate support
    information, duplicate navigation routes, and UI controls that imply an
    action but do nothing.

@@ -28,10 +28,10 @@ already depend on.
 | D-20 | 2026-07-13 | High-risk emotional messages do not trigger automatic staff notifications; the product provides an explicit human-help entry and clear emergency guidance. | Avoids presenting English+ as a monitored crisis service while preserving a direct route to trusted adults and appropriate help. |
 | D-21 | 2026-07-13 | The question-bank target spans junior-high comprehensive-exam preparation through introductory high-school English, while retaining foundation material. | Learners can progress beyond the current floor without losing accessible recovery practice. |
 | D-22 | 2026-07-13 | The UI direction is `Clear Learning Companion`: structured like Junyi, motivating like Duolingo, and restrained like native Apple interfaces. | Keeps learning actions obvious and encouraging without becoming childish or looking like a cold school administration tool. |
+| D-23 | 2026-07-13 | The public privacy policy, support page and support mailbox are the Google Sites URLs and `englishplus.tw@gmail.com` supplied for English+. | The app, App Store metadata and privacy records must use one public source of truth instead of placeholders. |
+| D-24 | 2026-07-13 | Third-party AI consent explicitly names Cloudflare and Groq, is versioned to the 2026-07-13 policy, minimizes prompt content and never treats AI output or a mood score as automatic human intervention. | Apple requires clear third-party AI disclosure and explicit permission; users also need an accurate, reversible understanding of the feature. |
 
 ## Pending decisions
 
-- No unresolved product decision remains for Rounds 1-11. Raw volunteer
+- No unresolved product decision remains for Rounds 1-12. Raw volunteer
   evidence must never be stored in a user profile document.
-- Before Round 12, provide or confirm the public privacy-policy URL and support
-  email address used in the App and App Store metadata.

@@ -8,7 +8,8 @@ struct AccountDataView: View {
     @State private var preview: AccountDeletionPreview?
     @State private var confirmationText = ""
     @State private var errorMessage: String?
-    @State private var isLoading = true
+    @State private var isLoading = false
+    @State private var showsDeletionDetails = false
     @State private var showsFinalConfirmation = false
     @FocusState private var isConfirmationFieldFocused: Bool
 
@@ -20,13 +21,15 @@ struct AccountDataView: View {
                 ScrollView {
                     VStack(alignment: .leading, spacing: 16) {
                         accountSummary
-                        deletionExplanation
+                        privacyAndSupportSection
+                        aiTransparencySection
+                        deletionEntry
 
-                        if isLoading {
+                        if showsDeletionDetails && isLoading {
                             ProgressView("正在確認帳號資料...")
                                 .frame(maxWidth: .infinity, alignment: .center)
                                 .padding(.vertical, 24)
-                        } else if let preview {
+                        } else if showsDeletionDetails, let preview {
                             deletionImpact(preview)
                             confirmationSection
                         }
@@ -39,7 +42,7 @@ struct AccountDataView: View {
                 }
                 .scrollDismissesKeyboard(.interactively)
             }
-            .navigationTitle("帳號與資料")
+            .navigationTitle("帳號、隱私與支援")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .topBarTrailing) {
@@ -48,9 +51,6 @@ struct AccountDataView: View {
                     }
                     .disabled(appState.isManagingAccount)
                 }
-            }
-            .task {
-                await loadPreview()
             }
             .alert("永久刪除這個帳號？", isPresented: $showsFinalConfirmation) {
                 Button("取消", role: .cancel) {}
@@ -63,6 +63,80 @@ struct AccountDataView: View {
                 Text("刪除後無法復原。系統會先清除可識別你的資料，完成後才會刪除登入帳號。")
             }
             .interactiveDismissDisabled(appState.isManagingAccount)
+        }
+    }
+
+    private var privacyAndSupportSection: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Label("隱私與支援", systemImage: "lock.shield")
+                .font(.headline)
+                .foregroundStyle(EPTheme.ink)
+
+            Text("你可以隨時重新查看資料用途、聯絡方式，以及如何查詢、更正或刪除資料。")
+                .font(.subheadline)
+                .foregroundStyle(EPTheme.secondaryInk)
+                .fixedSize(horizontal: false, vertical: true)
+
+            PrivacySupportLinks(role: appState.currentUser?.role)
+
+            Text("政策生效日：\(LegalSupportConfiguration.policyEffectiveDate)")
+                .font(.caption)
+                .foregroundStyle(EPTheme.secondaryInk)
+        }
+        .padding(16)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(EPTheme.card)
+        .clipShape(RoundedRectangle(cornerRadius: EPTheme.cardRadius))
+    }
+
+    private var aiTransparencySection: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Label("AI 如何協助", systemImage: "sparkles")
+                .font(.headline)
+                .foregroundStyle(EPTheme.ink)
+
+            Text("English+ 只把完成當次功能所需的最少學習內容，經 Cloudflare 後端交給 Groq AI，產生任務、錯題說明或可編輯草稿。")
+                .font(.subheadline)
+                .foregroundStyle(EPTheme.ink)
+                .fixedSize(horizontal: false, vertical: true)
+
+            Label("不傳送姓名、Email 或志工資格證明", systemImage: "person.crop.circle.badge.checkmark")
+            Label("AI 可能出錯，採用前仍要自行確認", systemImage: "checkmark.bubble")
+            Label("心情分數不會自動通知老師或志工", systemImage: "bell.slash")
+        }
+        .font(.caption)
+        .foregroundStyle(EPTheme.secondaryInk)
+        .padding(16)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(EPTheme.secondarySurface)
+        .clipShape(RoundedRectangle(cornerRadius: EPTheme.cardRadius))
+    }
+
+    private var deletionEntry: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            deletionExplanation
+
+            if !showsDeletionDetails {
+                Button {
+                    showsDeletionDetails = true
+                    Task { await loadPreview() }
+                } label: {
+                    Label("查看刪除內容", systemImage: "chevron.down")
+                        .frame(maxWidth: .infinity, minHeight: 44)
+                }
+                .buttonStyle(SecondaryActionButtonStyle())
+            } else {
+                Button {
+                    showsDeletionDetails = false
+                    confirmationText = ""
+                    errorMessage = nil
+                } label: {
+                    Label("收起刪除內容", systemImage: "chevron.up")
+                        .frame(maxWidth: .infinity, minHeight: 44)
+                }
+                .buttonStyle(SecondaryActionButtonStyle())
+                .disabled(appState.isManagingAccount)
+            }
         }
     }
 

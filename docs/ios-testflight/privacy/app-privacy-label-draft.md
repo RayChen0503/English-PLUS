@@ -1,78 +1,68 @@
-# English+ App Privacy Label Draft
+# English+ App Privacy Label Working Record
 
-This draft is for future App Store Connect / TestFlight preparation. It must be checked against the actual iOS implementation before submission.
+Last implementation check: 2026-07-13. Recheck this file against the shipping
+binary before every App Store submission.
 
-## Current Expected Data Collection
+## Public URLs
 
-English+ will collect data linked to the user.
+- Privacy policy:
+  `https://sites.google.com/view/englishplus-privacy/%E9%9A%B1%E7%A7%81%E6%94%BF%E7%AD%96`
+- Support and privacy choices:
+  `https://sites.google.com/view/englishplus-privacy/%E6%94%AF%E6%8F%B4%E8%88%87%E8%81%AF%E7%B5%A1`
+- Support email: `englishplus.tw@gmail.com`
 
-| Data type | English+ examples | Linked to user | Tracking |
-| --- | --- | --- | --- |
-| Contact Info | name, email if used for login | yes | no |
-| Identifiers | Firebase UID, app account ID | yes | no |
-| User Content | support requests, teacher/volunteer replies | yes | no |
-| Usage Data | question attempts, daily mission progress, app actions | yes | no |
-| Diagnostics | crash logs if Firebase Crashlytics is added | maybe | no |
-| Sensitive or highly private learning/support context | mood check-in and support context; final category must be checked against App Store Connect options | yes | no |
+## App Store Connect answer
 
-## Tracking Decision
+English+ and its third-party processors collect data from the app. Data is
+used for App Functionality and, where noted, Product Personalization. English+
+does not use any collected data for tracking, third-party advertising, or
+developer advertising.
 
-Recommended answer:
+| App Store data type | English+ examples | Linked to user | Tracking | Purpose |
+| --- | --- | --- | --- | --- |
+| Contact Info - Name | display name | yes | no | App Functionality |
+| Contact Info - Email Address | account login and support contact | yes | no | App Functionality |
+| Identifiers - User ID | Firebase UID and app account ID | yes | no | App Functionality |
+| User Content - Other User Content | support requests, replies, teacher tasks, volunteer evidence | yes | no | App Functionality |
+| Usage Data - Product Interaction | question attempts, mission progress, class assignment completion | yes | no | App Functionality, Product Personalization |
+| Sensitive Info | mood check-in, support context, volunteer qualification evidence | yes | no | App Functionality, Product Personalization |
 
-```text
-English+ does not track users across apps or websites owned by other companies.
-```
+Do not declare Diagnostics unless a shipping build actually enables a crash or
+diagnostic collection service. Update this record and App Store Connect before
+adding one.
 
-Do not add advertising SDKs for the TestFlight classroom prototype.
+## Processors and data boundaries
 
-## Third Parties
-
-| Provider | Purpose | Data |
+| Provider | Purpose | Data boundary |
 | --- | --- | --- |
-| Firebase Auth | login | account identifiers, email if used |
-| Firestore | app backend | student profile, class, learning, mood, support data |
-| Firebase Cloud Functions | backend logic | minimized request context |
-| OpenRouter | AI model routing | minimized AI prompt context only through backend proxy |
+| Firebase Auth | Email, Google and Apple account authentication | account identifiers and selected provider data |
+| Firestore | account, personal learning, class, task, mood and support synchronization | role- and class-scoped linked records |
+| Apple / Google | optional federated sign-in | data the user approves in the provider flow |
+| Cloudflare Worker | authenticated AI gateway, quota and account operations | Firebase identity token plus minimized task context |
+| Cloudflare R2 | private volunteer evidence storage | user-selected evidence files; administrator-only review |
+| Groq | AI model inference | minimized learning context received only through the Worker |
 
-## OpenRouter Privacy Boundary
+The iOS app contains no Groq key and never calls Groq directly. AI prompts must
+exclude real names, email addresses and volunteer evidence. A question prompt,
+student answer, correct answer, mood score, available time level or recent
+accuracy may be sent only when needed for the selected AI feature.
 
-Do not send:
+## User controls
 
-- real student names
-- school email
-- guardian contact
-- phone number
-- full private diary text
-- teacher-only staff notes unless explicitly required and approved
+- The app links the privacy policy before sign-in, during versioned consent and
+  from the account screen.
+- The app links the support/privacy-choices page and support email.
+- Users can initiate complete account deletion in the app.
+- Students choose whether to send a question or emotional-support request to a
+  teacher or volunteer; a mood score never triggers automatic staff contact.
+- A policy-version change requires a new in-app agreement.
 
-Allowed minimized context examples:
+## Submission checklist
 
-```json
-{
-  "moodScore": 3,
-  "availableTimeLevel": 4,
-  "wantsChallenge": true,
-  "recentAccuracy": 0.62,
-  "recentWeakSkills": ["past-tense"],
-  "questionPrompt": "I ___ my homework yesterday.",
-  "studentAnswer": "finish",
-  "correctAnswer": "finished"
-}
-```
-
-## Privacy Policy Must Say
-
-The public privacy policy should cover:
-
-- what data is collected
-- why it is collected
-- who can see it
-- how AI uses minimized context
-- how to request access, correction, deletion, or stopping use
-- how long data is kept
-- contact method for privacy requests
-- that the app is for learning support, not medical or counseling diagnosis
-
-## TestFlight Notes
-
-Even if the app is only distributed through TestFlight, the privacy statements should match the actual data flow. Do not wait until public App Store launch to build privacy wording because the app will already handle real student information during testing.
+1. In App Store Connect choose **Yes, we collect data from this app**.
+2. Select every category in the table and use the listed purposes.
+3. Mark all categories as linked to the user and not used for tracking.
+4. Enter the privacy-policy URL above.
+5. Use the support page as the optional User Privacy Choices URL.
+6. Compare the generated Xcode privacy report, `PrivacyInfo.xcprivacy`, this
+   record and the production policy before publishing the answers.

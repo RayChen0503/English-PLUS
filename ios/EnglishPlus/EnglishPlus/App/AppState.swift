@@ -13,6 +13,8 @@ final class AppState: ObservableObject {
     @Published private(set) var authNoticeMessage: String?
     @Published private(set) var verificationEmailAddress: String?
     @Published private(set) var isManagingAccount = false
+    @Published private(set) var isSavingConsent = false
+    @Published private(set) var consentErrorMessage: String?
     @Published private(set) var latestAIResponse: AiProxyResponse?
     @Published private(set) var volunteerApplicationDraft: VolunteerApplicationInput?
     @Published private(set) var isAdministrator = false
@@ -371,17 +373,28 @@ final class AppState: ObservableObject {
         }
     }
 
-    func acceptPrivacyConsent(categories: [PrivacyConsentCategory]) {
-        guard let currentUser, let currentProfile else { return }
+    func acceptPrivacyConsent(
+        categories: [PrivacyConsentCategory],
+        guardianConsentStatus: GuardianConsentStatus
+    ) async {
+        guard let currentUser, let currentProfile, !isSavingConsent else { return }
+        isSavingConsent = true
+        consentErrorMessage = nil
+        defer { isSavingConsent = false }
         let record = PrivacyConsentRecord.accepted(
             uid: currentUser.id,
             role: currentUser.role,
             classId: currentProfile.classId,
-            categories: categories
+            categories: categories,
+            guardianConsentStatus: guardianConsentStatus
         )
-        firestoreService.saveConsent(record)
-        hasAcceptedConsent = true
-        route = .home(currentUser.role)
+        do {
+            try await firestoreService.saveConsent(record)
+            hasAcceptedConsent = true
+            route = .home(currentUser.role)
+        } catch {
+            consentErrorMessage = "資料使用確認尚未保存，請檢查網路後再試一次。你不需要重新勾選。"
+        }
     }
 
     func signOut() {
@@ -395,6 +408,8 @@ final class AppState: ObservableObject {
         authNoticeMessage = nil
         verificationEmailAddress = nil
         isManagingAccount = false
+        isSavingConsent = false
+        consentErrorMessage = nil
         latestAIResponse = nil
         volunteerApplicationDraft = nil
         isAdministrator = false

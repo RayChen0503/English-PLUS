@@ -71,15 +71,22 @@ def validate_consent_flow(errors):
         combined = "\n".join([app_state, app_route, root_view])
         require(token in combined, f"app consent routing missing {token}", errors)
 
-    require("hasAcceptedConsent = true\n        route = .home" in app_state, "consent acceptance should move to home only after saving", errors)
+    save_index = app_state.find("try await firestoreService.saveConsent(record)")
+    accept_index = app_state.find("hasAcceptedConsent = true", save_index)
+    route_index = app_state.find("route = .home(currentUser.role)", accept_index)
+    require(
+        -1 < save_index < accept_index < route_index,
+        "consent acceptance should move to home only after confirmed saving",
+        errors,
+    )
     require("hasAcceptedConsent = true\n        route = .home(selectedRole)" not in app_state, "demo login must not auto-accept consent", errors)
     for token in [
         "PrivacyConsentCategory",
-        "currentVersion = \"privacy-v1-2026-06\"",
+        "currentVersion = \"privacy-v2-2026-07-13\"",
         "GuardianConsentStatus",
         "ConsentSource",
         "primaryAgreement",
-        "moodAndAiAgreement",
+        "aiAgreement(for role:",
     ]:
         require(token in consent_model, f"PrivacyConsent model missing {token}", errors)
     for token in ["acceptsPrivacy", "acceptsMoodAndAi", "我了解並繼續", "checkmark.square.fill"]:

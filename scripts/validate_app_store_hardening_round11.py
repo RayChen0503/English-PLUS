@@ -81,7 +81,7 @@ def main() -> int:
         "AccountLifecycleError.recentSignInRequired",
     ), "iOS account lifecycle", errors)
     markers(account_view, (
-        'navigationTitle("帳號與資料")',
+        'navigationTitle("帳號、隱私與支援")',
         'TextField("刪除", text: $confirmationText)',
         'alert("永久刪除這個帳號？"',
         'detail: "離開 \\(preview.classMembershipCount) 個班級並停止後續存取"',

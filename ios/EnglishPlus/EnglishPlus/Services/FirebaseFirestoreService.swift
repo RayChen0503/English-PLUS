@@ -59,7 +59,7 @@ final class FirebaseFirestoreService: FirestoreService {
             }
 
             cachedConsentRecords[uid] = record
-            fallback.saveConsent(record)
+            try? await fallback.saveConsent(record)
             return record
         } catch {
             return await fallback.loadConsentRecord(uid: uid)
@@ -69,27 +69,34 @@ final class FirebaseFirestoreService: FirestoreService {
         #endif
     }
 
-    func saveConsent(_ record: PrivacyConsentRecord) {
-        cachedConsentRecords[record.acceptedByUid] = record
-        fallback.saveConsent(record)
-
+    func saveConsent(_ record: PrivacyConsentRecord) async throws {
         #if canImport(FirebaseFirestore)
-        guard let db else { return }
+        guard let db else {
+            try await fallback.saveConsent(record)
+            cachedConsentRecords[record.acceptedByUid] = record
+            return
+        }
         let userPath = FirestorePath.userConsent(
             uid: record.acceptedByUid,
             consentVersion: record.version
         )
         let data = firestoreConsentData(from: record)
-        db.document(userPath).setData(data, merge: true)
-        if !FirebaseBackendConfig.isPersonalScopeId(record.classId) {
+        let batch = db.batch()
+        batch.setData(data, forDocument: db.document(userPath), merge: true)
+        if record.actorRole == .student,
+           !FirebaseBackendConfig.isPersonalScopeId(record.classId) {
             let studentPath = FirestorePath.studentConsent(
                 classId: record.classId,
                 studentUid: record.acceptedByUid,
                 consentVersion: record.version
             )
-            db.document(studentPath).setData(data, merge: true)
+            batch.setData(data, forDocument: db.document(studentPath), merge: true)
         }
+        try await commit(batch)
         #endif
+
+        cachedConsentRecords[record.acceptedByUid] = record
+        try await fallback.saveConsent(record)
     }
 
     func consentRecord(uid: String) -> PrivacyConsentRecord? {
@@ -138,6 +145,18 @@ final class FirebaseFirestoreService: FirestoreService {
                     continuation.resume(returning: snapshot)
                 } else {
                     continuation.resume(throwing: FirebaseFirestoreServiceError.permissionDenied)
+                }
+            }
+        }
+    }
+
+    private func commit(_ batch: WriteBatch) async throws {
+        try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
+            batch.commit { error in
+                if let error {
+                    continuation.resume(throwing: error)
+                } else {
+                    continuation.resume(returning: ())
                 }
             }
         }

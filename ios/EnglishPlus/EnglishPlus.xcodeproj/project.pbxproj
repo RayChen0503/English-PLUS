@@ -76,6 +76,7 @@
 		100000000000000000000167 /* ClassroomService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 100000000000000000000065 /* ClassroomService.swift */; };
 		100000000000000000000168 /* AccountLifecycleService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 100000000000000000000066 /* AccountLifecycleService.swift */; };
 		100000000000000000000169 /* AccountDataView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 100000000000000000000067 /* AccountDataView.swift */; };
+		100000000000000000000170 /* PrivacyInfo.xcprivacy in Resources */ = {isa = PBXBuildFile; fileRef = 100000000000000000000068 /* PrivacyInfo.xcprivacy */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -146,6 +147,7 @@
 		100000000000000000000065 /* ClassroomService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ClassroomService.swift; sourceTree = "<group>"; };
 		100000000000000000000066 /* AccountLifecycleService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AccountLifecycleService.swift; sourceTree = "<group>"; };
 		100000000000000000000067 /* AccountDataView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AccountDataView.swift; sourceTree = "<group>"; };
+		100000000000000000000068 /* PrivacyInfo.xcprivacy */ = {isa = PBXFileReference; lastKnownFileType = text.xml; path = PrivacyInfo.xcprivacy; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -176,6 +178,7 @@
 			isa = PBXGroup;
 			children = (
 				0AE2ED742FF14DA700F77676 /* GoogleService-Info.plist */,
+				100000000000000000000068 /* PrivacyInfo.xcprivacy */,
 				100000000000000000000059 /* EnglishPlus.entitlements */,
 				100000000000000000000023 /* Info.plist */,
 				100000000000000000000051 /* Assets.xcassets */,
@@ -457,6 +460,7 @@
 			files = (
 				100000000000000000000127 /* SeedData in Resources */,
 				100000000000000000000152 /* Assets.xcassets in Resources */,
+				100000000000000000000170 /* PrivacyInfo.xcprivacy in Resources */,
 				0AE2ED752FF14DA700F77676 /* GoogleService-Info.plist in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;

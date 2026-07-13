@@ -19,6 +19,8 @@ def main() -> None:
         path
         for path in FEATURES.rglob("*.swift")
         if "Diagnostics" not in path.parts
+        and "Consent" not in path.parts
+        and path.name != "AccountDataView.swift"
     ]
     checked_files.append(MODELS / "LearningModels.swift")
 

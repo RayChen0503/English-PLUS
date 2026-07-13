@@ -11,19 +11,29 @@ This package is the practical checklist for moving English+ from GitHub `main` t
 - Team ID: `X7Y2V4D87G`
 - App name: `English+`
 - Export file: `ExportOptions.TestFlight.plist`
+- A previous `main` build has completed the Xcode Cloud/TestFlight pipeline.
+- Runtime Firebase authentication, Firestore synchronization and the
+  authenticated Cloudflare/Groq AI route are implemented and verified.
+- Privacy policy:
+  `https://sites.google.com/view/englishplus-privacy/%E9%9A%B1%E7%A7%81%E6%94%BF%E7%AD%96`
+- Support URL:
+  `https://sites.google.com/view/englishplus-privacy/%E6%94%AF%E6%8F%B4%E8%88%87%E8%81%AF%E7%B5%A1`
+- Support email: `englishplus.tw@gmail.com`
 - Existing TestFlight docs:
   - `docs/ios-testflight/testflight/app-store-connect-test-info.md`
   - `docs/ios-testflight/testflight/internal-build-release-notes.md`
   - `docs/ios-testflight/testflight/tester-email-template.md`
   - `docs/ios-testflight/xcode-cloud-preflight.md`
 
-## What is not complete yet
+## What remains for each release candidate
 
-- Signed Archive has not been completed in this Windows workspace.
-- Upload remains pending.
 - TestFlight tester email groups still need final real addresses.
-- Privacy policy URL and support URL still need final public URLs before broader testing.
-- Runtime Firebase and AI behavior still use mock fallback until the real backend steps are complete.
+- App Store Connect privacy answers must be entered or rechecked against
+  `docs/ios-testflight/privacy/app-privacy-label-draft.md`.
+- App Review credentials and instructions must be entered privately in App
+  Store Connect; never commit passwords to Git.
+- Each hardening block must pass its branch checks before one deliberate merge
+  to `main` triggers Xcode Cloud.
 
 ## Manual boundary
 

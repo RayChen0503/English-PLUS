@@ -109,9 +109,14 @@ def main() -> int:
         errors,
     )
     require(
-        "if !FirebaseBackendConfig.isPersonalScopeId(record.classId)"
+        "!FirebaseBackendConfig.isPersonalScopeId(record.classId)"
         in firestore_service,
         "personal consent can still be mirrored into a fake class",
+        errors,
+    )
+    require(
+        "record.actorRole == .student" in firestore_service,
+        "staff consent can still be mirrored into a student path",
         errors,
     )
     require_markers(
