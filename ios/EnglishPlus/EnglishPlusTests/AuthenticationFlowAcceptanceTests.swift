@@ -313,7 +313,7 @@ final class AuthenticationFlowAcceptanceTests: XCTestCase {
     private func makeAppState(
         auth: RecordingAuthService,
         firestore: MockFirestoreService = MockFirestoreService(),
-        classroomService: ClassroomService = MockClassroomService()
+        classroomService: ClassroomService? = nil
     ) -> AppState {
         AppState(
             authService: auth,
@@ -321,7 +321,7 @@ final class AuthenticationFlowAcceptanceTests: XCTestCase {
             aiService: MockAIService(),
             evidenceUploadService: UnavailableEvidenceUploadService(),
             volunteerReviewService: UnavailableVolunteerReviewService(),
-            classroomService: classroomService,
+            classroomService: classroomService ?? MockClassroomService(),
             accountLifecycleService: MockAccountLifecycleService(),
             runtimeDiagnostics: RuntimeDiagnosticsSnapshot(
                 backendMode: .firebase,
