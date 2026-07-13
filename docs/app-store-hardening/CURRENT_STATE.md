@@ -26,7 +26,8 @@ learning must remain usable without joining a class.
   - Round 4 - provider UI and private volunteer review (`round-04-provider-ui-private-volunteer-review.md`)
   - Round 5 - personal learning mode (`round-05-personal-learning-mode.md`)
   - Round 6 - classroom lifecycle (`round-06-classroom-lifecycle.md`)
-- Hardening progress: **6/20 complete; Round 7 is next**.
+  - Round 7 - teacher class management (`round-07-teacher-class-management.md`)
+- Hardening progress: **7/20 complete; Round 8 is next**.
 - Do not merge to `main` or trigger Xcode Cloud until the end of a four-round
   block: 4, 8, 12, 16, and 20.
 - Never reset, overwrite, or silently discard user work.
@@ -83,6 +84,15 @@ learning must remain usable without joining a class.
   smoke checks at version `de12abab-5cb9-44f8-91e2-33ba859832a2`. Firestore
   Emulator coverage also passes the complete isolated create, join, switch,
   reset-code, leave and rejoin lifecycle.
+- Round 7 has made the teacher's selected class a coherent workspace. Its
+  roster comes from active memberships rather than support activity, updates
+  in real time, clears safely when classes change, and exposes deliberate
+  loading, retry and empty states. Teachers can rename only classes they own
+  and assign one task either to one selected student or independently to every
+  active student in that class. Firestore Rules and Worker version
+  `4ee60303-29d4-42fe-ade7-d7ad576d2e7b` are deployed; the authenticated
+  production suite passes `26/26` checks and the complete repository validator
+  sweep passes `67/67`.
 
 ## Current technical constraints
 
@@ -90,8 +100,9 @@ learning must remain usable without joining a class.
   access-boundary smoke tests and the isolated Firestore Emulator role matrix
   both pass.
 - Swift compilation is not available on this Windows host. The isolated macOS
-  GitHub Actions gate passed a clean Xcode 16.4 Simulator build for Round 6;
-  Xcode Cloud remains the release-level gate at the agreed checkpoint.
+  GitHub Actions gate passed the Round 7 clean iOS Simulator build in run
+  `29226640748`; Xcode Cloud remains the release-level gate at the agreed
+  checkpoint.
 - Existing legacy validators can fail because they assert removed UI or old
   copy. Preserve useful behavioral coverage by replacing them, not by reviving
   obsolete UI.
@@ -122,9 +133,9 @@ learning must remain usable without joining a class.
 
 ## Next gate
 
-Block A is complete and its Xcode Cloud build is green at `9bb6307`. Rounds 5
-and 6 are complete on `codex/app-store-hardening-b`; Round 6 passed Worker,
-online, Firestore Emulator and isolated macOS Simulator verification. Round 7
+Block A is complete and its Xcode Cloud build is green at `9bb6307`. Rounds 5,
+6 and 7 are complete on `codex/app-store-hardening-b`; Round 7 passed Worker,
+online, Firestore Emulator and isolated macOS Simulator verification. Round 8
 is next. Do not merge to `main` or trigger Xcode Cloud until the Round 8 Block
 B audit.
 

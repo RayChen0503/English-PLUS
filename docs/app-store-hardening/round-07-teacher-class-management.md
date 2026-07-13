@@ -1,6 +1,6 @@
 # Round 7 - Teacher class management
 
-Status: In verification
+Status: Complete
 
 ## Objective
 
@@ -50,13 +50,29 @@ the previous class's students or tasks on screen.
 
 ## Verification
 
-- Round 7 source-contract validator
-- Worker syntax and unit tests
+- Round 7 source-contract validator passed.
+- Worker syntax and unit tests passed (`9/9`).
 - Firestore Emulator rules, realtime roster query and isolated Worker lifecycle
-- Existing identity, classroom, Firebase, learning flow and Xcode source checks
-- macOS Xcode Simulator compile gate
-- authenticated deployed Worker smoke checks
-- `git diff --check`
+  passed (`7/7`). During verification, the first roster rule was found to deny
+  the required teacher query and a stale summary could appear without an active
+  membership. Both defects were corrected before completion: the rule now
+  permits only active teacher roster queries, and the iOS listener intersects
+  summaries with canonical active memberships.
+- The complete repository validator sweep passed (`67/67`). Two legacy
+  teacher-assignment checks were updated to protect the current individual and
+  whole-class assignment behavior instead of requiring removed copy and the
+  former single-student call site.
+- The isolated macOS iOS Simulator compile gate passed for commit `73a09c3` in
+  GitHub Actions run `29226640748`.
+- Firestore Rules compiled and were released to `englishplus-testflight` on
+  2026-07-13.
+- Cloudflare Worker version
+  `4ee60303-29d4-42fe-ade7-d7ad576d2e7b` is the active deployment.
+- The authenticated production smoke suite passed (`26/26`), including a
+  teacher reading its two-student roster, a student receiving `403` for the
+  same endpoint, ownership checks before class mutation, all three role
+  sign-ins and live AI with `fallbackUsed=false`.
+- `git diff --check` passed.
 
 ## Release gate
 

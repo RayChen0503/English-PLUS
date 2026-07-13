@@ -84,8 +84,12 @@ def main() -> int:
     ), "Firestore Emulator teacher coverage", errors)
     markers(report, (
         "Round 7",
+        "Status: Complete",
         "6A",
         "Acceptance flow",
+        "29226640748",
+        "4ee60303-29d4-42fe-ade7-d7ad576d2e7b",
+        "26/26",
         "Xcode Cloud",
     ), "Round 7 report", errors)
 
