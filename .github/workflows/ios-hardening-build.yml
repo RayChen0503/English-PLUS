@@ -82,6 +82,7 @@ jobs:
           python3 scripts/validate_app_store_hardening_round10.py
           python3 scripts/validate_app_store_hardening_round11.py
           python3 scripts/validate_app_store_hardening_round12.py
+          python3 scripts/validate_testflight_onboarding_hotfix.py
           python3 scripts/validate_ios_xcode_project_sources.py
 
       - name: Build iOS Simulator target
@@ -96,3 +97,18 @@ jobs:
             -derivedDataPath "$RUNNER_TEMP/EnglishPlusDerivedData" \
             CODE_SIGNING_ALLOWED=NO \
             clean build
+
+      - name: Run authentication acceptance tests
+        shell: bash
+        run: |
+          set -o pipefail
+          SIMULATOR_UDID="$(xcrun simctl list devices available -j | python3 -c 'import json,sys; data=json.load(sys.stdin); print(next(device["udid"] for runtime in data["devices"].values() for device in runtime if device["name"].startswith("iPhone")))')"
+          test -n "$SIMULATOR_UDID"
+          xcodebuild \
+            -project ios/EnglishPlus/EnglishPlus.xcodeproj \
+            -scheme EnglishPlus \
+            -configuration Debug \
+            -destination "platform=iOS Simulator,id=$SIMULATOR_UDID" \
+            -derivedDataPath "$RUNNER_TEMP/EnglishPlusTestDerivedData" \
+            CODE_SIGNING_ALLOWED=NO \
+            test

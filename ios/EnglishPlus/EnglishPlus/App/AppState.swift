@@ -12,6 +12,8 @@ final class AppState: ObservableObject {
     @Published private(set) var signInErrorMessage: String?
     @Published private(set) var authNoticeMessage: String?
     @Published private(set) var verificationEmailAddress: String?
+    @Published private(set) var federatedOnboardingProvider: AccountIdentityProvider?
+    @Published private(set) var federatedOnboardingRole: UserRole?
     @Published private(set) var isManagingAccount = false
     @Published private(set) var isSavingConsent = false
     @Published private(set) var consentErrorMessage: String?
@@ -42,6 +44,7 @@ final class AppState: ObservableObject {
     private var didAttemptSessionRestore = false
     private var pendingIdentityCredential: FederatedIdentityCredential?
     private var pendingIdentityRole: UserRole?
+    private var federatedOnboardingCredential: FederatedIdentityCredential?
 
     init(
         authService: AuthService,
@@ -67,6 +70,10 @@ final class AppState: ObservableObject {
         if let pendingIdentityRole, pendingIdentityRole != role {
             pendingIdentityCredential = nil
             self.pendingIdentityRole = nil
+        }
+        if let federatedOnboardingRole, federatedOnboardingRole != role {
+            authService.signOut()
+            clearFederatedOnboardingState()
         }
         selectedRole = role
         signInErrorMessage = nil
@@ -123,6 +130,18 @@ final class AppState: ObservableObject {
             await finishAuthenticatedSession(session)
             signingInRole = nil
         } catch {
+            if let authError = error as? AuthServiceError,
+               authError == .profileUnavailable {
+                clearFailedAuthenticationState()
+                federatedOnboardingCredential = credential
+                federatedOnboardingProvider = credential.provider
+                federatedOnboardingRole = role
+                selectedRole = role
+                signInErrorMessage = nil
+                authNoticeMessage = "這是你第一次使用\(credential.provider.displayName)。請完成下方資料，就能建立\(role.title)帳號。"
+                return
+            }
+
             clearFailedAuthenticationState()
             if let authError = error as? AuthServiceError,
                authError == .accountLinkRequired {
@@ -183,12 +202,35 @@ final class AppState: ObservableObject {
                 with: credential,
                 profile: profile
             )
+            clearFederatedOnboardingState()
             await handleCreationOutcome(outcome)
             signingInRole = nil
         } catch {
             clearFailedAuthenticationState()
             signInErrorMessage = userMessage(for: error)
         }
+    }
+
+    func federatedOnboardingProvider(for role: UserRole) -> AccountIdentityProvider? {
+        guard federatedOnboardingRole == role else { return nil }
+        return federatedOnboardingProvider
+    }
+
+    func completeFederatedOnboarding(profile: RoleOnboardingProfile) async {
+        guard
+            profile.role == federatedOnboardingRole,
+            let credential = federatedOnboardingCredential
+        else {
+            signInErrorMessage = "登入驗證已失效，請重新使用 Google 或 Apple 繼續。"
+            return
+        }
+        await createAccount(with: credential, profile: profile)
+    }
+
+    func cancelFederatedOnboarding() {
+        authService.signOut()
+        clearFederatedOnboardingState()
+        clearAuthFeedback()
     }
 
     func presentAuthenticationError(_ error: Error) {
@@ -428,6 +470,7 @@ final class AppState: ObservableObject {
         classroomRosterListener = nil
         pendingIdentityCredential = nil
         pendingIdentityRole = nil
+        clearFederatedOnboardingState()
         runtimeDiagnostics = runtimeDiagnostics.clearingSession()
         route = .roleSelection
     }
@@ -823,6 +866,12 @@ final class AppState: ObservableObject {
         classroomRosterErrorMessage = nil
         classroomNoticeMessage = nil
         runtimeDiagnostics = runtimeDiagnostics.clearingSession()
+    }
+
+    private func clearFederatedOnboardingState() {
+        federatedOnboardingCredential = nil
+        federatedOnboardingProvider = nil
+        federatedOnboardingRole = nil
     }
 
     private func userMessage(for error: Error) -> String {

@@ -149,6 +149,10 @@ struct FirebaseAuthService: AuthService {
                     expectedRole: expectedRole,
                     emailVerified: result.user.isEmailVerified
                 )
+            } catch let error as AuthServiceError where error == .profileUnavailable {
+                // Keep the just-authenticated Firebase session while the app collects
+                // the missing role profile. Apple credentials should not be replayed.
+                throw error
             } catch {
                 try? Auth.auth().signOut()
                 throw error
@@ -186,35 +190,48 @@ struct FirebaseAuthService: AuthService {
         }
 
         do {
-            let result = try await signInWithFirebase(
-                credential: firebaseCredential(from: credential)
-            )
+            let signInResult: AuthDataResult?
+            let firebaseUser: User
+            if let currentUser = Auth.auth().currentUser,
+               Self.firebaseUser(currentUser, uses: credential.provider) {
+                signInResult = nil
+                firebaseUser = currentUser
+            } else {
+                if Auth.auth().currentUser != nil {
+                    try? Auth.auth().signOut()
+                }
+                let result = try await signInWithFirebase(
+                    credential: firebaseCredential(from: credential)
+                )
+                signInResult = result
+                firebaseUser = result.user
+            }
             let snapshot = try await documentSnapshot(
-                path: FirestorePath.user(uid: result.user.uid)
+                path: FirestorePath.user(uid: firebaseUser.uid)
             )
             if snapshot.exists {
                 return .authenticated(
                     try await accountSession(
-                        uid: result.user.uid,
-                        fallbackDisplayName: result.user.displayName ?? profile.normalizedDisplayName,
+                        uid: firebaseUser.uid,
+                        fallbackDisplayName: firebaseUser.displayName ?? profile.normalizedDisplayName,
                         expectedRole: profile.role,
-                        emailVerified: result.user.isEmailVerified
+                        emailVerified: firebaseUser.isEmailVerified
                     )
                 )
             }
 
             do {
-                try await updateFirebaseDisplayName(profile.normalizedDisplayName, for: result.user)
+                try await updateFirebaseDisplayName(profile.normalizedDisplayName, for: firebaseUser)
                 try await createInitialRegistrationDocuments(
-                    uid: result.user.uid,
+                    uid: firebaseUser.uid,
                     profile: profile,
-                    fallbackEmail: result.user.email ?? "",
+                    fallbackEmail: firebaseUser.email ?? "",
                     emailVerificationRequired: false,
                     identityProviders: [credential.provider]
                 )
             } catch {
-                if result.additionalUserInfo?.isNewUser == true {
-                    try? await deleteFirebaseUser(result.user)
+                if signInResult?.additionalUserInfo?.isNewUser == true {
+                    try? await deleteFirebaseUser(firebaseUser)
                 } else {
                     try? Auth.auth().signOut()
                 }
@@ -225,17 +242,17 @@ struct FirebaseAuthService: AuthService {
                profile.volunteerApplication?.isReadyToSubmit == true {
                 try? Auth.auth().signOut()
                 return .approvalPending(
-                    email: result.user.email ?? "",
+                    email: firebaseUser.email ?? "",
                     role: .volunteer
                 )
             }
 
             return .authenticated(
                 try await accountSession(
-                    uid: result.user.uid,
+                    uid: firebaseUser.uid,
                     fallbackDisplayName: profile.normalizedDisplayName,
                     expectedRole: profile.role,
-                    emailVerified: result.user.isEmailVerified
+                    emailVerified: firebaseUser.isEmailVerified
                 )
             )
         } catch let error as AuthServiceError {
@@ -656,6 +673,22 @@ struct FirebaseAuthService: AuthService {
         default:
             return .operationUnavailable
         }
+    }
+
+    private static func firebaseUser(
+        _ user: User,
+        uses provider: AccountIdentityProvider
+    ) -> Bool {
+        let providerID: String
+        switch provider {
+        case .emailPassword:
+            providerID = "password"
+        case .google:
+            providerID = "google.com"
+        case .apple:
+            providerID = "apple.com"
+        }
+        return user.providerData.contains { $0.providerID == providerID }
     }
     #endif
 

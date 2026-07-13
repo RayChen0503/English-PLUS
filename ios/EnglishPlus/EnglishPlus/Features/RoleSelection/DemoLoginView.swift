@@ -30,11 +30,14 @@ struct DemoLoginView: View {
                 VStack(alignment: .leading, spacing: 20) {
                     backButton
                     header
-                    modePicker
-
-                    if appState.canUseFederatedSignIn {
-                        federatedButtons
-                        divider
+                    if let provider = federatedOnboardingProvider {
+                        federatedSetupBanner(provider)
+                    } else {
+                        modePicker
+                        if appState.canUseFederatedSignIn {
+                            federatedButtons
+                            divider
+                        }
                     }
 
                     emailAccountForm
@@ -85,6 +88,32 @@ struct DemoLoginView: View {
             Text("建立帳號").tag(LoginMode.register)
         }
         .pickerStyle(.segmented)
+    }
+
+    private func federatedSetupBanner(_ provider: AccountIdentityProvider) -> some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Label("\(provider.displayName) 驗證完成", systemImage: "checkmark.shield.fill")
+                .font(.headline)
+                .foregroundStyle(EPTheme.support)
+            Text("這是你第一次使用 English+。補完下方的\(role.title)資料後，系統會建立同一個帳號，不需要另外設定 Email 密碼。")
+                .font(.subheadline)
+                .foregroundStyle(EPTheme.secondaryInk)
+                .fixedSize(horizontal: false, vertical: true)
+            Button("改用其他登入方式") {
+                appState.cancelFederatedOnboarding()
+                mode = .signIn
+            }
+            .font(.footnote.weight(.semibold))
+            .foregroundStyle(EPTheme.primary)
+            .buttonStyle(.plain)
+        }
+        .padding(16)
+        .background(EPTheme.support.opacity(0.10))
+        .overlay(
+            RoundedRectangle(cornerRadius: EPTheme.cardRadius)
+                .stroke(EPTheme.support.opacity(0.28), lineWidth: 1)
+        )
+        .clipShape(RoundedRectangle(cornerRadius: EPTheme.cardRadius))
     }
 
     private var federatedButtons: some View {
@@ -139,7 +168,7 @@ struct DemoLoginView: View {
     private var divider: some View {
         HStack(spacing: 12) {
             Rectangle().fill(EPTheme.hairline).frame(height: 1)
-            Text("或使用 Email")
+            Text(mode == .signIn ? "或使用 Email 登入" : "或使用 Email 建立帳號")
                 .font(.caption)
                 .foregroundStyle(EPTheme.secondaryInk)
             Rectangle().fill(EPTheme.hairline).frame(height: 1)
@@ -148,20 +177,24 @@ struct DemoLoginView: View {
 
     private var emailAccountForm: some View {
         VStack(alignment: .leading, spacing: 16) {
-            if mode == .register {
+            if federatedOnboardingProvider != nil {
                 registrationFields
-            }
+            } else {
+                if mode == .register {
+                    registrationFields
+                }
 
-            formField(
-                title: "Email",
-                placeholder: "name@example.com",
-                text: $email,
-                keyboardType: .emailAddress
-            )
-            passwordField
+                formField(
+                    title: "Email",
+                    placeholder: "name@example.com",
+                    text: $email,
+                    keyboardType: .emailAddress
+                )
+                passwordField
 
-            if mode == .signIn {
-                recoveryActions
+                if mode == .signIn {
+                    recoveryActions
+                }
             }
         }
         .padding(16)
@@ -188,9 +221,12 @@ struct DemoLoginView: View {
                 .registrationHintStyle()
         case .teacher:
             InstitutionPickerView(selection: $selectedInstitution)
-            Label("學校資料是自行填寫；學生主動加入班級後，你才能看到加入後的資料。", systemImage: "lock.shield")
+            Label("任職資訊用於班級顯示與管理，不是教師資格審核。教師帳號建立後可直接使用；學生主動加入班級後，你才能看到加入後的資料。", systemImage: "lock.shield")
                 .registrationHintStyle()
         case .volunteer:
+            Label("第 1 步，共 2 步：建立帳號與基本資料", systemImage: "1.circle.fill")
+                .font(.subheadline.weight(.semibold))
+                .foregroundStyle(EPTheme.primary)
             Toggle("我已年滿 18 歲", isOn: $volunteerIsAdult)
             Toggle("我同意志工守則與資料保密規範", isOn: $volunteerAcceptedConduct)
             VStack(alignment: .leading, spacing: 8) {
@@ -203,7 +239,7 @@ struct DemoLoginView: View {
                     .background(EPTheme.secondarySurface)
                     .clipShape(RoundedRectangle(cornerRadius: EPTheme.cardRadius))
             }
-            Label("建立並驗證帳號後，下一步會上傳學經歷或英語能力證明。審核前不會開放學生資料。", systemImage: "doc.badge.arrow.up")
+            Label("第 2 步會自動進入證明上傳，可加入學籍、英語能力、教育或志工服務證明。審核通過前不會開放學生資料。", systemImage: "doc.badge.arrow.up")
                 .registrationHintStyle()
         }
     }
@@ -299,9 +335,16 @@ struct DemoLoginView: View {
 
     private var primaryButton: some View {
         Button(primaryButtonTitle) {
-            Task { await submitEmailForm() }
+            Task {
+                if federatedOnboardingProvider != nil {
+                    guard let profile = registrationProfile else { return }
+                    await appState.completeFederatedOnboarding(profile: profile)
+                } else {
+                    await submitEmailForm()
+                }
+            }
         }
-        .disabled(emailActionDisabled)
+        .disabled(primaryActionDisabled)
         .buttonStyle(PrimaryActionButtonStyle())
     }
 
@@ -360,7 +403,18 @@ struct DemoLoginView: View {
     }
 
     private var federatedActionDisabled: Bool {
-        appState.signingInRole != nil || (mode == .register && registrationProfile == nil)
+        appState.signingInRole != nil
+    }
+
+    private var federatedOnboardingProvider: AccountIdentityProvider? {
+        appState.federatedOnboardingProvider(for: role)
+    }
+
+    private var primaryActionDisabled: Bool {
+        if federatedOnboardingProvider != nil {
+            return appState.signingInRole != nil || registrationProfile == nil
+        }
+        return emailActionDisabled
     }
 
     private var emailActionDisabled: Bool {
@@ -372,6 +426,11 @@ struct DemoLoginView: View {
     }
 
     private var primaryButtonTitle: String {
+        if federatedOnboardingProvider != nil {
+            return appState.signingInRole == role
+                ? "建立中..."
+                : "完成\(role.title)帳號設定"
+        }
         if appState.signingInRole == role {
             return mode == .register ? "建立中..." : "登入中..."
         }
@@ -434,13 +493,7 @@ struct DemoLoginView: View {
     }
 
     private func handleFederatedCredential(_ credential: FederatedIdentityCredential) async {
-        switch mode {
-        case .signIn:
-            await appState.signIn(with: credential, role: role)
-        case .register:
-            guard let profile = registrationProfile else { return }
-            await appState.createAccount(with: credential, profile: profile)
-        }
+        await appState.signIn(with: credential, role: role)
     }
 }
 

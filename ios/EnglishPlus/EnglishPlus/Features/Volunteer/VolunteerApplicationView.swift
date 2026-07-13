@@ -53,10 +53,13 @@ struct VolunteerApplicationView: View {
 
     private var header: some View {
         VStack(alignment: .leading, spacing: 8) {
-            Label("完成志工申請", systemImage: "person.badge.shield.checkmark")
+            Text("第 2 步，共 2 步")
+                .font(.subheadline.weight(.semibold))
+                .foregroundStyle(EPTheme.primary)
+            Label("上傳證明並送出審核", systemImage: "person.badge.shield.checkmark")
                 .font(.largeTitle.bold())
                 .foregroundStyle(EPTheme.ink)
-            Text("送出後會進入人工審核。審核通過前，你不會看到任何學生或求助資料。")
+            Text("帳號已建立。至少加入一份資格證明後即可送出；審核通過前，你不會看到任何學生或求助資料。")
                 .font(.body)
                 .foregroundStyle(EPTheme.secondaryInk)
                 .fixedSize(horizontal: false, vertical: true)
@@ -65,7 +68,7 @@ struct VolunteerApplicationView: View {
 
     private var identitySection: some View {
         VStack(alignment: .leading, spacing: 16) {
-            Text("基本確認")
+            Text("確認申請資料")
                 .font(.headline)
                 .foregroundStyle(EPTheme.ink)
             Toggle("我已年滿 18 歲", isOn: $confirmsAge)
@@ -89,7 +92,7 @@ struct VolunteerApplicationView: View {
     private var evidenceSection: some View {
         VStack(alignment: .leading, spacing: 16) {
             VStack(alignment: .leading, spacing: 4) {
-                Text("資格證明")
+                Text("資格證明（至少 1 份）")
                     .font(.headline)
                     .foregroundStyle(EPTheme.ink)
                 Text("至少一份，最多 5 份；可使用 PDF、JPG 或 PNG，單檔 10 MB、合計 25 MB。")

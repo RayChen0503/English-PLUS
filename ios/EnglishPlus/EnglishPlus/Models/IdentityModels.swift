@@ -6,6 +6,19 @@ enum AccountIdentityProvider: String, Codable, CaseIterable {
     case apple
 }
 
+extension AccountIdentityProvider {
+    var displayName: String {
+        switch self {
+        case .emailPassword:
+            return "Email"
+        case .google:
+            return "Google"
+        case .apple:
+            return "Apple"
+        }
+    }
+}
+
 enum AccountProvisioningSource: String, Codable {
     case selfServiceStudent
     case selfServiceTeacher

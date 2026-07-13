@@ -7,6 +7,7 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		200000000000000000000101 /* AuthenticationFlowAcceptanceTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 200000000000000000000001 /* AuthenticationFlowAcceptanceTests.swift */; };
 		0AE2ED752FF14DA700F77676 /* GoogleService-Info.plist in Resources */ = {isa = PBXBuildFile; fileRef = 0AE2ED742FF14DA700F77676 /* GoogleService-Info.plist */; };
 		100000000000000000000101 /* EnglishPlusApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 100000000000000000000001 /* EnglishPlusApp.swift */; };
 		100000000000000000000102 /* AppState.swift in Sources */ = {isa = PBXBuildFile; fileRef = 100000000000000000000002 /* AppState.swift */; };
@@ -79,7 +80,19 @@
 		100000000000000000000170 /* PrivacyInfo.xcprivacy in Resources */ = {isa = PBXBuildFile; fileRef = 100000000000000000000068 /* PrivacyInfo.xcprivacy */; };
 /* End PBXBuildFile section */
 
+/* Begin PBXContainerItemProxy section */
+		200000000000000000000403 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 100000000000000000000402 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 100000000000000000000401;
+			remoteInfo = EnglishPlus;
+		};
+/* End PBXContainerItemProxy section */
+
 /* Begin PBXFileReference section */
+		200000000000000000000001 /* AuthenticationFlowAcceptanceTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AuthenticationFlowAcceptanceTests.swift; sourceTree = "<group>"; };
+		200000000000000000000002 /* EnglishPlusTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = EnglishPlusTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		0AE2ED742FF14DA700F77676 /* GoogleService-Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = "GoogleService-Info.plist"; sourceTree = "<group>"; };
 		100000000000000000000001 /* EnglishPlusApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EnglishPlusApp.swift; sourceTree = "<group>"; };
 		100000000000000000000002 /* AppState.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppState.swift; sourceTree = "<group>"; };
@@ -151,6 +164,13 @@
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
+		200000000000000000000201 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 		100000000000000000000201 /* Frameworks */ = {
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
@@ -170,6 +190,7 @@
 			isa = PBXGroup;
 			children = (
 				100000000000000000000302 /* EnglishPlus */,
+				200000000000000000000301 /* EnglishPlusTests */,
 				100000000000000000000303 /* Products */,
 			);
 			sourceTree = "<group>";
@@ -197,8 +218,17 @@
 			isa = PBXGroup;
 			children = (
 				100000000000000000000024 /* EnglishPlus.app */,
+				200000000000000000000002 /* EnglishPlusTests.xctest */,
 			);
 			name = Products;
+			sourceTree = "<group>";
+		};
+		200000000000000000000301 /* EnglishPlusTests */ = {
+			isa = PBXGroup;
+			children = (
+				200000000000000000000001 /* AuthenticationFlowAcceptanceTests.swift */,
+			);
+			path = EnglishPlusTests;
 			sourceTree = "<group>";
 		};
 		100000000000000000000304 /* App */ = {
@@ -387,6 +417,23 @@
 /* End PBXGroup section */
 
 /* Begin PBXNativeTarget section */
+		200000000000000000000401 /* EnglishPlusTests */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 200000000000000000000501 /* Build configuration list for PBXNativeTarget "EnglishPlusTests" */;
+			buildPhases = (
+				200000000000000000000202 /* Sources */,
+				200000000000000000000201 /* Frameworks */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				200000000000000000000402 /* PBXTargetDependency */,
+			);
+			name = EnglishPlusTests;
+			productName = EnglishPlusTests;
+			productReference = 200000000000000000000002 /* EnglishPlusTests.xctest */;
+			productType = "com.apple.product-type.bundle.unit-test";
+		};
 		100000000000000000000401 /* EnglishPlus */ = {
 			isa = PBXNativeTarget;
 			buildConfigurationList = 100000000000000000000501 /* Build configuration list for PBXNativeTarget "EnglishPlus" */;
@@ -429,6 +476,10 @@
 							};
 						};
 					};
+					200000000000000000000401 = {
+						CreatedOnToolsVersion = 26.5;
+						TestTargetID = 100000000000000000000401;
+					};
 				};
 			};
 			buildConfigurationList = 100000000000000000000502 /* Build configuration list for PBXProject "EnglishPlus" */;
@@ -449,6 +500,7 @@
 			projectRoot = "";
 			targets = (
 				100000000000000000000401 /* EnglishPlus */,
+				200000000000000000000401 /* EnglishPlusTests */,
 			);
 		};
 /* End PBXProject section */
@@ -468,6 +520,14 @@
 /* End PBXResourcesBuildPhase section */
 
 /* Begin PBXSourcesBuildPhase section */
+		200000000000000000000202 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				200000000000000000000101 /* AuthenticationFlowAcceptanceTests.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 		100000000000000000000202 /* Sources */ = {
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
@@ -538,7 +598,63 @@
 		};
 /* End PBXSourcesBuildPhase section */
 
+/* Begin PBXTargetDependency section */
+		200000000000000000000402 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = 100000000000000000000401 /* EnglishPlus */;
+			targetProxy = 200000000000000000000403 /* PBXContainerItemProxy */;
+		};
+/* End PBXTargetDependency section */
+
 /* Begin XCBuildConfiguration section */
+		200000000000000000000601 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = X7Y2V4D87G;
+				GENERATE_INFOPLIST_FILE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@loader_path/Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = com.englishplus.tests;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = iphoneos;
+				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = 1;
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/EnglishPlus.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/EnglishPlus";
+			};
+			name = Debug;
+		};
+		200000000000000000000602 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = X7Y2V4D87G;
+				GENERATE_INFOPLIST_FILE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@loader_path/Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = com.englishplus.tests;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = iphoneos;
+				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = 1;
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/EnglishPlus.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/EnglishPlus";
+			};
+			name = Release;
+		};
 		100000000000000000000601 /* Debug */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
@@ -707,6 +823,15 @@
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
+		200000000000000000000501 /* Build configuration list for PBXNativeTarget "EnglishPlusTests" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				200000000000000000000601 /* Debug */,
+				200000000000000000000602 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
 		100000000000000000000501 /* Build configuration list for PBXNativeTarget "EnglishPlus" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (
