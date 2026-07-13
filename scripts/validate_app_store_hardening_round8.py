@@ -97,7 +97,7 @@ def main() -> int:
         "leaving a class preserves readable history",
         "students can report assigned-task progress",
         "production listener query shapes",
-        "assigned volunteers read class learning context",
+        "even assigned volunteers cannot read private class learning context",
     ), "Round 8 Emulator matrix", errors)
     markers(paths, (
         "personalCheckIn(uid:",
