@@ -32,22 +32,26 @@ struct SupportView: View {
                     .fixedSize(horizontal: false, vertical: true)
             }
 
-            SupportReplyCenterSummaryCard(
-                waitingCount: waitingRequestCount,
-                unreadCount: unreadReplyCount,
-                answeredCount: answeredRequestCount
-            )
-
-            if studentRequests.isEmpty {
-                SupportEmptyStateCard()
+            if appState.currentProfile?.activeClassId == nil {
+                PersonalSupportModeCard()
             } else {
-                ForEach(studentRequests) { request in
-                    SupportRequestInboxCard(
-                        request: request,
-                        onArchive: {
-                            learningRepository.archiveSupportThreadForStudent(request.id)
-                        }
-                    )
+                SupportReplyCenterSummaryCard(
+                    waitingCount: waitingRequestCount,
+                    unreadCount: unreadReplyCount,
+                    answeredCount: answeredRequestCount
+                )
+
+                if studentRequests.isEmpty {
+                    SupportEmptyStateCard()
+                } else {
+                    ForEach(studentRequests) { request in
+                        SupportRequestInboxCard(
+                            request: request,
+                            onArchive: {
+                                learningRepository.archiveSupportThreadForStudent(request.id)
+                            }
+                        )
+                    }
                 }
             }
         }
@@ -74,6 +78,25 @@ struct SupportView: View {
         }.count
     }
 
+}
+
+private struct PersonalSupportModeCard: View {
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Label("目前是個人學習模式", systemImage: "person.crop.circle")
+                .font(.headline)
+                .foregroundStyle(EPTheme.ink)
+
+            Text("做題時仍可直接請 AI 換一種方式解釋。加入班級後，老師或志工的真人回覆才會出現在這裡。")
+                .font(.subheadline)
+                .foregroundStyle(EPTheme.secondaryInk)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        .padding(16)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(EPTheme.card)
+        .clipShape(RoundedRectangle(cornerRadius: EPTheme.cardRadius))
+    }
 }
 
 private struct SupportEmptyStateCard: View {

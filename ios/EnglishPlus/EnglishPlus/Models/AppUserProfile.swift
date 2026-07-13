@@ -179,6 +179,59 @@ struct AppUserProfile: Identifiable, Codable, Equatable {
         )
     }
 
+    func upsertingMembership(
+        _ membership: ClassMembership,
+        makeActive: Bool
+    ) -> AppUserProfile {
+        var updatedMemberships = memberships.filter { $0.classId != membership.classId }
+        updatedMemberships.append(membership)
+        return AppUserProfile(
+            id: id,
+            displayName: displayName,
+            role: makeActive ? membership.role : role,
+            classId: makeActive ? membership.classId : classId,
+            groupId: makeActive ? membership.groupId : groupId,
+            consentStatus: consentStatus,
+            isDemo: isDemo,
+            accountStatus: accountStatus,
+            createdAt: createdAt,
+            updatedAt: Date(),
+            memberships: updatedMemberships,
+            activeClassId: makeActive ? membership.classId : activeClassId
+        )
+    }
+
+    func markingMembershipLeft(classId: String, at date: Date) -> AppUserProfile {
+        let updatedMemberships = memberships.map { membership in
+            guard membership.classId == classId else { return membership }
+            return ClassMembership(
+                classId: membership.classId,
+                className: membership.className,
+                role: membership.role,
+                groupId: membership.groupId,
+                status: .left,
+                joinedAt: membership.joinedAt,
+                visibilityStartsAt: membership.visibilityStartsAt,
+                leftAt: date
+            )
+        }
+        let nextActiveClassId = activeClassId == classId ? nil : activeClassId
+        return AppUserProfile(
+            id: id,
+            displayName: displayName,
+            role: role,
+            classId: nextActiveClassId ?? FirebaseBackendConfig.personalScopeId(uid: id),
+            groupId: nextActiveClassId == nil ? nil : groupId,
+            consentStatus: consentStatus,
+            isDemo: isDemo,
+            accountStatus: accountStatus,
+            createdAt: createdAt,
+            updatedAt: date,
+            memberships: updatedMemberships,
+            activeClassId: nextActiveClassId
+        )
+    }
+
     private enum CodingKeys: String, CodingKey {
         case id
         case displayName

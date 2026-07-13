@@ -2,120 +2,47 @@
   "indexes": [
     {
       "collectionGroup": "supportThreads",
-      "queryScope": "COLLECTION_GROUP",
+      "queryScope": "COLLECTION",
       "fields": [
         {
-          "fieldPath": "classId",
+          "fieldPath": "studentUid",
           "order": "ASCENDING"
         },
         {
-          "fieldPath": "status",
+          "fieldPath": "studentVisible",
           "order": "ASCENDING"
-        },
-        {
-          "fieldPath": "updatedAt",
-          "order": "DESCENDING"
-        }
-      ]
-    },
-    {
-      "collectionGroup": "supportThreads",
-      "queryScope": "COLLECTION_GROUP",
-      "fields": [
-        {
-          "fieldPath": "assignedToUid",
-          "order": "ASCENDING"
-        },
-        {
-          "fieldPath": "status",
-          "order": "ASCENDING"
-        },
-        {
-          "fieldPath": "updatedAt",
-          "order": "DESCENDING"
         }
       ]
     },
     {
       "collectionGroup": "staffAssignments",
-      "queryScope": "COLLECTION_GROUP",
+      "queryScope": "COLLECTION",
       "fields": [
         {
           "fieldPath": "assignedToUid",
           "order": "ASCENDING"
         },
         {
+          "fieldPath": "studentUid",
+          "order": "ASCENDING"
+        },
+        {
           "fieldPath": "status",
           "order": "ASCENDING"
-        },
-        {
-          "fieldPath": "priority",
-          "order": "ASCENDING"
-        },
-        {
-          "fieldPath": "createdAt",
-          "order": "DESCENDING"
-        }
-      ]
-    },
-    {
-      "collectionGroup": "students",
-      "queryScope": "COLLECTION_GROUP",
-      "fields": [
-        {
-          "fieldPath": "classCode",
-          "order": "ASCENDING"
-        },
-        {
-          "fieldPath": "riskLevel",
-          "order": "ASCENDING"
-        },
-        {
-          "fieldPath": "lastActivityAt",
-          "order": "DESCENDING"
-        }
-      ]
-    },
-    {
-      "collectionGroup": "questionBank",
-      "queryScope": "COLLECTION_GROUP",
-      "fields": [
-        {
-          "fieldPath": "reviewState",
-          "order": "ASCENDING"
-        },
-        {
-          "fieldPath": "level",
-          "order": "ASCENDING"
-        },
-        {
-          "fieldPath": "type",
-          "order": "ASCENDING"
-        },
-        {
-          "fieldPath": "updatedAt",
-          "order": "DESCENDING"
-        }
-      ]
-    },
-    {
-      "collectionGroup": "answerEvents",
-      "queryScope": "COLLECTION_GROUP",
-      "fields": [
-        {
-          "fieldPath": "missionId",
-          "order": "ASCENDING"
-        },
-        {
-          "fieldPath": "isCorrect",
-          "order": "ASCENDING"
-        },
-        {
-          "fieldPath": "createdAt",
-          "order": "DESCENDING"
         }
       ]
     }
   ],
-  "fieldOverrides": []
+  "fieldOverrides": [
+    {
+      "collectionGroup": "supportThreads",
+      "fieldPath": "questionSnapshot",
+      "indexes": []
+    },
+    {
+      "collectionGroup": "practiceAssignments",
+      "fieldPath": "questionResults",
+      "indexes": []
+    }
+  ]
 }

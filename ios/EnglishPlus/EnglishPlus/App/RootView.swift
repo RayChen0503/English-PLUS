@@ -37,16 +37,16 @@ struct RootView: View {
 
     private func startRealtimeSyncIfNeeded() {
         guard case .home = appState.route,
-              let currentProfile = appState.currentProfile,
-              let activeClassId = currentProfile.activeClassId
+              let currentProfile = appState.currentProfile
         else {
             learningRepository.stopRealtimeSync()
             return
         }
 
         learningRepository.startRealtimeSync(
-            classId: activeClassId,
-            user: appState.currentUser
+            classId: currentProfile.classId,
+            user: appState.currentUser,
+            profile: currentProfile
         )
     }
 }

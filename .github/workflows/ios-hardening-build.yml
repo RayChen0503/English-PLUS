@@ -1,0 +1,78 @@
+name: iOS hardening compile gate
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - codex/app-store-hardening-b
+    paths:
+      - .github/ci-triggers/round6-ios-build
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ios-hardening-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  simulator-build:
+    name: Validate and compile English+
+    runs-on: macos-15
+    timeout-minutes: 45
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v5
+
+      - name: Show Xcode toolchain
+        run: xcodebuild -version
+
+      - name: Create non-production Firebase build config
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          import plistlib
+
+          path = Path("ios/EnglishPlus/EnglishPlus/GoogleService-Info.plist")
+          payload = {
+              "API_KEY": "ci-placeholder",
+              "GCM_SENDER_ID": "000000000000",
+              "PLIST_VERSION": "1",
+              "BUNDLE_ID": "com.englishplus",
+              "PROJECT_ID": "englishplus-ci-placeholder",
+              "STORAGE_BUCKET": "englishplus-ci-placeholder.appspot.com",
+              "IS_ADS_ENABLED": False,
+              "IS_ANALYTICS_ENABLED": False,
+              "IS_APPINVITE_ENABLED": False,
+              "IS_GCM_ENABLED": True,
+              "IS_SIGNIN_ENABLED": True,
+              "GOOGLE_APP_ID": "1:000000000000:ios:0000000000000000",
+              "CLIENT_ID": "placeholder.apps.googleusercontent.com",
+              "REVERSED_CLIENT_ID": "com.googleusercontent.apps.placeholder",
+          }
+          path.write_bytes(plistlib.dumps(payload, fmt=plistlib.FMT_XML, sort_keys=True))
+          PY
+          plutil -lint ios/EnglishPlus/EnglishPlus/GoogleService-Info.plist
+
+      - name: Validate hardening contracts
+        run: |
+          python3 scripts/validate_app_store_hardening_round5.py
+          python3 scripts/validate_app_store_hardening_round6.py
+          python3 scripts/validate_app_store_hardening_round7.py
+          python3 scripts/validate_app_store_hardening_round8.py
+          python3 scripts/validate_ios_xcode_project_sources.py
+
+      - name: Build iOS Simulator target
+        run: |
+          set -o pipefail
+          xcodebuild \
+            -project ios/EnglishPlus/EnglishPlus.xcodeproj \
+            -scheme EnglishPlus \
+            -configuration Debug \
+            -sdk iphonesimulator \
+            -destination 'generic/platform=iOS Simulator' \
+            -derivedDataPath "$RUNNER_TEMP/EnglishPlusDerivedData" \
+            CODE_SIGNING_ALLOWED=NO \
+            clean build

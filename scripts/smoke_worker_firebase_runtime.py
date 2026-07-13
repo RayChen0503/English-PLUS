@@ -2,6 +2,7 @@
 import argparse
 import json
 import plistlib
+import re
 import sys
 import urllib.error
 import urllib.request
@@ -80,6 +81,11 @@ def firebase_sign_in(api_key: str, email: str, password: str) -> dict[str, str]:
     }
 
 
+def personal_scope_id(uid: str) -> str:
+    compact = re.sub(r"[^A-Za-z0-9]+", "-", uid.upper()).strip("-")[:48]
+    return f"PERSONAL-{compact}"
+
+
 def expect(
     condition: bool,
     name: str,
@@ -126,6 +132,15 @@ def main() -> int:
         f"HTTP {unauthenticated_ai.status}",
     )
 
+    unauthenticated_classrooms = request_json(f"{WORKER_BASE_URL}/classrooms")
+    expect(
+        unauthenticated_classrooms.status == 401
+        and unauthenticated_classrooms.body.get("error") == "AUTH_REQUIRED",
+        "classroom_list_requires_firebase_auth",
+        results,
+        f"HTTP {unauthenticated_classrooms.status}",
+    )
+
     unauthenticated_evidence = request_json(
         f"{WORKER_BASE_URL}/evidence/upload-ticket",
         method="POST",
@@ -150,6 +165,116 @@ def main() -> int:
     student = sessions.get("student")
     teacher = sessions.get("teacher")
     volunteer = sessions.get("volunteer")
+
+    classroom_lists: dict[str, list[dict]] = {}
+    for role, session in sessions.items():
+        bootstrap = request_json(
+            f"{WORKER_BASE_URL}/classrooms/bootstrap",
+            method="POST",
+            token=session["idToken"],
+            payload={},
+        )
+        expect(
+            bootstrap.status == 200
+            and isinstance(bootstrap.body.get("migrated"), bool),
+            f"authenticated_{role}_classroom_bootstrap",
+            results,
+            f"HTTP {bootstrap.status}; migrated={bootstrap.body.get('migrated')}",
+        )
+        classroom_list = request_json(
+            f"{WORKER_BASE_URL}/classrooms",
+            token=session["idToken"],
+        )
+        expect(
+            classroom_list.status == 200
+            and isinstance(classroom_list.body.get("classrooms"), list),
+            f"authenticated_{role}_classroom_list",
+            results,
+            f"HTTP {classroom_list.status}",
+        )
+        classroom_lists[role] = classroom_list.body.get("classrooms", [])
+
+    if student:
+        forbidden_create = request_json(
+            f"{WORKER_BASE_URL}/classrooms",
+            method="POST",
+            token=student["idToken"],
+            payload={"name": "Smoke Test Class"},
+        )
+        expect(
+            forbidden_create.status == 403
+            and forbidden_create.body.get("error") == "TEACHER_ACCOUNT_REQUIRED",
+            "student_cannot_create_classroom",
+            results,
+            f"HTTP {forbidden_create.status}",
+        )
+
+        forbidden_reset = request_json(
+            f"{WORKER_BASE_URL}/classrooms/YILAN-CHENGZHI-8A/reset-code",
+            method="POST",
+            token=student["idToken"],
+            payload={},
+        )
+        expect(
+            forbidden_reset.status == 403
+            and forbidden_reset.body.get("error") == "TEACHER_ACCOUNT_REQUIRED",
+            "student_cannot_reset_classroom_code",
+            results,
+            f"HTTP {forbidden_reset.status}",
+        )
+
+    if teacher:
+        forbidden_join = request_json(
+            f"{WORKER_BASE_URL}/classrooms/join",
+            method="POST",
+            token=teacher["idToken"],
+            payload={"code": "ABCDEFGH"},
+        )
+        expect(
+            forbidden_join.status == 403
+            and forbidden_join.body.get("error") == "STUDENT_ACCOUNT_REQUIRED",
+            "teacher_cannot_join_with_student_code",
+            results,
+            f"HTTP {forbidden_join.status}",
+        )
+
+        teacher_classes = classroom_lists.get("teacher", [])
+        if teacher_classes:
+            teacher_class_id = teacher_classes[0].get("classId")
+            roster = request_json(
+                f"{WORKER_BASE_URL}/classrooms/{teacher_class_id}/students",
+                token=teacher["idToken"],
+            )
+            expect(
+                roster.status == 200 and isinstance(roster.body.get("students"), list),
+                "teacher_can_list_owned_class_roster",
+                results,
+                f"HTTP {roster.status}; students={len(roster.body.get('students', []))}",
+            )
+            if student:
+                forbidden_roster = request_json(
+                    f"{WORKER_BASE_URL}/classrooms/{teacher_class_id}/students",
+                    token=student["idToken"],
+                )
+                expect(
+                    forbidden_roster.status == 403,
+                    "student_cannot_list_teacher_roster",
+                    results,
+                    f"HTTP {forbidden_roster.status}",
+                )
+
+        missing_class_update = request_json(
+            f"{WORKER_BASE_URL}/classrooms/CLS-NOT-FOUND",
+            method="PATCH",
+            token=teacher["idToken"],
+            payload={"name": "No mutation smoke test"},
+        )
+        expect(
+            missing_class_update.status == 404,
+            "teacher_class_update_checks_ownership_before_write",
+            results,
+            f"HTTP {missing_class_update.status}",
+        )
 
     if student:
         ai = request_json(
@@ -179,6 +304,38 @@ def main() -> int:
             "authenticated_real_ai",
             results,
             f"HTTP {ai.status}; fallbackUsed={result.get('fallbackUsed')}",
+        )
+
+        personal_ai = request_json(
+            f"{WORKER_BASE_URL}/ai",
+            method="POST",
+            token=student["idToken"],
+            payload={
+                "taskType": "dailyMission",
+                "classId": personal_scope_id(student["localId"]),
+                "studentUid": student["localId"],
+                "sessionId": "personal-mode-deployment-smoke-test",
+                "qualityMode": "free",
+                "locale": "zh-TW",
+                "context": {
+                    "moodScore": 3,
+                    "availableTimeLevel": 2,
+                    "wantsChallenge": False,
+                    "preferredQuestionTypes": ["vocabulary", "fillBlank"],
+                },
+            },
+        )
+        personal_result = personal_ai.body.get("result", {})
+        expect(
+            personal_ai.status == 200
+            and personal_result.get("taskType") == "dailyMission"
+            and personal_result.get("fallbackUsed") is False,
+            "authenticated_personal_mode_real_ai",
+            results,
+            (
+                f"HTTP {personal_ai.status}; "
+                f"fallbackUsed={personal_result.get('fallbackUsed')}"
+            ),
         )
 
         student_evidence = request_json(

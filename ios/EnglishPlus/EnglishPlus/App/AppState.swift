@@ -19,6 +19,14 @@ final class AppState: ObservableObject {
     @Published private(set) var volunteerReviewApplications: [VolunteerReviewApplication] = []
     @Published private(set) var volunteerReviewErrorMessage: String?
     @Published private(set) var isLoadingVolunteerReviews = false
+    @Published private(set) var classrooms: [ClassroomSummary] = []
+    @Published private(set) var classroomStudents: [ClassroomStudentSummary] = []
+    @Published private(set) var isLoadingClassrooms = false
+    @Published private(set) var isLoadingClassroomStudents = false
+    @Published private(set) var isManagingClassroom = false
+    @Published private(set) var classroomErrorMessage: String?
+    @Published private(set) var classroomRosterErrorMessage: String?
+    @Published private(set) var classroomNoticeMessage: String?
     @Published private(set) var runtimeDiagnostics: RuntimeDiagnosticsSnapshot
 
     private let authService: AuthService
@@ -26,6 +34,8 @@ final class AppState: ObservableObject {
     private let aiService: AIService
     private let evidenceUploadService: EvidenceUploadService
     private let volunteerReviewService: VolunteerReviewService
+    private let classroomService: ClassroomService
+    private var classroomRosterListener: ClassroomRosterListenerToken?
     private var didAttemptSessionRestore = false
     private var pendingIdentityCredential: FederatedIdentityCredential?
     private var pendingIdentityRole: UserRole?
@@ -36,6 +46,7 @@ final class AppState: ObservableObject {
         aiService: AIService,
         evidenceUploadService: EvidenceUploadService,
         volunteerReviewService: VolunteerReviewService,
+        classroomService: ClassroomService,
         runtimeDiagnostics: RuntimeDiagnosticsSnapshot
     ) {
         self.authService = authService
@@ -43,6 +54,7 @@ final class AppState: ObservableObject {
         self.aiService = aiService
         self.evidenceUploadService = evidenceUploadService
         self.volunteerReviewService = volunteerReviewService
+        self.classroomService = classroomService
         self.runtimeDiagnostics = runtimeDiagnostics
     }
 
@@ -366,6 +378,16 @@ final class AppState: ObservableObject {
         volunteerReviewApplications = []
         volunteerReviewErrorMessage = nil
         isLoadingVolunteerReviews = false
+        classrooms = []
+        classroomStudents = []
+        isLoadingClassrooms = false
+        isLoadingClassroomStudents = false
+        isManagingClassroom = false
+        classroomErrorMessage = nil
+        classroomRosterErrorMessage = nil
+        classroomNoticeMessage = nil
+        classroomRosterListener?.cancel()
+        classroomRosterListener = nil
         pendingIdentityCredential = nil
         pendingIdentityRole = nil
         runtimeDiagnostics = runtimeDiagnostics.clearingSession()
@@ -375,6 +397,7 @@ final class AppState: ObservableObject {
     func selectActiveClass(_ classId: String?) async {
         guard let currentUser, let currentProfile else { return }
         signInErrorMessage = nil
+        clearClassroomFeedback()
 
         do {
             let session = try await authService.selectActiveClass(
@@ -389,9 +412,198 @@ final class AppState: ObservableObject {
                 profile: session.profile
             )
             route = .home(session.user.role)
+            classroomNoticeMessage = classId == nil
+                ? "已切換到個人學習模式。"
+                : "已切換班級。"
+            if session.user.role == .teacher, let classId {
+                startClassroomRosterSync(classId: classId)
+            } else {
+                classroomRosterListener?.cancel()
+                classroomRosterListener = nil
+                classroomStudents = []
+                classroomRosterErrorMessage = nil
+            }
         } catch {
             signInErrorMessage = "無法切換班級，請確認你仍是該班級的成員。"
+            classroomErrorMessage = signInErrorMessage
         }
+    }
+
+    func loadClassrooms() async {
+        guard currentUser != nil, !isLoadingClassrooms else { return }
+        isLoadingClassrooms = true
+        classroomErrorMessage = nil
+        do {
+            classrooms = try await classroomService.listClassrooms()
+            if let restored = try? await authService.restorePreviousSession(),
+               currentUser?.id == restored.user.id {
+                applyClassSession(restored)
+            }
+            if currentProfile?.role == .teacher,
+               let classId = currentProfile?.activeClassId {
+                startClassroomRosterSync(classId: classId)
+            } else {
+                classroomRosterListener?.cancel()
+                classroomRosterListener = nil
+                classroomStudents = []
+            }
+        } catch {
+            classroomErrorMessage = classroomMessage(for: error)
+        }
+        isLoadingClassrooms = false
+    }
+
+    func loadClassroomStudents(classId: String) async {
+        guard currentProfile?.role == .teacher,
+              currentProfile?.activeClassId == classId
+        else { return }
+        isLoadingClassroomStudents = true
+        classroomRosterErrorMessage = nil
+        do {
+            let students = try await classroomService.listStudents(classId: classId)
+            guard currentProfile?.activeClassId == classId else {
+                isLoadingClassroomStudents = false
+                return
+            }
+            classroomStudents = students
+        } catch {
+            if currentProfile?.activeClassId == classId,
+               classroomStudents.isEmpty {
+                classroomRosterErrorMessage = classroomMessage(for: error)
+            }
+        }
+        isLoadingClassroomStudents = false
+    }
+
+    private func startClassroomRosterSync(classId: String) {
+        classroomRosterListener?.cancel()
+        classroomStudents = []
+        classroomRosterErrorMessage = nil
+        isLoadingClassroomStudents = true
+        classroomRosterListener = classroomService.startStudentListener(
+            classId: classId
+        ) { [weak self] students in
+            guard let self, self.currentProfile?.activeClassId == classId else { return }
+            self.classroomStudents = students
+            self.classroomRosterErrorMessage = nil
+            self.isLoadingClassroomStudents = false
+        } onError: { [weak self] error in
+            guard let self, self.currentProfile?.activeClassId == classId else { return }
+            self.classroomRosterErrorMessage = self.classroomMessage(for: error)
+            self.isLoadingClassroomStudents = false
+        }
+        Task { [weak self] in
+            await self?.loadClassroomStudents(classId: classId)
+        }
+    }
+
+    @discardableResult
+    func createClassroom(name: String) async -> Bool {
+        guard !isManagingClassroom else { return false }
+        isManagingClassroom = true
+        clearClassroomFeedback()
+        do {
+            let classroom = try await classroomService.createClassroom(name: name)
+            upsertClassroom(classroom)
+            await refreshClassSession(fallback: classroom)
+            await refreshClassroomListAfterMutation()
+            startClassroomRosterSync(classId: classroom.classId)
+            classroomNoticeMessage = "班級已建立，可以把代碼分享給學生。"
+            isManagingClassroom = false
+            return true
+        } catch {
+            classroomErrorMessage = classroomMessage(for: error)
+            isManagingClassroom = false
+            return false
+        }
+    }
+
+    @discardableResult
+    func updateClassroom(classId: String, name: String) async -> Bool {
+        guard !isManagingClassroom,
+              currentProfile?.role == .teacher,
+              currentProfile?.activeClassId == classId
+        else { return false }
+        isManagingClassroom = true
+        clearClassroomFeedback()
+        do {
+            let classroom = try await classroomService.updateClassroom(
+                classId: classId,
+                name: name
+            )
+            upsertClassroom(classroom)
+            await refreshClassroomListAfterMutation()
+            classroomNoticeMessage = "班級名稱已更新。"
+            isManagingClassroom = false
+            return true
+        } catch {
+            classroomErrorMessage = classroomMessage(for: error)
+            isManagingClassroom = false
+            return false
+        }
+    }
+
+    @discardableResult
+    func joinClassroom(code: String) async -> Bool {
+        guard !isManagingClassroom else { return false }
+        isManagingClassroom = true
+        clearClassroomFeedback()
+        do {
+            let classroom = try await classroomService.joinClassroom(code: code)
+            upsertClassroom(classroom)
+            await refreshClassSession(fallback: classroom)
+            await refreshClassroomListAfterMutation()
+            classroomNoticeMessage = "已加入「\(classroom.name)」，老師指派的任務會出現在班級頁。"
+            isManagingClassroom = false
+            return true
+        } catch {
+            classroomErrorMessage = classroomMessage(for: error)
+            isManagingClassroom = false
+            return false
+        }
+    }
+
+    @discardableResult
+    func leaveClassroom(classId: String) async -> Bool {
+        guard !isManagingClassroom else { return false }
+        isManagingClassroom = true
+        clearClassroomFeedback()
+        do {
+            try await classroomService.leaveClassroom(classId: classId)
+            classrooms.removeAll { $0.classId == classId }
+            await refreshClassSessionAfterLeaving(classId: classId)
+            await refreshClassroomListAfterMutation()
+            classroomNoticeMessage = "已離開班級。個人學習紀錄與其他功能不受影響。"
+            isManagingClassroom = false
+            return true
+        } catch {
+            classroomErrorMessage = classroomMessage(for: error)
+            isManagingClassroom = false
+            return false
+        }
+    }
+
+    @discardableResult
+    func resetClassroomCode(classId: String) async -> Bool {
+        guard !isManagingClassroom else { return false }
+        isManagingClassroom = true
+        clearClassroomFeedback()
+        do {
+            let classroom = try await classroomService.resetJoinCode(classId: classId)
+            upsertClassroom(classroom)
+            classroomNoticeMessage = "班級代碼已重設；舊代碼已立即失效。"
+            isManagingClassroom = false
+            return true
+        } catch {
+            classroomErrorMessage = classroomMessage(for: error)
+            isManagingClassroom = false
+            return false
+        }
+    }
+
+    func clearClassroomFeedback() {
+        classroomErrorMessage = nil
+        classroomNoticeMessage = nil
     }
 
     func generateDailyMissionWithAI(context: DailyMissionAIContext) async -> AiProxyResponse {
@@ -491,11 +703,87 @@ final class AppState: ObservableObject {
         return firestoreService.hasAcceptedRequiredConsent(uid: uid)
     }
 
+    private func refreshClassSession(fallback classroom: ClassroomSummary) async {
+        if let restored = try? await authService.restorePreviousSession() {
+            applyClassSession(restored)
+            return
+        }
+        guard let currentUser, let currentProfile else { return }
+        let profile = currentProfile.upsertingMembership(
+            classroom.membership,
+            makeActive: true
+        )
+        applyClassSession(
+            AuthSession(
+                user: DemoUser(
+                    id: currentUser.id,
+                    displayName: currentUser.displayName,
+                    role: profile.role
+                ),
+                profile: profile
+            )
+        )
+    }
+
+    private func refreshClassSessionAfterLeaving(classId: String) async {
+        if let restored = try? await authService.restorePreviousSession() {
+            applyClassSession(restored)
+            return
+        }
+        guard let currentUser, let currentProfile else { return }
+        let profile = currentProfile.markingMembershipLeft(classId: classId, at: Date())
+        applyClassSession(
+            AuthSession(
+                user: DemoUser(
+                    id: currentUser.id,
+                    displayName: currentUser.displayName,
+                    role: profile.role
+                ),
+                profile: profile
+            )
+        )
+    }
+
+    private func applyClassSession(_ session: AuthSession) {
+        currentUser = session.user
+        currentProfile = session.profile
+        selectedRole = session.user.role
+        runtimeDiagnostics = runtimeDiagnostics.withSession(
+            user: session.user,
+            profile: session.profile
+        )
+        route = .home(session.user.role)
+    }
+
+    private func refreshClassroomListAfterMutation() async {
+        if let refreshed = try? await classroomService.listClassrooms() {
+            classrooms = refreshed
+        }
+    }
+
+    private func upsertClassroom(_ classroom: ClassroomSummary) {
+        classrooms.removeAll { $0.classId == classroom.classId }
+        classrooms.append(classroom)
+        classrooms.sort { $0.name.localizedStandardCompare($1.name) == .orderedAscending }
+    }
+
+    private func classroomMessage(for error: Error) -> String {
+        (error as? LocalizedError)?.errorDescription
+            ?? "目前無法完成班級操作，請稍後再試。"
+    }
+
     private func clearFailedAuthenticationState() {
         currentUser = nil
         currentProfile = nil
         hasAcceptedConsent = false
         signingInRole = nil
+        classrooms = []
+        classroomStudents = []
+        classroomRosterListener?.cancel()
+        classroomRosterListener = nil
+        classroomErrorMessage = nil
+        classroomRosterErrorMessage = nil
+        classroomNoticeMessage = nil
         runtimeDiagnostics = runtimeDiagnostics.clearingSession()
     }
 

@@ -14,6 +14,7 @@ struct EnglishPlusApp: App {
                 aiService: services.aiService,
                 evidenceUploadService: services.evidenceUploadService,
                 volunteerReviewService: services.volunteerReviewService,
+                classroomService: services.classroomService,
                 runtimeDiagnostics: services.runtimeDiagnostics
             )
         )

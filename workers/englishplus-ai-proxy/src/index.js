@@ -6,6 +6,8 @@ const MAX_EVIDENCE_FILES_PER_APPLICANT = 5;
 const MAX_EVIDENCE_TOTAL_BYTES = 25 * 1024 * 1024;
 const EVIDENCE_RESERVATION_SECONDS = 10 * 60;
 const REVIEW_EVIDENCE_RETENTION_DAYS = 30;
+const CLASS_JOIN_WINDOW_SECONDS = 15 * 60;
+const CLASS_JOIN_MAX_ATTEMPTS = 12;
 const FINAL_REVIEW_STATUSES = new Set(["approved", "rejected", "suspended"]);
 const ALLOWED_EVIDENCE_MIME_TYPES = new Set([
   "application/pdf",
@@ -31,7 +33,7 @@ const TASKS = new Set([
 
 const CORS_HEADERS = {
   "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Methods": "GET,POST,PUT,DELETE,OPTIONS",
+  "Access-Control-Allow-Methods": "GET,POST,PATCH,PUT,DELETE,OPTIONS",
   "Access-Control-Allow-Headers": "Authorization,Content-Type",
   "Access-Control-Max-Age": "86400",
 };
@@ -77,6 +79,45 @@ export default {
 
     if (url.pathname === "/admin/evidence" && request.method === "GET") {
       return handleAdminEvidence(request, env, url);
+    }
+
+    if (url.pathname === "/classrooms" && request.method === "GET") {
+      return handleClassroomList(request, env);
+    }
+
+    if (url.pathname === "/classrooms" && request.method === "POST") {
+      return handleClassroomCreate(request, env);
+    }
+
+    if (url.pathname === "/classrooms/bootstrap" && request.method === "POST") {
+      return handleClassroomBootstrap(request, env);
+    }
+
+    if (url.pathname === "/classrooms/join" && request.method === "POST") {
+      return handleClassroomJoin(request, env);
+    }
+
+    const classroomStudents = url.pathname.match(
+      /^\/classrooms\/([A-Z0-9-]{3,64})\/students$/
+    );
+    if (classroomStudents && request.method === "GET") {
+      return handleClassroomStudentList(request, env, classroomStudents[1]);
+    }
+
+    const classroomSettings = url.pathname.match(
+      /^\/classrooms\/([A-Z0-9-]{3,64})$/
+    );
+    if (classroomSettings && request.method === "PATCH") {
+      return handleClassroomUpdate(request, env, classroomSettings[1]);
+    }
+
+    const classroomAction = url.pathname.match(
+      /^\/classrooms\/([A-Z0-9-]{3,64})\/(leave|reset-code)$/
+    );
+    if (classroomAction && request.method === "POST") {
+      return classroomAction[2] === "leave"
+        ? handleClassroomLeave(request, env, classroomAction[1])
+        : handleClassroomCodeReset(request, env, classroomAction[1]);
     }
 
     return jsonResponse({ ok: false, error: "NOT_FOUND" }, 404);
@@ -395,6 +436,1101 @@ async function handleAdminEvidence(request, env, url) {
   } catch (error) {
     return authOrValidationError(error);
   }
+}
+
+async function handleClassroomList(request, env) {
+  try {
+    const user = await requireFirebaseUser(request, env);
+    const classrooms = await listClassroomsForUser(env, user);
+    return jsonResponse({ ok: true, classrooms });
+  } catch (error) {
+    if (error?.status) return authOrValidationError(error);
+    return jsonResponse({ ok: false, error: "CLASSROOM_LIST_FAILED" }, 502);
+  }
+}
+
+async function handleClassroomCreate(request, env) {
+  try {
+    const user = await requireFirebaseUser(request, env);
+    const input = normalizeClassroomCreateRequest(await request.json());
+    const classroom = await createClassroom(env, user, input.name);
+    return jsonResponse({ ok: true, classroom }, 201);
+  } catch (error) {
+    if (error?.status) return authOrValidationError(error);
+    return jsonResponse({ ok: false, error: "CLASSROOM_CREATE_FAILED" }, 502);
+  }
+}
+
+async function handleClassroomBootstrap(request, env) {
+  try {
+    const user = await requireFirebaseUser(request, env);
+    const migrated = await ensureLegacyClassroomAccount(env, user);
+    return jsonResponse({ ok: true, migrated });
+  } catch (error) {
+    if (error?.status) return authOrValidationError(error);
+    return jsonResponse({ ok: false, error: "CLASSROOM_BOOTSTRAP_FAILED" }, 502);
+  }
+}
+
+async function handleClassroomJoin(request, env) {
+  try {
+    const user = await requireFirebaseUser(request, env);
+    const input = normalizeClassroomJoinRequest(await request.json());
+    const classroom = await joinClassroom(env, user, input.code);
+    return jsonResponse({ ok: true, classroom });
+  } catch (error) {
+    if (error?.status) return authOrValidationError(error);
+    return jsonResponse({ ok: false, error: "CLASSROOM_JOIN_FAILED" }, 502);
+  }
+}
+
+async function handleClassroomLeave(request, env, classId) {
+  try {
+    const user = await requireFirebaseUser(request, env);
+    await leaveClassroom(env, user, classId);
+    return jsonResponse({ ok: true, classId, left: true });
+  } catch (error) {
+    if (error?.status) return authOrValidationError(error);
+    return jsonResponse({ ok: false, error: "CLASSROOM_LEAVE_FAILED" }, 502);
+  }
+}
+
+async function handleClassroomCodeReset(request, env, classId) {
+  try {
+    const user = await requireFirebaseUser(request, env);
+    const classroom = await resetClassroomCode(env, user, classId);
+    return jsonResponse({ ok: true, classroom });
+  } catch (error) {
+    if (error?.status) return authOrValidationError(error);
+    return jsonResponse({ ok: false, error: "CLASSROOM_CODE_RESET_FAILED" }, 502);
+  }
+}
+
+async function handleClassroomStudentList(request, env, classId) {
+  try {
+    const user = await requireFirebaseUser(request, env);
+    const students = await listClassroomStudents(env, user, classId);
+    return jsonResponse({ ok: true, classId, students });
+  } catch (error) {
+    if (error?.status) return authOrValidationError(error);
+    return jsonResponse({ ok: false, error: "CLASSROOM_STUDENT_LIST_FAILED" }, 502);
+  }
+}
+
+async function handleClassroomUpdate(request, env, classId) {
+  try {
+    const user = await requireFirebaseUser(request, env);
+    const input = normalizeClassroomUpdateRequest(await request.json());
+    const classroom = await updateClassroom(env, user, classId, input);
+    return jsonResponse({ ok: true, classroom });
+  } catch (error) {
+    if (error?.status) return authOrValidationError(error);
+    return jsonResponse({ ok: false, error: "CLASSROOM_UPDATE_FAILED" }, 502);
+  }
+}
+
+function normalizeClassroomCreateRequest(raw) {
+  const name = safeString(raw?.name)?.normalize("NFKC").replace(/\s+/g, " ");
+  if (!name || name.length < 2 || name.length > 40 || /[\u0000-\u001F]/.test(name)) {
+    throw httpError(400, "INVALID_CLASSROOM_NAME");
+  }
+  return { name };
+}
+
+function normalizeClassroomUpdateRequest(raw) {
+  const normalized = normalizeClassroomCreateRequest({ name: raw?.name });
+  return { name: normalized.name };
+}
+
+function normalizeClassroomCode(value) {
+  const code = safeString(value)?.normalize("NFKC").toUpperCase().replace(/[^A-Z0-9]/g, "");
+  if (!code || !/^[A-HJ-NP-Z2-9]{8}$/.test(code)) {
+    throw httpError(400, "INVALID_CLASSROOM_CODE");
+  }
+  return code;
+}
+
+function normalizeClassroomJoinRequest(raw) {
+  return { code: normalizeClassroomCode(raw?.code) };
+}
+
+function generateClassCode(randomBytes) {
+  const alphabet = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
+  const bytes = randomBytes || crypto.getRandomValues(new Uint8Array(8));
+  if (!(bytes instanceof Uint8Array) || bytes.length < 8) {
+    throw new Error("Eight random bytes are required.");
+  }
+  return Array.from(bytes.slice(0, 8), (byte) => alphabet[byte % alphabet.length]).join("");
+}
+
+async function createClassroom(env, user, name) {
+  const teacherUid = user.sub;
+  const context = await classroomUserContext(env, user);
+  requireActiveRole(context.profile, "teacher", "TEACHER_ACCOUNT_REQUIRED");
+  const classId = `CLS-${crypto.randomUUID().replace(/-/g, "").slice(0, 20).toUpperCase()}`;
+  const now = new Date().toISOString();
+
+  for (let attempt = 0; attempt < 5; attempt += 1) {
+    const joinCode = generateClassCode();
+    try {
+      await commitClassroomCreation({
+        ...context,
+        classId,
+        name,
+        joinCode,
+        teacherUid,
+        displayName: firestoreString(context.profile.fields?.displayName) || "老師",
+        now,
+      });
+      return classroomSummary({
+        classId,
+        name,
+        role: "teacher",
+        status: "active",
+        joinedAt: now,
+        visibilityStartsAt: now,
+        leftAt: "",
+        joinCode,
+      });
+    } catch (error) {
+      if (error?.code !== "FIRESTORE_CONFLICT" || attempt === 4) throw error;
+    }
+  }
+  throw httpError(503, "CLASSROOM_CODE_UNAVAILABLE");
+}
+
+async function joinClassroom(env, user, joinCode) {
+  const studentUid = user.sub;
+  const context = await classroomUserContext(env, user);
+  requireActiveRole(context.profile, "student", "STUDENT_ACCOUNT_REQUIRED");
+  await assertClassJoinRateLimit(context, studentUid);
+  const mapping = await getFirestoreDocument(
+    context.projectId,
+    context.accessToken,
+    `classJoinCodes/${joinCode}`,
+    context.firestoreBaseURL
+  );
+  if (!mapping) throw httpError(404, "CLASSROOM_CODE_NOT_FOUND");
+  const classId = firestoreString(mapping.fields?.classId);
+  if (!/^[A-Z0-9-]{3,64}$/.test(classId)) {
+    throw httpError(404, "CLASSROOM_CODE_NOT_FOUND");
+  }
+  const classroom = await getFirestoreDocument(
+    context.projectId,
+    context.accessToken,
+    `classes/${classId}`,
+    context.firestoreBaseURL
+  );
+  if (!classroom || classroom.fields?.active?.booleanValue !== true) {
+    throw httpError(410, "CLASSROOM_UNAVAILABLE");
+  }
+
+  const now = new Date().toISOString();
+  const className = firestoreString(classroom.fields?.name) || "English+ 班級";
+  const displayName = firestoreString(context.profile.fields?.displayName) || "學生";
+  const memberPath = `classes/${classId}/members/${studentUid}`;
+  const existingMembership = await getFirestoreDocument(
+    context.projectId,
+    context.accessToken,
+    memberPath,
+    context.firestoreBaseURL
+  );
+  const firstJoinedAt = existingMembership?.fields?.joinedAt?.timestampValue || now;
+  // Rejoining the same class must not erase the historical reporting window.
+  // The class-scoped records were already visible to this teacher before the
+  // student left, while personal-scope records live on a separate path.
+  const visibilityStartsAt = existingMembership
+    ? existingMembership.fields?.visibilityStartsAt?.timestampValue || firstJoinedAt
+    : now;
+  const root = firestoreRoot(context.projectId);
+
+  const writes = [
+    {
+      update: {
+        name: `${root}/${memberPath}`,
+        fields: membershipFields({
+          uid: studentUid,
+          classId,
+          className,
+          role: "student",
+          displayName,
+          joinedAt: firstJoinedAt,
+          visibilityStartsAt,
+          leftAt: null,
+        }),
+      },
+    },
+    {
+      update: {
+        name: `${root}/users/${studentUid}/classMemberships/${classId}`,
+        fields: userMembershipFields({
+          classId,
+          className,
+          role: "student",
+          joinedAt: firstJoinedAt,
+          visibilityStartsAt,
+          leftAt: null,
+        }),
+      },
+    },
+    {
+      update: {
+        name: `${root}/classes/${classId}/students/${studentUid}`,
+        fields: {
+          uid: { stringValue: studentUid },
+          displayName: { stringValue: displayName },
+          gradeBand: { stringValue: "" },
+          classCode: { stringValue: classId },
+          currentLevel: { stringValue: "基礎" },
+          recommendedTrack: { stringValue: "steady" },
+          lastMissionStatus: { stringValue: "active" },
+          riskLevel: { stringValue: "low" },
+          membershipStatus: { stringValue: "active" },
+          joinedAt: { timestampValue: firstJoinedAt },
+          visibilityStartsAt: { timestampValue: visibilityStartsAt },
+          leftAt: { nullValue: null },
+          updatedAt: { timestampValue: now },
+        },
+      },
+    },
+    userActiveClassWrite(root, studentUid, classId, now, context),
+  ];
+  const legacyMigration = legacyMembershipMigrationWrite(context, root, now);
+  if (legacyMigration && context.legacyClassId !== classId) {
+    writes.splice(writes.length - 1, 0, legacyMigration);
+  }
+  await commitFirestoreWrites(context, writes);
+
+  return classroomSummary({
+    classId,
+    name: className,
+    role: "student",
+    status: "active",
+    joinedAt: firstJoinedAt,
+    visibilityStartsAt,
+    leftAt: "",
+    joinCode: "",
+  });
+}
+
+async function leaveClassroom(env, user, classId) {
+  const uid = user.sub;
+  const context = await classroomUserContext(env, user);
+  requireActiveRole(context.profile, "student", "STUDENT_ACCOUNT_REQUIRED");
+  const memberPath = `classes/${classId}/members/${uid}`;
+  const membership = await getFirestoreDocument(
+    context.projectId,
+    context.accessToken,
+    memberPath,
+    context.firestoreBaseURL
+  );
+  if (!membership || !membershipIsActiveDocument(membership) || firestoreString(membership.fields?.role) !== "student") {
+    throw httpError(409, "CLASSROOM_MEMBERSHIP_INACTIVE");
+  }
+  const now = new Date().toISOString();
+  const activeClassId = firestoreString(context.profile.fields?.activeClassId);
+  const root = firestoreRoot(context.projectId);
+  const statusFields = {
+    status: { stringValue: "left" },
+    active: { booleanValue: false },
+    leftAt: { timestampValue: now },
+    updatedAt: { timestampValue: now },
+  };
+
+  await commitFirestoreWrites(context, [
+    maskedUpdateWrite(`${root}/${memberPath}`, statusFields, Object.keys(statusFields), membership.updateTime),
+    maskedUpdateWrite(
+      `${root}/users/${uid}/classMemberships/${classId}`,
+      statusFields,
+      Object.keys(statusFields)
+    ),
+    maskedUpdateWrite(
+      `${root}/classes/${classId}/students/${uid}`,
+      {
+        membershipStatus: { stringValue: "left" },
+        leftAt: { timestampValue: now },
+        updatedAt: { timestampValue: now },
+      },
+      ["membershipStatus", "leftAt", "updatedAt"]
+    ),
+    userActiveClassWrite(
+      root,
+      uid,
+      activeClassId === classId ? null : activeClassId || null,
+      now,
+      context
+    ),
+  ]);
+}
+
+async function resetClassroomCode(env, user, classId) {
+  const teacherUid = user.sub;
+  const context = await classroomUserContext(env, user);
+  requireActiveRole(context.profile, "teacher", "TEACHER_ACCOUNT_REQUIRED");
+  const [classroom, membership, admin] = await Promise.all([
+    getFirestoreDocument(
+      context.projectId,
+      context.accessToken,
+      `classes/${classId}`,
+      context.firestoreBaseURL
+    ),
+    getFirestoreDocument(
+      context.projectId,
+      context.accessToken,
+      `classes/${classId}/members/${teacherUid}`,
+      context.firestoreBaseURL
+    ),
+    getFirestoreDocument(
+      context.projectId,
+      context.accessToken,
+      `classAdmins/${classId}`,
+      context.firestoreBaseURL
+    ),
+  ]);
+  if (!classroom || !membership) throw httpError(404, "CLASSROOM_NOT_FOUND");
+  const existingOwnerUid = firestoreString(classroom.fields?.ownerTeacherUid);
+  if (
+    (existingOwnerUid && existingOwnerUid !== teacherUid) ||
+    firestoreString(membership.fields?.role) !== "teacher" ||
+    !membershipIsActiveDocument(membership)
+  ) {
+    throw httpError(403, "CLASSROOM_OWNER_REQUIRED");
+  }
+
+  const oldCode = firestoreString(admin?.fields?.joinCode);
+  const newCode = await unusedClassroomCode(context);
+  const now = new Date().toISOString();
+  const version = admin
+    ? Number(admin.fields?.codeVersion?.integerValue || 1) + 1
+    : 1;
+  const root = firestoreRoot(context.projectId);
+  const writes = [];
+  if (oldCode) writes.push({ delete: `${root}/classJoinCodes/${oldCode}` });
+  writes.push(
+    {
+      update: {
+        name: `${root}/classJoinCodes/${newCode}`,
+        fields: {
+          classId: { stringValue: classId },
+          active: { booleanValue: true },
+          codeVersion: { integerValue: String(version) },
+          createdAt: { timestampValue: now },
+        },
+      },
+      currentDocument: { exists: false },
+    },
+    admin
+      ? maskedUpdateWrite(
+          `${root}/classAdmins/${classId}`,
+          {
+            joinCode: { stringValue: newCode },
+            codeVersion: { integerValue: String(version) },
+            updatedAt: { timestampValue: now },
+          },
+          ["joinCode", "codeVersion", "updatedAt"],
+          admin.updateTime
+        )
+      : {
+          update: {
+            name: `${root}/classAdmins/${classId}`,
+            fields: {
+              classId: { stringValue: classId },
+              ownerTeacherUid: { stringValue: teacherUid },
+              joinCode: { stringValue: newCode },
+              codeVersion: { integerValue: "1" },
+              createdAt: { timestampValue: now },
+              updatedAt: { timestampValue: now },
+            },
+          },
+          currentDocument: { exists: false },
+        },
+    maskedUpdateWrite(
+      `${root}/classes/${classId}`,
+      {
+        ownerTeacherUid: { stringValue: existingOwnerUid || teacherUid },
+        updatedAt: { timestampValue: now },
+      },
+      ["ownerTeacherUid", "updatedAt"],
+      classroom.updateTime
+    )
+  );
+  await commitFirestoreWrites(context, writes);
+
+  return classroomSummary({
+    classId,
+    name: firestoreString(classroom.fields?.name) || "English+ 班級",
+    role: "teacher",
+    status: "active",
+    joinedAt: membership.fields?.joinedAt?.timestampValue || now,
+    visibilityStartsAt: membership.fields?.visibilityStartsAt?.timestampValue || now,
+    leftAt: "",
+    joinCode: newCode,
+  });
+}
+
+async function listClassroomStudents(env, user, classId) {
+  const context = await classroomUserContext(env, user);
+  await requireOwnedTeacherClassroom(context, user.sub, classId);
+  const memberships = await listFirestoreCollection(
+    context.projectId,
+    context.accessToken,
+    `classes/${classId}/members`,
+    context.firestoreBaseURL
+  );
+  const activeStudents = memberships.filter((membership) =>
+    membershipIsActiveDocument(membership)
+      && firestoreString(membership.fields?.role) === "student"
+  );
+
+  const students = await Promise.all(activeStudents.map(async (membership) => {
+    const uid = documentId(membership.name);
+    const summary = await getFirestoreDocument(
+      context.projectId,
+      context.accessToken,
+      `classes/${classId}/students/${uid}`,
+      context.firestoreBaseURL
+    );
+    const fields = summary?.fields || {};
+    const moodValue = Number(fields.lastMoodScore?.integerValue);
+    return {
+      id: uid,
+      studentUid: uid,
+      studentName: firestoreString(fields.displayName)
+        || firestoreString(membership.fields?.displayName)
+        || "學生",
+      classId,
+      gradeBand: firestoreString(fields.gradeBand),
+      currentLevel: firestoreString(fields.currentLevel) || "待評估",
+      recommendedTrack: firestoreString(fields.recommendedTrack) || "steady",
+      moodScore: Number.isInteger(moodValue) ? moodValue : null,
+      riskLevel: firestoreString(fields.riskLevel) || "low",
+      missionStatus: firestoreString(fields.lastMissionStatus) || "notStarted",
+      membershipStatus: firestoreString(fields.membershipStatus) || "active",
+      lastActivityAt: fields.lastActivityAt?.timestampValue || null,
+      joinedAt: membership.fields?.joinedAt?.timestampValue || "",
+    };
+  }));
+
+  return students.sort((left, right) =>
+    left.studentName.localeCompare(right.studentName, "zh-Hant")
+  );
+}
+
+async function updateClassroom(env, user, classId, input) {
+  const context = await classroomUserContext(env, user);
+  const { classroom, membership, admin } = await requireOwnedTeacherClassroom(
+    context,
+    user.sub,
+    classId
+  );
+  const memberships = await listFirestoreCollection(
+    context.projectId,
+    context.accessToken,
+    `classes/${classId}/members`,
+    context.firestoreBaseURL
+  );
+  if (memberships.length > 240) {
+    throw httpError(409, "CLASSROOM_TOO_LARGE_TO_RENAME");
+  }
+
+  const now = new Date().toISOString();
+  const root = firestoreRoot(context.projectId);
+  const writes = [
+    maskedUpdateWrite(
+      `${root}/classes/${classId}`,
+      {
+        name: { stringValue: input.name },
+        ownerTeacherUid: { stringValue: user.sub },
+        updatedAt: { timestampValue: now },
+      },
+      ["name", "ownerTeacherUid", "updatedAt"],
+      classroom.updateTime
+    ),
+  ];
+  for (const member of memberships) {
+    const uid = documentId(member.name);
+    const role = firestoreString(member.fields?.role);
+    if (!uid || !new Set(["student", "teacher", "volunteer"]).has(role)) continue;
+    writes.push(
+      maskedUpdateWrite(
+        `${root}/classes/${classId}/members/${uid}`,
+        {
+          className: { stringValue: input.name },
+          updatedAt: { timestampValue: now },
+        },
+        ["className", "updatedAt"]
+      )
+    );
+  }
+  await commitFirestoreWrites(context, writes);
+
+  return classroomSummary({
+    classId,
+    name: input.name,
+    role: "teacher",
+    status: "active",
+    joinedAt: membership.fields?.joinedAt?.timestampValue || now,
+    visibilityStartsAt: membership.fields?.visibilityStartsAt?.timestampValue || now,
+    leftAt: "",
+    joinCode: firestoreString(admin?.fields?.joinCode),
+  });
+}
+
+async function requireOwnedTeacherClassroom(context, teacherUid, classId) {
+  requireActiveRole(context.profile, "teacher", "TEACHER_ACCOUNT_REQUIRED");
+  const [classroom, membership, admin] = await Promise.all([
+    getFirestoreDocument(
+      context.projectId,
+      context.accessToken,
+      `classes/${classId}`,
+      context.firestoreBaseURL
+    ),
+    getFirestoreDocument(
+      context.projectId,
+      context.accessToken,
+      `classes/${classId}/members/${teacherUid}`,
+      context.firestoreBaseURL
+    ),
+    getFirestoreDocument(
+      context.projectId,
+      context.accessToken,
+      `classAdmins/${classId}`,
+      context.firestoreBaseURL
+    ),
+  ]);
+  if (!classroom || classroom.fields?.active?.booleanValue !== true || !membership) {
+    throw httpError(404, "CLASSROOM_NOT_FOUND");
+  }
+  const ownerTeacherUid = firestoreString(classroom.fields?.ownerTeacherUid)
+    || firestoreString(admin?.fields?.ownerTeacherUid);
+  if (
+    (ownerTeacherUid && ownerTeacherUid !== teacherUid)
+    || firestoreString(membership.fields?.role) !== "teacher"
+    || !membershipIsActiveDocument(membership)
+  ) {
+    throw httpError(403, "CLASSROOM_OWNER_REQUIRED");
+  }
+  return { classroom, membership, admin };
+}
+
+async function listClassroomsForUser(env, user) {
+  const uid = user.sub;
+  const context = await classroomUserContext(env, user);
+  const memberships = await listFirestoreCollection(
+    context.projectId,
+    context.accessToken,
+    `users/${uid}/classMemberships`,
+    context.firestoreBaseURL
+  );
+  const activeMemberships = memberships.filter(membershipIsActiveDocument);
+  const activeClassId = firestoreString(context.profile.fields?.activeClassId);
+  if (
+    activeClassId &&
+    !activeMemberships.some((item) => {
+      const itemClassId = membershipClassId(item);
+      return itemClassId === activeClassId;
+    })
+  ) {
+    const legacyMembership = await getFirestoreDocument(
+      context.projectId,
+      context.accessToken,
+      `classes/${activeClassId}/members/${uid}`,
+      context.firestoreBaseURL
+    );
+    if (legacyMembership && membershipIsActiveDocument(legacyMembership)) {
+      activeMemberships.push(legacyMembership);
+    }
+  }
+  const summaries = await Promise.all(activeMemberships.map(async (membership) => {
+    const classId = membershipClassId(membership);
+    const role = firestoreString(membership.fields?.role);
+    const classroom = await getFirestoreDocument(
+      context.projectId,
+      context.accessToken,
+      `classes/${classId}`,
+      context.firestoreBaseURL
+    );
+    if (!classroom || classroom.fields?.active?.booleanValue !== true) return null;
+    const admin = role === "teacher"
+      ? await getFirestoreDocument(
+          context.projectId,
+          context.accessToken,
+          `classAdmins/${classId}`,
+          context.firestoreBaseURL
+        )
+      : null;
+    return classroomSummary({
+      classId,
+      name: firestoreString(classroom.fields?.name) || firestoreString(membership.fields?.className) || "English+ 班級",
+      role,
+      status: "active",
+      joinedAt: membership.fields?.joinedAt?.timestampValue || "",
+      visibilityStartsAt: membership.fields?.visibilityStartsAt?.timestampValue || "",
+      leftAt: "",
+      joinCode: role === "teacher" ? firestoreString(admin?.fields?.joinCode) : "",
+    });
+  }));
+  return summaries.filter(Boolean).sort((left, right) => left.name.localeCompare(right.name, "zh-Hant"));
+}
+
+async function classroomUserContext(env, user) {
+  const uid = user.sub;
+  const projectId = env.FIREBASE_PROJECT_ID || "englishplus-testflight";
+  const firestoreBaseURL = firestoreEmulatorBaseURL(env);
+  // The Firestore emulator recognizes the reserved owner token as an Admin
+  // request. This branch is reachable only for an explicitly local host.
+  const accessToken = firestoreBaseURL ? "owner" : await serviceAccountAccessToken(env);
+  let profile = await getFirestoreDocument(
+    projectId,
+    accessToken,
+    `users/${uid}`,
+    firestoreBaseURL
+  );
+  if (profile) {
+    return {
+      env,
+      projectId,
+      accessToken,
+      firestoreBaseURL,
+      profile,
+      profileExists: true,
+      firebaseUser: user,
+      legacyMembership: null,
+      legacyClassId: "",
+    };
+  }
+
+  const legacyClassId = "YILAN-CHENGZHI-8A";
+  const legacyMembership = await getFirestoreDocument(
+    projectId,
+    accessToken,
+    `classes/${legacyClassId}/members/${uid}`,
+    firestoreBaseURL
+  );
+  if (!legacyMembership || !membershipIsActiveDocument(legacyMembership)) {
+    throw httpError(404, "ACCOUNT_PROFILE_NOT_FOUND");
+  }
+  const role = firestoreString(legacyMembership.fields?.role);
+  if (!new Set(["student", "teacher", "volunteer"]).has(role)) {
+    throw httpError(403, "ACCOUNT_ROLE_INVALID");
+  }
+  const displayName = firestoreString(legacyMembership.fields?.displayName)
+    || safeString(user.name)
+    || safeString(user.email)
+    || "English+";
+  profile = {
+    fields: {
+      displayName: { stringValue: displayName },
+      preferredName: { stringValue: displayName },
+      primaryRole: { stringValue: role },
+      accountStatus: { stringValue: "active" },
+      active: { booleanValue: true },
+      activeClassId: { stringValue: legacyClassId },
+    },
+  };
+  return {
+    env,
+    projectId,
+    accessToken,
+    firestoreBaseURL,
+    profile,
+    profileExists: false,
+    firebaseUser: user,
+    legacyMembership,
+    legacyClassId,
+  };
+}
+
+async function ensureLegacyClassroomAccount(env, user) {
+  const context = await classroomUserContext(env, user);
+  const now = new Date().toISOString();
+  const root = firestoreRoot(context.projectId);
+  if (context.profileExists) {
+    const legacyClassId = "YILAN-CHENGZHI-8A";
+    const userMembership = await getFirestoreDocument(
+      context.projectId,
+      context.accessToken,
+      `users/${user.sub}/classMemberships/${legacyClassId}`,
+      context.firestoreBaseURL
+    );
+    if (userMembership && membershipIsActiveDocument(userMembership)) return false;
+
+    const legacyMembership = await getFirestoreDocument(
+      context.projectId,
+      context.accessToken,
+      `classes/${legacyClassId}/members/${user.sub}`,
+      context.firestoreBaseURL
+    );
+    if (!legacyMembership || !membershipIsActiveDocument(legacyMembership)) return false;
+
+    const migrationContext = {
+      ...context,
+      legacyMembership,
+      legacyClassId,
+    };
+    const migration = legacyMembershipMigrationWrite(migrationContext, root, now);
+    if (!migration) throw httpError(409, "LEGACY_MEMBERSHIP_MISSING");
+    await commitFirestoreWrites(context, [migration]);
+    return true;
+  }
+
+  const migration = legacyMembershipMigrationWrite(context, root, now);
+  if (!migration) throw httpError(409, "LEGACY_MEMBERSHIP_MISSING");
+  await commitFirestoreWrites(context, [
+    migration,
+    userActiveClassWrite(root, user.sub, context.legacyClassId, now, context),
+  ]);
+  return true;
+}
+
+function requireActiveRole(profile, role, errorCode) {
+  const fields = profile.fields || {};
+  if (
+    firestoreString(fields.primaryRole) !== role ||
+    firestoreString(fields.accountStatus) !== "active" ||
+    fields.active?.booleanValue !== true
+  ) {
+    throw httpError(403, errorCode);
+  }
+}
+
+async function commitClassroomCreation(input) {
+  const root = firestoreRoot(input.projectId);
+  const writes = [
+    {
+      update: {
+        name: `${root}/classes/${input.classId}`,
+        fields: {
+          classId: { stringValue: input.classId },
+          name: { stringValue: input.name },
+          ownerTeacherUid: { stringValue: input.teacherUid },
+          active: { booleanValue: true },
+          createdAt: { timestampValue: input.now },
+          updatedAt: { timestampValue: input.now },
+        },
+      },
+      currentDocument: { exists: false },
+    },
+    {
+      update: {
+        name: `${root}/classAdmins/${input.classId}`,
+        fields: {
+          classId: { stringValue: input.classId },
+          ownerTeacherUid: { stringValue: input.teacherUid },
+          joinCode: { stringValue: input.joinCode },
+          codeVersion: { integerValue: "1" },
+          createdAt: { timestampValue: input.now },
+          updatedAt: { timestampValue: input.now },
+        },
+      },
+      currentDocument: { exists: false },
+    },
+    {
+      update: {
+        name: `${root}/classJoinCodes/${input.joinCode}`,
+        fields: {
+          classId: { stringValue: input.classId },
+          active: { booleanValue: true },
+          codeVersion: { integerValue: "1" },
+          createdAt: { timestampValue: input.now },
+        },
+      },
+      currentDocument: { exists: false },
+    },
+    {
+      update: {
+        name: `${root}/classes/${input.classId}/members/${input.teacherUid}`,
+        fields: membershipFields({
+          uid: input.teacherUid,
+          classId: input.classId,
+          className: input.name,
+          role: "teacher",
+          displayName: input.displayName,
+          joinedAt: input.now,
+          visibilityStartsAt: input.now,
+          leftAt: null,
+        }),
+      },
+      currentDocument: { exists: false },
+    },
+    {
+      update: {
+        name: `${root}/users/${input.teacherUid}/classMemberships/${input.classId}`,
+        fields: userMembershipFields({
+          classId: input.classId,
+          className: input.name,
+          role: "teacher",
+          joinedAt: input.now,
+          visibilityStartsAt: input.now,
+          leftAt: null,
+        }),
+      },
+      currentDocument: { exists: false },
+    },
+    userActiveClassWrite(root, input.teacherUid, input.classId, input.now, input),
+  ];
+  const legacyMigration = legacyMembershipMigrationWrite(input, root, input.now);
+  if (legacyMigration && input.legacyClassId !== input.classId) {
+    writes.splice(writes.length - 1, 0, legacyMigration);
+  }
+  await commitFirestoreWrites(input, writes);
+}
+
+function membershipFields(input) {
+  return {
+    uid: { stringValue: input.uid },
+    classId: { stringValue: input.classId },
+    className: { stringValue: input.className },
+    role: { stringValue: input.role },
+    displayName: { stringValue: input.displayName },
+    status: { stringValue: input.leftAt ? "left" : "active" },
+    active: { booleanValue: !input.leftAt },
+    joinedAt: { timestampValue: input.joinedAt },
+    visibilityStartsAt: { timestampValue: input.visibilityStartsAt },
+    leftAt: input.leftAt ? { timestampValue: input.leftAt } : { nullValue: null },
+    updatedAt: { timestampValue: new Date().toISOString() },
+  };
+}
+
+function userMembershipFields(input) {
+  return {
+    classId: { stringValue: input.classId },
+    className: { stringValue: input.className },
+    role: { stringValue: input.role },
+    groupId: { nullValue: null },
+    status: { stringValue: input.leftAt ? "left" : "active" },
+    active: { booleanValue: !input.leftAt },
+    joinedAt: { timestampValue: input.joinedAt },
+    visibilityStartsAt: { timestampValue: input.visibilityStartsAt },
+    leftAt: input.leftAt ? { timestampValue: input.leftAt } : { nullValue: null },
+    updatedAt: { timestampValue: new Date().toISOString() },
+  };
+}
+
+function userActiveClassWrite(root, uid, classId, now, context) {
+  if (context?.profileExists === false) {
+    const displayName = firestoreString(context.profile?.fields?.displayName) || "English+";
+    const role = firestoreString(context.profile?.fields?.primaryRole) || "student";
+    return {
+      update: {
+        name: `${root}/users/${uid}`,
+        fields: {
+          displayName: { stringValue: displayName },
+          preferredName: { stringValue: displayName },
+          primaryRole: { stringValue: role },
+          createdAt: { timestampValue: now },
+          lastLoginAt: { timestampValue: now },
+          updatedAt: { timestampValue: now },
+          active: { booleanValue: true },
+          activeClassId: classId ? { stringValue: classId } : { nullValue: null },
+          accountStatus: { stringValue: "active" },
+          emailVerificationRequired: { booleanValue: false },
+          provisioningSource: { stringValue: "legacyMigration" },
+          identityProviders: {
+            arrayValue: { values: [{ stringValue: "emailPassword" }] },
+          },
+        },
+      },
+      currentDocument: { exists: false },
+    };
+  }
+  return maskedUpdateWrite(
+    `${root}/users/${uid}`,
+    {
+      activeClassId: classId ? { stringValue: classId } : { nullValue: null },
+      updatedAt: { timestampValue: now },
+    },
+    ["activeClassId", "updatedAt"]
+  );
+}
+
+function legacyMembershipMigrationWrite(context, root, now) {
+  const membership = context?.legacyMembership;
+  const classId = context?.legacyClassId;
+  if (!membership || !classId) return null;
+  const fields = membership.fields || {};
+  const role = firestoreString(fields.role);
+  const joinedAt = fields.joinedAt?.timestampValue || now;
+  return {
+    update: {
+      name: `${root}/users/${context.firebaseUser.sub}/classMemberships/${classId}`,
+      fields: userMembershipFields({
+        classId,
+        className: firestoreString(fields.className) || "English+ 班級",
+        role,
+        joinedAt,
+        visibilityStartsAt: fields.visibilityStartsAt?.timestampValue || joinedAt,
+        leftAt: null,
+      }),
+    },
+  };
+}
+
+function maskedUpdateWrite(name, fields, fieldPaths, updateTime) {
+  return {
+    update: { name, fields },
+    updateMask: { fieldPaths },
+    currentDocument: updateTime ? { updateTime } : { exists: true },
+  };
+}
+
+async function unusedClassroomCode(context) {
+  for (let attempt = 0; attempt < 8; attempt += 1) {
+    const code = generateClassCode();
+    const existing = await getFirestoreDocument(
+      context.projectId,
+      context.accessToken,
+      `classJoinCodes/${code}`,
+      context.firestoreBaseURL
+    );
+    if (!existing) return code;
+  }
+  throw httpError(503, "CLASSROOM_CODE_UNAVAILABLE");
+}
+
+async function commitFirestoreWrites(context, writes) {
+  const endpoint = context.firestoreBaseURL
+    ? `${context.firestoreBaseURL}/v1/projects/${context.projectId}/databases/(default)/documents:commit`
+    : `https://firestore.googleapis.com/v1/projects/${context.projectId}/databases/(default)/documents:commit`;
+  const headers = { "Content-Type": "application/json" };
+  if (context.accessToken) headers.Authorization = `Bearer ${context.accessToken}`;
+  const response = await fetch(
+    endpoint,
+    {
+      method: "POST",
+      headers,
+      body: JSON.stringify({ writes }),
+    }
+  );
+  if (response.ok) return response.json();
+  if (response.status === 409) throw httpError(409, "FIRESTORE_CONFLICT");
+  console.error(JSON.stringify({ event: "firestore_classroom_commit_failed", status: response.status }));
+  throw httpError(502, "FIRESTORE_COMMIT_FAILED");
+}
+
+async function assertClassJoinRateLimit(context, uid) {
+  const path = `classJoinAttempts/${uid}`;
+  const existing = await getFirestoreDocument(
+    context.projectId,
+    context.accessToken,
+    path,
+    context.firestoreBaseURL
+  );
+  const now = new Date();
+  const nowSeconds = Math.floor(now.getTime() / 1000);
+  const startedAt = existing?.fields?.windowStartedAt?.timestampValue;
+  const startedSeconds = startedAt ? Math.floor(Date.parse(startedAt) / 1000) : 0;
+  const sameWindow = Number.isFinite(startedSeconds)
+    && nowSeconds - startedSeconds < CLASS_JOIN_WINDOW_SECONDS;
+  const currentCount = sameWindow
+    ? Number(existing?.fields?.attemptCount?.integerValue || 0)
+    : 0;
+  if (currentCount >= CLASS_JOIN_MAX_ATTEMPTS) {
+    throw httpError(429, "CLASSROOM_JOIN_RATE_LIMIT");
+  }
+  const root = firestoreRoot(context.projectId);
+  const fields = {
+    uid: { stringValue: uid },
+    windowStartedAt: {
+      timestampValue: sameWindow && startedAt ? startedAt : now.toISOString(),
+    },
+    attemptCount: { integerValue: String(currentCount + 1) },
+    updatedAt: { timestampValue: now.toISOString() },
+  };
+  await commitFirestoreWrites(context, [
+    existing
+      ? maskedUpdateWrite(
+          `${root}/${path}`,
+          fields,
+          Object.keys(fields),
+          existing.updateTime
+        )
+      : {
+          update: { name: `${root}/${path}`, fields },
+          currentDocument: { exists: false },
+        },
+  ]);
+}
+
+async function getFirestoreDocument(projectId, accessToken, path, firestoreBaseURL) {
+  const headers = accessToken ? { Authorization: `Bearer ${accessToken}` } : {};
+  const response = await fetch(firestoreDocumentUrl(projectId, path, firestoreBaseURL), { headers });
+  if (response.status === 404) return null;
+  if (!response.ok) throw httpError(502, "FIRESTORE_LOOKUP_FAILED");
+  return response.json();
+}
+
+async function listFirestoreCollection(projectId, accessToken, path, firestoreBaseURL) {
+  const documents = [];
+  let pageToken = "";
+  do {
+    const endpoint = new URL(firestoreDocumentUrl(projectId, path, firestoreBaseURL));
+    endpoint.searchParams.set("pageSize", "100");
+    if (pageToken) endpoint.searchParams.set("pageToken", pageToken);
+    const headers = accessToken ? { Authorization: `Bearer ${accessToken}` } : {};
+    const response = await fetch(endpoint, { headers });
+    if (!response.ok) throw httpError(502, "FIRESTORE_LIST_FAILED");
+    const payload = await response.json();
+    documents.push(...(payload.documents || []));
+    pageToken = safeString(payload.nextPageToken) || "";
+  } while (pageToken);
+  return documents;
+}
+
+function firestoreDocumentUrl(projectId, path, firestoreBaseURL) {
+  const encodedPath = path.split("/").map(encodeURIComponent).join("/");
+  if (firestoreBaseURL) {
+    return `${firestoreBaseURL}/v1/projects/${projectId}/databases/(default)/documents/${encodedPath}`;
+  }
+  return `https://firestore.googleapis.com/v1/projects/${projectId}/databases/(default)/documents/${encodedPath}`;
+}
+
+function firestoreEmulatorBaseURL(env) {
+  const host = safeString(env?.FIRESTORE_EMULATOR_HOST);
+  if (!host) return null;
+  if (!/^(127\.0\.0\.1|localhost):[0-9]{2,5}$/.test(host)) {
+    throw httpError(500, "INVALID_FIRESTORE_EMULATOR_HOST");
+  }
+  return `http://${host}`;
+}
+
+function firestoreRoot(projectId) {
+  return `projects/${projectId}/databases/(default)/documents`;
+}
+
+function documentId(name) {
+  return safeString(name)?.split("/").pop() || "";
+}
+
+function membershipClassId(document) {
+  const explicit = firestoreString(document?.fields?.classId);
+  if (explicit) return explicit;
+  const parts = safeString(document?.name)?.split("/") || [];
+  const membersIndex = parts.lastIndexOf("members");
+  if (membersIndex > 0) return parts[membersIndex - 1];
+  return parts.at(-1) || "";
+}
+
+function membershipIsActiveDocument(document) {
+  const fields = document?.fields || {};
+  const status = firestoreString(fields.status);
+  return (status === "active" || (!status && fields.active?.booleanValue === true))
+    && fields.active?.booleanValue !== false
+    && !fields.leftAt?.timestampValue;
+}
+
+function classroomSummary(input) {
+  return {
+    id: input.classId,
+    classId: input.classId,
+    name: input.name,
+    role: input.role,
+    status: input.status,
+    joinedAt: input.joinedAt,
+    visibilityStartsAt: input.visibilityStartsAt,
+    leftAt: input.leftAt || null,
+    joinCode: input.joinCode || null,
+  };
 }
 
 function normalizeEvidenceTicketRequest(raw) {
@@ -1332,11 +2468,25 @@ function jsonResponse(body, status = 200) {
 
 export {
   evidenceQuotaSnapshot,
+  createClassroom,
   enforceEvidenceQuota,
+  ensureLegacyClassroomAccount,
+  generateClassCode,
+  joinClassroom,
+  leaveClassroom,
+  listClassroomStudents,
+  listClassroomsForUser,
+  membershipIsActiveDocument,
   normalizeEvidenceTicketRequest,
+  normalizeClassroomCode,
+  normalizeClassroomCreateRequest,
+  normalizeClassroomJoinRequest,
+  normalizeClassroomUpdateRequest,
   normalizeRequest,
   reviewTransitionAllowed,
+  resetClassroomCode,
   selectExpiredReviewedApplications,
   signUploadTicket,
   verifyUploadTicket,
+  updateClassroom,
 };

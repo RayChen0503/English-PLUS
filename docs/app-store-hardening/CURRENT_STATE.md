@@ -4,7 +4,7 @@
 > concise. It is the working source of truth, not a replacement for the
 > round reports.
 
-Last verified: 2026-07-12
+Last verified: 2026-07-13
 
 ## Product in one paragraph
 
@@ -17,14 +17,18 @@ learning must remain usable without joining a class.
 ## Repository and release safety
 
 - Repository: `RayChen0503/English-PLUS`
-- Stable baseline: `main` at `cf5381fea1c595632a897b2fa38076358870ff39`
-- Active hardening branch: `codex/app-store-hardening`
+- Stable Block A baseline: `main` at `9bb6307`
+- Active Block B branch: `codex/app-store-hardening-b`
 - Completed hardening rounds:
   - Round 1 - baseline audit (`round-01-baseline-audit.md`)
   - Round 2 - personal and multi-class domain (`round-02-personal-and-class-domain.md`)
   - Round 3 - multi-provider role onboarding (`round-03-multi-provider-role-onboarding.md`)
   - Round 4 - provider UI and private volunteer review (`round-04-provider-ui-private-volunteer-review.md`)
-- Hardening progress: **4/20** rounds complete.
+  - Round 5 - personal learning mode (`round-05-personal-learning-mode.md`)
+  - Round 6 - classroom lifecycle (`round-06-classroom-lifecycle.md`)
+  - Round 7 - teacher class management (`round-07-teacher-class-management.md`)
+  - Round 8 - Firestore synchronization and Block B audit (`round-08-firestore-sync-audit.md`)
+- Hardening progress: **8/20 complete; Round 9 is next**.
 - Do not merge to `main` or trigger Xcode Cloud until the end of a four-round
   block: 4, 8, 12, 16, and 20.
 - Never reset, overwrite, or silently discard user work.
@@ -70,14 +74,44 @@ learning must remain usable without joining a class.
   uploads, and an administrator-only review surface. The Block A final audit
   also verified user-facing quota/retention guidance, failed-upload recovery,
   temporary evidence cleanup, and legal review-state transitions.
+- Round 5 has made personal learning a complete authenticated runtime scope:
+  check-ins, missions, attempts and learning-flow state restore from personal
+  Firestore paths; local fallback data is isolated by UID; and class-only
+  assignments or human support are not shown without a class.
+- Round 6 has added trusted class creation, teacher-resettable private join
+  codes, multi-class joining and switching, safe leaving, legacy membership
+  migration, UID-and-class cache isolation, and historical report boundaries.
+  The deployed Worker passed authenticated student, teacher and volunteer
+  smoke checks at version `de12abab-5cb9-44f8-91e2-33ba859832a2`. Firestore
+  Emulator coverage also passes the complete isolated create, join, switch,
+  reset-code, leave and rejoin lifecycle.
+- Round 7 has made the teacher's selected class a coherent workspace. Its
+  roster comes from active memberships rather than support activity, updates
+  in real time, clears safely when classes change, and exposes deliberate
+  loading, retry and empty states. Teachers can rename only classes they own
+  and assign one task either to one selected student or independently to every
+  active student in that class. Firestore Rules and Worker version
+  `4ee60303-29d4-42fe-ade7-d7ad576d2e7b` are deployed; the authenticated
+  production suite passes `26/26` checks and the complete repository validator
+  sweep passes `67/67`.
+- Round 8 has made the iOS realtime repository, Firestore Rules and deployed
+  query indexes one tested contract. Teacher and volunteer replies now use the
+  real authenticated identity; students can report assignment progress
+  without rewriting assignment scope; post-leave writes and role
+  impersonation are denied; and listener queries match Rules exactly. The
+  complete validator sweep passes `68/68`, the Emulator matrix passes `16/16`,
+  the production Firebase/Worker suite passes `26/26`, and isolated macOS run
+  `29236759213` passed a clean iOS Simulator build.
 
 ## Current technical constraints
 
-- The reviewed Firestore rules are deployed to `englishplus-testflight` and
-  online access-boundary smoke tests pass. A full role matrix in the Firebase
-  emulator remains future defense-in-depth coverage.
-- Swift compilation is not available on this Windows host. Xcode Cloud is the
-  release-level verification gate at the agreed checkpoint.
+- The reviewed Firestore rules are deployed to `englishplus-testflight`; online
+  access-boundary smoke tests and the isolated Firestore Emulator role matrix
+  both pass.
+- Swift compilation is not available on this Windows host. The isolated macOS
+  GitHub Actions gate passed the Round 8 clean iOS Simulator build in run
+  `29236759213`; Xcode Cloud remains the release-level gate at the agreed
+  checkpoint.
 - Existing legacy validators can fail because they assert removed UI or old
   copy. Preserve useful behavioral coverage by replacing them, not by reviving
   obsolete UI.
@@ -108,13 +142,11 @@ learning must remain usable without joining a class.
 
 ## Next gate
 
-The first four-round implementation block is complete. Google, Apple, private
-R2, Worker secrets, Worker deployment, Firestore deployment, quota enforcement,
-retention cleanup, and runtime smoke tests are complete. Before a deliberate
-`main` merge and Xcode Cloud build, assign the chosen owner account the Firebase
-`admin: true` claim and update Xcode Cloud's Firebase plist secret. Round 5 does
-not begin until this block build is green or the user explicitly chooses to
-defer the manual release gate.
+Block B is complete on `codex/app-store-hardening-b`. Round 8 passed the full
+source audit, Worker tests, Functions build, Firestore Emulator role matrix,
+production authenticated smoke suite and isolated macOS Simulator build. Its
+one deliberate merge to `main` is the Xcode Cloud checkpoint for Rounds 5-8.
+Round 9 begins Block C only after that merge is pushed.
 
 ## Maintenance rule
 

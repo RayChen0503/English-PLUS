@@ -177,6 +177,31 @@ struct FirestoreUserMembershipDocument: Codable, Equatable {
     let leftAt: Date?
 }
 
+struct FirestoreClassroomDocument: Codable, Equatable {
+    let classId: String
+    let name: String
+    let ownerTeacherUid: String
+    let active: Bool
+    let createdAt: Date
+    let updatedAt: Date
+}
+
+struct FirestoreClassroomAdminDocument: Codable, Equatable {
+    let classId: String
+    let ownerTeacherUid: String
+    let joinCode: String
+    let codeVersion: Int
+    let createdAt: Date
+    let updatedAt: Date
+}
+
+struct FirestoreClassJoinCodeDocument: Codable, Equatable {
+    let classId: String
+    let active: Bool
+    let codeVersion: Int
+    let createdAt: Date
+}
+
 struct FirestoreStudentDocument: Codable, Equatable {
     let uid: String
     let displayName: String

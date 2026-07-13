@@ -13,6 +13,9 @@ functions/node_modules/
 functions/lib/
 functions/.secret.local
 functions/.env.local
+firebase-tests/node_modules/
 firebase-debug.log
+firestore-debug.log
+ui-debug.log
 workers/**/.dev.vars
 workers/**/.wrangler/

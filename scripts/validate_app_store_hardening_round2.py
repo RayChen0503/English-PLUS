@@ -83,10 +83,11 @@ def main() -> int:
     )
 
     require_markers(
-        "root class sync boundary",
+        "root learning-scope sync boundary",
         root_view,
         [
-            "let activeClassId = currentProfile.activeClassId",
+            "classId: currentProfile.classId",
+            "profile: currentProfile",
             "learningRepository.stopRealtimeSync()",
         ],
         errors,

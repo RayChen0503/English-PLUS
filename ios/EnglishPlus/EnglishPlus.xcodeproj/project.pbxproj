@@ -73,6 +73,7 @@
 		100000000000000000000164 /* VolunteerReviewService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 100000000000000000000063 /* VolunteerReviewService.swift */; };
 		100000000000000000000165 /* VolunteerReviewView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 100000000000000000000064 /* VolunteerReviewView.swift */; };
 		100000000000000000000166 /* GoogleSignInSwift in Frameworks */ = {isa = PBXBuildFile; productRef = 100000000000000000000707 /* GoogleSignInSwift */; };
+		100000000000000000000167 /* ClassroomService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 100000000000000000000065 /* ClassroomService.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -140,6 +141,7 @@
 		100000000000000000000062 /* VolunteerApplicationView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VolunteerApplicationView.swift; sourceTree = "<group>"; };
 		100000000000000000000063 /* VolunteerReviewService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VolunteerReviewService.swift; sourceTree = "<group>"; };
 		100000000000000000000064 /* VolunteerReviewView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VolunteerReviewView.swift; sourceTree = "<group>"; };
+		100000000000000000000065 /* ClassroomService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ClassroomService.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -239,6 +241,7 @@
 				100000000000000000000058 /* FederatedSignInCoordinator.swift */,
 				100000000000000000000060 /* EvidenceUploadService.swift */,
 				100000000000000000000063 /* VolunteerReviewService.swift */,
+				100000000000000000000065 /* ClassroomService.swift */,
 				100000000000000000000045 /* FirebaseAppConfigurator.swift */,
 				100000000000000000000034 /* AiProxyService.swift */,
 				100000000000000000000035 /* MockAiProxyService.swift */,
@@ -490,6 +493,7 @@
 				100000000000000000000162 /* InstitutionPickerView.swift in Sources */,
 				100000000000000000000163 /* VolunteerApplicationView.swift in Sources */,
 				100000000000000000000164 /* VolunteerReviewService.swift in Sources */,
+				100000000000000000000167 /* ClassroomService.swift in Sources */,
 				100000000000000000000165 /* VolunteerReviewView.swift in Sources */,
 				100000000000000000000134 /* PrivacyConsent.swift in Sources */,
 				100000000000000000000138 /* LearningModels.swift in Sources */,

@@ -436,6 +436,7 @@ struct StudentHomeView: View {
             aiResponse: latestWrongAnswerAIResponse,
             supportConfirmation: missionSupportConfirmation,
             supportRequestSent: item.map { missionSupportSentQuestionIds.contains(missionSupportSentKey(for: $0)) } ?? false,
+            canRequestHumanSupport: appState.currentProfile?.activeClassId != nil,
             isLoadingAI: isExplainingWrongAnswer,
             onOpenPractice: openPracticeFromAI,
             onOpenSupport: onOpenSupport,
@@ -456,6 +457,7 @@ struct StudentHomeView: View {
         for item: QuestionBankItem,
         attempt: MissionAttempt
     ) {
+        guard appState.currentProfile?.activeClassId != nil else { return }
         learningRepository.sendQuestionSupportRequest(
             from: appState.currentUser,
             profile: appState.currentProfile,
@@ -730,6 +732,7 @@ private struct FeedbackCard: View {
     let aiResponse: AiProxyResponse?
     let supportConfirmation: String?
     let supportRequestSent: Bool
+    let canRequestHumanSupport: Bool
     let isLoadingAI: Bool
     let onOpenPractice: () -> Void
     let onOpenSupport: () -> Void
@@ -782,6 +785,7 @@ private struct FeedbackCard: View {
                     aiResponse: aiResponse,
                     supportConfirmation: supportConfirmation,
                     supportRequestSent: supportRequestSent,
+                    canRequestHumanSupport: canRequestHumanSupport,
                     isLoadingAI: isLoadingAI,
                     onOpenSupport: onOpenSupport,
                     onAskAI: onAskAI,
@@ -799,6 +803,7 @@ private struct MissionQuestionSupportPanel: View {
     let aiResponse: AiProxyResponse?
     let supportConfirmation: String?
     let supportRequestSent: Bool
+    let canRequestHumanSupport: Bool
     let isLoadingAI: Bool
     let onOpenSupport: () -> Void
     let onAskAI: () -> Void
@@ -810,7 +815,9 @@ private struct MissionQuestionSupportPanel: View {
                 .font(.headline)
                 .foregroundStyle(EPTheme.ink)
 
-            Text("AI 可以立刻再講一次；老師或志工會收到這一題、你的答案與解析。送出後到「支持」查看回覆。")
+            Text(canRequestHumanSupport
+                ? "AI 可以立刻再講一次；也可以把題目送給班級老師與志工，回覆會集中在「支持」。"
+                : "AI 可以立刻換一種方式解釋。加入班級後，這裡也會開啟老師與志工協助。")
                 .font(.caption)
                 .foregroundStyle(EPTheme.secondaryInk)
                 .fixedSize(horizontal: false, vertical: true)
@@ -824,13 +831,15 @@ private struct MissionQuestionSupportPanel: View {
                 .buttonStyle(PrimaryActionButtonStyle())
                 .disabled(isLoadingAI)
 
-                Button(action: onSendSupport) {
-                    Label(supportRequestSent ? "已送出" : "送給老師與志工", systemImage: "paperplane.fill")
-                        .font(.caption.bold())
-                        .frame(maxWidth: .infinity, minHeight: 44)
+                if canRequestHumanSupport {
+                    Button(action: onSendSupport) {
+                        Label(supportRequestSent ? "已送出" : "送給老師與志工", systemImage: "paperplane.fill")
+                            .font(.caption.bold())
+                            .frame(maxWidth: .infinity, minHeight: 44)
+                    }
+                    .buttonStyle(SecondaryActionButtonStyle())
+                    .disabled(supportRequestSent)
                 }
-                .buttonStyle(SecondaryActionButtonStyle())
-                .disabled(supportRequestSent)
             }
 
             if isLoadingAI {

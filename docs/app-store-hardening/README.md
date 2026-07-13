@@ -17,8 +17,8 @@ evidence in the round reports.
 ## Working agreement
 
 - Baseline branch: `main`
-- Hardening branch: `codex/app-store-hardening`
-- Baseline commit: `cf5381fea1c595632a897b2fa38076358870ff39`
+- Current Block B branch: `codex/app-store-hardening-b`
+- Block B baseline commit: `9bb6307`
 - Xcode Cloud gate: merge to `main` only after the agreed checkpoints.
 - Verification cadence: focused checks every round, mini regression every two
   rounds, and full audits after rounds 4, 8, 12, 16, and 20.
@@ -31,9 +31,14 @@ evidence in the round reports.
 | 1 - Baseline audit and freeze | Complete | `round-01-baseline-audit.md` |
 | 2 - Personal mode and class-mode domain model | Complete | `round-02-personal-and-class-domain.md` |
 | 3 - Google/Apple/Email role onboarding | Complete | `round-03-multi-provider-role-onboarding.md` |
+| 4 - Provider UI and private volunteer review | Complete | `round-04-provider-ui-private-volunteer-review.md` |
+| 5 - Personal learning mode | Complete | `round-05-personal-learning-mode.md` |
+| 6 - Classroom lifecycle | Complete | `round-06-classroom-lifecycle.md` |
+| 7 - Teacher class management | Complete | `round-07-teacher-class-management.md` |
+| 8 - Firestore synchronization and Block B audit | Complete | `round-08-firestore-sync-audit.md` |
 
 ## Main-branch safety
 
-Commits in this directory are made on `codex/app-store-hardening`. They do not
+Block B commits are made on `codex/app-store-hardening-b`. They do not
 represent a TestFlight release until the hardening branch is deliberately
 merged into `main` and Xcode Cloud passes.

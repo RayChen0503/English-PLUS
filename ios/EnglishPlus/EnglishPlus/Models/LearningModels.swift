@@ -590,22 +590,30 @@ struct ClassroomReportExport: Equatable {
         let questionLines = questionBankRows.map { "- \($0.typeTitle): \($0.totalCount) 題，\($0.levelSummary)" }
         let actionLines = recommendedActions.map { "- \($0)" }
 
-        return ([
+        var lines = [
             "# \(title)",
             "班級：\(classCode)",
             "產生時間：\(generatedAtText)",
             "",
             "## 班級摘要",
-        ] + metricLines + [
+        ]
+        lines.append(contentsOf: metricLines)
+        lines.append(contentsOf: [
             "",
             "## 優先學生",
-        ] + studentLines + [
+        ])
+        lines.append(contentsOf: studentLines)
+        lines.append(contentsOf: [
             "",
             "## 題庫摘要",
-        ] + questionLines + [
+        ])
+        lines.append(contentsOf: questionLines)
+        lines.append(contentsOf: [
             "",
             "## 建議行動",
-        ] + actionLines).joined(separator: "\n")
+        ])
+        lines.append(contentsOf: actionLines)
+        return lines.joined(separator: "\n")
     }
 
     var htmlBody: String {
