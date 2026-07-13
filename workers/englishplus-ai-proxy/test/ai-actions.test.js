@@ -1,7 +1,55 @@
 import assert from "node:assert/strict";
 import { test } from "vitest";
 
-import { normalizeOutput } from "../src/index.js";
+import { normalizeOutput, normalizeRequest } from "../src/index.js";
+
+test("wrong-answer AI rejects requests without a submitted answer", () => {
+  const base = {
+    taskType: "wrongAnswerExplanation",
+    classId: "PERSONAL-TESTUSER",
+    context: {
+      questionPrompt: "My parents ___ at home.",
+      correctAnswer: "are",
+      attemptCount: 1,
+    },
+  };
+
+  assert.throws(
+    () => normalizeRequest(base),
+    (error) => error.code === "AI_ANSWER_SUBMISSION_REQUIRED"
+  );
+  assert.throws(
+    () => normalizeRequest({
+      ...base,
+      context: { ...base.context, studentAnswer: "尚未作答" },
+    }),
+    (error) => error.code === "AI_ANSWER_SUBMISSION_REQUIRED"
+  );
+  assert.throws(
+    () => normalizeRequest({
+      ...base,
+      context: { ...base.context, studentAnswer: "is", attemptCount: 0 },
+    }),
+    (error) => error.code === "AI_ANSWER_SUBMISSION_REQUIRED"
+  );
+});
+
+test("wrong-answer AI accepts a complete post-submission context", () => {
+  const request = normalizeRequest({
+    taskType: "wrongAnswerExplanation",
+    classId: "PERSONAL-TESTUSER",
+    context: {
+      questionPrompt: "My parents ___ at home.",
+      studentAnswer: "is",
+      correctAnswer: "are",
+      explanation: "A plural subject takes are.",
+      attemptCount: 1,
+    },
+  });
+
+  assert.equal(request.context.studentAnswer, "is");
+  assert.equal(request.context.attemptCount, 1);
+});
 
 test("progress summary becomes a bounded executable practice plan", () => {
   const output = normalizeOutput("progressSummary", {

@@ -15,6 +15,7 @@ struct StudentHomeView: View {
     @State private var isGeneratingMissionWithAI = false
     @State private var isExplainingWrongAnswer = false
     @State private var latestWrongAnswerAIResponse: AiProxyResponse?
+    @State private var missionAIRequestId: UUID?
     @State private var missionSupportConfirmation: String?
     @State private var missionSupportSentQuestionIds = Set<String>()
     @State private var showsHumanSupportConfirmation = false
@@ -364,7 +365,7 @@ struct StudentHomeView: View {
             }
 
             Button("送出答案") {
-                submitMissionAnswerWithAI(for: item)
+                submitMissionAnswer(for: item)
             }
             .buttonStyle(PrimaryActionButtonStyle())
             .disabled(selectedAnswer.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
@@ -424,31 +425,40 @@ struct StudentHomeView: View {
         )
         selectedAnswer = ""
         latestWrongAnswerAIResponse = nil
+        missionAIRequestId = nil
+        isExplainingWrongAnswer = false
     }
 
-    private func submitMissionAnswerWithAI(for item: QuestionBankItem) {
+    private func submitMissionAnswer(for item: QuestionBankItem) {
         guard learningRepository.nextMissionQuestion?.id == item.id else {
             selectedAnswer = ""
             latestWrongAnswerAIResponse = nil
+            missionAIRequestId = nil
+            isExplainingWrongAnswer = false
             missionSupportConfirmation = nil
             return
         }
         guard let attempt = learningRepository.submitMissionAnswer(selectedAnswer) else { return }
         selectedAnswer = ""
         latestWrongAnswerAIResponse = nil
+        missionAIRequestId = nil
+        isExplainingWrongAnswer = false
         missionSupportConfirmation = nil
 
         guard !attempt.isCorrect else { return }
-        let answeredItem = learningRepository.currentMission?.questions.first { $0.id == attempt.questionId } ?? item
-        Task {
-            await askMissionAI(for: answeredItem, attempt: attempt)
-        }
     }
 
     @MainActor
     private func askMissionAI(for item: QuestionBankItem, attempt: MissionAttempt) async {
+        guard learningRepository.latestMissionAttempt?.id == attempt.id else { return }
+        let requestId = UUID()
+        missionAIRequestId = requestId
         isExplainingWrongAnswer = true
-        defer { isExplainingWrongAnswer = false }
+        defer {
+            if missionAIRequestId == requestId {
+                isExplainingWrongAnswer = false
+            }
+        }
 
         let aiContext = WrongAnswerAIContext(
             classId: currentClassId,
@@ -456,7 +466,11 @@ struct StudentHomeView: View {
             attempt: attempt,
             questionItem: item
         )
-        latestWrongAnswerAIResponse = await appState.explainWrongAnswerWithAI(context: aiContext)
+        guard let response = await appState.explainWrongAnswerWithAI(context: aiContext) else { return }
+        guard missionAIRequestId == requestId,
+              learningRepository.latestMissionAttempt?.id == attempt.id
+        else { return }
+        latestWrongAnswerAIResponse = response
     }
 
     private func missionFeedbackCard(for attempt: MissionAttempt) -> some View {
@@ -604,6 +618,8 @@ struct StudentHomeView: View {
         learningRepository.enterFreePracticeMode()
         selectedAnswer = ""
         latestWrongAnswerAIResponse = nil
+        missionAIRequestId = nil
+        isExplainingWrongAnswer = false
         missionSupportConfirmation = nil
         onOpenPractice()
     }
@@ -906,24 +922,24 @@ private struct MissionQuestionSupportPanel: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
-            Label("卡住時可以直接求助", systemImage: "lifepreserver")
+            Label("看完結果，需要再拆一步嗎？", systemImage: "lifepreserver")
                 .font(.headline)
                 .foregroundStyle(EPTheme.ink)
 
             Text(canRequestHumanSupport
-                ? "AI 可以立刻再講一次；也可以把題目送給班級老師與志工，回覆會集中在「支持」。"
-                : "AI 可以立刻換一種方式解釋。加入班級後，這裡也會開啟老師與志工協助。")
+                ? "答案已送出。你可以請 AI 換個方式說明，或把這次作答送給班級老師與志工。"
+                : "答案已送出。你可以請 AI 換個方式說明；加入班級後，也能把這次作答送給真人協助。")
                 .font(.caption)
                 .foregroundStyle(EPTheme.secondaryInk)
                 .fixedSize(horizontal: false, vertical: true)
 
-            HStack(spacing: 8) {
+            VStack(spacing: 8) {
                 Button(action: onAskAI) {
-                    Label(aiResponse == nil ? "問 AI 解題" : "再問 AI 一次", systemImage: "sparkles")
+                    Label(aiResponse == nil ? "請 AI 換個方式解釋" : "請 AI 再解釋一次", systemImage: "sparkles")
                         .font(.caption.bold())
                         .frame(maxWidth: .infinity, minHeight: 44)
                 }
-                .buttonStyle(PrimaryActionButtonStyle())
+                .buttonStyle(SecondaryActionButtonStyle())
                 .disabled(isLoadingAI)
 
                 if canRequestHumanSupport {

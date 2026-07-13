@@ -5058,6 +5058,9 @@ function normalizeRequest(raw) {
     throw new Error("Invalid classId.");
   }
 
+  const context = sanitizeContext(raw.context);
+  validateAiTaskContext(raw.taskType, context);
+
   return {
     taskType: raw.taskType,
     classId,
@@ -5065,8 +5068,26 @@ function normalizeRequest(raw) {
     sessionId: safeString(raw.sessionId),
     qualityMode: raw.qualityMode === "quality" ? "quality" : "free",
     locale: raw.locale === "en-US" ? "en-US" : "zh-TW",
-    context: sanitizeContext(raw.context),
+    context,
   };
+}
+
+function validateAiTaskContext(taskType, context) {
+  if (taskType !== "wrongAnswerExplanation") return;
+
+  const answer = safeString(context.studentAnswer)?.toLocaleLowerCase("zh-TW");
+  const attemptCount = Number(context.attemptCount);
+  if (
+    !safeString(context.questionPrompt)
+    || !safeString(context.correctAnswer)
+    || !answer
+    || answer === "尚未作答"
+    || answer === "not answered"
+    || !Number.isInteger(attemptCount)
+    || attemptCount < 1
+  ) {
+    throw httpError(400, "AI_ANSWER_SUBMISSION_REQUIRED");
+  }
 }
 
 function buildGroqRequest(request, env) {
@@ -5521,6 +5542,7 @@ export {
   normalizeClassroomUpdateRequest,
   normalizeOutput,
   normalizeRequest,
+  validateAiTaskContext,
   personalScopeIdForUid,
   processClassStudentDataBatch,
   processLegacySupportMessageBatch,

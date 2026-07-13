@@ -29,12 +29,11 @@ def main() -> int:
         ("restoreSuspendedPrimarySession", "return from repair"),
         ("practicePhase == .repair", "repair-specific completion"),
         ("practicePhase = .selection", "return to selector"),
-        ("guard practiceResult != nil,", "AI post-submit guard"),
+        ("PostSubmissionAssistancePolicy.canRequestExplanation", "AI post-submit guard"),
         ("if let practiceResult", "post-submit support visibility"),
         (".disabled(practiceResult != nil)", "submitted answer lock"),
         ("practiceRecommendationRequestId", "stale recommendation response protection"),
         ("practiceQuestionAIRequestId", "stale question AI response protection"),
-        ("wrongAnswerAIRequestId", "stale wrong-answer response protection"),
         ("supportRequestId", "stale support request protection"),
         (".id(practicePhase)", "top-aligned layer transitions"),
         ("guard practiceResult == nil,", "duplicate answer submission guard"),
@@ -43,6 +42,8 @@ def main() -> int:
 
     if "startPracticeSession(" in practice:
         errors.append("legacy destructive practice session launcher still exists")
+    if "private func explainPracticeWrongAnswer" in practice:
+        errors.append("practice submission still starts the obsolete automatic AI request")
 
     for token, label in [
         ("PracticeSessionDraftAcceptanceTests", "draft acceptance suite"),

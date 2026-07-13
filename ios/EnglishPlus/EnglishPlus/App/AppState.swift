@@ -766,7 +766,8 @@ final class AppState: ObservableObject {
         return response
     }
 
-    func explainWrongAnswerWithAI(context: WrongAnswerAIContext) async -> AiProxyResponse {
+    func explainWrongAnswerWithAI(context: WrongAnswerAIContext) async -> AiProxyResponse? {
+        guard context.isEligibleForExplanation else { return nil }
         let response = await aiService.explainWrongAnswer(context: context, currentUser: currentUser)
         recordAIResponse(response)
         return response

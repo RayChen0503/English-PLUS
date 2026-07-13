@@ -15,7 +15,6 @@ struct PracticeCenterView: View {
     @State private var practiceAIResponse: AiProxyResponse?
     @State private var recommendedPracticePlan: AIPracticeRecommendationPlan?
     @State private var practiceQuestionAIResponse: AiProxyResponse?
-    @State private var wrongAnswerAIResponse: AiProxyResponse?
     @State private var practiceSupportConfirmation: String?
     @State private var practiceSupportSentQuestionIds: Set<String> = []
     @State private var activePracticeSourceTitle: String?
@@ -28,7 +27,6 @@ struct PracticeCenterView: View {
     @State private var isFreePracticeSessionComplete = false
     @State private var isLoadingPracticeAI = false
     @State private var isLoadingPracticeQuestionAI = false
-    @State private var isLoadingWrongAnswerAI = false
     @State private var wrongAnswerRepairItems: [QuestionBankItem] = []
     @State private var practicePhase: PracticeCenterPhase = .selection
     @State private var suspendedPrimarySession: PracticeSessionMemorySnapshot?
@@ -39,7 +37,6 @@ struct PracticeCenterView: View {
     @State private var didRestorePracticeDraft = false
     @State private var practiceRecommendationRequestId: UUID?
     @State private var practiceQuestionAIRequestId: UUID?
-    @State private var wrongAnswerAIRequestId: UUID?
     @State private var supportRequestId: UUID?
 
     private let freePracticeSessionLimit = 10
@@ -320,7 +317,6 @@ struct PracticeCenterView: View {
                             ) {
                                 practiceAnswer = option
                                 practiceResult = nil
-                                wrongAnswerAIResponse = nil
                                 practiceQuestionAIResponse = nil
                                 practiceSupportConfirmation = nil
                                 didCountCurrentPracticeAnswer = false
@@ -333,50 +329,46 @@ struct PracticeCenterView: View {
                 if let practiceResult {
                     PracticeResultCard(
                         result: practiceResult,
-                        aiResponse: wrongAnswerAIResponse,
-                        isLoadingAI: isLoadingWrongAnswerAI,
                         repairQuestionCount: practicePhase == .primary ? wrongAnswerRepairItems.count : 0,
                         onStartRepair: startWrongAnswerRepair
                     )
-
-                    PracticeInlineSupportPanel(
-                        aiResponse: practiceQuestionAIResponse,
-                        supportConfirmation: practiceSupportConfirmation,
-                        supportRequestSent: practiceSupportSentQuestionIds.contains(practiceSupportSentKey(for: item)),
-                        canRequestHumanSupport: appState.currentProfile?.activeClassId != nil,
-                        isLoadingAI: isLoadingPracticeQuestionAI,
-                        onOpenSupport: onOpenSupport,
-                        onAskAI: {
-                            Task {
-                                await askPracticeAI(for: item)
-                            }
-                        },
-                        onSendSupport: {
-                            Task {
-                                await sendPracticeSupportRequest(for: item)
-                            }
-                        }
-                    )
-                }
-
-                HStack(spacing: 10) {
-                    Button("送出答案") {
-                        submitPracticeAnswer(for: item)
-                    }
-                    .buttonStyle(PrimaryActionButtonStyle())
-                    .disabled(normalizedPracticeAnswer(practiceAnswer).isEmpty || practiceResult != nil)
-                    .opacity((normalizedPracticeAnswer(practiceAnswer).isEmpty || practiceResult != nil) ? 0.45 : 1)
 
                     Button {
                         nextPracticeQuestion()
                     } label: {
                         Label(isLastFreePracticeQuestion ? "完成這組練習" : "下一題", systemImage: isLastFreePracticeQuestion ? "party.popper.fill" : "arrow.right.circle")
                             .font(.subheadline.bold())
-                            .frame(minHeight: 44)
+                            .frame(maxWidth: .infinity, minHeight: 44)
                     }
-                    .buttonStyle(SecondaryActionButtonStyle())
-                    .disabled(practiceResult == nil)
-                    .opacity(practiceResult == nil ? 0.45 : 1)
+                    .buttonStyle(PrimaryActionButtonStyle())
+
+                    if !practiceResult.isCorrect {
+                        PracticeInlineSupportPanel(
+                            aiResponse: practiceQuestionAIResponse,
+                            supportConfirmation: practiceSupportConfirmation,
+                            supportRequestSent: practiceSupportSentQuestionIds.contains(practiceSupportSentKey(for: item)),
+                            canRequestHumanSupport: appState.currentProfile?.activeClassId != nil,
+                            isLoadingAI: isLoadingPracticeQuestionAI,
+                            onOpenSupport: onOpenSupport,
+                            onAskAI: {
+                                Task {
+                                    await askPracticeAI(for: item)
+                                }
+                            },
+                            onSendSupport: {
+                                Task {
+                                    await sendPracticeSupportRequest(for: item)
+                                }
+                            }
+                        )
+                    }
+                } else {
+                    Button("送出答案") {
+                        submitPracticeAnswer(for: item)
+                    }
+                    .buttonStyle(PrimaryActionButtonStyle())
+                    .disabled(normalizedPracticeAnswer(practiceAnswer).isEmpty)
+                    .opacity(normalizedPracticeAnswer(practiceAnswer).isEmpty ? 0.45 : 1)
                 }
             } else {
                 PracticeEmptyState()
@@ -584,16 +576,13 @@ struct PracticeCenterView: View {
         practiceIndex = 0
         practiceAnswer = ""
         practiceResult = nil
-        wrongAnswerAIResponse = nil
         wrongAnswerRepairItems = []
         practiceQuestionAIResponse = nil
         practiceSupportConfirmation = nil
         practiceSupportSentQuestionIds = []
         practiceQuestionAIRequestId = nil
-        wrongAnswerAIRequestId = nil
         supportRequestId = nil
         isLoadingPracticeQuestionAI = false
-        isLoadingWrongAnswerAI = false
         freePracticeAnsweredCount = 0
         freePracticeCorrectCount = 0
         didCountCurrentPracticeAnswer = false
@@ -616,7 +605,6 @@ struct PracticeCenterView: View {
         )
         practiceAnswer = ""
         practiceResult = nil
-        wrongAnswerAIResponse = nil
         wrongAnswerRepairItems = []
         practiceQuestionAIResponse = nil
         practiceSupportConfirmation = nil
@@ -713,7 +701,6 @@ struct PracticeCenterView: View {
             answer: practiceAnswer,
             result: practiceResult,
             questionAIResponse: practiceQuestionAIResponse,
-            wrongAnswerAIResponse: wrongAnswerAIResponse,
             wrongAnswerRepairItems: wrongAnswerRepairItems,
             supportConfirmation: practiceSupportConfirmation,
             supportSentQuestionIds: practiceSupportSentQuestionIds,
@@ -733,7 +720,6 @@ struct PracticeCenterView: View {
         practiceAnswer = snapshot.answer
         practiceResult = snapshot.result
         practiceQuestionAIResponse = snapshot.questionAIResponse
-        wrongAnswerAIResponse = snapshot.wrongAnswerAIResponse
         wrongAnswerRepairItems = snapshot.wrongAnswerRepairItems
         practiceSupportConfirmation = snapshot.supportConfirmation
         practiceSupportSentQuestionIds = snapshot.supportSentQuestionIds
@@ -751,15 +737,12 @@ struct PracticeCenterView: View {
         practiceAnswer = ""
         practiceResult = nil
         practiceQuestionAIResponse = nil
-        wrongAnswerAIResponse = nil
         wrongAnswerRepairItems = []
         practiceSupportConfirmation = nil
         practiceSupportSentQuestionIds = []
         practiceQuestionAIRequestId = nil
-        wrongAnswerAIRequestId = nil
         supportRequestId = nil
         isLoadingPracticeQuestionAI = false
-        isLoadingWrongAnswerAI = false
         activePracticeSourceTitle = nil
         practiceSelectionNote = nil
         practiceOptionOrderByQuestionId = [:]
@@ -847,7 +830,6 @@ struct PracticeCenterView: View {
                 answer: draft.answer,
                 result: draft.result,
                 questionAIResponse: nil,
-                wrongAnswerAIResponse: nil,
                 wrongAnswerRepairItems: repairItems,
                 supportConfirmation: nil,
                 supportSentQuestionIds: [],
@@ -1295,7 +1277,6 @@ struct PracticeCenterView: View {
             repairHint: item.question.repairHint
         )
         practiceResult = result
-        wrongAnswerAIResponse = nil
         if !didCountCurrentPracticeAnswer {
             freePracticeAnsweredCount = min(freePracticeAnsweredCount + 1, freePracticeSessionItems.count)
             if isCorrect {
@@ -1315,52 +1296,6 @@ struct PracticeCenterView: View {
             excluding: Set(freePracticeSessionItems.map(\.id)),
             limit: 3
         ).items
-        let attempt = MissionAttempt(
-            id: "practice-\(UUID().uuidString)",
-            missionId: "free-practice",
-            questionId: item.id,
-            prompt: item.question.prompt,
-            selectedAnswer: practiceAnswer,
-            acceptedAnswer: item.question.answer,
-            isCorrect: false,
-            attemptNumber: 1,
-            explanation: item.question.explanation,
-            repairHint: item.question.repairHint,
-            createdAt: Date()
-        )
-        Task {
-            await explainPracticeWrongAnswer(attempt: attempt, item: item)
-        }
-    }
-
-    @MainActor
-    private func explainPracticeWrongAnswer(attempt: MissionAttempt, item: QuestionBankItem) async {
-        guard practicePhase == .primary,
-              currentPracticeItem?.id == item.id,
-              practiceResult?.isCorrect == false
-        else { return }
-        let requestId = UUID()
-        wrongAnswerAIRequestId = requestId
-        isLoadingWrongAnswerAI = true
-        defer {
-            if wrongAnswerAIRequestId == requestId {
-                isLoadingWrongAnswerAI = false
-            }
-        }
-
-        let context = WrongAnswerAIContext(
-            classId: currentClassId,
-            studentUid: appState.currentUser?.id,
-            attempt: attempt,
-            questionItem: item
-        )
-        let response = await appState.explainWrongAnswerWithAI(context: context)
-        guard wrongAnswerAIRequestId == requestId else { return }
-        guard practicePhase == .primary,
-              currentPracticeItem?.id == item.id,
-              practiceResult?.isCorrect == false
-        else { return }
-        wrongAnswerAIResponse = response
     }
 
     private func startWrongAnswerRepair() {
@@ -1406,8 +1341,14 @@ struct PracticeCenterView: View {
 
     @MainActor
     private func askPracticeAI(for item: QuestionBankItem) async {
-        guard practiceResult != nil,
-              currentPracticeItem?.id == item.id
+        guard let submittedResult = practiceResult,
+              !submittedResult.isCorrect,
+              currentPracticeItem?.id == item.id,
+              PostSubmissionAssistancePolicy.canRequestExplanation(
+                hasSubmittedResult: true,
+                submittedAnswer: practiceAnswer,
+                attemptNumber: 1
+              )
         else { return }
         let requestPhase = practicePhase
         let requestId = UUID()
@@ -1419,15 +1360,14 @@ struct PracticeCenterView: View {
             }
         }
 
-        let answerText = normalizedPracticeAnswer(practiceAnswer).isEmpty ? "尚未作答" : practiceAnswer
         let attempt = MissionAttempt(
             id: "practice-ai-\(UUID().uuidString)",
             missionId: "free-practice",
             questionId: item.id,
             prompt: item.question.prompt,
-            selectedAnswer: answerText,
+            selectedAnswer: practiceAnswer,
             acceptedAnswer: item.question.answer,
-            isCorrect: false,
+            isCorrect: submittedResult.isCorrect,
             attemptNumber: 1,
             explanation: item.question.explanation,
             repairHint: item.question.repairHint,
@@ -1439,39 +1379,43 @@ struct PracticeCenterView: View {
             attempt: attempt,
             questionItem: item
         )
-        let response = await appState.explainWrongAnswerWithAI(context: context)
+        guard let response = await appState.explainWrongAnswerWithAI(context: context) else { return }
         guard practiceQuestionAIRequestId == requestId else { return }
         guard practicePhase == requestPhase,
               currentPracticeItem?.id == item.id,
-              practiceResult != nil
+              practiceResult?.isCorrect == false
         else { return }
         practiceQuestionAIResponse = response
     }
 
     @MainActor
     private func sendPracticeSupportRequest(for item: QuestionBankItem) async {
-        guard practiceResult != nil,
+        guard practiceResult?.isCorrect == false,
               appState.currentProfile?.activeClassId != nil,
-              currentPracticeItem?.id == item.id
+              currentPracticeItem?.id == item.id,
+              PostSubmissionAssistancePolicy.canRequestExplanation(
+                hasSubmittedResult: true,
+                submittedAnswer: practiceAnswer,
+                attemptNumber: 1
+              )
         else { return }
         let requestPhase = practicePhase
         let requestId = UUID()
         supportRequestId = requestId
-        let selectedAnswer = normalizedPracticeAnswer(practiceAnswer).isEmpty ? nil : practiceAnswer
         let option = practiceSupportOption()
         let didSend = await learningRepository.sendQuestionSupportRequest(
             from: appState.currentUser,
             profile: appState.currentProfile,
             option: option,
             questionItem: item,
-            selectedAnswer: selectedAnswer,
+            selectedAnswer: practiceAnswer,
             message: practiceSupportMessage(for: item)
         )
         guard supportRequestId == requestId,
               didSend,
               practicePhase == requestPhase,
               currentPracticeItem?.id == item.id,
-              practiceResult != nil
+              practiceResult?.isCorrect == false
         else { return }
         practiceSupportSentQuestionIds.insert(practiceSupportSentKey(for: item))
         practiceSupportConfirmation = "已送給老師與志工，兩邊都會看到這一題與你的答案。"
@@ -1520,14 +1464,11 @@ struct PracticeCenterView: View {
         practiceIndex = min(practiceIndex + 1, freePracticeSessionItems.count - 1)
         practiceAnswer = ""
         practiceResult = nil
-        wrongAnswerAIResponse = nil
         practiceQuestionAIResponse = nil
         practiceSupportConfirmation = nil
         practiceQuestionAIRequestId = nil
-        wrongAnswerAIRequestId = nil
         supportRequestId = nil
         isLoadingPracticeQuestionAI = false
-        isLoadingWrongAnswerAI = false
         didCountCurrentPracticeAnswer = false
         sessionReturnMessage = nil
         if practicePhase == .primary {
@@ -1658,7 +1599,6 @@ private struct PracticeSessionMemorySnapshot {
     let answer: String
     let result: PracticeResult?
     let questionAIResponse: AiProxyResponse?
-    let wrongAnswerAIResponse: AiProxyResponse?
     let wrongAnswerRepairItems: [QuestionBankItem]
     let supportConfirmation: String?
     let supportSentQuestionIds: Set<String>
@@ -2016,24 +1956,24 @@ private struct PracticeInlineSupportPanel: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
-            Label("卡住時可以直接求助", systemImage: "lifepreserver")
+            Label("看完結果，需要再拆一步嗎？", systemImage: "lifepreserver")
                 .font(.headline)
                 .foregroundStyle(EPTheme.ink)
 
             Text(canRequestHumanSupport
-                ? "AI 會立刻解題；也可以把題目送給班級老師與志工，回覆會集中在「支持」。"
-                : "AI 會立刻解題。加入班級後，這裡也會開啟老師與志工協助。")
+                ? "答案已送出。你可以請 AI 換個方式說明，或把這次作答送給班級老師與志工。"
+                : "答案已送出。你可以請 AI 換個方式說明；加入班級後，也能把這次作答送給真人協助。")
                 .font(.caption)
                 .foregroundStyle(EPTheme.secondaryInk)
                 .fixedSize(horizontal: false, vertical: true)
 
-            HStack(spacing: 8) {
+            VStack(spacing: 8) {
                 Button(action: onAskAI) {
-                    Label("問 AI 解題", systemImage: "sparkles")
+                    Label(aiResponse == nil ? "請 AI 換個方式解釋" : "請 AI 再解釋一次", systemImage: "sparkles")
                         .font(.caption.bold())
                         .frame(maxWidth: .infinity, minHeight: 44)
                 }
-                .buttonStyle(PrimaryActionButtonStyle())
+                .buttonStyle(SecondaryActionButtonStyle())
                 .disabled(isLoadingAI)
 
                 if canRequestHumanSupport {
@@ -2059,7 +1999,7 @@ private struct PracticeInlineSupportPanel: View {
 
             if let supportConfirmation {
                 VStack(alignment: .leading, spacing: 8) {
-                    Label("\(supportConfirmation) 已送出。", systemImage: "paperplane.fill")
+                    Label(supportConfirmation, systemImage: "paperplane.fill")
                         .font(.footnote.bold())
                         .foregroundStyle(EPTheme.support)
                         .fixedSize(horizontal: false, vertical: true)
@@ -2101,8 +2041,6 @@ private extension Array where Element: Equatable {
 
 private struct PracticeResultCard: View {
     let result: PracticeResult
-    let aiResponse: AiProxyResponse?
-    let isLoadingAI: Bool
     let repairQuestionCount: Int
     let onStartRepair: () -> Void
 
@@ -2126,26 +2064,20 @@ private struct PracticeResultCard: View {
                 .foregroundStyle(EPTheme.secondaryInk)
                 .fixedSize(horizontal: false, vertical: true)
 
-            if isLoadingAI {
-                Label("AI 正在補充解釋...", systemImage: "sparkles")
-                    .font(.footnote)
-                    .foregroundStyle(EPTheme.primary)
-            } else if let aiResponse {
-                PracticeAIStatusCard(response: aiResponse, title: "AI 錯題詳解")
-            } else if !result.isCorrect {
+            if !result.isCorrect {
                 Text("提示：\(result.repairHint)")
                     .font(.footnote.bold())
                     .foregroundStyle(EPTheme.ink)
                     .fixedSize(horizontal: false, vertical: true)
             }
 
-            if !result.isCorrect, !isLoadingAI, repairQuestionCount > 0 {
+            if !result.isCorrect, repairQuestionCount > 0 {
                 Button(action: onStartRepair) {
                     Label("練 \(repairQuestionCount) 題同類題", systemImage: "target")
                         .font(.subheadline.bold())
                         .frame(maxWidth: .infinity, minHeight: 44)
                 }
-                .buttonStyle(PrimaryActionButtonStyle())
+                .buttonStyle(SecondaryActionButtonStyle())
 
                 Text("會直接開啟相同題型、難度與能力點的短練習，不必重新篩選題庫。")
                     .font(.caption)

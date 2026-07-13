@@ -17,8 +17,9 @@ learning must remain usable without joining a class.
 ## Repository and release safety
 
 - Repository: `RayChen0503/English-PLUS`
-- Stable Block B baseline: `main` at `8b1db6c`
-- Active Block C branch: `codex/app-store-hardening-c`
+- Stable release baseline: `main` at `2b43bdc`
+- Active stabilization branch: `codex/fix-f-post-answer-ai`, stacked on
+  completed FIX-A through FIX-E branches for one later release checkpoint.
 - Completed hardening rounds:
   - Round 1 - baseline audit (`round-01-baseline-audit.md`)
   - Round 2 - personal and multi-class domain (`round-02-personal-and-class-domain.md`)
@@ -145,6 +146,11 @@ learning must remain usable without joining a class.
   tracking is disabled, the full validator sweep passes `72/72`, Worker tests
   pass `22/22`, Firestore Emulator tests pass `18/18`, and isolated macOS run
   `29261085031` passed a clean Xcode 16.4 iOS Simulator build.
+- FIX-A through FIX-E repair cross-device support, finite layered practice,
+  class deletion, private volunteer review administration, and teacher-scoped
+  volunteer service classes. FIX-F makes question AI an explicit post-answer
+  action, removes duplicate automatic requests, and rejects incomplete
+  explanation contexts before quota reservation.
 
 ## Current technical constraints
 
@@ -187,10 +193,10 @@ learning must remain usable without joining a class.
 
 ## Next gate
 
-Round 12 and the Block C four-round audit are fully signed off on
-`codex/app-store-hardening-c`. The next action is one deliberate merge to
-`main` to trigger Xcode Cloud. Round 13 starts only after that checkpoint is
-recorded and uses a fresh Block D branch.
+Complete the FIX-F isolated macOS compile/test gate, then audit FIX-A through
+FIX-F as one stabilization package. Do not merge `main`, deploy the Worker, or
+trigger Xcode Cloud until that audit passes and the user explicitly approves
+the release checkpoint.
 
 ## Maintenance rule
 

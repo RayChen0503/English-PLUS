@@ -67,6 +67,11 @@ require_main_actor_async_cleanup(
     "private func askMissionAI(for item: QuestionBankItem, attempt: MissionAttempt) async",
     "isExplainingWrongAnswer",
 )
+require(
+    "missionAIRequestId" in student_home
+    and "learningRepository.latestMissionAttempt?.id == attempt.id" in student_home,
+    "Daily mission AI must reject stale responses after the student retries.",
+)
 require_main_actor_async_cleanup(
     practice_center,
     "private func requestPracticeRecommendation() async",
@@ -77,30 +82,18 @@ require_main_actor_async_cleanup(
     "private func askPracticeAI(for item: QuestionBankItem) async",
     "isLoadingPracticeQuestionAI",
 )
-require(
-    "@MainActor\n    private func explainPracticeWrongAnswer(" in practice_center,
-    "Practice wrong-answer AI explanation must run through a MainActor helper.",
-)
-explain_practice_body = function_body(
-    practice_center,
-    "private func explainPracticeWrongAnswer(attempt: MissionAttempt, item: QuestionBankItem) async",
-)
-require(
-    "defer {" in explain_practice_body
-    and "isLoadingWrongAnswerAI = false" in explain_practice_body,
-    "Practice wrong-answer AI loading state must be cleared with defer.",
-)
 submit_body = function_body(
     practice_center,
     "private func submitPracticeAnswer(for item: QuestionBankItem)",
 )
 require(
-    "wrongAnswerAIResponse = await" not in submit_body,
-    "submitPracticeAnswer must not update AI response state inside an unisolated Task closure.",
+    "explainWrongAnswerWithAI" not in submit_body
+    and "Task {" not in submit_body,
+    "Submitting a practice answer must not automatically start an AI request.",
 )
 require(
-    "Task {\n            await explainPracticeWrongAnswer(attempt: attempt, item: item)\n        }" in submit_body,
-    "submitPracticeAnswer must delegate wrong-answer AI to the MainActor helper.",
+    "PostSubmissionAssistancePolicy.canRequestExplanation" in practice_center,
+    "Practice AI must be guarded by the shared post-submission policy.",
 )
 
 header_match = re.search(

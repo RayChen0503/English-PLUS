@@ -31,6 +31,7 @@ already depend on.
 | D-23 | 2026-07-13 | The public privacy policy, support page and support mailbox are the Google Sites URLs and `englishplus.tw@gmail.com` supplied for English+. | The app, App Store metadata and privacy records must use one public source of truth instead of placeholders. |
 | D-24 | 2026-07-13 | Third-party AI consent explicitly names Cloudflare and Groq, is versioned to the 2026-07-13 policy, minimizes prompt content and never treats AI output or a mood score as automatic human intervention. | Apple requires clear third-party AI disclosure and explicit permission; users also need an accurate, reversible understanding of the feature. |
 | D-25 | 2026-07-14 | Platform approval only establishes volunteer eligibility. A volunteer must use a class-specific volunteer invitation and receive the owning teacher's approval before any student support data becomes visible. | Keeps volunteer identity review separate from least-privilege classroom authorization; leaving, teacher removal, or class deletion must revoke access immediately. |
+| D-26 | 2026-07-14 | Question-specific AI explanation is an explicit learner action available only after an answer has been submitted; choosing an option is not submission, and submitting a wrong answer must not call AI automatically. | Prevents answer leakage and accidental taps, preserves learner agency, and avoids duplicate AI quota usage. |
 
 ## Pending decisions
 

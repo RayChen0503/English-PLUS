@@ -113,6 +113,9 @@ function normalizeRequest(raw: unknown): AiProxyRequest {
     throw new HttpsError("invalid-argument", "Invalid classId.");
   }
 
+  const context = sanitizeContext(data.context);
+  validateAiTaskContext(data.taskType, context);
+
   return {
     taskType: data.taskType,
     classId: data.classId,
@@ -120,8 +123,32 @@ function normalizeRequest(raw: unknown): AiProxyRequest {
     sessionId: safeString(data.sessionId),
     qualityMode: data.qualityMode === "quality" ? "quality" : "free",
     locale: data.locale === "en-US" ? "en-US" : "zh-TW",
-    context: sanitizeContext(data.context),
+    context,
   };
+}
+
+function validateAiTaskContext(
+  taskType: TaskType,
+  context: Record<string, unknown>
+) {
+  if (taskType !== "wrongAnswerExplanation") return;
+
+  const answer = safeString(context.studentAnswer)?.toLocaleLowerCase("zh-TW");
+  const attemptCount = Number(context.attemptCount);
+  if (
+    !safeString(context.questionPrompt)
+    || !safeString(context.correctAnswer)
+    || !answer
+    || answer === "尚未作答"
+    || answer === "not answered"
+    || !Number.isInteger(attemptCount)
+    || attemptCount < 1
+  ) {
+    throw new HttpsError(
+      "failed-precondition",
+      "A submitted answer is required before requesting an explanation."
+    );
+  }
 }
 
 async function loadMembership(classId: string, uid: string): Promise<Membership> {

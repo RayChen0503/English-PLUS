@@ -16,6 +16,28 @@ struct WrongAnswerAIContext: Equatable {
     let studentUid: String?
     let attempt: MissionAttempt
     let questionItem: QuestionBankItem?
+
+    var isEligibleForExplanation: Bool {
+        PostSubmissionAssistancePolicy.canRequestExplanation(
+            hasSubmittedResult: true,
+            submittedAnswer: attempt.selectedAnswer,
+            attemptNumber: attempt.attemptNumber
+        )
+    }
+}
+
+enum PostSubmissionAssistancePolicy {
+    static func canRequestExplanation(
+        hasSubmittedResult: Bool,
+        submittedAnswer: String?,
+        attemptNumber: Int
+    ) -> Bool {
+        guard hasSubmittedResult, attemptNumber > 0 else { return false }
+        let answer = submittedAnswer?
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .lowercased() ?? ""
+        return !answer.isEmpty && answer != "尚未作答" && answer != "not answered"
+    }
 }
 
 struct SupportAIContext: Equatable {

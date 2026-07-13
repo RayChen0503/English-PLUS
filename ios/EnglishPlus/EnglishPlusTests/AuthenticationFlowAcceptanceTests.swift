@@ -739,6 +739,34 @@ final class VolunteerServiceScopeAcceptanceTests: XCTestCase {
     }
 }
 
+final class PostSubmissionAssistanceAcceptanceTests: XCTestCase {
+    func testAIExplanationIsUnavailableBeforeAnAnswerIsSubmitted() {
+        XCTAssertFalse(PostSubmissionAssistancePolicy.canRequestExplanation(
+            hasSubmittedResult: false,
+            submittedAnswer: nil,
+            attemptNumber: 0
+        ))
+        XCTAssertFalse(PostSubmissionAssistancePolicy.canRequestExplanation(
+            hasSubmittedResult: false,
+            submittedAnswer: "is",
+            attemptNumber: 0
+        ))
+        XCTAssertFalse(PostSubmissionAssistancePolicy.canRequestExplanation(
+            hasSubmittedResult: true,
+            submittedAnswer: "尚未作答",
+            attemptNumber: 1
+        ))
+    }
+
+    func testAIExplanationBecomesAvailableAfterSubmission() {
+        XCTAssertTrue(PostSubmissionAssistancePolicy.canRequestExplanation(
+            hasSubmittedResult: true,
+            submittedAnswer: "is",
+            attemptNumber: 1
+        ))
+    }
+}
+
 private final class RecordingAuthService: AuthService {
     var providerSignInResult: Result<AuthSession, AuthServiceError> = .failure(.profileUnavailable)
     var providerCreationResult: Result<AccountCreationOutcome, AuthServiceError> = .failure(.operationUnavailable)
