@@ -32,6 +32,9 @@ are enforced on the Worker; the iOS client cannot select or bypass them.
    record a request ID, hashed actor, role, task, quota outcome, provider status,
    token totals and latency without logging prompts, answers, names, class IDs
    or raw Firebase UIDs.
+7. The first isolated macOS run exposed a Windows npm 11 lockfile that omitted
+   optional ARM dependencies. The lockfile was regenerated with the same npm 10
+   release used by CI, then verified from a clean install before retrying.
 
 ## Authorization contract
 

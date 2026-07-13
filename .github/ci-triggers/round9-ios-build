@@ -1,1 +1,2 @@
 Round 9 isolated macOS compile gate.
+Retry after regenerating the portable npm 10 lockfile.
