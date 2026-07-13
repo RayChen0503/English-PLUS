@@ -34,7 +34,9 @@ def main() -> None:
         ("shuffledAnswerOptions(for: item)", "answer UI using balanced options"),
         ("buildPracticeSessionItems(from: filteredPracticeItems)", "free practice using shared builder"),
         ("structuredRecommendationSelection(", "AI recommendation structured selector"),
-        ("startPracticeSession(with: plan.items, sourceTitle: plan.title)", "validated AI plan preserving its question count"),
+        ("requestPrimarySessionStart(", "validated AI plan entering the guarded primary-session flow"),
+        ("items: plan.items", "validated AI plan preserving its question items"),
+        ("sourceTitle: plan.title", "validated AI plan preserving its title"),
     ]
 
     for token, message in required_tokens:

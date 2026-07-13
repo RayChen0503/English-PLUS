@@ -84,6 +84,8 @@ jobs:
           python3 scripts/validate_app_store_hardening_round12.py
           python3 scripts/validate_testflight_onboarding_hotfix.py
           python3 scripts/validate_ios_xcode_project_sources.py
+          python3 scripts/validate_fix_a_support_sync.py
+          python3 scripts/validate_fix_b_practice_flow.py
 
       - name: Build iOS Simulator target
         run: |

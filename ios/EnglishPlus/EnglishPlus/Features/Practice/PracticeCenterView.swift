@@ -30,8 +30,20 @@ struct PracticeCenterView: View {
     @State private var isLoadingPracticeQuestionAI = false
     @State private var isLoadingWrongAnswerAI = false
     @State private var wrongAnswerRepairItems: [QuestionBankItem] = []
+    @State private var practicePhase: PracticeCenterPhase = .selection
+    @State private var suspendedPrimarySession: PracticeSessionMemorySnapshot?
+    @State private var pendingSessionProposal: PracticeSessionProposal?
+    @State private var showReplaceSessionConfirmation = false
+    @State private var showDiscardSessionConfirmation = false
+    @State private var sessionReturnMessage: String?
+    @State private var didRestorePracticeDraft = false
+    @State private var practiceRecommendationRequestId: UUID?
+    @State private var practiceQuestionAIRequestId: UUID?
+    @State private var wrongAnswerAIRequestId: UUID?
+    @State private var supportRequestId: UUID?
 
     private let freePracticeSessionLimit = 10
+    private let practiceDraftStore = PracticeSessionDraftStore()
 
     init(onOpenSupport: @escaping () -> Void = {}) {
         self.onOpenSupport = onOpenSupport
@@ -43,20 +55,101 @@ struct PracticeCenterView: View {
                 EPTheme.background.ignoresSafeArea()
                 ScrollView {
                     VStack(alignment: .leading, spacing: 16) {
-                        headerCard
-                        filterCard
-                        practiceSetSelectionCard
-                        finitePracticeCard
-                        aiRecommendationCard
+                        switch practicePhase {
+                        case .selection:
+                            selectionContent
+                        case .primary, .repair:
+                            if let sessionReturnMessage {
+                                PracticeFlowNoticeCard(message: sessionReturnMessage)
+                            }
+                            practiceSessionNavigationCard
+                            finitePracticeCard
+                        }
                     }
                     .padding(EPTheme.pagePadding)
                 }
+                .id(practicePhase)
             }
             .navigationTitle("練習中心")
         }
         .onAppear {
+            restorePracticeDraftIfNeeded()
             launchPendingPracticeIfNeeded()
         }
+        .onDisappear {
+            persistPrimarySessionIfNeeded()
+        }
+        .confirmationDialog(
+            "要改用新的題組嗎？",
+            isPresented: $showReplaceSessionConfirmation,
+            titleVisibility: .visible
+        ) {
+            Button("改用新題組", role: .destructive) {
+                startPendingSessionProposal()
+            }
+            Button("繼續原題組") {
+                resumePrimarySession()
+            }
+            Button("取消", role: .cancel) {
+                pendingSessionProposal = nil
+            }
+        } message: {
+            Text("目前題組的進度還在。改用新題組會清除舊進度；選擇繼續則會回到原本那一題。")
+        }
+        .confirmationDialog(
+            "要捨棄這組進度嗎？",
+            isPresented: $showDiscardSessionConfirmation,
+            titleVisibility: .visible
+        ) {
+            Button("捨棄進度", role: .destructive) {
+                discardPrimarySession()
+            }
+            Button("保留", role: .cancel) {}
+        } message: {
+            Text("捨棄後無法回復，但不會影響今日任務或已完成的學習紀錄。")
+        }
+    }
+
+    @ViewBuilder
+    private var selectionContent: some View {
+        headerCard
+
+        if let sessionReturnMessage {
+            PracticeFlowNoticeCard(message: sessionReturnMessage)
+        }
+
+        if isFreePracticeSessionComplete {
+            FreePracticeSessionSummaryCard(
+                answeredCount: freePracticeAnsweredCount,
+                correctCount: freePracticeCorrectCount,
+                totalCount: freePracticeSessionItems.count,
+                onPracticeAgain: startFreePracticeSession,
+                onReturnToMission: {
+                    learningRepository.returnToMissionFlow()
+                }
+            )
+        }
+
+        if hasUnfinishedPrimarySession {
+            UnfinishedPracticeSessionCard(
+                title: activePracticeSourceTitle ?? "尚未完成的自由練習",
+                progressText: primarySessionProgressText,
+                onResume: resumePrimarySession,
+                onDiscard: {
+                    showDiscardSessionConfirmation = true
+                }
+            )
+        }
+
+        filterCard
+        practiceSetSelectionCard
+        PracticeSessionStartCard(
+            availableCount: filteredPracticeItems.count,
+            sessionLimit: min(freePracticeSessionLimit, filteredPracticeItems.count),
+            selectedSetTitle: selectedPracticeSet?.title ?? "全部題庫",
+            onStart: startFreePracticeSession
+        )
+        aiRecommendationCard
     }
 
     private var headerCard: some View {
@@ -93,7 +186,7 @@ struct PracticeCenterView: View {
             selectedPracticeSetId: selectedPracticeSetId
         ) { setId in
             selectedPracticeSetId = setId
-            resetPracticePosition()
+            resetSelectionState()
         }
     }
 
@@ -143,10 +236,44 @@ struct PracticeCenterView: View {
         .clipShape(RoundedRectangle(cornerRadius: EPTheme.cardRadius))
     }
 
+    private var practiceSessionNavigationCard: some View {
+        HStack(alignment: .center, spacing: 12) {
+            Button {
+                leaveCurrentPracticeLayer()
+            } label: {
+                Image(systemName: "chevron.left")
+                    .font(.headline.bold())
+                    .frame(width: 44, height: 44)
+            }
+            .buttonStyle(SecondaryActionButtonStyle())
+            .accessibilityLabel(practicePhase == .repair ? "離開加練" : "離開練習")
+
+            VStack(alignment: .leading, spacing: 3) {
+                Text(practicePhase == .repair ? "同類題加練" : "自由練習")
+                    .font(.caption.bold())
+                    .foregroundStyle(practicePhase == .repair ? EPTheme.warning : EPTheme.primary)
+                Text(activePracticeSourceTitle ?? "這一組練習")
+                    .font(.headline)
+                    .foregroundStyle(EPTheme.ink)
+                    .lineLimit(2)
+            }
+
+            Spacer()
+
+            Text(positionText)
+                .font(.subheadline.bold())
+                .monospacedDigit()
+                .foregroundStyle(EPTheme.secondaryInk)
+        }
+        .padding(12)
+        .background(EPTheme.card)
+        .clipShape(RoundedRectangle(cornerRadius: EPTheme.cardRadius))
+    }
+
     private var finitePracticeCard: some View {
         VStack(alignment: .leading, spacing: 14) {
             HStack {
-                Text("這一組練習")
+                Text(practicePhase == .repair ? "加練題組" : "這一組練習")
                     .font(.headline)
                     .foregroundStyle(EPTheme.ink)
                 Spacer()
@@ -162,28 +289,13 @@ struct PracticeCenterView: View {
                     .fixedSize(horizontal: false, vertical: true)
             }
 
-            if isFreePracticeSessionComplete {
-                FreePracticeSessionSummaryCard(
-                    answeredCount: freePracticeAnsweredCount,
-                    correctCount: freePracticeCorrectCount,
-                    totalCount: freePracticeSessionItems.count,
-                    onPracticeAgain: startFreePracticeSession,
-                    onReturnToMission: {
-                        learningRepository.returnToMissionFlow()
-                    }
-                )
-            } else if freePracticeSessionItems.isEmpty {
-                PracticeSessionStartCard(
-                    availableCount: filteredPracticeItems.count,
-                    sessionLimit: min(freePracticeSessionLimit, filteredPracticeItems.count),
-                    selectedSetTitle: activePracticeSourceTitle ?? selectedPracticeSet?.title ?? "全部題庫",
-                    onStart: startFreePracticeSession
-                )
-            } else if let item = currentPracticeItem {
+            if let item = currentPracticeItem {
                 VStack(alignment: .leading, spacing: 8) {
                     ProgressView(value: freePracticeProgressFraction)
                         .tint(EPTheme.primary)
-                    Text("答完 \(freePracticeSessionItems.count) 題就會結算，自由練習不會影響今日任務進度。")
+                    Text(practicePhase == .repair
+                        ? "這組加練不計入學習地圖；完成或離開後會回到原本題組。"
+                        : "答完 \(freePracticeSessionItems.count) 題就會結算，自由練習不會影響今日任務進度。")
                         .font(.caption)
                         .foregroundStyle(EPTheme.secondaryInk)
                 }
@@ -198,6 +310,7 @@ struct PracticeCenterView: View {
                 if item.question.options.isEmpty {
                     TextField("輸入你的答案", text: $practiceAnswer, axis: .vertical)
                         .textFieldStyle(.roundedBorder)
+                        .disabled(practiceResult != nil)
                 } else {
                     VStack(spacing: 8) {
                         ForEach(Array(shuffledAnswerOptions(for: item).enumerated()), id: \.offset) { _, option in
@@ -212,6 +325,7 @@ struct PracticeCenterView: View {
                                 practiceSupportConfirmation = nil
                                 didCountCurrentPracticeAnswer = false
                             }
+                            .disabled(practiceResult != nil)
                         }
                     }
                 }
@@ -221,29 +335,29 @@ struct PracticeCenterView: View {
                         result: practiceResult,
                         aiResponse: wrongAnswerAIResponse,
                         isLoadingAI: isLoadingWrongAnswerAI,
-                        repairQuestionCount: wrongAnswerRepairItems.count,
+                        repairQuestionCount: practicePhase == .primary ? wrongAnswerRepairItems.count : 0,
                         onStartRepair: startWrongAnswerRepair
                     )
-                }
 
-                PracticeInlineSupportPanel(
-                    aiResponse: practiceQuestionAIResponse,
-                    supportConfirmation: practiceSupportConfirmation,
-                    supportRequestSent: practiceSupportSentQuestionIds.contains(practiceSupportSentKey(for: item)),
-                    canRequestHumanSupport: appState.currentProfile?.activeClassId != nil,
-                    isLoadingAI: isLoadingPracticeQuestionAI,
-                    onOpenSupport: onOpenSupport,
-                    onAskAI: {
-                        Task {
-                            await askPracticeAI(for: item)
+                    PracticeInlineSupportPanel(
+                        aiResponse: practiceQuestionAIResponse,
+                        supportConfirmation: practiceSupportConfirmation,
+                        supportRequestSent: practiceSupportSentQuestionIds.contains(practiceSupportSentKey(for: item)),
+                        canRequestHumanSupport: appState.currentProfile?.activeClassId != nil,
+                        isLoadingAI: isLoadingPracticeQuestionAI,
+                        onOpenSupport: onOpenSupport,
+                        onAskAI: {
+                            Task {
+                                await askPracticeAI(for: item)
+                            }
+                        },
+                        onSendSupport: {
+                            Task {
+                                await sendPracticeSupportRequest(for: item)
+                            }
                         }
-                    },
-                    onSendSupport: {
-                        Task {
-                            await sendPracticeSupportRequest(for: item)
-                        }
-                    }
-                )
+                    )
+                }
 
                 HStack(spacing: 10) {
                     Button("送出答案") {
@@ -377,6 +491,20 @@ struct PracticeCenterView: View {
         !freePracticeSessionItems.isEmpty && practiceIndex >= freePracticeSessionItems.count - 1
     }
 
+    private var hasUnfinishedPrimarySession: Bool {
+        if practicePhase == .repair {
+            return suspendedPrimarySession?.items.isEmpty == false
+        }
+        return !freePracticeSessionItems.isEmpty && !isFreePracticeSessionComplete
+    }
+
+    private var primarySessionProgressText: String {
+        let snapshot = practicePhase == .repair ? suspendedPrimarySession : captureCurrentSession()
+        guard let snapshot, !snapshot.items.isEmpty else { return "尚未開始" }
+        let current = min(snapshot.index + 1, snapshot.items.count)
+        return "第 \(current) / \(snapshot.items.count) 題 · 已作答 \(snapshot.answeredCount) 題"
+    }
+
     private var preferredQuestionTypesForAI: [QuestionType] {
         if let selectedPracticeType {
             return [selectedPracticeType]
@@ -410,46 +538,43 @@ struct PracticeCenterView: View {
 
     private func selectPracticeType(_ type: QuestionType?) {
         selectedPracticeType = type
-        resetPracticePosition()
+        resetSelectionState()
     }
 
     private func selectPracticeLevel(_ level: QuestionLevel?) {
         selectedPracticeLevel = level
-        resetPracticePosition()
+        resetSelectionState()
     }
 
-    private func resetPracticePosition() {
-        practiceIndex = 0
-        practiceAnswer = ""
-        practiceResult = nil
+    private func resetSelectionState() {
+        practiceRecommendationRequestId = nil
+        isLoadingPracticeAI = false
         practiceAIResponse = nil
         recommendedPracticePlan = nil
-        wrongAnswerAIResponse = nil
-        wrongAnswerRepairItems = []
-        practiceQuestionAIResponse = nil
-        practiceSupportConfirmation = nil
-        practiceSupportSentQuestionIds = []
-        activePracticeSourceTitle = nil
-        practiceSelectionNote = nil
-        practiceOptionOrderByQuestionId = [:]
-        freePracticeSessionItems = []
-        freePracticeAnsweredCount = 0
-        freePracticeCorrectCount = 0
-        didCountCurrentPracticeAnswer = false
-        isFreePracticeSessionComplete = false
+        sessionReturnMessage = nil
     }
 
     private func startFreePracticeSession() {
         let sessionSelection = buildPracticeSessionItems(from: filteredPracticeItems)
-        let sessionItems = sessionSelection.items
-        practiceSelectionNote = sessionSelection.note
-        startPracticeSession(with: sessionItems, sourceTitle: selectedPracticeSet?.title ?? "自由練習")
+        requestPrimarySessionStart(
+            PracticeSessionProposal(
+                items: sessionSelection.items,
+                sourceTitle: selectedPracticeSet?.title ?? "自由練習",
+                note: sessionSelection.note
+            )
+        )
     }
 
-    private func startPracticeSession(with items: [QuestionBankItem], sourceTitle: String? = nil) {
+    private func configureActiveSession(
+        with items: [QuestionBankItem],
+        sourceTitle: String?,
+        note: String?,
+        phase: PracticeCenterPhase
+    ) {
         let sessionItems = QuestionGroupingEngine.balancedItems(from: items, limit: freePracticeSessionLimit)
         freePracticeSessionItems = sessionItems
         activePracticeSourceTitle = sourceTitle
+        practiceSelectionNote = note
         practiceOptionOrderByQuestionId = Dictionary(
             sessionItems.enumerated().map { index, item in
                 (item.id, QuestionGroupingEngine.balancedOptions(for: item, sessionIndex: index))
@@ -464,13 +589,27 @@ struct PracticeCenterView: View {
         practiceQuestionAIResponse = nil
         practiceSupportConfirmation = nil
         practiceSupportSentQuestionIds = []
+        practiceQuestionAIRequestId = nil
+        wrongAnswerAIRequestId = nil
+        supportRequestId = nil
+        isLoadingPracticeQuestionAI = false
+        isLoadingWrongAnswerAI = false
         freePracticeAnsweredCount = 0
         freePracticeCorrectCount = 0
         didCountCurrentPracticeAnswer = false
         isFreePracticeSessionComplete = sessionItems.isEmpty
+        practicePhase = sessionItems.isEmpty ? .selection : phase
+
+        if phase == .primary, !sessionItems.isEmpty {
+            persistPrimarySessionIfNeeded()
+        }
     }
 
     private func finishFreePracticeSession() {
+        guard practicePhase == .primary else {
+            finishRepairSession()
+            return
+        }
         learningRepository.completeFreePracticeSession(
             correctCount: freePracticeCorrectCount,
             totalCount: freePracticeSessionItems.count
@@ -483,6 +622,251 @@ struct PracticeCenterView: View {
         practiceSupportConfirmation = nil
         didCountCurrentPracticeAnswer = false
         isFreePracticeSessionComplete = true
+        practicePhase = .selection
+        suspendedPrimarySession = nil
+        sessionReturnMessage = "這組練習已完成。你可以重新選題，也可以再開始一組。"
+        clearPersistedPrimarySession()
+    }
+
+    private func requestPrimarySessionStart(_ proposal: PracticeSessionProposal) {
+        guard !proposal.items.isEmpty else {
+            practiceSelectionNote = proposal.note ?? "目前條件下沒有可用題目。"
+            return
+        }
+        if hasUnfinishedPrimarySession {
+            pendingSessionProposal = proposal
+            showReplaceSessionConfirmation = true
+            return
+        }
+        beginPrimarySession(proposal)
+    }
+
+    private func startPendingSessionProposal() {
+        guard let proposal = pendingSessionProposal else { return }
+        pendingSessionProposal = nil
+        clearPersistedPrimarySession()
+        beginPrimarySession(proposal)
+    }
+
+    private func beginPrimarySession(_ proposal: PracticeSessionProposal) {
+        pendingSessionProposal = nil
+        suspendedPrimarySession = nil
+        sessionReturnMessage = nil
+        isFreePracticeSessionComplete = false
+        configureActiveSession(
+            with: proposal.items,
+            sourceTitle: proposal.sourceTitle,
+            note: proposal.note,
+            phase: .primary
+        )
+    }
+
+    private func resumePrimarySession() {
+        guard !freePracticeSessionItems.isEmpty, !isFreePracticeSessionComplete else { return }
+        pendingSessionProposal = nil
+        sessionReturnMessage = nil
+        practicePhase = .primary
+        persistPrimarySessionIfNeeded()
+    }
+
+    private func discardPrimarySession() {
+        pendingSessionProposal = nil
+        suspendedPrimarySession = nil
+        clearActiveSessionState()
+        practicePhase = .selection
+        sessionReturnMessage = "未完成的題組已捨棄，你可以重新選一組。"
+        clearPersistedPrimarySession()
+    }
+
+    private func leaveCurrentPracticeLayer() {
+        if practicePhase == .repair {
+            restoreSuspendedPrimarySession(message: "已離開加練，原本題組與作答進度都保留。")
+            return
+        }
+        persistPrimarySessionIfNeeded()
+        practicePhase = .selection
+        sessionReturnMessage = "原本題組已保留，想繼續時按「回到原題組」。"
+    }
+
+    private func finishRepairSession() {
+        restoreSuspendedPrimarySession(message: "三題加練完成，已回到原本題組。")
+    }
+
+    private func restoreSuspendedPrimarySession(message: String) {
+        guard let snapshot = suspendedPrimarySession else {
+            practicePhase = .selection
+            sessionReturnMessage = "原本題組已結束，請重新選一組。"
+            return
+        }
+        restoreSession(from: snapshot)
+        suspendedPrimarySession = nil
+        practicePhase = .primary
+        sessionReturnMessage = message
+        persistPrimarySessionIfNeeded()
+    }
+
+    private func captureCurrentSession() -> PracticeSessionMemorySnapshot? {
+        guard !freePracticeSessionItems.isEmpty else { return nil }
+        return PracticeSessionMemorySnapshot(
+            items: freePracticeSessionItems,
+            index: practiceIndex,
+            answer: practiceAnswer,
+            result: practiceResult,
+            questionAIResponse: practiceQuestionAIResponse,
+            wrongAnswerAIResponse: wrongAnswerAIResponse,
+            wrongAnswerRepairItems: wrongAnswerRepairItems,
+            supportConfirmation: practiceSupportConfirmation,
+            supportSentQuestionIds: practiceSupportSentQuestionIds,
+            sourceTitle: activePracticeSourceTitle,
+            selectionNote: practiceSelectionNote,
+            optionOrderByQuestionId: practiceOptionOrderByQuestionId,
+            answeredCount: freePracticeAnsweredCount,
+            correctCount: freePracticeCorrectCount,
+            didCountCurrentAnswer: didCountCurrentPracticeAnswer,
+            isComplete: isFreePracticeSessionComplete
+        )
+    }
+
+    private func restoreSession(from snapshot: PracticeSessionMemorySnapshot) {
+        freePracticeSessionItems = snapshot.items
+        practiceIndex = min(max(snapshot.index, 0), max(snapshot.items.count - 1, 0))
+        practiceAnswer = snapshot.answer
+        practiceResult = snapshot.result
+        practiceQuestionAIResponse = snapshot.questionAIResponse
+        wrongAnswerAIResponse = snapshot.wrongAnswerAIResponse
+        wrongAnswerRepairItems = snapshot.wrongAnswerRepairItems
+        practiceSupportConfirmation = snapshot.supportConfirmation
+        practiceSupportSentQuestionIds = snapshot.supportSentQuestionIds
+        activePracticeSourceTitle = snapshot.sourceTitle
+        practiceSelectionNote = snapshot.selectionNote
+        practiceOptionOrderByQuestionId = snapshot.optionOrderByQuestionId
+        freePracticeAnsweredCount = snapshot.answeredCount
+        freePracticeCorrectCount = snapshot.correctCount
+        didCountCurrentPracticeAnswer = snapshot.didCountCurrentAnswer
+        isFreePracticeSessionComplete = snapshot.isComplete
+    }
+
+    private func clearActiveSessionState() {
+        practiceIndex = 0
+        practiceAnswer = ""
+        practiceResult = nil
+        practiceQuestionAIResponse = nil
+        wrongAnswerAIResponse = nil
+        wrongAnswerRepairItems = []
+        practiceSupportConfirmation = nil
+        practiceSupportSentQuestionIds = []
+        practiceQuestionAIRequestId = nil
+        wrongAnswerAIRequestId = nil
+        supportRequestId = nil
+        isLoadingPracticeQuestionAI = false
+        isLoadingWrongAnswerAI = false
+        activePracticeSourceTitle = nil
+        practiceSelectionNote = nil
+        practiceOptionOrderByQuestionId = [:]
+        freePracticeSessionItems = []
+        freePracticeAnsweredCount = 0
+        freePracticeCorrectCount = 0
+        didCountCurrentPracticeAnswer = false
+        isFreePracticeSessionComplete = false
+    }
+
+    private var practiceDraftOwnerId: String? {
+        appState.currentProfile?.id ?? appState.currentUser?.id
+    }
+
+    private func persistPrimarySessionIfNeeded(snapshot providedSnapshot: PracticeSessionMemorySnapshot? = nil) {
+        guard let ownerId = practiceDraftOwnerId else { return }
+        let snapshot = providedSnapshot
+            ?? (practicePhase == .repair ? suspendedPrimarySession : captureCurrentSession())
+        guard let snapshot, !snapshot.items.isEmpty, !snapshot.isComplete else {
+            practiceDraftStore.clear(ownerId: ownerId)
+            return
+        }
+
+        practiceDraftStore.save(
+            PracticeSessionDraft(
+                questionIds: snapshot.items.map(\.id),
+                index: snapshot.index,
+                answer: snapshot.answer,
+                result: snapshot.result,
+                sourceTitle: snapshot.sourceTitle,
+                selectionNote: snapshot.selectionNote,
+                optionOrderByQuestionId: snapshot.optionOrderByQuestionId,
+                answeredCount: snapshot.answeredCount,
+                correctCount: snapshot.correctCount,
+                didCountCurrentAnswer: snapshot.didCountCurrentAnswer
+            ),
+            ownerId: ownerId
+        )
+    }
+
+    private func restorePracticeDraftIfNeeded() {
+        guard !didRestorePracticeDraft else { return }
+        didRestorePracticeDraft = true
+        guard let ownerId = practiceDraftOwnerId,
+              let draft = practiceDraftStore.load(ownerId: ownerId)
+        else { return }
+
+        let itemsById = Dictionary(
+            questionBankItems.map { ($0.id, $0) },
+            uniquingKeysWith: { existing, _ in existing }
+        )
+        let restoredItems = draft.questionIds.compactMap { itemsById[$0] }
+        guard !restoredItems.isEmpty else {
+            practiceDraftStore.clear(ownerId: ownerId)
+            return
+        }
+
+        let optionOrders = Dictionary(
+            restoredItems.enumerated().map { index, item in
+                let saved = draft.optionOrderByQuestionId[item.id]
+                let resolvedOrder = (saved?.isEmpty == false ? saved : nil)
+                    ?? QuestionGroupingEngine.balancedOptions(for: item, sessionIndex: index)
+                return (
+                    item.id,
+                    resolvedOrder
+                )
+            },
+            uniquingKeysWith: { _, latest in latest }
+        )
+        let restoredIndex = min(max(draft.index, 0), restoredItems.count - 1)
+        let restoredItem = restoredItems[restoredIndex]
+        let repairItems = draft.result?.isCorrect == false
+            ? QuestionGroupingEngine.repairSelection(
+                after: restoredItem,
+                from: questionBankItems,
+                excluding: Set(restoredItems.map(\.id)),
+                limit: 3
+            ).items
+            : []
+
+        restoreSession(
+            from: PracticeSessionMemorySnapshot(
+                items: restoredItems,
+                index: restoredIndex,
+                answer: draft.answer,
+                result: draft.result,
+                questionAIResponse: nil,
+                wrongAnswerAIResponse: nil,
+                wrongAnswerRepairItems: repairItems,
+                supportConfirmation: nil,
+                supportSentQuestionIds: [],
+                sourceTitle: draft.sourceTitle,
+                selectionNote: draft.selectionNote,
+                optionOrderByQuestionId: optionOrders,
+                answeredCount: min(draft.answeredCount, restoredItems.count),
+                correctCount: min(draft.correctCount, restoredItems.count),
+                didCountCurrentAnswer: draft.didCountCurrentAnswer,
+                isComplete: false
+            )
+        )
+        practicePhase = .selection
+        sessionReturnMessage = "找到一組尚未完成的練習，可以從原本進度繼續。"
+    }
+
+    private func clearPersistedPrimarySession() {
+        guard let ownerId = practiceDraftOwnerId else { return }
+        practiceDraftStore.clear(ownerId: ownerId)
     }
 
     private func buildAIRecommendationPlan(from response: AiProxyResponse) -> AIPracticeRecommendationPlan? {
@@ -886,11 +1270,19 @@ struct PracticeCenterView: View {
         selectedPracticeSetId = nil
         selectedPracticeType = plan.type
         selectedPracticeLevel = plan.level
-        startPracticeSession(with: plan.items, sourceTitle: plan.title)
-        practiceSelectionNote = plan.matchNote
+        requestPrimarySessionStart(
+            PracticeSessionProposal(
+                items: plan.items,
+                sourceTitle: plan.title,
+                note: plan.matchNote
+            )
+        )
     }
 
     private func submitPracticeAnswer(for item: QuestionBankItem) {
+        guard practiceResult == nil,
+              currentPracticeItem?.id == item.id
+        else { return }
         let normalizedAnswer = normalizedPracticeAnswer(practiceAnswer)
         let acceptedAnswers = ([item.question.answer] + item.question.acceptedAnswers)
             .map(normalizedPracticeAnswer)
@@ -910,6 +1302,10 @@ struct PracticeCenterView: View {
                 freePracticeCorrectCount = min(freePracticeCorrectCount + 1, freePracticeSessionItems.count)
             }
             didCountCurrentPracticeAnswer = true
+        }
+
+        if practicePhase == .primary {
+            persistPrimarySessionIfNeeded()
         }
 
         guard !isCorrect else { return }
@@ -939,8 +1335,18 @@ struct PracticeCenterView: View {
 
     @MainActor
     private func explainPracticeWrongAnswer(attempt: MissionAttempt, item: QuestionBankItem) async {
+        guard practicePhase == .primary,
+              currentPracticeItem?.id == item.id,
+              practiceResult?.isCorrect == false
+        else { return }
+        let requestId = UUID()
+        wrongAnswerAIRequestId = requestId
         isLoadingWrongAnswerAI = true
-        defer { isLoadingWrongAnswerAI = false }
+        defer {
+            if wrongAnswerAIRequestId == requestId {
+                isLoadingWrongAnswerAI = false
+            }
+        }
 
         let context = WrongAnswerAIContext(
             classId: currentClassId,
@@ -948,16 +1354,31 @@ struct PracticeCenterView: View {
             attempt: attempt,
             questionItem: item
         )
-        wrongAnswerAIResponse = await appState.explainWrongAnswerWithAI(context: context)
+        let response = await appState.explainWrongAnswerWithAI(context: context)
+        guard wrongAnswerAIRequestId == requestId else { return }
+        guard practicePhase == .primary,
+              currentPracticeItem?.id == item.id,
+              practiceResult?.isCorrect == false
+        else { return }
+        wrongAnswerAIResponse = response
     }
 
     private func startWrongAnswerRepair() {
-        guard let source = currentPracticeItem, !wrongAnswerRepairItems.isEmpty else { return }
-        startPracticeSession(
+        guard practicePhase == .primary,
+              let source = currentPracticeItem,
+              !wrongAnswerRepairItems.isEmpty,
+              let primarySnapshot = captureCurrentSession()
+        else { return }
+
+        suspendedPrimarySession = primarySnapshot
+        persistPrimarySessionIfNeeded(snapshot: primarySnapshot)
+        configureActiveSession(
             with: wrongAnswerRepairItems,
-            sourceTitle: "錯題回練：\(source.skill.isEmpty ? source.question.concept : source.skill)"
+            sourceTitle: "錯題回練：\(source.skill.isEmpty ? source.question.concept : source.skill)",
+            note: "這是暫時加練。完成或離開後會回到原本題組，不會改變學習地圖進度。",
+            phase: .repair
         )
-        practiceSelectionNote = "已依剛才的錯題安排相同能力點練習；完成後會結算這組結果。"
+        sessionReturnMessage = nil
     }
 
     private func launchPendingPracticeIfNeeded() {
@@ -974,14 +1395,29 @@ struct PracticeCenterView: View {
         selectedPracticeSetId = nil
         selectedPracticeType = items.first?.question.type
         selectedPracticeLevel = items.first?.level
-        startPracticeSession(with: items, sourceTitle: launch.title)
-        practiceSelectionNote = "已接續 AI 錯題詳解，先完成這組相似題。"
+        beginPrimarySession(
+            PracticeSessionProposal(
+                items: items,
+                sourceTitle: launch.title,
+                note: "已接續 AI 錯題詳解，先完成這組相似題。"
+            )
+        )
     }
 
     @MainActor
     private func askPracticeAI(for item: QuestionBankItem) async {
+        guard practiceResult != nil,
+              currentPracticeItem?.id == item.id
+        else { return }
+        let requestPhase = practicePhase
+        let requestId = UUID()
+        practiceQuestionAIRequestId = requestId
         isLoadingPracticeQuestionAI = true
-        defer { isLoadingPracticeQuestionAI = false }
+        defer {
+            if practiceQuestionAIRequestId == requestId {
+                isLoadingPracticeQuestionAI = false
+            }
+        }
 
         let answerText = normalizedPracticeAnswer(practiceAnswer).isEmpty ? "尚未作答" : practiceAnswer
         let attempt = MissionAttempt(
@@ -1003,12 +1439,24 @@ struct PracticeCenterView: View {
             attempt: attempt,
             questionItem: item
         )
-        practiceQuestionAIResponse = await appState.explainWrongAnswerWithAI(context: context)
+        let response = await appState.explainWrongAnswerWithAI(context: context)
+        guard practiceQuestionAIRequestId == requestId else { return }
+        guard practicePhase == requestPhase,
+              currentPracticeItem?.id == item.id,
+              practiceResult != nil
+        else { return }
+        practiceQuestionAIResponse = response
     }
 
     @MainActor
     private func sendPracticeSupportRequest(for item: QuestionBankItem) async {
-        guard appState.currentProfile?.activeClassId != nil else { return }
+        guard practiceResult != nil,
+              appState.currentProfile?.activeClassId != nil,
+              currentPracticeItem?.id == item.id
+        else { return }
+        let requestPhase = practicePhase
+        let requestId = UUID()
+        supportRequestId = requestId
         let selectedAnswer = normalizedPracticeAnswer(practiceAnswer).isEmpty ? nil : practiceAnswer
         let option = practiceSupportOption()
         let didSend = await learningRepository.sendQuestionSupportRequest(
@@ -1019,7 +1467,12 @@ struct PracticeCenterView: View {
             selectedAnswer: selectedAnswer,
             message: practiceSupportMessage(for: item)
         )
-        guard didSend else { return }
+        guard supportRequestId == requestId,
+              didSend,
+              practicePhase == requestPhase,
+              currentPracticeItem?.id == item.id,
+              practiceResult != nil
+        else { return }
         practiceSupportSentQuestionIds.insert(practiceSupportSentKey(for: item))
         practiceSupportConfirmation = "已送給老師與志工，兩邊都會看到這一題與你的答案。"
     }
@@ -1053,9 +1506,15 @@ struct PracticeCenterView: View {
     }
 
     private func nextPracticeQuestion() {
-        guard !freePracticeSessionItems.isEmpty else { return }
+        guard !freePracticeSessionItems.isEmpty,
+              practiceResult != nil
+        else { return }
         if isLastFreePracticeQuestion {
-            finishFreePracticeSession()
+            if practicePhase == .repair {
+                finishRepairSession()
+            } else {
+                finishFreePracticeSession()
+            }
             return
         }
         practiceIndex = min(practiceIndex + 1, freePracticeSessionItems.count - 1)
@@ -1064,7 +1523,16 @@ struct PracticeCenterView: View {
         wrongAnswerAIResponse = nil
         practiceQuestionAIResponse = nil
         practiceSupportConfirmation = nil
+        practiceQuestionAIRequestId = nil
+        wrongAnswerAIRequestId = nil
+        supportRequestId = nil
+        isLoadingPracticeQuestionAI = false
+        isLoadingWrongAnswerAI = false
         didCountCurrentPracticeAnswer = false
+        sessionReturnMessage = nil
+        if practicePhase == .primary {
+            persistPrimarySessionIfNeeded()
+        }
     }
 
     private func normalizedPracticeAnswer(_ answer: String) -> String {
@@ -1075,8 +1543,15 @@ struct PracticeCenterView: View {
 
     @MainActor
     private func requestPracticeRecommendation() async {
+        guard practicePhase == .selection else { return }
+        let requestId = UUID()
+        practiceRecommendationRequestId = requestId
         isLoadingPracticeAI = true
-        defer { isLoadingPracticeAI = false }
+        defer {
+            if practiceRecommendationRequestId == requestId {
+                isLoadingPracticeAI = false
+            }
+        }
         practiceAIResponse = nil
         recommendedPracticePlan = nil
 
@@ -1088,6 +1563,9 @@ struct PracticeCenterView: View {
             preferredQuestionTypes: preferredQuestionTypesForAI
         )
         let response = await appState.recommendPracticeWithAI(context: context)
+        guard practiceRecommendationRequestId == requestId,
+              practicePhase == .selection
+        else { return }
         practiceAIResponse = response
         recommendedPracticePlan = buildAIRecommendationPlan(from: response)
     }
@@ -1111,11 +1589,86 @@ private struct PracticeLevelFilter: Identifiable, Equatable {
     }
 }
 
-private struct PracticeResult: Equatable {
+enum PracticeCenterPhase: String, Equatable {
+    case selection
+    case primary
+    case repair
+}
+
+struct PracticeResult: Codable, Equatable {
     let isCorrect: Bool
     let acceptedAnswer: String
     let explanation: String
     let repairHint: String
+}
+
+struct PracticeSessionDraft: Codable, Equatable {
+    let questionIds: [String]
+    let index: Int
+    let answer: String
+    let result: PracticeResult?
+    let sourceTitle: String?
+    let selectionNote: String?
+    let optionOrderByQuestionId: [String: [String]]
+    let answeredCount: Int
+    let correctCount: Int
+    let didCountCurrentAnswer: Bool
+}
+
+struct PracticeSessionDraftStore {
+    private let defaults: UserDefaults
+    private let keyPrefix = "englishplus.practice.primary.v1."
+
+    init(defaults: UserDefaults = .standard) {
+        self.defaults = defaults
+    }
+
+    func save(_ draft: PracticeSessionDraft, ownerId: String) {
+        guard let data = try? JSONEncoder().encode(draft) else { return }
+        defaults.set(data, forKey: storageKey(ownerId: ownerId))
+    }
+
+    func load(ownerId: String) -> PracticeSessionDraft? {
+        guard let data = defaults.data(forKey: storageKey(ownerId: ownerId)) else { return nil }
+        guard let draft = try? JSONDecoder().decode(PracticeSessionDraft.self, from: data) else {
+            clear(ownerId: ownerId)
+            return nil
+        }
+        return draft
+    }
+
+    func clear(ownerId: String) {
+        defaults.removeObject(forKey: storageKey(ownerId: ownerId))
+    }
+
+    private func storageKey(ownerId: String) -> String {
+        keyPrefix + ownerId
+    }
+}
+
+private struct PracticeSessionProposal {
+    let items: [QuestionBankItem]
+    let sourceTitle: String?
+    let note: String?
+}
+
+private struct PracticeSessionMemorySnapshot {
+    let items: [QuestionBankItem]
+    let index: Int
+    let answer: String
+    let result: PracticeResult?
+    let questionAIResponse: AiProxyResponse?
+    let wrongAnswerAIResponse: AiProxyResponse?
+    let wrongAnswerRepairItems: [QuestionBankItem]
+    let supportConfirmation: String?
+    let supportSentQuestionIds: Set<String>
+    let sourceTitle: String?
+    let selectionNote: String?
+    let optionOrderByQuestionId: [String: [String]]
+    let answeredCount: Int
+    let correctCount: Int
+    let didCountCurrentAnswer: Bool
+    let isComplete: Bool
 }
 
 private struct PracticeSessionSelection: Equatable {
@@ -1158,6 +1711,66 @@ private struct PracticeStatPill: View {
         .padding(.horizontal, 12)
         .padding(.vertical, 8)
         .background(EPTheme.secondarySurface)
+        .clipShape(RoundedRectangle(cornerRadius: EPTheme.cardRadius))
+    }
+}
+
+private struct PracticeFlowNoticeCard: View {
+    let message: String
+
+    var body: some View {
+        Label(message, systemImage: "checkmark.circle.fill")
+            .font(.subheadline.bold())
+            .foregroundStyle(EPTheme.support)
+            .fixedSize(horizontal: false, vertical: true)
+            .padding(14)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(EPTheme.support.opacity(0.10))
+            .clipShape(RoundedRectangle(cornerRadius: EPTheme.cardRadius))
+    }
+}
+
+private struct UnfinishedPracticeSessionCard: View {
+    let title: String
+    let progressText: String
+    let onResume: () -> Void
+    let onDiscard: () -> Void
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Label("上次練到一半", systemImage: "bookmark.fill")
+                .font(.headline)
+                .foregroundStyle(EPTheme.primary)
+
+            Text(title)
+                .font(.title3.bold())
+                .foregroundStyle(EPTheme.ink)
+                .fixedSize(horizontal: false, vertical: true)
+
+            Text(progressText)
+                .font(.subheadline)
+                .foregroundStyle(EPTheme.secondaryInk)
+
+            HStack(spacing: 10) {
+                Button(action: onResume) {
+                    Label("回到原題組", systemImage: "play.fill")
+                        .font(.subheadline.bold())
+                        .frame(maxWidth: .infinity, minHeight: 44)
+                }
+                .buttonStyle(PrimaryActionButtonStyle())
+
+                Button(action: onDiscard) {
+                    Image(systemName: "trash")
+                        .font(.headline)
+                        .frame(width: 44, height: 44)
+                }
+                .buttonStyle(SecondaryActionButtonStyle())
+                .accessibilityLabel("捨棄未完成題組")
+            }
+        }
+        .padding(16)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(EPTheme.primary.opacity(0.08))
         .clipShape(RoundedRectangle(cornerRadius: EPTheme.cardRadius))
     }
 }

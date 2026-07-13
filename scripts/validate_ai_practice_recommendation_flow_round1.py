@@ -18,7 +18,7 @@ def main() -> None:
         "recommendedPracticePlan",
         "buildAIRecommendationPlan",
         "applyAIRecommendedPracticePlan",
-        "startPracticeSession(with:",
+        "requestPrimarySessionStart(",
         "recommendationSearchText",
         "inferRecommendedQuestionTypes",
         "scoreAIRecommendedItem",
@@ -37,8 +37,10 @@ def main() -> None:
         "AI recommendations must be converted from a structured, quality-controlled plan.",
     )
     require(
-        "startPracticeSession(with: plan.items, sourceTitle: plan.title)" in source,
-        "Applying an AI recommendation must start exactly the validated plan without silently changing its size.",
+        "items: plan.items" in source
+        and "sourceTitle: plan.title" in source
+        and "requestPrimarySessionStart(" in source,
+        "Applying an AI recommendation must propose exactly the validated plan without silently changing its size.",
     )
     require(
         "buildPracticeSessionItems(from: plan.items)" not in source,

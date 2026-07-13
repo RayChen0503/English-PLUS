@@ -96,12 +96,17 @@ require(
 )
 reset_body = function_body(
     practice_center,
-    "private func resetPracticePosition()",
+    "private func resetSelectionState()",
 )
 require(
     "practiceAIResponse = nil" in reset_body
     and "recommendedPracticePlan = nil" in reset_body,
-    "Changing practice filters or sets must clear stale AI recommendation state.",
+    "Changing practice filters or sets must clear stale AI recommendation state without destroying an active session.",
+)
+require(
+    "freePracticeSessionItems = []" not in reset_body
+    and "clearPersistedPrimarySession()" not in reset_body,
+    "Changing selection filters must not destroy an unfinished primary practice session.",
 )
 
 answer_state_body = function_body(

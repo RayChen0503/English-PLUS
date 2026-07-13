@@ -33,7 +33,9 @@ require_markers(
         "PracticeAIRecommendationActionCard",
         "onApplyRecommendation",
         "structuredRecommendationSelection(",
-        "startPracticeSession(with: plan.items, sourceTitle: plan.title)",
+        "requestPrimarySessionStart(",
+        "items: plan.items",
+        "sourceTitle: plan.title",
     ],
 )
 

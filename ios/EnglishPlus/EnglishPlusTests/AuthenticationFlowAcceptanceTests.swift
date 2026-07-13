@@ -459,6 +459,100 @@ final class SupportLifecycleAcceptanceTests: XCTestCase {
     }
 }
 
+final class PracticeSessionDraftAcceptanceTests: XCTestCase {
+    private var defaults: UserDefaults!
+    private var store: PracticeSessionDraftStore!
+    private let suiteName = "PracticeSessionDraftAcceptanceTests"
+
+    override func setUp() {
+        super.setUp()
+        defaults = UserDefaults(suiteName: suiteName)
+        defaults.removePersistentDomain(forName: suiteName)
+        store = PracticeSessionDraftStore(defaults: defaults)
+    }
+
+    override func tearDown() {
+        defaults.removePersistentDomain(forName: suiteName)
+        defaults = nil
+        store = nil
+        super.tearDown()
+    }
+
+    func testDraftRoundTripPreservesQuestionPositionAndSubmittedResult() {
+        let result = PracticeResult(
+            isCorrect: false,
+            acceptedAnswer: "are",
+            explanation: "A plural subject uses are.",
+            repairHint: "Find the subject first."
+        )
+        let draft = PracticeSessionDraft(
+            questionIds: ["q1", "q2", "q3"],
+            index: 1,
+            answer: "is",
+            result: result,
+            sourceTitle: "Be verbs",
+            selectionNote: "Foundation practice",
+            optionOrderByQuestionId: ["q2": ["am", "is", "are", "be"]],
+            answeredCount: 2,
+            correctCount: 1,
+            didCountCurrentAnswer: true
+        )
+
+        store.save(draft, ownerId: "student-a")
+
+        XCTAssertEqual(store.load(ownerId: "student-a"), draft)
+    }
+
+    func testDraftsAreIsolatedBetweenAccounts() {
+        let draft = PracticeSessionDraft(
+            questionIds: ["q1"],
+            index: 0,
+            answer: "",
+            result: nil,
+            sourceTitle: "Vocabulary",
+            selectionNote: nil,
+            optionOrderByQuestionId: [:],
+            answeredCount: 0,
+            correctCount: 0,
+            didCountCurrentAnswer: false
+        )
+
+        store.save(draft, ownerId: "student-a")
+
+        XCTAssertEqual(store.load(ownerId: "student-a"), draft)
+        XCTAssertNil(store.load(ownerId: "student-b"))
+    }
+
+    func testClearingOneAccountDoesNotClearAnotherAccountDraft() {
+        let draft = PracticeSessionDraft(
+            questionIds: ["q1"],
+            index: 0,
+            answer: "are",
+            result: nil,
+            sourceTitle: "Grammar",
+            selectionNote: nil,
+            optionOrderByQuestionId: [:],
+            answeredCount: 0,
+            correctCount: 0,
+            didCountCurrentAnswer: false
+        )
+        store.save(draft, ownerId: "student-a")
+        store.save(draft, ownerId: "student-b")
+
+        store.clear(ownerId: "student-a")
+
+        XCTAssertNil(store.load(ownerId: "student-a"))
+        XCTAssertEqual(store.load(ownerId: "student-b"), draft)
+    }
+
+    func testMalformedDraftFailsClosed() {
+        defaults.set(Data("not-json".utf8), forKey: "englishplus.practice.primary.v1.student-a")
+
+        XCTAssertNil(store.load(ownerId: "student-a"))
+        XCTAssertNil(defaults.data(forKey: "englishplus.practice.primary.v1.student-a"))
+    }
+}
+
 private final class RecordingAuthService: AuthService {
     var providerSignInResult: Result<AuthSession, AuthServiceError> = .failure(.profileUnavailable)
     var providerCreationResult: Result<AccountCreationOutcome, AuthServiceError> = .failure(.operationUnavailable)

@@ -46,7 +46,7 @@ def require_main_actor_async_cleanup(
         f"{signature} must set {loading_flag} before async work.",
     )
     require(
-        f"defer {{ {loading_flag} = false }}" in body,
+        "defer {" in body and f"{loading_flag} = false" in body,
         f"{signature} must use defer to clear {loading_flag} even if AI/repository work falls back.",
     )
 
@@ -86,7 +86,8 @@ explain_practice_body = function_body(
     "private func explainPracticeWrongAnswer(attempt: MissionAttempt, item: QuestionBankItem) async",
 )
 require(
-    "defer { isLoadingWrongAnswerAI = false }" in explain_practice_body,
+    "defer {" in explain_practice_body
+    and "isLoadingWrongAnswerAI = false" in explain_practice_body,
     "Practice wrong-answer AI loading state must be cleared with defer.",
 )
 submit_body = function_body(
