@@ -35,6 +35,7 @@ evidence in the round reports.
 | 5 - Personal learning mode | Complete | `round-05-personal-learning-mode.md` |
 | 6 - Classroom lifecycle | Complete | `round-06-classroom-lifecycle.md` |
 | 7 - Teacher class management | Complete | `round-07-teacher-class-management.md` |
+| 8 - Firestore synchronization and Block B audit | Complete | `round-08-firestore-sync-audit.md` |
 
 ## Main-branch safety
 

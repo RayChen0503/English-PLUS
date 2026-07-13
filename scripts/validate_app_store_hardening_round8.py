@@ -113,9 +113,14 @@ def main() -> int:
     ), "macOS compile workflow", errors)
     markers(report, (
         "Round 8",
-        "Status: In verification",
+        "Status: Complete",
         "Defects found and corrected",
         "Acceptance flow",
+        "68/68",
+        "16/16",
+        "26/26",
+        "29236759213",
+        "Firestore Rules compiled and released",
         "Xcode Cloud",
     ), "Round 8 report", errors)
 

@@ -1,6 +1,6 @@
 # Round 8 - Firestore synchronization and Block B audit
 
-Status: In verification
+Status: Complete
 
 ## Objective
 
@@ -86,10 +86,27 @@ roles.
 - authenticated production Worker/Firebase smoke suite
 - `git diff --check` and sensitive-file audit
 
+## Verification evidence
+
+- Complete repository validator sweep: `68/68` passed.
+- Firestore Emulator role and query matrix: `16/16` passed. The matrix
+  includes intentional denied writes for cross-user access, role
+  impersonation, immutable assignment fields and post-leave writes.
+- Cloudflare Worker unit tests: `9/9` passed.
+- Firebase Functions TypeScript build: passed.
+- Isolated macOS iOS Simulator clean build: GitHub Actions run
+  `29236759213` passed against commit `ee4d878`.
+- Firestore Rules compiled and released to `englishplus-testflight`.
+- Both reviewed composite indexes and both large-field index exemptions were
+  deployed and read back from the project.
+- Authenticated production Firebase/Worker smoke suite: `26/26` passed,
+  including all three roles, class authorization, real Groq AI and unauthenticated
+  request rejection.
+- No Firebase plist, Apple private key, service-account key or Groq secret is
+  tracked by this round.
+
 ## Release gate
 
-Round 8 remains on `codex/app-store-hardening-b` until all checks above pass.
-Only then may Block B merge deliberately into `main` and trigger one Xcode
-Cloud build.
-
-Xcode Cloud is therefore a final Block B release gate, not a per-commit test.
+All Round 8 source, emulator, macOS compile and production-runtime gates have
+passed. Block B is cleared for one deliberate merge into `main`; that merge is
+the single Xcode Cloud trigger for Rounds 5-8.
