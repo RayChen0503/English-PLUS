@@ -1,6 +1,7 @@
 # TestFlight onboarding acceptance hotfix
 
-Status: Awaiting isolated macOS compile and XCTest execution.
+Status: Complete and verified on the hotfix branch; awaiting an explicit merge
+to `main` before Xcode Cloud is triggered.
 
 ## TestFlight findings
 
@@ -56,3 +57,30 @@ Local evidence before the macOS gate:
 - Firebase Functions TypeScript build passed.
 - Firestore Emulator role and privacy suite passed 18 / 18.
 - `git diff --check` passed.
+
+macOS execution evidence:
+
+- GitHub Actions run `29266594771` tested commit `9eed343`.
+- Full iOS Simulator build passed.
+- `AuthenticationFlowAcceptanceTests` executed 16 tests with 0 failures.
+- The job ended with `TEST SUCCEEDED`.
+
+## Manual TestFlight acceptance after merge
+
+External Apple and Google account sheets require a real user identity and
+cannot be completed non-interactively in CI. The deterministic suite executes
+the exact post-provider first-use state, while the release build should still
+be checked once with disposable test identities:
+
+1. A Google identity with no `/users/{uid}` document must show the short role
+   profile step, not the old profile-unavailable error.
+2. A fresh Apple identity must complete the same step without asking the user
+   to authenticate with Apple a second time.
+3. A teacher must choose a Ministry catalog result or the clearly labelled
+   manual education fallback; no approval screen should appear.
+4. A volunteer must move from basic declarations to the evidence upload page,
+   and must not see protected student data before approval.
+5. Email registration must stop at mailbox verification; an existing verified
+   Email account must sign in normally.
+6. Closing and reopening the app must restore an existing session and must not
+   show privacy consent again when the current policy version was accepted.
