@@ -331,7 +331,7 @@ final class AuthenticationFlowAcceptanceTests: XCTestCase {
             role: .teacher,
             classId: classId,
             groupId: nil,
-            consentStatus: .accepted,
+            consentStatus: .granted,
             isDemo: false,
             createdAt: now,
             updatedAt: now,
