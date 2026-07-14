@@ -10,6 +10,7 @@ on:
       - codex/fix-f-post-answer-ai
       - codex/fix-g-stabilization-audit
     paths:
+      - .github/workflows/ios-hardening-build.yml
       - .github/ci-triggers/round10-ios-build
       - .github/ci-triggers/round11-ios-build
       - .github/ci-triggers/round12-ios-build
