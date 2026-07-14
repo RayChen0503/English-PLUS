@@ -76,6 +76,7 @@ def main() -> int:
             "final class NetworkConnectivityMonitor",
             "NWPathMonitor",
             "case disconnected",
+            "self.status = nextStatus",
         ),
         "connectivity boundary",
         errors,

@@ -43,8 +43,8 @@ final class NetworkConnectivityMonitor: NetworkConnectivityMonitoring, @unchecke
                 ? .connected
                 : .disconnected
             let didChange = lock.englishPlusWithLock {
-                guard status != nextStatus else { return false }
-                status = nextStatus
+                guard self.status != nextStatus else { return false }
+                self.status = nextStatus
                 return true
             }
             if didChange {
