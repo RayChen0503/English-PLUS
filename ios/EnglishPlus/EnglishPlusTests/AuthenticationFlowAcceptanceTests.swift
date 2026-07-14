@@ -504,11 +504,11 @@ final class StabilizationDashboardAcceptanceTests: XCTestCase {
 
         XCTAssertEqual(store.volunteerDashboardMetrics.repliedByVolunteerCount, 0)
         let firstReplySucceeded = await store.addVolunteerReply(
-            to: "support-seed-teacher-1",
+            to: "support-seed-volunteer-1",
             body: "先看主詞。"
         )
         let secondReplySucceeded = await store.addVolunteerReply(
-            to: "support-seed-teacher-1",
+            to: "support-seed-volunteer-1",
             body: "再確認動詞形式。"
         )
 
