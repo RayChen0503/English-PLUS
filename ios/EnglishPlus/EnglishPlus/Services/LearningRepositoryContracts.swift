@@ -6,6 +6,7 @@ struct LearningRepositorySnapshot: Equatable {
     var missionAttempts: [MissionAttempt]
     var supportRequests: [StudentSupportRequest]
     var assignedPracticeTasks: [TeacherAssignedPracticeTask]
+    var masteryRecords: [SkillMasteryRecord]
     var learningFlow: LearningFlowState
 }
 
@@ -104,6 +105,12 @@ protocol LearningRepositoryBackend: AnyObject {
     func returnToMissionFlow()
     func completeFreePracticeSession(correctCount: Int, totalCount: Int)
     func submitMissionAnswer(_ answer: String) -> MissionAttempt?
+    func recordPracticeAnswer(
+        studentUid: String,
+        questionItem: QuestionBankItem,
+        isCorrect: Bool,
+        source: LearningAttemptSource
+    )
     func supportRequests(forStudentUid studentUid: String?) -> [StudentSupportRequest]
     func sendSupportRequest(
         from user: DemoUser?,

@@ -55,6 +55,10 @@ enum FirestorePath {
         "\(user(uid: uid))/personalLearningEvents/\(segment(eventId))"
     }
 
+    static func personalSkillMastery(uid: String, masteryId: String) -> String {
+        "\(user(uid: uid))/skillMastery/\(segment(masteryId))"
+    }
+
     static func classDocument(classId: String) -> String {
         "classes/\(segment(classId))"
     }
@@ -89,6 +93,10 @@ enum FirestorePath {
 
     static func learningEvent(classId: String, studentUid: String, eventId: String) -> String {
         "\(student(classId: classId, studentUid: studentUid))/learningEvents/\(segment(eventId))"
+    }
+
+    static func skillMastery(classId: String, studentUid: String, masteryId: String) -> String {
+        "\(student(classId: classId, studentUid: studentUid))/skillMastery/\(segment(masteryId))"
     }
 
     static func supportThread(classId: String, threadId: String) -> String {

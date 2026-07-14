@@ -122,6 +122,18 @@ async function seedDeletionAccount() {
       status: "active",
       createdAt: NOW,
     });
+    await setDoc(doc(db, "users", UID, "skillMastery", "mastery-personal"), {
+      masteryId: "mastery-personal",
+      studentUid: UID,
+      masteryScore: 62,
+      updatedAt: NOW,
+    });
+    await setDoc(doc(db, "classes", CLASS_ID, "students", UID, "skillMastery", "mastery-class"), {
+      masteryId: "mastery-class",
+      studentUid: UID,
+      masteryScore: 62,
+      updatedAt: NOW,
+    });
     await setDoc(doc(db, "classes", CLASS_ID, "supportThreads", "legacy-thread"), {
       threadId: "legacy-thread",
       studentUid: UID,
@@ -186,6 +198,8 @@ test("staged account deletion removes identifiable data and preserves only safe 
     assert.equal((await getDoc(doc(db, "teacherProfiles", UID))).exists(), false);
     assert.equal((await getDoc(doc(db, "classes", CLASS_ID, "students", UID))).exists(), false);
     assert.equal((await getDoc(doc(db, "classes", CLASS_ID, "students", UID, "dailyMissions", "mission-1"))).exists(), false);
+    assert.equal((await getDoc(doc(db, "users", UID, "skillMastery", "mastery-personal"))).exists(), false);
+    assert.equal((await getDoc(doc(db, "classes", CLASS_ID, "students", UID, "skillMastery", "mastery-class"))).exists(), false);
     assert.equal((await getDoc(doc(db, "classes", CLASS_ID, "supportThreads", "legacy-thread"))).exists(), false);
     assert.equal((await getDoc(doc(db, "accountDeletionJobs", UID))).exists(), false);
 

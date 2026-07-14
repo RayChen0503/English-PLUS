@@ -43,6 +43,225 @@ struct MissionAttempt: Identifiable, Codable, Equatable {
     let createdAt: Date
 }
 
+enum LearningAttemptSource: String, Codable, Equatable {
+    case dailyMission
+    case freePractice
+    case repairPractice
+    case teacherAssignment
+}
+
+enum MasteryBand: String, Codable, Equatable, CaseIterable {
+    case needsReview
+    case developing
+    case strong
+    case mastered
+
+    var title: String {
+        switch self {
+        case .needsReview:
+            return "需要複習"
+        case .developing:
+            return "正在建立"
+        case .strong:
+            return "表現穩定"
+        case .mastered:
+            return "已熟練"
+        }
+    }
+}
+
+struct SkillMasteryRecord: Identifiable, Codable, Equatable {
+    let id: String
+    let studentUid: String
+    let curriculumKey: String
+    let unit: String
+    let skill: String
+    let questionType: QuestionType
+    let level: QuestionLevel
+    var attemptCount: Int
+    var correctCount: Int
+    var firstTryCorrectCount: Int
+    var consecutiveCorrectCount: Int
+    var masteryScore: Int
+    var lastQuestionId: String
+    var lastResultCorrect: Bool
+    var lastAttemptSource: LearningAttemptSource
+    var lastAnsweredAt: Date
+    var nextReviewAt: Date
+    var updatedAt: Date
+
+    func isDue(at date: Date = Date()) -> Bool {
+        nextReviewAt <= date
+    }
+
+    var accuracy: Double {
+        guard attemptCount > 0 else { return 0 }
+        return Double(correctCount) / Double(attemptCount)
+    }
+
+    var band: MasteryBand {
+        if !lastResultCorrect || masteryScore < 55 {
+            return .needsReview
+        }
+        if attemptCount >= 8, masteryScore >= 85, consecutiveCorrectCount >= 3 {
+            return .mastered
+        }
+        if attemptCount >= 4, masteryScore >= 70, consecutiveCorrectCount >= 2 {
+            return .strong
+        }
+        return .developing
+    }
+}
+
+struct MasterySummary: Equatable {
+    let trackedSkillCount: Int
+    let dueReviewCount: Int
+    let strongSkillCount: Int
+    let averageScore: Int
+
+    static let empty = MasterySummary(
+        trackedSkillCount: 0,
+        dueReviewCount: 0,
+        strongSkillCount: 0,
+        averageScore: 0
+    )
+}
+
+enum SpacedRepetitionEngine {
+    static func recording(
+        existing: SkillMasteryRecord?,
+        studentUid: String,
+        item: QuestionBankItem,
+        isCorrect: Bool,
+        firstTryCorrect: Bool,
+        source: LearningAttemptSource,
+        at date: Date,
+        calendar: Calendar = Calendar(identifier: .gregorian)
+    ) -> SkillMasteryRecord {
+        let priorAttemptCount = existing?.attemptCount ?? 0
+        let priorScore = existing?.masteryScore ?? 50
+        let outcomeScore = isCorrect ? (firstTryCorrect ? 100 : 72) : 20
+        let learningWeight = max(14, 34 - min(priorAttemptCount, 10) * 2)
+        let updatedScore = min(
+            100,
+            max(0, Int((Double(priorScore * (100 - learningWeight) + outcomeScore * learningWeight) / 100).rounded()))
+        )
+        let streak = isCorrect ? (existing?.consecutiveCorrectCount ?? 0) + 1 : 0
+        let intervalDays = isCorrect ? reviewIntervalDays(for: streak) : 0
+        let nextReviewAt = calendar.date(byAdding: .day, value: intervalDays, to: date) ?? date
+
+        return SkillMasteryRecord(
+            id: existing?.id ?? masteryId(for: item),
+            studentUid: studentUid,
+            curriculumKey: item.curriculumKey,
+            unit: item.unit,
+            skill: item.skill.isEmpty ? item.question.concept : item.skill,
+            questionType: item.question.type,
+            level: item.level,
+            attemptCount: priorAttemptCount + 1,
+            correctCount: (existing?.correctCount ?? 0) + (isCorrect ? 1 : 0),
+            firstTryCorrectCount: (existing?.firstTryCorrectCount ?? 0) + (firstTryCorrect ? 1 : 0),
+            consecutiveCorrectCount: streak,
+            masteryScore: updatedScore,
+            lastQuestionId: item.id,
+            lastResultCorrect: isCorrect,
+            lastAttemptSource: source,
+            lastAnsweredAt: date,
+            nextReviewAt: nextReviewAt,
+            updatedAt: date
+        )
+    }
+
+    static func summary(
+        records: [SkillMasteryRecord],
+        at date: Date = Date()
+    ) -> MasterySummary {
+        guard !records.isEmpty else { return .empty }
+        let dueCount = records.filter { $0.isDue(at: date) || $0.band == .needsReview }.count
+        let strongCount = records.filter { $0.band == .strong || $0.band == .mastered }.count
+        let average = Int((Double(records.map(\.masteryScore).reduce(0, +)) / Double(records.count)).rounded())
+        return MasterySummary(
+            trackedSkillCount: records.count,
+            dueReviewCount: dueCount,
+            strongSkillCount: strongCount,
+            averageScore: average
+        )
+    }
+
+    static func reviewQuestions(
+        records: [SkillMasteryRecord],
+        questionBank: [QuestionBankItem],
+        limit: Int,
+        at date: Date = Date(),
+        rotationSeed: String
+    ) -> [QuestionBankItem] {
+        let target = max(0, min(limit, 12))
+        guard target > 0 else { return [] }
+        let eligibleRecords = records
+            .filter { $0.isDue(at: date) || $0.band == .needsReview || $0.masteryScore < 70 }
+        let recordsByPriority = (eligibleRecords.isEmpty ? records : eligibleRecords)
+            .sorted { lhs, rhs in
+                let lhsDue = lhs.isDue(at: date) || lhs.band == .needsReview
+                let rhsDue = rhs.isDue(at: date) || rhs.band == .needsReview
+                if lhsDue != rhsDue { return lhsDue && !rhsDue }
+                if lhs.masteryScore != rhs.masteryScore { return lhs.masteryScore < rhs.masteryScore }
+                return lhs.nextReviewAt < rhs.nextReviewAt
+            }
+
+        let lastQuestionIds = Set(recordsByPriority.map(\.lastQuestionId))
+        let lastSemanticKeys = Set(
+            questionBank
+                .filter { lastQuestionIds.contains($0.id) }
+                .map(\.semanticKey)
+        )
+        var selected: [QuestionBankItem] = []
+        var seenSemanticKeys = Set<String>()
+        for record in recordsByPriority where selected.count < target {
+            let candidates = questionBank.filter {
+                $0.curriculumKey == record.curriculumKey
+                    && $0.id != record.lastQuestionId
+                    && !lastSemanticKeys.contains($0.semanticKey)
+                    && !seenSemanticKeys.contains($0.semanticKey)
+            }
+            guard let item = QuestionGroupingEngine.balancedItems(
+                from: candidates,
+                limit: 1,
+                rotationSeed: "\(rotationSeed)-\(record.id)"
+            ).first else { continue }
+            selected.append(item)
+            seenSemanticKeys.insert(item.semanticKey)
+        }
+
+        guard selected.count < target else { return selected }
+        let priorityKeys = Set(recordsByPriority.map(\.curriculumKey))
+        let fill = QuestionGroupingEngine.balancedItems(
+            from: questionBank.filter {
+                priorityKeys.contains($0.curriculumKey)
+                    && !lastQuestionIds.contains($0.id)
+                    && !lastSemanticKeys.contains($0.semanticKey)
+                    && !seenSemanticKeys.contains($0.semanticKey)
+            },
+            limit: target - selected.count,
+            rotationSeed: "\(rotationSeed)-fill"
+        )
+        return selected + fill
+    }
+
+    private static func reviewIntervalDays(for streak: Int) -> Int {
+        let intervals = [1, 3, 7, 14, 30]
+        return intervals[min(max(streak - 1, 0), intervals.count - 1)]
+    }
+
+    private static func masteryId(for item: QuestionBankItem) -> String {
+        var hash: UInt64 = 14_695_981_039_346_656_037
+        for byte in item.curriculumKey.utf8 {
+            hash ^= UInt64(byte)
+            hash &*= 1_099_511_628_211
+        }
+        return "mastery-\(String(hash, radix: 16))"
+    }
+}
+
 enum LearningFlowStage: String, Codable, Equatable {
     case needsCheckIn
     case missionActive
@@ -540,6 +759,66 @@ struct PracticeAssignmentQuestionResult: Identifiable, Codable, Equatable {
     let explanation: String
     let repairHint: String
     let answeredAt: Date
+    let attemptCount: Int
+    let firstAttemptCorrect: Bool
+
+    private enum CodingKeys: String, CodingKey {
+        case id
+        case questionId
+        case prompt
+        case selectedAnswer
+        case acceptedAnswer
+        case isCorrect
+        case explanation
+        case repairHint
+        case answeredAt
+        case attemptCount
+        case firstAttemptCorrect
+    }
+
+    init(
+        id: String,
+        questionId: String,
+        prompt: String,
+        selectedAnswer: String,
+        acceptedAnswer: String,
+        isCorrect: Bool,
+        explanation: String,
+        repairHint: String,
+        answeredAt: Date,
+        attemptCount: Int = 1,
+        firstAttemptCorrect: Bool? = nil
+    ) {
+        self.id = id
+        self.questionId = questionId
+        self.prompt = prompt
+        self.selectedAnswer = selectedAnswer
+        self.acceptedAnswer = acceptedAnswer
+        self.isCorrect = isCorrect
+        self.explanation = explanation
+        self.repairHint = repairHint
+        self.answeredAt = answeredAt
+        self.attemptCount = max(1, attemptCount)
+        self.firstAttemptCorrect = firstAttemptCorrect ?? isCorrect
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        let isCorrect = try container.decode(Bool.self, forKey: .isCorrect)
+        self.init(
+            id: try container.decode(String.self, forKey: .id),
+            questionId: try container.decode(String.self, forKey: .questionId),
+            prompt: try container.decode(String.self, forKey: .prompt),
+            selectedAnswer: try container.decode(String.self, forKey: .selectedAnswer),
+            acceptedAnswer: try container.decode(String.self, forKey: .acceptedAnswer),
+            isCorrect: isCorrect,
+            explanation: try container.decode(String.self, forKey: .explanation),
+            repairHint: try container.decode(String.self, forKey: .repairHint),
+            answeredAt: try container.decode(Date.self, forKey: .answeredAt),
+            attemptCount: try container.decodeIfPresent(Int.self, forKey: .attemptCount) ?? 1,
+            firstAttemptCorrect: try container.decodeIfPresent(Bool.self, forKey: .firstAttemptCorrect) ?? isCorrect
+        )
+    }
 }
 
 struct TeacherAssignedPracticeTask: Identifiable, Codable, Equatable {
@@ -717,6 +996,7 @@ struct LocalLearningSnapshot: Codable, Equatable {
     let missionAttempts: [MissionAttempt]
     let supportRequests: [StudentSupportRequest]
     let assignedPracticeTasks: [TeacherAssignedPracticeTask]
+    let masteryRecords: [SkillMasteryRecord]
     let learningFlow: LearningFlowState
     let savedAt: Date
 
@@ -726,6 +1006,7 @@ struct LocalLearningSnapshot: Codable, Equatable {
         case missionAttempts
         case supportRequests
         case assignedPracticeTasks
+        case masteryRecords
         case learningFlow
         case savedAt
     }
@@ -736,6 +1017,7 @@ struct LocalLearningSnapshot: Codable, Equatable {
         missionAttempts: [MissionAttempt],
         supportRequests: [StudentSupportRequest],
         assignedPracticeTasks: [TeacherAssignedPracticeTask] = [],
+        masteryRecords: [SkillMasteryRecord] = [],
         learningFlow: LearningFlowState? = nil,
         savedAt: Date
     ) {
@@ -744,6 +1026,7 @@ struct LocalLearningSnapshot: Codable, Equatable {
         self.missionAttempts = missionAttempts
         self.supportRequests = supportRequests
         self.assignedPracticeTasks = assignedPracticeTasks
+        self.masteryRecords = masteryRecords
         self.learningFlow = learningFlow ?? LearningFlowState.derived(
             dateKey: currentMission?.dateKey ?? currentCheckIn?.dateKey ?? Self.dateKey(from: savedAt),
             currentMission: currentMission,
@@ -760,6 +1043,7 @@ struct LocalLearningSnapshot: Codable, Equatable {
             missionAttempts: snapshot.missionAttempts,
             supportRequests: snapshot.supportRequests,
             assignedPracticeTasks: snapshot.assignedPracticeTasks,
+            masteryRecords: snapshot.masteryRecords,
             learningFlow: snapshot.learningFlow,
             savedAt: savedAt
         )
@@ -772,6 +1056,7 @@ struct LocalLearningSnapshot: Codable, Equatable {
             missionAttempts: missionAttempts,
             supportRequests: supportRequests,
             assignedPracticeTasks: assignedPracticeTasks,
+            masteryRecords: masteryRecords,
             learningFlow: learningFlow
         )
     }
@@ -783,6 +1068,7 @@ struct LocalLearningSnapshot: Codable, Equatable {
         let missionAttempts = try container.decodeIfPresent([MissionAttempt].self, forKey: .missionAttempts) ?? []
         let supportRequests = try container.decodeIfPresent([StudentSupportRequest].self, forKey: .supportRequests) ?? []
         let assignedPracticeTasks = try container.decodeIfPresent([TeacherAssignedPracticeTask].self, forKey: .assignedPracticeTasks) ?? []
+        let masteryRecords = try container.decodeIfPresent([SkillMasteryRecord].self, forKey: .masteryRecords) ?? []
         let savedAt = try container.decodeIfPresent(Date.self, forKey: .savedAt) ?? Date()
         let learningFlow = try container.decodeIfPresent(LearningFlowState.self, forKey: .learningFlow)
 
@@ -792,6 +1078,7 @@ struct LocalLearningSnapshot: Codable, Equatable {
             missionAttempts: missionAttempts,
             supportRequests: supportRequests,
             assignedPracticeTasks: assignedPracticeTasks,
+            masteryRecords: masteryRecords,
             learningFlow: learningFlow,
             savedAt: savedAt
         )
@@ -804,6 +1091,7 @@ struct LocalLearningSnapshot: Codable, Equatable {
         try container.encode(missionAttempts, forKey: .missionAttempts)
         try container.encode(supportRequests, forKey: .supportRequests)
         try container.encode(assignedPracticeTasks, forKey: .assignedPracticeTasks)
+        try container.encode(masteryRecords, forKey: .masteryRecords)
         try container.encode(learningFlow, forKey: .learningFlow)
         try container.encode(savedAt, forKey: .savedAt)
     }

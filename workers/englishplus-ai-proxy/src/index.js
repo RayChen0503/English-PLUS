@@ -27,6 +27,7 @@ const USER_OWNED_COLLECTIONS = Object.freeze([
   "personalDailyMissions",
   "personalAnswerEvents",
   "personalLearningEvents",
+  "skillMastery",
   "consents",
 ]);
 const CLASS_STUDENT_COLLECTIONS = Object.freeze([
@@ -36,6 +37,7 @@ const CLASS_STUDENT_COLLECTIONS = Object.freeze([
   "dailyMissions",
   "answerEvents",
   "learningEvents",
+  "skillMastery",
 ]);
 const FINAL_REVIEW_STATUSES = new Set(["approved", "rejected", "suspended"]);
 const VOLUNTEER_REVIEW_STATUSES = new Set([

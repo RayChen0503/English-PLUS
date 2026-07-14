@@ -7,6 +7,7 @@ final class MockLearningRepository: ObservableObject {
     @Published private(set) var missionAttempts: [MissionAttempt] = []
     @Published private(set) var supportRequests: [StudentSupportRequest]
     @Published private(set) var assignedPracticeTasks: [TeacherAssignedPracticeTask]
+    @Published private(set) var masteryRecords: [SkillMasteryRecord]
     @Published private(set) var learningFlow: LearningFlowState
 
     private let seedSnapshot: SeedDataSnapshot
@@ -47,6 +48,7 @@ final class MockLearningRepository: ObservableObject {
             missionAttempts = restoredSnapshot.missionAttempts
             supportRequests = restoredSnapshot.supportRequests
             assignedPracticeTasks = restoredSnapshot.assignedPracticeTasks
+            masteryRecords = restoredSnapshot.masteryRecords
             learningFlow = Self.normalizedLearningFlow(
                 from: restoredSnapshot,
                 todayKey: Self.dateKey(from: now()),
@@ -55,6 +57,7 @@ final class MockLearningRepository: ObservableObject {
         } else {
             supportRequests = Self.seedSupportRequests(now: now())
             assignedPracticeTasks = []
+            masteryRecords = []
             learningFlow = LearningFlowState.initial(
                 dateKey: Self.dateKey(from: now()),
                 updatedAt: now()
@@ -98,6 +101,7 @@ final class MockLearningRepository: ObservableObject {
             missionAttempts = restoredSnapshot.missionAttempts
             supportRequests = restoredSnapshot.supportRequests
             assignedPracticeTasks = restoredSnapshot.assignedPracticeTasks
+            masteryRecords = restoredSnapshot.masteryRecords
             learningFlow = Self.normalizedLearningFlow(
                 from: restoredSnapshot,
                 todayKey: Self.dateKey(from: now()),
@@ -109,6 +113,7 @@ final class MockLearningRepository: ObservableObject {
             missionAttempts = []
             supportRequests = []
             assignedPracticeTasks = []
+            masteryRecords = []
             learningFlow = .initial(dateKey: Self.dateKey(from: now()), updatedAt: now())
         }
     }
@@ -119,6 +124,7 @@ final class MockLearningRepository: ObservableObject {
         missionAttempts = snapshot.missionAttempts
         supportRequests = snapshot.supportRequests
         assignedPracticeTasks = snapshot.assignedPracticeTasks
+        masteryRecords = snapshot.masteryRecords
         learningFlow = snapshot.learningFlow
         persistSnapshot()
     }
@@ -256,10 +262,19 @@ final class MockLearningRepository: ObservableObject {
         )
 
         missionAttempts.append(attempt)
+        recordMasteryAttempt(
+            studentUid: mission.studentUid,
+            questionItem: questionItem,
+            isCorrect: isCorrect,
+            firstTryCorrect: attemptNumber == 1 && isCorrect,
+            source: assignedPracticeTasks.contains(where: { $0.id == mission.sourceCheckInId })
+                ? .teacherAssignment
+                : .dailyMission,
+            at: attempt.createdAt
+        )
         if isCorrect && uniqueCorrectQuestionIds.count >= mission.targetCorrectCount {
             mission.completedAt = now()
             currentMission = mission
-            markAssignmentCompletedIfNeeded(sourceId: mission.sourceCheckInId)
             learningFlow = LearningFlowState(
                 dateKey: mission.dateKey,
                 roundNumber: learningFlow.roundNumber,
@@ -273,8 +288,29 @@ final class MockLearningRepository: ObservableObject {
                 updatedAt: now()
             )
         }
+        updateAssignmentProgressIfNeeded(
+            sourceId: mission.sourceCheckInId,
+            completed: currentMission?.status == .completed
+        )
         persistSnapshot()
         return attempt
+    }
+
+    func recordPracticeAnswer(
+        studentUid: String,
+        questionItem: QuestionBankItem,
+        isCorrect: Bool,
+        source: LearningAttemptSource
+    ) {
+        recordMasteryAttempt(
+            studentUid: studentUid,
+            questionItem: questionItem,
+            isCorrect: isCorrect,
+            firstTryCorrect: isCorrect,
+            source: source,
+            at: now()
+        )
+        persistSnapshot()
     }
 
     func assignPracticeSet(_ set: QuestionPracticeSet, to student: StaffStudentSummary, by teacher: DemoUser?) {
@@ -677,33 +713,67 @@ final class MockLearningRepository: ObservableObject {
         localPersistence.saveSnapshot(LocalLearningSnapshot(snapshot: snapshot))
     }
 
-    private func markAssignmentCompletedIfNeeded(sourceId: String) {
+    private func updateAssignmentProgressIfNeeded(sourceId: String, completed: Bool) {
         guard let index = assignedPracticeTasks.firstIndex(where: { $0.id == sourceId }) else { return }
         let assignment = assignedPracticeTasks[index]
         let questionIdSet = Set(assignment.questionIds)
-        let latestAttemptsByQuestionId = Dictionary(
+        let attemptsByQuestionId = Dictionary(
             grouping: missionAttempts.filter { questionIdSet.contains($0.questionId) },
             by: \.questionId
         )
-        .compactMapValues { attempts in
-            attempts.max { $0.createdAt < $1.createdAt }
-        }
         assignedPracticeTasks[index].questionResults = assignment.questionIds.compactMap { questionId in
-            guard let attempt = latestAttemptsByQuestionId[questionId] else { return nil }
+            guard let attempts = attemptsByQuestionId[questionId],
+                  let firstAttempt = attempts.min(by: { $0.createdAt < $1.createdAt }),
+                  let latestAttempt = attempts.max(by: { $0.createdAt < $1.createdAt })
+            else { return nil }
             return PracticeAssignmentQuestionResult(
                 id: "assignment-result-\(assignment.id)-\(questionId)",
                 questionId: questionId,
-                prompt: attempt.prompt,
-                selectedAnswer: attempt.selectedAnswer,
-                acceptedAnswer: attempt.acceptedAnswer,
-                isCorrect: attempt.isCorrect,
-                explanation: attempt.explanation,
-                repairHint: attempt.repairHint,
-                answeredAt: attempt.createdAt
+                prompt: latestAttempt.prompt,
+                selectedAnswer: latestAttempt.selectedAnswer,
+                acceptedAnswer: latestAttempt.acceptedAnswer,
+                isCorrect: latestAttempt.isCorrect,
+                explanation: latestAttempt.explanation,
+                repairHint: latestAttempt.repairHint,
+                answeredAt: latestAttempt.createdAt,
+                attemptCount: attempts.count,
+                firstAttemptCorrect: firstAttempt.isCorrect
             )
         }
-        assignedPracticeTasks[index].status = .completed
+        assignedPracticeTasks[index].status = completed ? .completed : .active
         assignedPracticeTasks[index].updatedAt = now()
+    }
+
+    private func recordMasteryAttempt(
+        studentUid: String,
+        questionItem: QuestionBankItem,
+        isCorrect: Bool,
+        firstTryCorrect: Bool,
+        source: LearningAttemptSource,
+        at date: Date
+    ) {
+        let existingIndex = masteryRecords.firstIndex { record in
+            record.studentUid == studentUid && record.curriculumKey == questionItem.curriculumKey
+        }
+        let existing = existingIndex.map { masteryRecords[$0] }
+        let updated = SpacedRepetitionEngine.recording(
+            existing: existing,
+            studentUid: studentUid,
+            item: questionItem,
+            isCorrect: isCorrect,
+            firstTryCorrect: firstTryCorrect,
+            source: source,
+            at: date
+        )
+        if let existingIndex {
+            masteryRecords[existingIndex] = updated
+        } else {
+            masteryRecords.append(updated)
+        }
+        masteryRecords.sort { lhs, rhs in
+            if lhs.masteryScore != rhs.masteryScore { return lhs.masteryScore < rhs.masteryScore }
+            return lhs.updatedAt > rhs.updatedAt
+        }
     }
 
     private func questionBankItems(for questionIds: [String]) -> [QuestionBankItem] {
@@ -830,7 +900,12 @@ final class MockLearningRepository: ObservableObject {
                 rotationSeed: "\(rotationSeed)-plan-balanced"
             ).items
             if !balanced.isEmpty {
-                return balanced
+                return integratingMasteryReview(
+                    into: balanced,
+                    preferredTypes: allowedTypes,
+                    targetCount: target,
+                    rotationSeed: "\(rotationSeed)-mastery"
+                )
             }
         }
 
@@ -863,13 +938,56 @@ final class MockLearningRepository: ObservableObject {
             rotationSeed: rotationSeed
         )
         let fallbackUsed = selection.fallbackUsed
-        return fallbackUsed
+        let baseSelection = fallbackUsed
             ? QuestionGroupingEngine.balancedItems(
                 from: selection.items,
                 limit: selection.items.count,
                 rotationSeed: "\(rotationSeed)-fallback-balanced"
             )
             : selection.items
+        return integratingMasteryReview(
+            into: baseSelection,
+            preferredTypes: allowedTypes,
+            targetCount: target,
+            rotationSeed: "\(rotationSeed)-mastery"
+        )
+    }
+
+    private func integratingMasteryReview(
+        into baseItems: [QuestionBankItem],
+        preferredTypes: [QuestionType],
+        targetCount: Int,
+        rotationSeed: String
+    ) -> [QuestionBankItem] {
+        guard !masteryRecords.isEmpty, targetCount > 0 else { return baseItems }
+        let reviewDate = now()
+        guard masteryRecords.contains(where: {
+            $0.isDue(at: reviewDate) || $0.band == .needsReview || $0.masteryScore < 70
+        }) else { return baseItems }
+        let allowedTypes = Set(preferredTypes)
+        let reviewLimit = min(2, max(1, targetCount / 4))
+        let reviewItems = SpacedRepetitionEngine.reviewQuestions(
+            records: masteryRecords,
+            questionBank: cachedQuestionBankItems.filter {
+                allowedTypes.isEmpty || allowedTypes.contains($0.question.type)
+            },
+            limit: reviewLimit,
+            at: reviewDate,
+            rotationSeed: rotationSeed
+        )
+        guard !reviewItems.isEmpty else { return baseItems }
+
+        var selected = reviewItems
+        var semanticKeys = Set(reviewItems.map(\.semanticKey))
+        for item in baseItems where selected.count < targetCount {
+            guard semanticKeys.insert(item.semanticKey).inserted else { continue }
+            selected.append(item)
+        }
+        return QuestionGroupingEngine.balancedItems(
+            from: selected,
+            limit: min(targetCount, selected.count),
+            rotationSeed: "\(rotationSeed)-final"
+        )
     }
 
     private func score(

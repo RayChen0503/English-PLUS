@@ -748,6 +748,19 @@ private final class ReliabilityTestLearningBackend: LearningRepositoryBackend {
     func submitMissionAnswer(_ answer: String) -> MissionAttempt? {
         base.submitMissionAnswer(answer)
     }
+    func recordPracticeAnswer(
+        studentUid: String,
+        questionItem: QuestionBankItem,
+        isCorrect: Bool,
+        source: LearningAttemptSource
+    ) {
+        base.recordPracticeAnswer(
+            studentUid: studentUid,
+            questionItem: questionItem,
+            isCorrect: isCorrect,
+            source: source
+        )
+    }
     func supportRequests(forStudentUid studentUid: String?) -> [StudentSupportRequest] {
         base.supportRequests(forStudentUid: studentUid)
     }
@@ -1336,6 +1349,203 @@ final class QuestionBankQualityAcceptanceTests: XCTestCase {
             Set(catalog.flatMap(\.items).map(\.semanticKey)).count,
             Set(items.map(\.semanticKey)).count
         )
+    }
+}
+
+@MainActor
+final class MasteryAndSpacedReviewAcceptanceTests: XCTestCase {
+    private let studentUid = "round16-student"
+
+    func testWrongAnswerBecomesDueImmediatelyAndAffectsMasterySummary() throws {
+        let item = try XCTUnwrap(SeedData.approvedQuestionBankItems.first)
+        let answeredAt = Date(timeIntervalSince1970: 2_000_000_000)
+        let record = SpacedRepetitionEngine.recording(
+            existing: nil,
+            studentUid: studentUid,
+            item: item,
+            isCorrect: false,
+            firstTryCorrect: false,
+            source: .freePractice,
+            at: answeredAt
+        )
+        let summary = SpacedRepetitionEngine.summary(records: [record], at: answeredAt)
+
+        XCTAssertEqual(record.attemptCount, 1)
+        XCTAssertEqual(record.correctCount, 0)
+        XCTAssertEqual(record.band, .needsReview)
+        XCTAssertTrue(record.isDue(at: answeredAt))
+        XCTAssertEqual(summary.dueReviewCount, 1)
+        XCTAssertEqual(summary.strongSkillCount, 0)
+    }
+
+    func testCorrectStreakRaisesMasteryAndExtendsReviewInterval() throws {
+        let item = try XCTUnwrap(SeedData.approvedQuestionBankItems.first)
+        let start = Date(timeIntervalSince1970: 2_000_000_000)
+        var record: SkillMasteryRecord?
+        for index in 0..<8 {
+            let answeredAt = Calendar(identifier: .gregorian)
+                .date(byAdding: .day, value: index, to: start) ?? start
+            record = SpacedRepetitionEngine.recording(
+                existing: record,
+                studentUid: studentUid,
+                item: item,
+                isCorrect: true,
+                firstTryCorrect: true,
+                source: .dailyMission,
+                at: answeredAt
+            )
+        }
+        let mastered = try XCTUnwrap(record)
+
+        XCTAssertEqual(mastered.attemptCount, 8)
+        XCTAssertEqual(mastered.firstTryCorrectCount, 8)
+        XCTAssertEqual(mastered.band, .mastered)
+        XCTAssertGreaterThanOrEqual(mastered.masteryScore, 85)
+        XCTAssertGreaterThanOrEqual(
+            mastered.nextReviewAt.timeIntervalSince(mastered.lastAnsweredAt),
+            29 * 24 * 60 * 60
+        )
+    }
+
+    func testReviewSelectionAvoidsTheLastQuestionAndItsSemanticDuplicates() throws {
+        let items = SeedData.approvedQuestionBankItems
+        let group = try XCTUnwrap(
+            Dictionary(grouping: items, by: \.curriculumKey).values.first { candidates in
+                Set(candidates.map(\.semanticKey)).count >= 3
+            }
+        )
+        let source = try XCTUnwrap(group.first)
+        let answeredAt = Date(timeIntervalSince1970: 2_000_000_000)
+        let record = SpacedRepetitionEngine.recording(
+            existing: nil,
+            studentUid: studentUid,
+            item: source,
+            isCorrect: false,
+            firstTryCorrect: false,
+            source: .repairPractice,
+            at: answeredAt
+        )
+        let review = SpacedRepetitionEngine.reviewQuestions(
+            records: [record],
+            questionBank: items,
+            limit: 2,
+            at: answeredAt,
+            rotationSeed: "round16-no-immediate-repeat"
+        )
+
+        XCTAssertFalse(review.isEmpty)
+        XCTAssertTrue(review.allSatisfy { $0.id != source.id })
+        XCTAssertTrue(review.allSatisfy { $0.semanticKey != source.semanticKey })
+        XCTAssertEqual(Set(review.map(\.semanticKey)).count, review.count)
+    }
+
+    func testFreeAndRepairPracticeUpdateOneSharedMasteryRecord() throws {
+        var clock = Date(timeIntervalSince1970: 2_000_000_000)
+        let repository = MockLearningRepository(
+            now: { clock },
+            localPersistence: MemoryLearningPersistence()
+        )
+        let item = try XCTUnwrap(repository.questionBankItems.first)
+
+        repository.recordPracticeAnswer(
+            studentUid: studentUid,
+            questionItem: item,
+            isCorrect: false,
+            source: .freePractice
+        )
+        clock = clock.addingTimeInterval(60)
+        repository.recordPracticeAnswer(
+            studentUid: studentUid,
+            questionItem: item,
+            isCorrect: true,
+            source: .repairPractice
+        )
+
+        let record = try XCTUnwrap(repository.masteryRecords.first)
+        XCTAssertEqual(repository.masteryRecords.count, 1)
+        XCTAssertEqual(record.attemptCount, 2)
+        XCTAssertEqual(record.correctCount, 1)
+        XCTAssertEqual(record.lastAttemptSource, .repairPractice)
+    }
+
+    func testTeacherAssignmentPublishesPartialProgressAndRetryHistory() throws {
+        var clock = Date(timeIntervalSince1970: 2_000_000_000)
+        let repository = MockLearningRepository(
+            now: { clock },
+            localPersistence: MemoryLearningPersistence()
+        )
+        let set = try XCTUnwrap(repository.questionPracticeSets.first { $0.items.count >= 3 })
+        let student = StaffStudentSummary(
+            id: studentUid,
+            studentUid: studentUid,
+            studentName: "Round 16 Student",
+            classCode: "ROUND16-CLASS",
+            moodScore: nil,
+            riskLevel: .low,
+            missionProgress: "0 / 12",
+            nextAction: "Practice"
+        )
+        let teacher = DemoUser(id: "round16-teacher", displayName: "Teacher", role: .teacher)
+
+        repository.assignPracticeSet(set, to: student, by: teacher)
+        let assignment = try XCTUnwrap(repository.assignedPracticeTasks.first)
+        repository.startAssignedPracticeTask(assignment)
+        let firstQuestion = try XCTUnwrap(repository.nextMissionQuestion)
+        let wrongAnswer = try XCTUnwrap(
+            firstQuestion.question.options.first {
+                $0.caseInsensitiveCompare(firstQuestion.question.answer) != .orderedSame
+            }
+        )
+
+        clock = clock.addingTimeInterval(1)
+        XCTAssertFalse(try XCTUnwrap(repository.submitMissionAnswer(wrongAnswer)).isCorrect)
+        var tracked = try XCTUnwrap(repository.assignedPracticeTasks.first { $0.id == assignment.id })
+        XCTAssertEqual(tracked.status, .active)
+        XCTAssertEqual(tracked.questionResults?.count, 1)
+        XCTAssertEqual(tracked.questionResults?.first?.attemptCount, 1)
+        XCTAssertEqual(tracked.questionResults?.first?.firstAttemptCorrect, false)
+
+        clock = clock.addingTimeInterval(1)
+        XCTAssertTrue(try XCTUnwrap(
+            repository.submitMissionAnswer(firstQuestion.question.answer)
+        ).isCorrect)
+        tracked = try XCTUnwrap(repository.assignedPracticeTasks.first { $0.id == assignment.id })
+        XCTAssertEqual(tracked.questionResults?.first?.attemptCount, 2)
+        XCTAssertEqual(tracked.questionResults?.first?.firstAttemptCorrect, false)
+
+        var safetyCounter = 0
+        while let question = repository.nextMissionQuestion, safetyCounter < 20 {
+            clock = clock.addingTimeInterval(1)
+            _ = repository.submitMissionAnswer(question.question.answer)
+            safetyCounter += 1
+        }
+        tracked = try XCTUnwrap(repository.assignedPracticeTasks.first { $0.id == assignment.id })
+        XCTAssertEqual(tracked.status, .completed)
+        XCTAssertEqual(tracked.questionResults?.count, assignment.questionIds.count)
+        XCTAssertEqual(
+            repository.masteryRecords.first { $0.lastAttemptSource == .teacherAssignment }?.studentUid,
+            studentUid
+        )
+    }
+
+    func testLegacyLocalSnapshotDefaultsMasteryToEmpty() throws {
+        let snapshot = LocalLearningSnapshot(
+            currentCheckIn: nil,
+            currentMission: nil,
+            missionAttempts: [],
+            supportRequests: [],
+            assignedPracticeTasks: [],
+            savedAt: Date(timeIntervalSince1970: 2_000_000_000)
+        )
+        let encoded = try JSONEncoder().encode(snapshot)
+        var object = try XCTUnwrap(
+            JSONSerialization.jsonObject(with: encoded) as? [String: Any]
+        )
+        object.removeValue(forKey: "masteryRecords")
+        let legacyData = try JSONSerialization.data(withJSONObject: object)
+        let decoded = try JSONDecoder().decode(LocalLearningSnapshot.self, from: legacyData)
+
+        XCTAssertTrue(decoded.masteryRecords.isEmpty)
     }
 }
 

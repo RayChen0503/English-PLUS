@@ -138,6 +138,13 @@ struct PracticeCenterView: View {
             )
         }
 
+        if learningRepository.masterySummary.trackedSkillCount > 0 {
+            SpacedReviewCard(
+                summary: learningRepository.masterySummary,
+                onStartReview: startSpacedReviewSession
+            )
+        }
+
         filterCard
         practiceSetSelectionCard
         PracticeSessionStartCard(
@@ -1321,6 +1328,15 @@ struct PracticeCenterView: View {
             didCountCurrentPracticeAnswer = true
         }
 
+        if let studentUid = appState.currentProfile?.id ?? appState.currentUser?.id {
+            learningRepository.recordPracticeAnswer(
+                studentUid: studentUid,
+                questionItem: item,
+                isCorrect: isCorrect,
+                source: practicePhase == .repair ? .repairPractice : .freePractice
+            )
+        }
+
         if practicePhase == .primary {
             persistPrimarySessionIfNeeded()
         }
@@ -1333,6 +1349,24 @@ struct PracticeCenterView: View {
             limit: 3,
             rotationSeed: UUID().uuidString
         ).items
+    }
+
+    private func startSpacedReviewSession() {
+        let items = learningRepository.dueReviewQuestions(limit: 8)
+        guard !items.isEmpty else {
+            sessionReturnMessage = "目前沒有需要立刻複習的能力，先從下方選一組自由練習。"
+            return
+        }
+        selectedPracticeSetId = nil
+        selectedPracticeType = nil
+        selectedPracticeLevel = nil
+        requestPrimarySessionStart(
+            PracticeSessionProposal(
+                items: items,
+                sourceTitle: "到期複習",
+                note: "依最近答題與複習間隔安排；完成這一小組後會回到練習中心。"
+            )
+        )
     }
 
     private func startWrongAnswerRepair() {
@@ -1687,6 +1721,7 @@ private struct PracticeStatPill: View {
         }
         .padding(.horizontal, 12)
         .padding(.vertical, 8)
+        .frame(maxWidth: .infinity, alignment: .leading)
         .background(EPTheme.secondarySurface)
         .clipShape(RoundedRectangle(cornerRadius: EPTheme.cardRadius))
     }
@@ -1871,6 +1906,53 @@ private struct PracticeAnswerOptionButton: View {
             .clipShape(RoundedRectangle(cornerRadius: EPTheme.cardRadius))
         }
         .buttonStyle(.plain)
+    }
+}
+
+private struct SpacedReviewCard: View {
+    let summary: MasterySummary
+    let onStartReview: () -> Void
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            HStack(alignment: .top, spacing: 12) {
+                Image(systemName: "clock.arrow.circlepath")
+                    .font(.title2)
+                    .foregroundStyle(EPTheme.support)
+                    .frame(width: 44, height: 44)
+                    .background(EPTheme.support.opacity(0.12))
+                    .clipShape(RoundedRectangle(cornerRadius: EPTheme.cardRadius))
+
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(summary.dueReviewCount > 0 ? "有能力適合現在複習" : "複習節奏穩定")
+                        .font(.headline)
+                        .foregroundStyle(EPTheme.ink)
+                    Text(summary.dueReviewCount > 0
+                        ? "English+ 會從最近答錯或已到複習時間的能力安排一小組。"
+                        : "可以再鞏固較不熟的能力，也可以照自己的選擇自由練習。")
+                        .font(.subheadline)
+                        .foregroundStyle(EPTheme.secondaryInk)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+            }
+
+            HStack(spacing: 8) {
+                PracticeStatPill(title: "待複習", value: "\(summary.dueReviewCount) 個")
+                PracticeStatPill(title: "穩定能力", value: "\(summary.strongSkillCount) 個")
+                PracticeStatPill(title: "整體熟練", value: "\(summary.averageScore)%")
+            }
+
+            Button(action: onStartReview) {
+                Label(summary.dueReviewCount > 0 ? "開始到期複習" : "鞏固較弱能力", systemImage: "play.fill")
+                    .font(.subheadline.bold())
+                    .frame(maxWidth: .infinity, minHeight: 44)
+            }
+            .buttonStyle(PrimaryActionButtonStyle())
+        }
+        .padding(16)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(EPTheme.card)
+        .clipShape(RoundedRectangle(cornerRadius: EPTheme.cardRadius))
     }
 }
 

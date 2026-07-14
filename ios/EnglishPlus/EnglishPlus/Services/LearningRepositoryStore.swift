@@ -18,6 +18,7 @@ final class LearningRepositoryStore: ObservableObject {
     @Published private(set) var missionAttempts: [MissionAttempt] = []
     @Published private(set) var supportRequests: [StudentSupportRequest] = []
     @Published private(set) var assignedPracticeTasks: [TeacherAssignedPracticeTask] = []
+    @Published private(set) var masteryRecords: [SkillMasteryRecord] = []
     @Published private(set) var learningFlow: LearningFlowState = .initial(dateKey: "1970-01-01")
     @Published private(set) var syncStatus: LearningRepositorySyncStatus = .idle
     @Published private(set) var connectivityStatus: NetworkConnectivityStatus = .unknown
@@ -93,6 +94,19 @@ final class LearningRepositoryStore: ObservableObject {
 
     var hasCompletedFreePracticeSession: Bool {
         learningFlow.hasCompletedFreePracticeSession
+    }
+
+    var masterySummary: MasterySummary {
+        SpacedRepetitionEngine.summary(records: masteryRecords)
+    }
+
+    func dueReviewQuestions(limit: Int = 8) -> [QuestionBankItem] {
+        SpacedRepetitionEngine.reviewQuestions(
+            records: masteryRecords,
+            questionBank: questionBankItems,
+            limit: limit,
+            rotationSeed: "review-\(UUID().uuidString)"
+        )
     }
 
     func startRealtimeSync(classId: String, user: DemoUser?, profile: AppUserProfile?) {
@@ -271,6 +285,21 @@ final class LearningRepositoryStore: ObservableObject {
         return attempt
     }
 
+    func recordPracticeAnswer(
+        studentUid: String,
+        questionItem: QuestionBankItem,
+        isCorrect: Bool,
+        source: LearningAttemptSource
+    ) {
+        backend.recordPracticeAnswer(
+            studentUid: studentUid,
+            questionItem: questionItem,
+            isCorrect: isCorrect,
+            source: source
+        )
+        apply(backend.snapshot)
+    }
+
     func supportRequests(forStudentUid studentUid: String?) -> [StudentSupportRequest] {
         guard let studentUid else { return [] }
         return supportRequests
@@ -407,6 +436,7 @@ final class LearningRepositoryStore: ObservableObject {
             .filter(\.hasActionableSupportContent)
             .map { $0.reconcilingLifecycle() }
         assignedPracticeTasks = snapshot.assignedPracticeTasks
+        masteryRecords = snapshot.masteryRecords
         learningFlow = snapshot.learningFlow
     }
 
@@ -505,6 +535,7 @@ extension MockLearningRepository: LearningRepositoryBackend {
             missionAttempts: missionAttempts,
             supportRequests: supportRequests,
             assignedPracticeTasks: assignedPracticeTasks,
+            masteryRecords: masteryRecords,
             learningFlow: learningFlow
         )
     }

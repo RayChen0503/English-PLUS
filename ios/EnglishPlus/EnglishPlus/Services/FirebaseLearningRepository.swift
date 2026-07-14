@@ -115,6 +115,12 @@ final class FirebaseLearningRepository: LearningRepositoryBackend {
             listenPersonalCheckIn(uid: uid, onChange: onChange, onError: onError)
             listenPersonalMission(uid: uid, onChange: onChange, onError: onError)
             listenPersonalLearningFlow(uid: uid, onChange: onChange, onError: onError)
+            listenSkillMastery(
+                path: "\(FirestorePath.user(uid: uid))/skillMastery",
+                studentUid: uid,
+                onChange: onChange,
+                onError: onError
+            )
 
             return AnyLearningRepositoryListenerToken { [weak self] in
                 self?.removeRealtimeRegistrations()
@@ -131,6 +137,14 @@ final class FirebaseLearningRepository: LearningRepositoryBackend {
             listenPracticeAssignments(classId: classId, user: user, onChange: onChange, onError: onError)
         }
         listenStudentMissions(classId: classId, user: user, onChange: onChange, onError: onError)
+        if let user, user.role == .student {
+            listenSkillMastery(
+                path: "\(FirestorePath.student(classId: classId, studentUid: user.id))/skillMastery",
+                studentUid: user.id,
+                onChange: onChange,
+                onError: onError
+            )
+        }
 
         return AnyLearningRepositoryListenerToken { [weak self] in
             self?.removeRealtimeRegistrations()
@@ -280,6 +294,7 @@ final class FirebaseLearningRepository: LearningRepositoryBackend {
         )
         if let attempt {
             mirrorAttemptIfPossible(attempt)
+            mirrorMasteryForQuestionIfPossible(attempt.questionId)
             mirrorMissionIfPossible()
             mirrorLearningFlowIfPossible()
             mirrorStudentSummaryIfPossible()
@@ -288,6 +303,28 @@ final class FirebaseLearningRepository: LearningRepositoryBackend {
                 .map(mirrorPracticeAssignmentIfPossible)
         }
         return attempt
+    }
+
+    func recordPracticeAnswer(
+        studentUid: String,
+        questionItem: QuestionBankItem,
+        isCorrect: Bool,
+        source: LearningAttemptSource
+    ) {
+        let preservingSupportRequests = currentSnapshot.supportRequests
+        let preservingAssignedPracticeTasks = currentSnapshot.assignedPracticeTasks
+        fallback.replaceRuntimeSnapshot(currentSnapshot)
+        fallback.recordPracticeAnswer(
+            studentUid: studentUid,
+            questionItem: questionItem,
+            isCorrect: isCorrect,
+            source: source
+        )
+        currentSnapshot = fallbackSnapshot(
+            preservingSupportRequests: preservingSupportRequests,
+            preservingAssignedPracticeTasks: preservingAssignedPracticeTasks
+        )
+        mirrorMasteryForQuestionIfPossible(questionItem.id)
     }
 
     func supportRequests(forStudentUid studentUid: String?) -> [StudentSupportRequest] {
@@ -631,6 +668,31 @@ final class FirebaseLearningRepository: LearningRepositoryBackend {
         )
     }
 
+    private func mirrorMasteryForQuestionIfPossible(_ questionId: String) {
+        guard let item = questionBankItems.first(where: { $0.id == questionId }),
+              let record = currentSnapshot.masteryRecords.first(where: {
+                  $0.curriculumKey == item.curriculumKey
+              })
+        else { return }
+
+        let path: String
+        if let activeClassId {
+            path = FirestorePath.skillMastery(
+                classId: activeClassId,
+                studentUid: record.studentUid,
+                masteryId: record.id
+            )
+        } else if let activeUserUid {
+            path = FirestorePath.personalSkillMastery(
+                uid: activeUserUid,
+                masteryId: record.id
+            )
+        } else {
+            return
+        }
+        setDocumentIfPossible(path: path, data: firestoreData(from: record))
+    }
+
     private func mirrorLearningFlowIfPossible() {
         guard activeClassId == nil, let activeUserUid else { return }
         setDocumentIfPossible(
@@ -908,7 +970,31 @@ final class FirebaseLearningRepository: LearningRepositoryBackend {
             snapshot.assignedPracticeTasks,
             preservingAssignedPracticeTasks: existingAssignedPracticeTasks ?? currentSnapshot.assignedPracticeTasks
         )
+        snapshot.masteryRecords = mergedMasteryRecords(
+            snapshot.masteryRecords,
+            preservingMasteryRecords: currentSnapshot.masteryRecords
+        )
         return Self.normalizedSnapshotForToday(snapshot)
+    }
+
+    private func mergedMasteryRecords(
+        _ fallbackRecords: [SkillMasteryRecord],
+        preservingMasteryRecords existingRecords: [SkillMasteryRecord]
+    ) -> [SkillMasteryRecord] {
+        var recordsById = Dictionary(
+            existingRecords.map { ($0.id, $0) },
+            uniquingKeysWith: { existing, _ in existing }
+        )
+        for record in fallbackRecords {
+            if let existing = recordsById[record.id], existing.updatedAt > record.updatedAt {
+                continue
+            }
+            recordsById[record.id] = record
+        }
+        return recordsById.values.sorted { lhs, rhs in
+            if lhs.masteryScore != rhs.masteryScore { return lhs.masteryScore < rhs.masteryScore }
+            return lhs.updatedAt > rhs.updatedAt
+        }
     }
 
     private func mergedSupportRequests(
@@ -1080,6 +1166,34 @@ final class FirebaseLearningRepository: LearningRepositoryBackend {
                     onChange(self.currentSnapshot)
                 }
             }
+    }
+
+    private func listenSkillMastery(
+        path: String,
+        studentUid: String,
+        onChange: @escaping @MainActor (LearningRepositorySnapshot) -> Void,
+        onError: @escaping @MainActor (Error) -> Void
+    ) {
+        guard let db else { return }
+        let registration = db.collection(path).addSnapshotListener { [weak self] snapshot, error in
+            if let error {
+                Task { @MainActor in onError(error) }
+                return
+            }
+            let documents = snapshot?.documents ?? []
+            Task { @MainActor in
+                guard let self else { return }
+                let remoteRecords = documents
+                    .compactMap { self.masteryRecord(from: $0, studentUid: studentUid) }
+                self.currentSnapshot.masteryRecords = self.mergedMasteryRecords(
+                    remoteRecords,
+                    preservingMasteryRecords: self.currentSnapshot.masteryRecords
+                )
+                self.synchronizeFallbackWithCurrentSnapshot()
+                onChange(self.currentSnapshot)
+            }
+        }
+        registrations.append(registration)
     }
 
     private func listenSupportThreads(
@@ -1455,10 +1569,35 @@ final class FirebaseLearningRepository: LearningRepositoryBackend {
                     "explanation": result.explanation,
                     "repairHint": result.repairHint,
                     "answeredAt": result.answeredAt,
+                    "attemptCount": result.attemptCount,
+                    "firstAttemptCorrect": result.firstAttemptCorrect,
                 ]
             },
             "createdAt": assignment.createdAt,
             "updatedAt": assignment.updatedAt,
+        ]
+    }
+
+    private func firestoreData(from record: SkillMasteryRecord) -> [String: Any] {
+        [
+            "masteryId": record.id,
+            "studentUid": record.studentUid,
+            "curriculumKey": record.curriculumKey,
+            "unit": record.unit,
+            "skill": record.skill,
+            "questionType": record.questionType.rawValue,
+            "level": record.level.rawValue,
+            "attemptCount": record.attemptCount,
+            "correctCount": record.correctCount,
+            "firstTryCorrectCount": record.firstTryCorrectCount,
+            "consecutiveCorrectCount": record.consecutiveCorrectCount,
+            "masteryScore": record.masteryScore,
+            "lastQuestionId": record.lastQuestionId,
+            "lastResultCorrect": record.lastResultCorrect,
+            "lastAttemptSource": record.lastAttemptSource.rawValue,
+            "lastAnsweredAt": record.lastAnsweredAt,
+            "nextReviewAt": record.nextReviewAt,
+            "updatedAt": record.updatedAt,
         ]
     }
 
@@ -1752,9 +1891,55 @@ final class FirebaseLearningRepository: LearningRepositoryBackend {
                 isCorrect: isCorrect,
                 explanation: explanation,
                 repairHint: repairHint,
-                answeredAt: firestoreDate(rawResult["answeredAt"]) ?? Date()
+                answeredAt: firestoreDate(rawResult["answeredAt"]) ?? Date(),
+                attemptCount: rawResult["attemptCount"] as? Int ?? 1,
+                firstAttemptCorrect: rawResult["firstAttemptCorrect"] as? Bool ?? isCorrect
             )
         }
+    }
+
+    private func masteryRecord(
+        from document: QueryDocumentSnapshot,
+        studentUid: String
+    ) -> SkillMasteryRecord? {
+        let data = document.data()
+        guard
+            let curriculumKey = data["curriculumKey"] as? String,
+            let unit = data["unit"] as? String,
+            let skill = data["skill"] as? String,
+            let typeRaw = data["questionType"] as? String,
+            let questionType = QuestionType(rawValue: typeRaw),
+            let levelRaw = data["level"] as? String,
+            let level = QuestionLevel(rawValue: levelRaw),
+            let lastQuestionId = data["lastQuestionId"] as? String,
+            let lastResultCorrect = data["lastResultCorrect"] as? Bool,
+            let sourceRaw = data["lastAttemptSource"] as? String,
+            let source = LearningAttemptSource(rawValue: sourceRaw),
+            let lastAnsweredAt = firestoreDate(data["lastAnsweredAt"]),
+            let nextReviewAt = firestoreDate(data["nextReviewAt"]),
+            let updatedAt = firestoreDate(data["updatedAt"])
+        else { return nil }
+
+        return SkillMasteryRecord(
+            id: data["masteryId"] as? String ?? document.documentID,
+            studentUid: data["studentUid"] as? String ?? studentUid,
+            curriculumKey: curriculumKey,
+            unit: unit,
+            skill: skill,
+            questionType: questionType,
+            level: level,
+            attemptCount: data["attemptCount"] as? Int ?? 0,
+            correctCount: data["correctCount"] as? Int ?? 0,
+            firstTryCorrectCount: data["firstTryCorrectCount"] as? Int ?? 0,
+            consecutiveCorrectCount: data["consecutiveCorrectCount"] as? Int ?? 0,
+            masteryScore: data["masteryScore"] as? Int ?? 0,
+            lastQuestionId: lastQuestionId,
+            lastResultCorrect: lastResultCorrect,
+            lastAttemptSource: source,
+            lastAnsweredAt: lastAnsweredAt,
+            nextReviewAt: nextReviewAt,
+            updatedAt: updatedAt
+        )
     }
 
     private func supportRequest(from document: QueryDocumentSnapshot) -> StudentSupportRequest? {

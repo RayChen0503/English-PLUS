@@ -1566,6 +1566,11 @@ private struct TeacherStudentAssignmentDashboard: View {
                     message: "下方指派題組後，這位學生的任務會先出現在未完成任務；完成後會移到完成紀錄。"
                 )
             } else {
+                TeacherAssignmentProgressOverview(
+                    assignments: displayableAssignments,
+                    questionsById: questionsById
+                )
+
                 TeacherAssignmentSection(
                     title: "未完成任務",
                     subtitle: "學生尚未完成的派發題組。",
@@ -1634,6 +1639,81 @@ private struct TeacherStudentAssignmentDashboard: View {
 
     private func collapseAssignment(_ assignment: TeacherAssignedPracticeTask) {
         collapsedAssignmentIds.insert(assignment.id)
+    }
+}
+
+private struct TeacherAssignmentProgressOverview: View {
+    let assignments: [TeacherAssignedPracticeTask]
+    let questionsById: [String: QuestionBankItem]
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack {
+                Label("派題進度總覽", systemImage: "chart.bar.fill")
+                    .font(.subheadline.bold())
+                    .foregroundStyle(EPTheme.ink)
+                Spacer()
+                Text("完成 \(completedCount)/\(assignments.count)")
+                    .font(.caption.bold())
+                    .foregroundStyle(EPTheme.support)
+                    .monospacedDigit()
+            }
+
+            ProgressView(value: Double(completedCount), total: Double(max(assignments.count, 1)))
+                .tint(EPTheme.support)
+
+            HStack(spacing: 8) {
+                TeacherStatusTile(title: "進行中", value: "\(activeCount)", color: EPTheme.primary)
+                TeacherStatusTile(title: "已作答", value: "\(resultCount)", color: EPTheme.support)
+                TeacherStatusTile(title: "首次答對", value: firstTryAccuracyText, color: EPTheme.warning)
+            }
+
+            if let weakSkillText {
+                Label("可優先加強：\(weakSkillText)", systemImage: "scope")
+                    .font(.caption.bold())
+                    .foregroundStyle(EPTheme.secondaryInk)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        }
+        .padding(.vertical, 4)
+    }
+
+    private var allResults: [PracticeAssignmentQuestionResult] {
+        assignments.flatMap { $0.questionResults ?? [] }
+    }
+
+    private var completedCount: Int {
+        assignments.filter { $0.status == .completed }.count
+    }
+
+    private var activeCount: Int {
+        assignments.filter { $0.status == .pending || $0.status == .active }.count
+    }
+
+    private var resultCount: Int {
+        allResults.count
+    }
+
+    private var firstTryAccuracyText: String {
+        guard !allResults.isEmpty else { return "尚無" }
+        let correct = allResults.filter(\.firstAttemptCorrect).count
+        return "\(Int((Double(correct) / Double(allResults.count) * 100).rounded()))%"
+    }
+
+    private var weakSkillText: String? {
+        let counts = Dictionary(
+            grouping: allResults.filter { !$0.firstAttemptCorrect }.compactMap { result in
+                questionsById[result.questionId]?.skill
+            }.filter { !$0.isEmpty },
+            by: { $0 }
+        ).mapValues(\.count)
+        let skills = counts.sorted { lhs, rhs in
+            if lhs.value != rhs.value { return lhs.value > rhs.value }
+            return lhs.key < rhs.key
+        }
+        .prefix(2)
+        .map(\.key)
+        return skills.isEmpty ? nil : skills.joined(separator: "、")
     }
 }
 
@@ -1718,7 +1798,20 @@ private struct TeacherAssignmentReviewCard: View {
                 TeacherStatusTile(title: "答對", value: "\(correctCount)", color: EPTheme.warning)
             }
 
-            if assignment.status == .completed {
+            VStack(alignment: .leading, spacing: 5) {
+                ProgressView(
+                    value: Double(answeredCount),
+                    total: Double(max(assignment.questionIds.count, 1))
+                )
+                .tint(assignment.status == .completed ? EPTheme.support : EPTheme.primary)
+                Text(assignment.status == .completed
+                    ? "已完成全部題目，首次答對 \(firstTryCorrectCount)/\(answeredCount) 題。"
+                    : "學生目前完成 \(answeredCount)/\(assignment.questionIds.count) 題，送出答案後會即時更新。")
+                    .font(.caption)
+                    .foregroundStyle(EPTheme.secondaryInk)
+            }
+
+            if answeredCount > 0 {
                 DisclosureGroup(isExpanded: $showsQuestionResults) {
                     VStack(spacing: 8) {
                         ForEach(resultRows) { row in
@@ -1727,12 +1820,15 @@ private struct TeacherAssignmentReviewCard: View {
                     }
                     .padding(.top, 8)
                 } label: {
-                    Label("查看每題對錯", systemImage: "checklist")
+                    Label(
+                        assignment.status == .completed ? "查看每題對錯" : "查看目前作答",
+                        systemImage: "checklist"
+                    )
                         .font(.caption.bold())
                         .foregroundStyle(EPTheme.primary)
                 }
             } else {
-                Text("學生完成後，這裡會顯示每一題的作答結果。")
+                Text("學生開始作答後，這裡會逐題顯示進度。")
                     .font(.caption)
                     .foregroundStyle(EPTheme.secondaryInk)
             }
@@ -1792,7 +1888,9 @@ private struct TeacherAssignmentReviewCard: View {
                 selectedAnswer: snapshot?.selectedAnswer ?? attempt?.selectedAnswer,
                 acceptedAnswer: snapshot?.acceptedAnswer ?? attempt?.acceptedAnswer ?? question?.question.answer,
                 isCorrect: snapshot?.isCorrect ?? attempt?.isCorrect,
-                explanation: snapshot?.explanation ?? attempt?.explanation ?? question?.question.explanation
+                explanation: snapshot?.explanation ?? attempt?.explanation ?? question?.question.explanation,
+                attemptCount: snapshot?.attemptCount ?? (attempt == nil ? 0 : 1),
+                firstAttemptCorrect: snapshot?.firstAttemptCorrect ?? attempt?.isCorrect
             )
         }
     }
@@ -1804,6 +1902,10 @@ private struct TeacherAssignmentReviewCard: View {
     private var correctCount: Int {
         resultRows.filter { $0.isCorrect == true }.count
     }
+
+    private var firstTryCorrectCount: Int {
+        resultRows.filter { $0.firstAttemptCorrect == true }.count
+    }
 }
 
 private struct TeacherAssignmentQuestionResult: Identifiable {
@@ -1814,6 +1916,8 @@ private struct TeacherAssignmentQuestionResult: Identifiable {
     let acceptedAnswer: String?
     let isCorrect: Bool?
     let explanation: String?
+    let attemptCount: Int
+    let firstAttemptCorrect: Bool?
 }
 
 private struct TeacherAssignmentQuestionResultRow: View {
@@ -1844,6 +1948,18 @@ private struct TeacherAssignmentQuestionResultRow: View {
                     .font(.caption2)
                     .foregroundStyle(EPTheme.secondaryInk)
                     .fixedSize(horizontal: false, vertical: true)
+            }
+
+
+            if row.attemptCount > 1 || row.firstAttemptCorrect == false {
+                Label(
+                    row.isCorrect == true
+                        ? "第一次答錯，練習 \(row.attemptCount) 次後完成"
+                        : "目前已嘗試 \(max(row.attemptCount, 1)) 次",
+                    systemImage: "arrow.triangle.2.circlepath"
+                )
+                .font(.caption2.bold())
+                .foregroundStyle(EPTheme.warning)
             }
         }
         .padding(10)

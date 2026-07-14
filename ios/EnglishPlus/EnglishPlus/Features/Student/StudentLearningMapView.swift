@@ -17,6 +17,9 @@ struct StudentLearningMapView: View {
                 ScrollView {
                     VStack(alignment: .leading, spacing: 16) {
                         headerCard
+                        if learningRepository.masterySummary.trackedSkillCount > 0 {
+                            masteryCard
+                        }
                         if allLearningMapNodesCompleted {
                             todayCompleteCard
                         }
@@ -78,6 +81,55 @@ struct StudentLearningMapView: View {
         .padding(16)
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(EPTheme.support.opacity(0.10))
+        .clipShape(RoundedRectangle(cornerRadius: EPTheme.cardRadius))
+    }
+
+    private var masteryCard: some View {
+        let summary = learningRepository.masterySummary
+        return VStack(alignment: .leading, spacing: 12) {
+            HStack(alignment: .top, spacing: 12) {
+                Image(systemName: "chart.line.uptrend.xyaxis")
+                    .font(.title2)
+                    .foregroundStyle(EPTheme.support)
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("長期學習進度")
+                        .font(.headline)
+                        .foregroundStyle(EPTheme.ink)
+                    Text(summary.dueReviewCount > 0
+                        ? "有 \(summary.dueReviewCount) 個能力到了適合複習的時間，可到練習中心開始。"
+                        : "目前複習節奏穩定，繼續照今日路線前進。")
+                        .font(.subheadline)
+                        .foregroundStyle(EPTheme.secondaryInk)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+            }
+
+            HStack(spacing: 8) {
+                masteryMetric(title: "已追蹤", value: "\(summary.trackedSkillCount)")
+                masteryMetric(title: "表現穩定", value: "\(summary.strongSkillCount)")
+                masteryMetric(title: "整體熟練", value: "\(summary.averageScore)%")
+            }
+        }
+        .padding(16)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(EPTheme.card)
+        .clipShape(RoundedRectangle(cornerRadius: EPTheme.cardRadius))
+    }
+
+    private func masteryMetric(title: String, value: String) -> some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Text(title)
+                .font(.caption)
+                .foregroundStyle(EPTheme.secondaryInk)
+                .lineLimit(1)
+            Text(value)
+                .font(.title3.bold())
+                .monospacedDigit()
+                .foregroundStyle(EPTheme.ink)
+        }
+        .padding(10)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(EPTheme.secondarySurface)
         .clipShape(RoundedRectangle(cornerRadius: EPTheme.cardRadius))
     }
 
