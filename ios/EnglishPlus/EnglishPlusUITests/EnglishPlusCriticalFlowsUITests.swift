@@ -234,6 +234,7 @@ final class EnglishPlusCriticalFlowsUITests: XCTestCase {
         scrollUntilHittable(emailField, in: authenticationScreen)
         emailField.tap()
         emailField.typeText(email)
+        emailField.typeText("\n")
 
         let passwordField = app.secureTextFields["auth.password"]
         scrollUntilHittable(passwordField, in: authenticationScreen)

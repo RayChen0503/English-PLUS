@@ -161,6 +161,8 @@ checks = {
         token in login_source
         for token in [
             ".scrollDismissesKeyboard(.interactively)",
+            "ScrollViewReader",
+            "scrollProxy.scrollTo(anchorID, anchor: .center)",
             'accessibilityIdentifier("auth.screen")',
             'accessibilityIdentifier("auth.keyboard.dismiss")',
             ".submitLabel(.go)",
@@ -168,6 +170,7 @@ checks = {
         ]
     )
     and 'app.buttons["auth.keyboard.dismiss"]' in ui_tests
+    and 'emailField.typeText("\\n")' in ui_tests
     and 'scrollUntilHittable(emailField, in: authenticationScreen)' in ui_tests,
     "teacher primary workspaces are addressable": all(
         token in teacher_source

@@ -11,6 +11,14 @@ struct DemoLoginView: View {
         case email
         case password
         case other
+
+        var scrollAnchorID: String? {
+            switch self {
+            case .email: "auth.email"
+            case .password: "auth.password"
+            case .other: nil
+            }
+        }
     }
 
     @EnvironmentObject private var appState: AppState
@@ -33,29 +41,35 @@ struct DemoLoginView: View {
     var body: some View {
         ZStack {
             EPTheme.background.ignoresSafeArea()
-            ScrollView {
-                VStack(alignment: .leading, spacing: 20) {
-                    backButton
-                    header
-                    if let provider = federatedOnboardingProvider {
-                        federatedSetupBanner(provider)
-                    } else {
-                        modePicker
-                        if appState.canUseFederatedSignIn {
-                            federatedButtons
-                            divider
+            ScrollViewReader { scrollProxy in
+                ScrollView {
+                    VStack(alignment: .leading, spacing: 20) {
+                        backButton
+                        header
+                        if let provider = federatedOnboardingProvider {
+                            federatedSetupBanner(provider)
+                        } else {
+                            modePicker
+                            if appState.canUseFederatedSignIn {
+                                federatedButtons
+                                divider
+                            }
                         }
-                    }
 
-                    emailAccountForm
-                    feedback
-                    primaryButton
+                        emailAccountForm
+                        feedback
+                        primaryButton
+                    }
+                    .padding(EPTheme.pagePadding)
+                    .padding(.bottom, 24)
                 }
-                .padding(EPTheme.pagePadding)
-                .padding(.bottom, 24)
+                .accessibilityIdentifier("auth.screen")
+                .scrollDismissesKeyboard(.interactively)
+                .onChange(of: focusedField) { _, field in
+                    guard let anchorID = field?.scrollAnchorID else { return }
+                    scrollProxy.scrollTo(anchorID, anchor: .center)
+                }
             }
-            .accessibilityIdentifier("auth.screen")
-            .scrollDismissesKeyboard(.interactively)
         }
         .toolbar {
             ToolbarItemGroup(placement: .keyboard) {
@@ -295,6 +309,7 @@ struct DemoLoginView: View {
                 .clipShape(RoundedRectangle(cornerRadius: EPTheme.cardRadius))
                 .accessibilityIdentifier(accessibilityIdentifier ?? "")
         }
+        .id(accessibilityIdentifier ?? title)
     }
 
     private var passwordField: some View {
@@ -332,6 +347,7 @@ struct DemoLoginView: View {
             .background(EPTheme.secondarySurface)
             .clipShape(RoundedRectangle(cornerRadius: EPTheme.cardRadius))
         }
+        .id("auth.password")
     }
 
     private var recoveryActions: some View {
