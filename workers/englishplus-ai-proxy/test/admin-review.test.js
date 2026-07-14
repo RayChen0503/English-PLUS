@@ -6,20 +6,74 @@ import worker, {
   filterVolunteerApplications,
   normalizeAdminApplicationQuery,
   normalizeAdminReviewRequest,
+  signAdminEvidenceTicket,
   summarizeVolunteerApplications,
+  verifyAdminEvidenceTicket,
 } from "../src/index.js";
 
 test("admin evidence preview is browser-readable without downloading or caching", () => {
   const headers = adminEvidenceHeaders({
     filename: "qualification.pdf",
     contentType: "application/pdf",
+    contentLength: 128,
     requestId: "evidence-request",
   });
   assert.equal(headers.get("Access-Control-Allow-Origin"), "*");
   assert.equal(headers.get("Content-Type"), "application/pdf");
   assert.equal(headers.get("Content-Disposition"), 'inline; filename="qualification.pdf"');
   assert.equal(headers.get("Cache-Control"), "private, no-store");
+  assert.equal(headers.get("Content-Length"), "128");
+  assert.equal(headers.get("Cross-Origin-Resource-Policy"), "cross-origin");
   assert.equal(headers.get("X-Content-Type-Options"), "nosniff");
+});
+
+test("short-lived admin evidence tickets are purpose-bound and stream private R2 files", async () => {
+  const secret = "evidence-preview-test-secret";
+  const payload = {
+    purpose: "adminEvidencePreview",
+    uid: "applicant123",
+    objectKey: "volunteer-evidence/applicant123/evidence.pdf",
+    filename: "qualification.pdf",
+    mimeType: "application/pdf",
+    exp: Math.floor(Date.now() / 1000) + 120,
+  };
+  const ticket = await signAdminEvidenceTicket(payload, secret);
+  await assert.doesNotReject(() => verifyAdminEvidenceTicket(ticket, secret));
+
+  const bytes = new TextEncoder().encode("%PDF evidence preview");
+  const response = await worker.fetch(
+    new Request(`https://example.test/admin/evidence-file?ticket=${encodeURIComponent(ticket)}`),
+    {
+      EVIDENCE_UPLOAD_SIGNING_SECRET: secret,
+      VOLUNTEER_EVIDENCE: {
+        async get(key) {
+          assert.equal(key, payload.objectKey);
+          return {
+            body: new Blob([bytes], { type: "application/pdf" }).stream(),
+            size: bytes.byteLength,
+            httpMetadata: { contentType: "application/pdf" },
+          };
+        },
+      },
+    }
+  );
+  assert.equal(response.status, 200);
+  assert.equal(response.headers.get("Content-Type"), "application/pdf");
+  assert.equal(response.headers.get("Content-Length"), String(bytes.byteLength));
+  assert.equal(await response.text(), "%PDF evidence preview");
+
+  const [encodedPayload, signature] = ticket.split(".");
+  const replacement = encodedPayload.endsWith("A") ? "B" : "A";
+  const tampered = `${encodedPayload.slice(0, -1)}${replacement}.${signature}`;
+  await assert.rejects(
+    () => verifyAdminEvidenceTicket(tampered, secret),
+    (error) => error.code === "INVALID_EVIDENCE_PREVIEW_TICKET"
+  );
+  const expired = await signAdminEvidenceTicket({ ...payload, exp: 1 }, secret);
+  await assert.rejects(
+    () => verifyAdminEvidenceTicket(expired, secret),
+    (error) => error.code === "EXPIRED_OR_INVALID_EVIDENCE_PREVIEW_TICKET"
+  );
 });
 
 test("admin review input accepts valid decisions and protects consequential actions", () => {
@@ -121,6 +175,8 @@ test("admin endpoints reject unauthenticated requests", async () => {
     "/admin/session",
     "/admin/volunteer-applications?scope=all",
     "/admin/volunteer-audit?uid=applicant-123",
+    "/admin/evidence?objectKey=volunteer-evidence%2Fapplicant-123%2Ffile.pdf",
+    "/admin/evidence-ticket?objectKey=volunteer-evidence%2Fapplicant-123%2Ffile.pdf",
   ]) {
     const response = await worker.fetch(new Request(`https://example.test${path}`), {});
     assert.equal(response.status, 401);

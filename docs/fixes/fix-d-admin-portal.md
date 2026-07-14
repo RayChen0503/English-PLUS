@@ -17,7 +17,7 @@ review decision is committed.
 
 ## Administrator workflow
 
-1. Sign in with an existing Google or Email/password Firebase account.
+1. Sign in with the existing Email/password Firebase administrator account.
 2. The Worker verifies the Firebase ID token and requires the custom claim
    `admin: true`. The web app cannot grant this permission to itself.
 3. Filter or search applications across pending, supplement requested,
@@ -25,7 +25,9 @@ review decision is committed.
 4. Open an application to confirm age, volunteer-conduct acceptance,
    motivation, evidence count, file size, and submitted time.
 5. Open a private R2 evidence file. The Worker verifies that the object belongs
-   to the selected applicant before returning it with `no-store` headers.
+   to the selected applicant, then issues a signed preview URL that expires in
+   two minutes. The browser opens that URL directly with `no-store` and
+   `no-referrer` protections.
 6. Approve, request more information, reject, or suspend when the current state
    allows that transition. A reason is required for every adverse action.
 7. The application status, user account state, and immutable review event are
@@ -41,6 +43,9 @@ review decision is committed.
   secrets remain Worker secrets and never enter the browser bundle.
 - Firestore application documents are not read directly by the browser. Every
   privileged read and write goes through the Worker after token verification.
+- Firebase ID tokens are never placed in evidence URLs. Preview URLs use a
+  purpose-bound HMAC ticket; modified, expired, or cross-applicant tickets are
+  rejected before R2 is read.
 - Do not assign `admin: true` to source-controlled demo accounts.
 - After a custom claim is assigned, the administrator should sign out and sign
   back in, or force-refresh the ID token, before testing.

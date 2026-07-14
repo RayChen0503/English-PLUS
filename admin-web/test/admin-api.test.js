@@ -86,6 +86,59 @@ describe("administrator API client", () => {
     });
   });
 
+  test("maps token and network failures without hiding the diagnostic request id", async () => {
+    const tokenFailureApi = createAdminApi({
+      baseURL: "https://worker.example/",
+      getToken: async () => {
+        throw new Error("expired");
+      },
+      fetchImpl: vi.fn(),
+    });
+    await expect(tokenFailureApi.session()).rejects.toMatchObject({
+      code: "AUTH_TOKEN_UNAVAILABLE",
+      status: 0,
+      requestId: expect.any(String),
+    });
+
+    const networkFailureApi = createAdminApi({
+      baseURL: "https://worker.example/",
+      getToken: async () => "token",
+      fetchImpl: async () => {
+        throw new TypeError("offline");
+      },
+    });
+    await expect(networkFailureApi.evidencePreview("volunteer-evidence/u/file.pdf")).rejects.toMatchObject({
+      code: "NETWORK_ERROR",
+      status: 0,
+      requestId: expect.any(String),
+    });
+  });
+
+  test("requests a short-lived evidence preview link instead of fetching binary data", async () => {
+    const fetchImpl = vi.fn(async () =>
+      new Response(
+        JSON.stringify({
+          ok: true,
+          previewURL: "https://worker.example/admin/evidence-file?ticket=signed",
+        }),
+        { status: 200, headers: { "Content-Type": "application/json" } }
+      )
+    );
+    const api = createAdminApi({
+      baseURL: "https://worker.example/",
+      getToken: async () => "token",
+      fetchImpl,
+    });
+
+    await expect(api.evidencePreview("volunteer-evidence/user/file.pdf")).resolves.toMatchObject({
+      ok: true,
+    });
+    expect(fetchImpl.mock.calls[0][0].toString()).toContain(
+      "/admin/evidence-ticket?objectKey=volunteer-evidence%2Fuser%2Ffile.pdf"
+    );
+    expect(fetchImpl.mock.calls[0][1].headers.Accept).toBe("application/json");
+  });
+
   test("AdminApiError keeps the original backend status", () => {
     expect(new AdminApiError("ADMIN_REQUIRED", 403, "r1")).toMatchObject({
       code: "ADMIN_REQUIRED",

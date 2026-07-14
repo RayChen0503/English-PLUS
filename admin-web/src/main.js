@@ -314,24 +314,37 @@ async function commitReview(note) {
 
 async function openEvidence(objectKey) {
   if (!objectKey) return;
-  const popup = window.open("", "_blank");
-  if (popup) popup.opener = null;
+  let popup = null;
   try {
-    const response = await state.api.evidence(objectKey);
-    const blob = await response.blob();
-    const url = URL.createObjectURL(blob);
-    if (popup) popup.location = url;
+    popup = window.open("", "_blank");
+    const result = await state.api.evidencePreview(objectKey);
+    const previewURL = new URL(result.previewURL || "");
+    const workerOrigin = new URL(adminApiBaseURL).origin;
+    if (
+      previewURL.origin !== workerOrigin ||
+      previewURL.pathname !== "/admin/evidence-file"
+    ) {
+      throw new AdminApiError("INVALID_EVIDENCE_PREVIEW_URL", 502, result.requestId);
+    }
+    if (popup) popup.location.replace(previewURL.toString());
     else {
       const link = document.createElement("a");
-      link.href = url;
+      link.href = previewURL.toString();
       link.target = "_blank";
       link.rel = "noopener noreferrer";
       link.click();
     }
-    setTimeout(() => URL.revokeObjectURL(url), 60_000);
+    // Detaching the opener before navigation makes the popup WindowProxy unusable.
+    if (popup) popup.opener = null;
   } catch (error) {
     popup?.close();
-    showToast(errorMessage(error.code), "error");
+    const requestReference = error?.requestId ? `（參考編號 ${error.requestId}）` : "";
+    console.error("Evidence preview failed", {
+      code: error?.code || "UNKNOWN",
+      status: error?.status || 0,
+      requestId: error?.requestId || "",
+    });
+    showToast(`${errorMessage(error?.code)}${requestReference}`, "error");
   }
 }
 

@@ -24,6 +24,8 @@ describe("administrator workflow presentation", () => {
     expect(statusLabel("unknown")).toBe("未知狀態");
     expect(errorMessage("STALE_REVIEW_VERSION")).toContain("其他管理員更新");
     expect(errorMessage("REVIEW_NOTE_REQUIRED")).toContain("必須填寫原因");
+    expect(errorMessage("NETWORK_ERROR")).toContain("網路");
+    expect(errorMessage("EVIDENCE_READ_FAILED")).toContain("證明檔");
   });
 
   test("evidence sizes are presented consistently", () => {

@@ -10,18 +10,29 @@ export class AdminApiError extends Error {
 
 export function createAdminApi({ baseURL, getToken, fetchImpl = fetch }) {
   async function request(path, options = {}, retry = true) {
-    const token = await getToken(!retry);
     const requestId = crypto.randomUUID();
-    const response = await fetchImpl(new URL(path, baseURL), {
-      ...options,
-      headers: {
-        Accept: "application/json",
-        Authorization: `Bearer ${token}`,
-        "X-EnglishPlus-Request-ID": requestId,
-        ...(options.body ? { "Content-Type": "application/json" } : {}),
-        ...options.headers,
-      },
-    });
+    let token;
+    try {
+      token = await getToken(!retry);
+    } catch {
+      throw new AdminApiError("AUTH_TOKEN_UNAVAILABLE", 0, requestId);
+    }
+
+    let response;
+    try {
+      response = await fetchImpl(new URL(path, baseURL), {
+        ...options,
+        headers: {
+          Accept: "application/json",
+          Authorization: `Bearer ${token}`,
+          "X-EnglishPlus-Request-ID": requestId,
+          ...(options.body ? { "Content-Type": "application/json" } : {}),
+          ...options.headers,
+        },
+      });
+    } catch {
+      throw new AdminApiError("NETWORK_ERROR", 0, requestId);
+    }
 
     if (response.status === 401 && retry) {
       return request(path, options, false);
@@ -68,9 +79,9 @@ export function createAdminApi({ baseURL, getToken, fetchImpl = fetch }) {
         })
       ).json();
     },
-    async evidence(objectKey) {
-      const path = `/admin/evidence?objectKey=${encodeURIComponent(objectKey)}`;
-      return request(path, { headers: { Accept: "*/*" } });
+    async evidencePreview(objectKey) {
+      const path = `/admin/evidence-ticket?objectKey=${encodeURIComponent(objectKey)}`;
+      return (await request(path)).json();
     },
   });
 }

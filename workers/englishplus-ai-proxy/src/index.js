@@ -7,6 +7,7 @@ const MAX_EVIDENCE_BYTES = 10 * 1024 * 1024;
 const MAX_EVIDENCE_FILES_PER_APPLICANT = 5;
 const MAX_EVIDENCE_TOTAL_BYTES = 25 * 1024 * 1024;
 const EVIDENCE_RESERVATION_SECONDS = 10 * 60;
+const ADMIN_EVIDENCE_PREVIEW_SECONDS = 2 * 60;
 const REVIEW_EVIDENCE_RETENTION_DAYS = 30;
 const CLASS_JOIN_WINDOW_SECONDS = 15 * 60;
 const CLASS_JOIN_MAX_ATTEMPTS = 12;
@@ -181,6 +182,14 @@ export default {
 
     if (url.pathname === "/admin/evidence" && request.method === "GET") {
       return handleAdminEvidence(request, env, url);
+    }
+
+    if (url.pathname === "/admin/evidence-ticket" && request.method === "GET") {
+      return handleAdminEvidenceTicket(request, env, url);
+    }
+
+    if (url.pathname === "/admin/evidence-file" && request.method === "GET") {
+      return handleAdminEvidenceFile(request, env, url);
     }
 
     if (url.pathname === "/classrooms" && request.method === "GET") {
@@ -2076,38 +2085,19 @@ async function handleVolunteerAudit(request, env, url) {
 
 async function handleAdminEvidence(request, env, url) {
   const requestId = requestIdentifier(request);
-  if (!env.VOLUNTEER_EVIDENCE) {
-    return authOrValidationError(
-      httpError(503, "EVIDENCE_STORAGE_NOT_CONFIGURED"),
-      requestId
-    );
-  }
   try {
     await requireAdministrator(request, env);
+    if (!env.VOLUNTEER_EVIDENCE) {
+      throw httpError(503, "EVIDENCE_STORAGE_NOT_CONFIGURED");
+    }
     const objectKey = safeString(url.searchParams.get("objectKey"));
-    const keyMatch = objectKey?.match(
-      /^volunteer-evidence\/([A-Za-z0-9_-]{8,128})\/[^/]{1,255}$/
-    );
-    if (!objectKey || !keyMatch) {
-      throw httpError(400, "INVALID_OBJECT_KEY");
-    }
-    const projectId = env.FIREBASE_PROJECT_ID || "englishplus-testflight";
-    const accessToken = await serviceAccountAccessToken(env);
-    const applicationDocument = await getVolunteerApplicationDocument(
-      projectId,
-      accessToken,
-      keyMatch[1]
-    );
-    const application = normalizeVolunteerApplicationDocument(applicationDocument);
-    const evidence = application.evidence.find((item) => item.objectKey === objectKey);
-    if (!evidence || application.evidenceDeletedAt) {
-      throw httpError(404, "EVIDENCE_NOT_FOUND");
-    }
+    const { evidence } = await authorizedEvidenceDescriptor(env, objectKey);
     const object = await env.VOLUNTEER_EVIDENCE.get(objectKey);
     if (!object?.body) throw httpError(404, "EVIDENCE_NOT_FOUND");
     const headers = adminEvidenceHeaders({
       filename: evidence.filename,
       contentType: object.httpMetadata?.contentType,
+      contentLength: object.size,
       requestId,
     });
     return new Response(object.body, { status: 200, headers });
@@ -2116,16 +2106,119 @@ async function handleAdminEvidence(request, env, url) {
   }
 }
 
-function adminEvidenceHeaders({ filename, contentType, requestId }) {
+async function handleAdminEvidenceTicket(request, env, url) {
+  const requestId = requestIdentifier(request);
+  try {
+    await requireAdministrator(request, env);
+    if (!env.EVIDENCE_UPLOAD_SIGNING_SECRET || !env.VOLUNTEER_EVIDENCE) {
+      throw httpError(503, "EVIDENCE_STORAGE_NOT_CONFIGURED");
+    }
+    const objectKey = safeString(url.searchParams.get("objectKey"));
+    const { uid, evidence, object } = await authorizedEvidenceDescriptor(
+      env,
+      objectKey,
+      { includeObjectMetadata: true }
+    );
+    const expiresAtSeconds = Math.floor(Date.now() / 1000) + ADMIN_EVIDENCE_PREVIEW_SECONDS;
+    const ticket = await signAdminEvidenceTicket(
+      {
+        purpose: "adminEvidencePreview",
+        uid,
+        objectKey,
+        filename: evidence.filename,
+        mimeType: object.httpMetadata?.contentType || evidence.mimeType,
+        exp: expiresAtSeconds,
+      },
+      env.EVIDENCE_UPLOAD_SIGNING_SECRET
+    );
+    const previewURL = new URL("/admin/evidence-file", request.url);
+    previewURL.searchParams.set("ticket", ticket);
+    return jsonResponse(
+      {
+        ok: true,
+        previewURL: previewURL.toString(),
+        expiresAt: new Date(expiresAtSeconds * 1000).toISOString(),
+        requestId,
+      },
+      200,
+      { "X-EnglishPlus-Request-ID": requestId }
+    );
+  } catch (error) {
+    return authOrValidationError(error, requestId);
+  }
+}
+
+async function handleAdminEvidenceFile(request, env, url) {
+  const requestId = requestIdentifier(request);
+  if (!env.EVIDENCE_UPLOAD_SIGNING_SECRET || !env.VOLUNTEER_EVIDENCE) {
+    return authOrValidationError(
+      httpError(503, "EVIDENCE_STORAGE_NOT_CONFIGURED"),
+      requestId
+    );
+  }
+  try {
+    const ticket = await verifyAdminEvidenceTicket(
+      url.searchParams.get("ticket"),
+      env.EVIDENCE_UPLOAD_SIGNING_SECRET
+    );
+    const object = await env.VOLUNTEER_EVIDENCE.get(ticket.objectKey);
+    if (!object?.body) throw httpError(404, "EVIDENCE_NOT_FOUND");
+    const headers = adminEvidenceHeaders({
+      filename: ticket.filename,
+      contentType: object.httpMetadata?.contentType || ticket.mimeType,
+      contentLength: object.size,
+      requestId,
+    });
+    headers.set("Referrer-Policy", "no-referrer");
+    return new Response(object.body, { status: 200, headers });
+  } catch (error) {
+    return authOrValidationError(error, requestId);
+  }
+}
+
+async function authorizedEvidenceDescriptor(
+  env,
+  objectKey,
+  { includeObjectMetadata = false } = {}
+) {
+  const keyMatch = objectKey?.match(
+    /^volunteer-evidence\/([A-Za-z0-9_-]{8,128})\/[^/]{1,255}$/
+  );
+  if (!objectKey || !keyMatch) throw httpError(400, "INVALID_OBJECT_KEY");
+  const uid = keyMatch[1];
+  const projectId = env.FIREBASE_PROJECT_ID || "englishplus-testflight";
+  const accessToken = await serviceAccountAccessToken(env);
+  const applicationDocument = await getVolunteerApplicationDocument(
+    projectId,
+    accessToken,
+    uid
+  );
+  const application = normalizeVolunteerApplicationDocument(applicationDocument);
+  const evidence = application.evidence.find((item) => item.objectKey === objectKey);
+  if (!evidence || application.evidenceDeletedAt) {
+    throw httpError(404, "EVIDENCE_NOT_FOUND");
+  }
+  if (!includeObjectMetadata) return { uid, evidence };
+  const object = await env.VOLUNTEER_EVIDENCE.head(objectKey);
+  if (!object) throw httpError(404, "EVIDENCE_NOT_FOUND");
+  return { uid, evidence, object };
+}
+
+function adminEvidenceHeaders({ filename, contentType, contentLength, requestId }) {
   const safeFilename = contentDispositionFilename(filename);
-  return new Headers({
+  const headers = new Headers({
     ...CORS_HEADERS,
     "Cache-Control": "private, no-store",
     "Content-Type": contentType || "application/octet-stream",
     "Content-Disposition": `inline; filename="${safeFilename}"`,
+    "Cross-Origin-Resource-Policy": "cross-origin",
     "X-Content-Type-Options": "nosniff",
     "X-EnglishPlus-Request-ID": requestId,
   });
+  if (Number.isFinite(contentLength) && contentLength >= 0) {
+    headers.set("Content-Length", String(contentLength));
+  }
+  return headers;
 }
 
 async function handleClassroomList(request, env) {
@@ -4544,6 +4637,46 @@ async function verifyUploadTicket(ticket, secret) {
   return payload;
 }
 
+async function signAdminEvidenceTicket(payload, secret) {
+  return signUploadTicket(payload, secret);
+}
+
+async function verifyAdminEvidenceTicket(ticket, secret) {
+  if (!ticket) throw httpError(401, "EVIDENCE_PREVIEW_TICKET_REQUIRED");
+  const segments = ticket.split(".");
+  if (segments.length !== 2) {
+    throw httpError(401, "INVALID_EVIDENCE_PREVIEW_TICKET");
+  }
+  const key = await hmacKey(secret, ["verify"]);
+  const verified = await crypto.subtle.verify(
+    "HMAC",
+    key,
+    decodeBase64Url(segments[1]),
+    new TextEncoder().encode(segments[0])
+  );
+  if (!verified) throw httpError(401, "INVALID_EVIDENCE_PREVIEW_TICKET");
+  let payload;
+  try {
+    payload = JSON.parse(new TextDecoder().decode(decodeBase64Url(segments[0])));
+  } catch {
+    throw httpError(401, "INVALID_EVIDENCE_PREVIEW_TICKET");
+  }
+  if (
+    payload?.purpose !== "adminEvidencePreview" ||
+    typeof payload.exp !== "number" ||
+    payload.exp <= Math.floor(Date.now() / 1000) ||
+    typeof payload.uid !== "string" ||
+    !/^[A-Za-z0-9_-]{8,128}$/.test(payload.uid) ||
+    typeof payload.objectKey !== "string" ||
+    !payload.objectKey.startsWith(`volunteer-evidence/${payload.uid}/`) ||
+    typeof payload.filename !== "string" ||
+    !ALLOWED_EVIDENCE_MIME_TYPES.has(payload.mimeType)
+  ) {
+    throw httpError(401, "EXPIRED_OR_INVALID_EVIDENCE_PREVIEW_TICKET");
+  }
+  return payload;
+}
+
 async function hmacKey(secret, usages) {
   return crypto.subtle.importKey(
     "raw",
@@ -5571,9 +5704,11 @@ export {
   reviewVolunteerService,
   selectExpiredReviewedApplications,
   signUploadTicket,
+  signAdminEvidenceTicket,
   stageAccountDeletionSummary,
   summarizeVolunteerApplications,
   verifyUploadTicket,
+  verifyAdminEvidenceTicket,
   updateClassroom,
   volunteerServiceSummaryFromFields,
 };
