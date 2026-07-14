@@ -12,6 +12,11 @@ struct VolunteerHomeView: View {
                 ScrollView {
                     VStack(alignment: .leading, spacing: 16) {
                         VolunteerHeaderCard()
+                        if let reviewState = appState.volunteerApplicationReviewState,
+                           reviewState.status == .approved,
+                           let note = reviewState.normalizedReviewNote {
+                            VolunteerApprovalNoteCard(note: note, reviewedAt: reviewState.reviewedAt)
+                        }
                         if appState.currentProfile?.activeClassId == nil {
                             VolunteerNoActiveServiceCard()
                         } else {
@@ -51,6 +56,32 @@ struct VolunteerHomeView: View {
                 AccountDataView()
             }
         }
+    }
+}
+
+private struct VolunteerApprovalNoteCard: View {
+    let note: String
+    let reviewedAt: Date?
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Label("志工資格已通過", systemImage: "checkmark.seal.fill")
+                .font(.headline)
+                .foregroundStyle(EPTheme.support)
+            Text(note)
+                .font(.subheadline)
+                .foregroundStyle(EPTheme.ink)
+                .fixedSize(horizontal: false, vertical: true)
+            if let reviewedAt {
+                Text("審核時間：\(reviewedAt.formatted(date: .abbreviated, time: .shortened))")
+                    .font(.caption)
+                    .foregroundStyle(EPTheme.secondaryInk)
+            }
+        }
+        .padding(16)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(EPTheme.support.opacity(0.10))
+        .clipShape(RoundedRectangle(cornerRadius: EPTheme.cardRadius))
     }
 }
 

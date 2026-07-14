@@ -343,59 +343,96 @@ final class MockLearningRepository: ObservableObject {
         persistSnapshot()
     }
 
-    func startAssignedPracticeTask(_ assignment: TeacherAssignedPracticeTask) {
-        guard assignment.status != .withdrawn else { return }
+    func startAssignedPracticeTask(_ assignment: TeacherAssignedPracticeTask) async throws {
+        guard assignment.status != .withdrawn else {
+            throw PracticeAssignmentMutationError.assignmentUnavailable
+        }
         let date = now()
-        let dateKey = todayKey(from: date)
         let questions = QuestionGroupingEngine.balancedItems(
             from: questionBankItems(for: assignment.questionIds),
             limit: 12,
             rotationSeed: "assigned-\(assignment.id)"
         )
-        guard !questions.isEmpty else { return }
-        let targetCount = max(1, min(questions.count, 12))
-        let track: MissionTrack = questions.contains { $0.level == .b1 || $0.level == .b2 } ? .challenge : .steady
-
+        guard questions.count == assignment.questionIds.count else {
+            throw PracticeAssignmentMutationError.questionSetUnavailable
+        }
         if let index = assignedPracticeTasks.firstIndex(where: { $0.id == assignment.id }) {
             assignedPracticeTasks[index].status = .active
             assignedPracticeTasks[index].updatedAt = date
         }
-
-        currentCheckIn = nil
-        currentMission = DailyMission(
-            id: "mission-assigned-\(dateKey)-r\(max(learningFlow.roundNumber, 1))-\(assignment.studentUid)",
-            studentUid: assignment.studentUid,
-            dateKey: dateKey,
-            sourceCheckInId: assignment.id,
-            track: track,
-            targetCorrectCount: targetCount,
-            recommendedMinutes: max(3, min(18, questions.count * 2)),
-            questions: questions,
-            createdAt: date,
-            completedAt: nil
-        )
-        missionAttempts = []
-        learningFlow = LearningFlowState(
-            dateKey: dateKey,
-            roundNumber: max(learningFlow.roundNumber, 1),
-            stage: .missionActive,
-            activeMissionId: currentMission?.id,
-            continuation: nil,
-            updatedAt: date
-        )
         persistSnapshot()
     }
 
-    func withdrawAssignedPracticeTask(_ assignmentId: String) {
-        guard let index = assignedPracticeTasks.firstIndex(where: { $0.id == assignmentId }) else { return }
+    func submitAssignedPracticeAnswer(
+        _ answer: String,
+        assignmentId: String
+    ) async throws -> PracticeAssignmentQuestionResult? {
+        guard let index = assignedPracticeTasks.firstIndex(where: {
+            $0.id == assignmentId && $0.status == .active
+        }) else {
+            throw PracticeAssignmentMutationError.assignmentUnavailable
+        }
+        let assignment = assignedPracticeTasks[index]
+        let existingResults = assignment.questionResults ?? []
+        let completedQuestionIds = Set(existingResults.filter(\.isCorrect).map(\.questionId))
+        guard let questionId = assignment.questionIds.first(where: {
+            !completedQuestionIds.contains($0)
+        }), let item = cachedQuestionBankItemById[questionId] else {
+            if completedQuestionIds.count == assignment.questionIds.count {
+                assignedPracticeTasks[index].status = .completed
+                assignedPracticeTasks[index].updatedAt = now()
+                persistSnapshot()
+                return nil
+            }
+            throw PracticeAssignmentMutationError.questionSetUnavailable
+        }
+
+        let trimmedAnswer = answer.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmedAnswer.isEmpty else { return nil }
+        let previousResult = existingResults.first { $0.questionId == questionId }
+        let isCorrect = trimmedAnswer.caseInsensitiveCompare(item.question.answer) == .orderedSame
+        let result = PracticeAssignmentQuestionResult(
+            id: "assignment-result-\(assignment.id)-\(questionId)",
+            questionId: questionId,
+            prompt: item.question.prompt,
+            selectedAnswer: trimmedAnswer,
+            acceptedAnswer: item.question.answer,
+            isCorrect: isCorrect,
+            explanation: item.question.explanation,
+            repairHint: item.question.repairHint,
+            answeredAt: now(),
+            attemptCount: (previousResult?.attemptCount ?? 0) + 1,
+            firstAttemptCorrect: previousResult?.firstAttemptCorrect ?? isCorrect
+        )
+        var updatedResults = existingResults.filter { $0.questionId != questionId }
+        updatedResults.append(result)
+        updatedResults.sort {
+            (assignment.questionIds.firstIndex(of: $0.questionId) ?? .max)
+                < (assignment.questionIds.firstIndex(of: $1.questionId) ?? .max)
+        }
+        assignedPracticeTasks[index].questionResults = updatedResults
+        assignedPracticeTasks[index].status = updatedResults.filter(\.isCorrect).count == assignment.questionIds.count
+            ? .completed
+            : .active
+        assignedPracticeTasks[index].updatedAt = result.answeredAt
+        recordMasteryAttempt(
+            studentUid: assignment.studentUid,
+            questionItem: item,
+            isCorrect: isCorrect,
+            firstTryCorrect: result.firstAttemptCorrect,
+            source: .teacherAssignment,
+            at: result.answeredAt
+        )
+        persistSnapshot()
+        return result
+    }
+
+    func withdrawAssignedPracticeTask(_ assignmentId: String) async throws {
+        guard let index = assignedPracticeTasks.firstIndex(where: { $0.id == assignmentId }) else {
+            throw PracticeAssignmentMutationError.assignmentUnavailable
+        }
         assignedPracticeTasks[index].status = .withdrawn
         assignedPracticeTasks[index].updatedAt = now()
-
-        if currentMission?.sourceCheckInId == assignmentId {
-            currentMission = nil
-            missionAttempts = []
-            learningFlow = .initial(dateKey: todayKey(from: now()))
-        }
 
         persistSnapshot()
     }

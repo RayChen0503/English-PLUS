@@ -85,8 +85,7 @@ def main() -> int:
         errors,
     )
     require(
-        classroom.index("if !isPersonalMode {\n                            classAccessCard")
-        > classroom.index("pendingSection"),
+        classroom.rfind("classAccessCard") > classroom.index("pendingSection"),
         "active-class management must follow the assignment content",
         errors,
     )

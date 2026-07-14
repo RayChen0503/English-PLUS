@@ -42,7 +42,9 @@ firebase_markers = [
     ("PracticeAssignmentStatus.init(rawValue:", "Firestore assignment status decoding"),
     ("practiceAssignmentResults(from:", "Firestore assignment result decoding"),
     ("mergePracticeAssignments", "Firestore practice assignment merge"),
-    ("$0.id == mission.sourceCheckInId && $0.status == .withdrawn", "withdrawn active assignment cleanup from sync"),
+    ("submitAssignedPracticeAnswer(", "independent assigned-practice answer API"),
+    ("persistAssignmentProgress", "awaited assignment progress persistence"),
+    ("persistAssignmentWithdrawal", "awaited assignment withdrawal persistence"),
     ("\"status\": assignment.status.rawValue", "Firestore assignment status mirror"),
 ]
 for needle, label in firebase_markers:
@@ -50,16 +52,20 @@ for needle, label in firebase_markers:
 
 mock_markers = [
     ("status = .withdrawn", "local withdraw status update"),
-    ("if currentMission?.sourceCheckInId == assignmentId", "active assigned mission cleanup"),
-    ("currentMission = nil", "active mission reset after withdraw"),
-    ("learningFlow = .initial", "learning flow reset after withdraw"),
-    ("balancedAssignmentQuestions(", "balanced assignment question selection"),
-    ("rotationSeed: assignmentSeed", "assignment-specific question rotation"),
-    ("assignmentQuestions.map(\\.id)", "assignment stores expanded balanced question ids"),
-    ("QuestionGroupingEngine.practiceSelection", "practice grouping engine used for assignments"),
+    ("submitAssignedPracticeAnswer(", "independent local assignment answer API"),
+    ("rotationSeed: \"assigned-\\(assignment.id)\"", "assignment-specific question validation"),
+    ("completedQuestionIds", "correct-answer assignment progress"),
+    ("firstAttemptCorrect", "assignment retry history"),
+    ("source: .teacherAssignment", "assignment mastery source"),
 ]
 for needle, label in mock_markers:
     require(mock, needle, label)
+
+start_block = mock.split("func startAssignedPracticeTask", 1)[1].split(
+    "func submitAssignedPracticeAnswer", 1
+)[0]
+if "currentMission" in start_block:
+    raise SystemExit("Starting a class assignment must not replace the daily mission")
 
 student_markers = [
     (".filter { $0.status == .pending || $0.status == .active }", "student active assignment filter"),

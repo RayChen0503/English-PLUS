@@ -56,6 +56,23 @@ enum SupportMutationError: LocalizedError {
     }
 }
 
+enum PracticeAssignmentMutationError: LocalizedError {
+    case remoteSyncUnavailable
+    case assignmentUnavailable
+    case questionSetUnavailable
+
+    var errorDescription: String? {
+        switch self {
+        case .remoteSyncUnavailable:
+            return "班級任務目前無法同步，請確認網路後再試一次。"
+        case .assignmentUnavailable:
+            return "這組任務已被收回或不存在，列表已重新整理。"
+        case .questionSetUnavailable:
+            return "這組任務的題目尚未完整載入，請稍後再試。"
+        }
+    }
+}
+
 protocol LearningRepositoryListenerToken {
     func cancel()
 }
@@ -134,7 +151,11 @@ protocol LearningRepositoryBackend: AnyObject {
     func markSupportThreadHandledWithoutReply(_ requestId: String, by staffUser: DemoUser?) async throws
     func archiveSupportThreadForStaff(_ requestId: String, by staffUser: DemoUser?) async throws
     func assignPracticeSet(_ set: QuestionPracticeSet, to student: StaffStudentSummary, by teacher: DemoUser?)
-    func startAssignedPracticeTask(_ assignment: TeacherAssignedPracticeTask)
-    func withdrawAssignedPracticeTask(_ assignmentId: String)
+    func startAssignedPracticeTask(_ assignment: TeacherAssignedPracticeTask) async throws
+    func submitAssignedPracticeAnswer(
+        _ answer: String,
+        assignmentId: String
+    ) async throws -> PracticeAssignmentQuestionResult?
+    func withdrawAssignedPracticeTask(_ assignmentId: String) async throws
     func eraseLocalData(for uid: String)
 }

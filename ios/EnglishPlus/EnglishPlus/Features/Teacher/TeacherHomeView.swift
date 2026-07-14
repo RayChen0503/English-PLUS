@@ -703,8 +703,13 @@ struct TeacherClassAssignmentView: View {
                 questionBankItems: learningRepository.questionBankItems,
                 recommendationText: recommendationText(for: selectedStudent)
                 ) { assignment in
-                    learningRepository.withdrawAssignedPracticeTask(assignment.id)
-                    assignmentConfirmation = "已收回 \(selectedStudent.studentName) 的任務：\(assignment.setTitle)"
+                    Task {
+                        if await learningRepository.withdrawAssignedPracticeTask(assignment.id) {
+                            assignmentConfirmation = "已收回 \(selectedStudent.studentName) 的任務：\(assignment.setTitle)"
+                        } else {
+                            assignmentConfirmation = learningRepository.assignmentActionErrorMessage
+                        }
+                    }
                 }
 
                 if let assignmentConfirmation {

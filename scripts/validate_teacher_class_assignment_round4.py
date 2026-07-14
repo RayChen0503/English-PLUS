@@ -66,7 +66,7 @@ for marker in store_markers:
 
 student_shell_markers = [
     "StudentClassroomView",
-    'Label("班級", systemImage: "person.3")',
+    'Label("班級", systemImage: selectedTab == .classroom ? "person.3.fill" : "person.3")',
     ".badge(pendingAssignmentCount)",
 ]
 for marker in student_shell_markers:

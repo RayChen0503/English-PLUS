@@ -6,6 +6,9 @@ struct StudentClassroomView: View {
     @State private var joinCode = ""
     @State private var showsJoinAnotherClass = false
     @State private var classIdPendingLeave: String?
+    @State private var openedAssignmentID: String?
+    @State private var selectedAnswer = ""
+    @State private var isSubmittingAnswer = false
 
     let onOpenHome: () -> Void
 
@@ -18,33 +21,37 @@ struct StudentClassroomView: View {
             ZStack {
                 EPTheme.background.ignoresSafeArea()
 
-                ScrollView {
-                    VStack(alignment: .leading, spacing: 16) {
-                        headerCard
+                if let openedAssignment {
+                    assignmentSession(openedAssignment)
+                } else {
+                    ScrollView {
+                        VStack(alignment: .leading, spacing: 16) {
+                            headerCard
 
-                        if isPersonalMode {
-                            personalModeCard
-                            if !studentClassrooms.isEmpty || showsJoinAnotherClass {
+                            if isPersonalMode {
+                                personalModeCard
+                                if !studentClassrooms.isEmpty || showsJoinAnotherClass {
+                                    classAccessCard
+                                }
+                            } else if pendingAssignments.isEmpty {
+                                emptyStateCard
+                            } else {
+                                pendingSection
+                            }
+
+                            if !isPersonalMode && !completedAssignments.isEmpty {
+                                completedSection
+                            }
+
+                            if !isPersonalMode {
                                 classAccessCard
                             }
-                        } else if pendingAssignments.isEmpty {
-                            emptyStateCard
-                        } else {
-                            pendingSection
                         }
-
-                        if !isPersonalMode && !completedAssignments.isEmpty {
-                            completedSection
-                        }
-
-                        if !isPersonalMode {
-                            classAccessCard
-                        }
+                        .padding(EPTheme.pagePadding)
                     }
-                    .padding(EPTheme.pagePadding)
                 }
             }
-            .navigationTitle("班級")
+            .navigationTitle(openedAssignment == nil ? "班級" : "班級任務")
             .task {
                 await appState.loadClassrooms()
             }
@@ -52,6 +59,15 @@ struct StudentClassroomView: View {
                 joinCode = ""
                 showsJoinAnotherClass = false
                 classIdPendingLeave = nil
+                closeAssignmentSession()
+            }
+            .onChange(of: learningRepository.assignedPracticeTasks) { _, tasks in
+                guard let openedAssignmentID else { return }
+                if !tasks.contains(where: {
+                    $0.id == openedAssignmentID && $0.status != .withdrawn
+                }) {
+                    closeAssignmentSession()
+                }
             }
             .alert(
                 "確定離開班級？",
@@ -339,11 +355,20 @@ struct StudentClassroomView: View {
                     primaryActionTitle: assignment.status == .active ? "繼續練習" : "開始題組",
                     primaryActionIcon: assignment.status == .active ? "arrow.right.circle.fill" : "play.circle.fill"
                 ) {
-                    if assignment.status == .pending {
-                        learningRepository.startAssignedPracticeTask(assignment)
+                    Task {
+                        if assignment.status == .pending {
+                            guard await learningRepository.startAssignedPracticeTask(assignment) else {
+                                return
+                            }
+                        }
+                        openedAssignmentID = assignment.id
+                        selectedAnswer = ""
                     }
-                    onOpenHome()
                 }
+            }
+
+            if let error = learningRepository.assignmentActionErrorMessage {
+                ClassroomInlineMessage(text: error, isError: true)
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -390,6 +415,237 @@ struct StudentClassroomView: View {
 
     private var currentStudentUid: String? {
         appState.currentUser?.id ?? appState.currentProfile?.id
+    }
+
+    private var openedAssignment: TeacherAssignedPracticeTask? {
+        guard let openedAssignmentID else { return nil }
+        return assignments.first { $0.id == openedAssignmentID }
+    }
+
+    private func assignmentSession(_ assignment: TeacherAssignedPracticeTask) -> some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 16) {
+                Button {
+                    closeAssignmentSession()
+                } label: {
+                    Label("離開題組", systemImage: "chevron.left")
+                        .frame(minHeight: 44)
+                }
+                .buttonStyle(.plain)
+                .foregroundStyle(EPTheme.primary)
+
+                VStack(alignment: .leading, spacing: 10) {
+                    Text(assignment.setTitle)
+                        .font(.title2.bold())
+                        .foregroundStyle(EPTheme.ink)
+                    Text("由 \(assignment.assignedByName) 指派 · 共 \(assignment.questionIds.count) 題")
+                        .font(.subheadline)
+                        .foregroundStyle(EPTheme.secondaryInk)
+                    ProgressView(
+                        value: Double(correctAssignmentCount(assignment)),
+                        total: Double(max(assignment.questionIds.count, 1))
+                    )
+                    .tint(assignment.status == .completed ? EPTheme.support : EPTheme.primary)
+                    Text(assignment.status == .completed
+                        ? "全部完成，老師已收到作答結果。"
+                        : "已答對 \(correctAssignmentCount(assignment))/\(assignment.questionIds.count) 題；答錯可留在原題重試。")
+                        .font(.caption)
+                        .foregroundStyle(EPTheme.secondaryInk)
+                }
+                .padding(16)
+                .background(EPTheme.card)
+                .clipShape(RoundedRectangle(cornerRadius: EPTheme.cardRadius))
+
+                if assignment.status == .completed {
+                    VStack(alignment: .leading, spacing: 12) {
+                        Label("這組班級任務完成了", systemImage: "checkmark.seal.fill")
+                            .font(.title3.bold())
+                            .foregroundStyle(EPTheme.support)
+                        Text("班級紅點會消失，老師端也能查看每題作答結果。")
+                            .font(.subheadline)
+                            .foregroundStyle(EPTheme.secondaryInk)
+                        Button("回到班級任務") { closeAssignmentSession() }
+                            .buttonStyle(PrimaryActionButtonStyle())
+                    }
+                    .padding(16)
+                    .background(EPTheme.card)
+                    .clipShape(RoundedRectangle(cornerRadius: EPTheme.cardRadius))
+                } else if let item = nextAssignmentQuestion(for: assignment) {
+                    assignmentQuestionCard(item, assignment: assignment)
+                } else {
+                    VStack(alignment: .leading, spacing: 10) {
+                        ProgressView()
+                        Text("正在同步老師指派的題目... 這裡只會載入「\(assignment.setTitle)」的題目。")
+                            .font(.subheadline)
+                            .foregroundStyle(EPTheme.secondaryInk)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                    .padding(16)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .background(EPTheme.card)
+                    .clipShape(RoundedRectangle(cornerRadius: EPTheme.cardRadius))
+                }
+
+                if let error = learningRepository.assignmentActionErrorMessage {
+                    ClassroomInlineMessage(text: error, isError: true)
+                }
+            }
+            .padding(EPTheme.pagePadding)
+        }
+    }
+
+    private func assignmentQuestionCard(
+        _ item: QuestionBankItem,
+        assignment: TeacherAssignedPracticeTask
+    ) -> some View {
+        VStack(alignment: .leading, spacing: 14) {
+            HStack {
+                Text(item.question.type.title)
+                    .font(.caption.bold())
+                    .foregroundStyle(EPTheme.primary)
+                Text(item.level.uiTitle)
+                    .font(.caption)
+                    .foregroundStyle(EPTheme.secondaryInk)
+                Spacer()
+                Text("第 \(currentAssignmentQuestionNumber(assignment)) 題")
+                    .font(.caption.bold())
+                    .foregroundStyle(EPTheme.secondaryInk)
+            }
+
+            Text(item.question.prompt)
+                .font(.headline)
+                .foregroundStyle(EPTheme.ink)
+                .fixedSize(horizontal: false, vertical: true)
+
+            if item.question.options.isEmpty {
+                TextField("輸入答案", text: $selectedAnswer, axis: .vertical)
+                    .textFieldStyle(.roundedBorder)
+            } else {
+                VStack(spacing: 8) {
+                    ForEach(Array(assignmentOptionOrder(for: item, in: assignment).enumerated()), id: \.offset) { _, option in
+                        ClassroomAnswerOptionButton(
+                            option: option,
+                            isSelected: option == selectedAnswer
+                        ) {
+                            selectedAnswer = option
+                        }
+                    }
+                }
+            }
+
+            Button {
+                Task { await submitAssignmentAnswer() }
+            } label: {
+                if isSubmittingAnswer {
+                    ProgressView().frame(maxWidth: .infinity, minHeight: 44)
+                } else {
+                    Text("送出答案").frame(maxWidth: .infinity)
+                }
+            }
+            .buttonStyle(PrimaryActionButtonStyle())
+            .disabled(selectedAnswer.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || isSubmittingAnswer)
+            .opacity(selectedAnswer.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || isSubmittingAnswer ? 0.45 : 1)
+
+            if let attempt = latestAttempt(for: item) {
+                Label(
+                    attempt.isCorrect ? "答對了，進度已同步給老師。" : "還差一點，看看提示後再試一次。",
+                    systemImage: attempt.isCorrect ? "checkmark.circle.fill" : "lightbulb.fill"
+                )
+                .font(.subheadline.bold())
+                .foregroundStyle(attempt.isCorrect ? EPTheme.support : EPTheme.warning)
+
+                if !attempt.isCorrect {
+                    Text(attempt.repairHint)
+                        .font(.subheadline)
+                        .foregroundStyle(EPTheme.secondaryInk)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+            }
+        }
+        .padding(16)
+        .background(EPTheme.card)
+        .clipShape(RoundedRectangle(cornerRadius: EPTheme.cardRadius))
+    }
+
+    @MainActor
+    private func submitAssignmentAnswer() async {
+        guard !isSubmittingAnswer else { return }
+        guard let assignment = openedAssignment else { return }
+        isSubmittingAnswer = true
+        defer { isSubmittingAnswer = false }
+        guard await learningRepository.submitAssignedPracticeAnswer(
+            selectedAnswer,
+            assignmentId: assignment.id
+        ) != nil else { return }
+        selectedAnswer = ""
+    }
+
+    private func latestAttempt(for item: QuestionBankItem) -> PracticeAssignmentQuestionResult? {
+        openedAssignment?.questionResults?.first { $0.questionId == item.id }
+    }
+
+    private func correctAssignmentCount(_ assignment: TeacherAssignedPracticeTask) -> Int {
+        assignment.questionResults?.filter(\.isCorrect).count ?? 0
+    }
+
+    private func currentAssignmentQuestionNumber(_ assignment: TeacherAssignedPracticeTask) -> Int {
+        guard let questionId = nextAssignmentQuestion(for: assignment)?.id,
+              let index = assignment.questionIds.firstIndex(of: questionId) else {
+            return max(1, correctAssignmentCount(assignment) + 1)
+        }
+        return index + 1
+    }
+
+    private func nextAssignmentQuestion(
+        for assignment: TeacherAssignedPracticeTask
+    ) -> QuestionBankItem? {
+        let completedQuestionIds = Set(
+            (assignment.questionResults ?? [])
+                .filter(\.isCorrect)
+                .map(\.questionId)
+        )
+        guard let questionId = assignment.questionIds.first(where: {
+            !completedQuestionIds.contains($0)
+        }) else { return nil }
+        return learningRepository.questionBankItems.first { $0.id == questionId }
+    }
+
+    private func assignmentOptionOrder(
+        for item: QuestionBankItem,
+        in assignment: TeacherAssignedPracticeTask
+    ) -> [String] {
+        let index = assignment.questionIds.firstIndex(of: item.id) ?? 0
+        return QuestionGroupingEngine.balancedOptions(for: item, sessionIndex: index)
+    }
+
+    private func closeAssignmentSession() {
+        openedAssignmentID = nil
+        selectedAnswer = ""
+        isSubmittingAnswer = false
+        learningRepository.clearAssignmentActionError()
+    }
+}
+
+private struct ClassroomAnswerOptionButton: View {
+    let option: String
+    let isSelected: Bool
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            HStack(spacing: 12) {
+                Image(systemName: isSelected ? "checkmark.circle.fill" : "circle")
+                    .foregroundStyle(isSelected ? EPTheme.primary : EPTheme.secondaryInk)
+                Text(option)
+                    .foregroundStyle(EPTheme.ink)
+                Spacer()
+            }
+            .padding(14)
+            .frame(maxWidth: .infinity, minHeight: 48, alignment: .leading)
+            .background(isSelected ? EPTheme.primary.opacity(0.12) : EPTheme.secondarySurface)
+            .clipShape(RoundedRectangle(cornerRadius: EPTheme.cardRadius))
+        }
+        .buttonStyle(.plain)
     }
 }
 
@@ -446,7 +702,7 @@ private struct ClassroomAssignmentCard: View {
 
             Text(assignment.status == .completed
                  ? "這組題目已完成，老師可以在班級端查看作答結果。"
-                 : "完成後老師會看到你的作答情況。若老師收回任務，這張卡片會自動消失。")
+                 : "完成後老師會看到你的作答情況。老師收回任務後，任務會從這裡消失。")
                 .font(.footnote)
                 .foregroundStyle(EPTheme.secondaryInk)
                 .fixedSize(horizontal: false, vertical: true)

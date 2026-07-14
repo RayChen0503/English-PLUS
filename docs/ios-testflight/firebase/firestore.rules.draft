@@ -487,8 +487,9 @@ service cloud.firestore {
           )
         );
       allow update: if isSelf(uid)
-        && resource.data.status in ["draft", "needsMoreInformation"]
+        && resource.data.status in ["draft", "needsMoreInformation", "rejected"]
         && request.resource.data.status == "pendingReview"
+        && getAfter(userPath(uid)).data.accountStatus == "pendingApproval"
         && request.resource.data.uid == uid
         && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
           "status",

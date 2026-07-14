@@ -26,6 +26,8 @@ final class LearningRepositoryStore: ObservableObject {
     @Published private(set) var pendingPracticeLaunch: PracticeLaunchRequest?
     @Published private(set) var pendingSupportActionKeys = Set<String>()
     @Published private(set) var supportActionErrorMessage: String?
+    @Published private(set) var pendingAssignmentActionIds = Set<String>()
+    @Published private(set) var assignmentActionErrorMessage: String?
 
     private let backend: any LearningRepositoryBackend
     private let connectivityMonitor: any NetworkConnectivityMonitoring
@@ -418,14 +420,62 @@ final class LearningRepositoryStore: ObservableObject {
         apply(backend.snapshot)
     }
 
-    func startAssignedPracticeTask(_ assignment: TeacherAssignedPracticeTask) {
-        backend.startAssignedPracticeTask(assignment)
-        apply(backend.snapshot)
+    func startAssignedPracticeTask(_ assignment: TeacherAssignedPracticeTask) async -> Bool {
+        guard pendingAssignmentActionIds.insert(assignment.id).inserted else { return false }
+        assignmentActionErrorMessage = nil
+        defer { pendingAssignmentActionIds.remove(assignment.id) }
+        do {
+            try await backend.startAssignedPracticeTask(assignment)
+            apply(backend.snapshot)
+            return true
+        } catch {
+            apply(backend.snapshot)
+            assignmentActionErrorMessage = (error as? LocalizedError)?.errorDescription
+                ?? "無法開始這組班級任務，請稍後再試。"
+            return false
+        }
     }
 
-    func withdrawAssignedPracticeTask(_ assignmentId: String) {
-        backend.withdrawAssignedPracticeTask(assignmentId)
-        apply(backend.snapshot)
+    func submitAssignedPracticeAnswer(
+        _ answer: String,
+        assignmentId: String
+    ) async -> PracticeAssignmentQuestionResult? {
+        guard pendingAssignmentActionIds.insert(assignmentId).inserted else { return nil }
+        assignmentActionErrorMessage = nil
+        defer { pendingAssignmentActionIds.remove(assignmentId) }
+        do {
+            let result = try await backend.submitAssignedPracticeAnswer(
+                answer,
+                assignmentId: assignmentId
+            )
+            apply(backend.snapshot)
+            return result
+        } catch {
+            apply(backend.snapshot)
+            assignmentActionErrorMessage = (error as? LocalizedError)?.errorDescription
+                ?? "答案沒有同步完成，請確認網路後再試一次。"
+            return nil
+        }
+    }
+
+    func withdrawAssignedPracticeTask(_ assignmentId: String) async -> Bool {
+        guard pendingAssignmentActionIds.insert(assignmentId).inserted else { return false }
+        assignmentActionErrorMessage = nil
+        defer { pendingAssignmentActionIds.remove(assignmentId) }
+        do {
+            try await backend.withdrawAssignedPracticeTask(assignmentId)
+            apply(backend.snapshot)
+            return true
+        } catch {
+            apply(backend.snapshot)
+            assignmentActionErrorMessage = (error as? LocalizedError)?.errorDescription
+                ?? "任務沒有成功收回，請確認網路後再試一次。"
+            return false
+        }
+    }
+
+    func clearAssignmentActionError() {
+        assignmentActionErrorMessage = nil
     }
 
     private func apply(_ snapshot: LearningRepositorySnapshot) {

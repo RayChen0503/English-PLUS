@@ -385,6 +385,33 @@ struct FirebaseAuthService: AuthService, Sendable {
         #endif
     }
 
+    func loadVolunteerApplicationReviewState(
+        in session: AuthSession
+    ) async throws -> VolunteerApplicationReviewState? {
+        #if canImport(FirebaseAuth) && canImport(FirebaseFirestore)
+        guard session.user.role == .volunteer,
+              Auth.auth().currentUser?.uid == session.user.id else {
+            return nil
+        }
+        let snapshot = try await documentSnapshot(
+            path: FirestorePath.volunteerApplication(uid: session.user.id)
+        )
+        guard let data = snapshot.data(),
+              let rawStatus = data["status"] as? String,
+              let status = VolunteerApplicationStatus(rawValue: rawStatus) else {
+            return nil
+        }
+        return VolunteerApplicationReviewState(
+            status: status,
+            reviewNote: data["reviewNote"] as? String,
+            reviewedAt: firestoreDate(data["reviewedAt"]),
+            updatedAt: firestoreDate(data["updatedAt"])
+        )
+        #else
+        return nil
+        #endif
+    }
+
     func currentUserIsAdministrator() async -> Bool {
         #if canImport(FirebaseAuth)
         guard let user = Auth.auth().currentUser,
@@ -856,7 +883,7 @@ struct FirebaseAuthService: AuthService, Sendable {
         case .pendingApplication:
             break
         case .pendingApproval:
-            throw AuthServiceError.accountPendingApproval
+            break
         case .suspended, .disabled:
             throw AuthServiceError.accountDisabled
         }

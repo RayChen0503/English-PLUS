@@ -19,6 +19,7 @@ final class AppState: ObservableObject {
     @Published private(set) var consentErrorMessage: String?
     @Published private(set) var latestAIResponse: AiProxyResponse?
     @Published private(set) var volunteerApplicationDraft: VolunteerApplicationInput?
+    @Published private(set) var volunteerApplicationReviewState: VolunteerApplicationReviewState?
     @Published private(set) var isAdministrator = false
     @Published private(set) var volunteerReviewApplications: [VolunteerReviewApplication] = []
     @Published private(set) var volunteerReviewErrorMessage: String?
@@ -313,8 +314,10 @@ final class AppState: ObservableObject {
 
     func loadVolunteerApplicationDraft() async {
         guard let currentUser, let currentProfile else { return }
-        volunteerApplicationDraft = try? await authService.loadVolunteerApplication(
-            in: AuthSession(user: currentUser, profile: currentProfile)
+        let session = AuthSession(user: currentUser, profile: currentProfile)
+        volunteerApplicationDraft = try? await authService.loadVolunteerApplication(in: session)
+        volunteerApplicationReviewState = try? await authService.loadVolunteerApplicationReviewState(
+            in: session
         )
     }
 
@@ -475,6 +478,7 @@ final class AppState: ObservableObject {
         consentErrorMessage = nil
         latestAIResponse = nil
         volunteerApplicationDraft = nil
+        volunteerApplicationReviewState = nil
         isAdministrator = false
         volunteerReviewApplications = []
         volunteerReviewErrorMessage = nil
@@ -837,22 +841,25 @@ final class AppState: ObservableObject {
         currentUser = session.user
         currentProfile = session.profile
         selectedRole = session.user.role
+        runtimeDiagnostics = runtimeDiagnostics.withSession(user: session.user, profile: session.profile)
+        isAdministrator = await authService.currentUserIsAdministrator()
+        if session.user.role == .volunteer {
+            volunteerApplicationDraft = try? await authService.loadVolunteerApplication(in: session)
+            volunteerApplicationReviewState = try? await authService.loadVolunteerApplicationReviewState(
+                in: session
+            )
+            if session.profile.accountStatus == .pendingApplication
+                || session.profile.accountStatus == .pendingApproval {
+                hasAcceptedConsent = false
+                route = .volunteerApplication
+                return
+            }
+        }
         startClassroomMembershipSyncIfNeeded(userUid: session.user.id)
         startVolunteerServiceSyncIfNeeded(
             userUid: session.user.id,
             role: session.profile.role
         )
-        runtimeDiagnostics = runtimeDiagnostics.withSession(user: session.user, profile: session.profile)
-        isAdministrator = await authService.currentUserIsAdministrator()
-        if session.user.role == .volunteer,
-           session.profile.accountStatus == .pendingApplication {
-            hasAcceptedConsent = false
-            volunteerApplicationDraft = try? await authService.loadVolunteerApplication(
-                in: session
-            )
-            route = .volunteerApplication
-            return
-        }
         hasAcceptedConsent = await acceptedConsentStatus(for: session.user.id)
         if hasAcceptedConsent {
             synchronizeRoleScopedClassroomData(for: session.profile)

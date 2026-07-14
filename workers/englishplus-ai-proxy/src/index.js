@@ -50,7 +50,7 @@ const VOLUNTEER_REVIEW_STATUSES = new Set([
 ]);
 const VOLUNTEER_REVIEW_ACTIONS = Object.freeze({
   approved: { applicationStatus: "approved", accountStatus: "active", active: true },
-  rejected: { applicationStatus: "rejected", accountStatus: "disabled", active: false },
+  rejected: { applicationStatus: "rejected", accountStatus: "pendingApplication", active: false },
   needsMoreInformation: {
     applicationStatus: "needsMoreInformation",
     accountStatus: "pendingApplication",
@@ -2105,18 +2105,27 @@ async function handleAdminEvidence(request, env, url) {
     }
     const object = await env.VOLUNTEER_EVIDENCE.get(objectKey);
     if (!object?.body) throw httpError(404, "EVIDENCE_NOT_FOUND");
-    const filename = contentDispositionFilename(evidence.filename);
-    const headers = new Headers({
-      "Cache-Control": "private, no-store",
-      "Content-Type": object.httpMetadata?.contentType || "application/octet-stream",
-      "Content-Disposition": `attachment; filename="${filename}"`,
-      "X-Content-Type-Options": "nosniff",
-      "X-EnglishPlus-Request-ID": requestId,
+    const headers = adminEvidenceHeaders({
+      filename: evidence.filename,
+      contentType: object.httpMetadata?.contentType,
+      requestId,
     });
     return new Response(object.body, { status: 200, headers });
   } catch (error) {
     return authOrValidationError(error, requestId);
   }
+}
+
+function adminEvidenceHeaders({ filename, contentType, requestId }) {
+  const safeFilename = contentDispositionFilename(filename);
+  return new Headers({
+    ...CORS_HEADERS,
+    "Cache-Control": "private, no-store",
+    "Content-Type": contentType || "application/octet-stream",
+    "Content-Disposition": `inline; filename="${safeFilename}"`,
+    "X-Content-Type-Options": "nosniff",
+    "X-EnglishPlus-Request-ID": requestId,
+  });
 }
 
 async function handleClassroomList(request, env) {
@@ -4388,7 +4397,7 @@ function normalizeAdminReviewRequest(raw) {
     throw httpError(400, "INVALID_REVIEW_ACTION");
   }
   const note = safeString(raw.note)?.slice(0, 1000) || "";
-  if (action !== "approved" && note.length < 3) {
+  if (note.length < 3) {
     throw httpError(400, "REVIEW_NOTE_REQUIRED");
   }
   const expectedVersion = safeString(raw.expectedVersion) || "";
@@ -5507,6 +5516,7 @@ function jsonResponse(body, status = 200, extraHeaders = {}) {
 }
 
 export {
+  adminEvidenceHeaders,
   accountDeletionContext,
   accountDeletionJobProgress,
   accountDeletionJobWrite,
