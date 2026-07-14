@@ -44,6 +44,7 @@ struct TeacherHomeView: View {
                 }
             }
             .navigationTitle("教師工作台")
+            .accessibilityIdentifier("teacher.home.workspace")
             .toolbar {
                 ToolbarItem(placement: .topBarTrailing) {
                     Menu {
@@ -117,6 +118,7 @@ struct TeacherHandoffView: View {
                 }
             }
             .navigationTitle("接力")
+            .accessibilityIdentifier("teacher.handoff.workspace")
         }
     }
 }
@@ -383,6 +385,7 @@ struct TeacherReportView: View {
                 }
             }
             .navigationTitle("報告")
+            .accessibilityIdentifier("teacher.report.workspace")
         }
     }
 }
@@ -611,6 +614,7 @@ struct TeacherClassAssignmentView: View {
                 }
             }
             .navigationTitle("班級")
+            .accessibilityIdentifier("teacher.class.workspace")
             .task {
                 await appState.loadClassrooms()
                 showsCreateClassroom = teacherClassrooms.isEmpty

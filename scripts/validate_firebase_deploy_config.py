@@ -41,13 +41,11 @@ def main():
             errors,
         )
 
-        functions = firebase_json.get("functions")
-        require(isinstance(functions, list) and len(functions) == 1, "firebase.json must define one functions block", errors)
-        if isinstance(functions, list) and functions:
-            block = functions[0]
-            require(block.get("source") == "functions", "functions source must be functions", errors)
-            require(block.get("runtime") == "nodejs20", "functions runtime must be nodejs20", errors)
-            require("npm --prefix \"$RESOURCE_DIR\" run build" in block.get("predeploy", []), "functions predeploy must build TypeScript", errors)
+        require(
+            "functions" not in firebase_json,
+            "firebase.json must not deploy the archived OpenRouter Functions prototype",
+            errors,
+        )
 
         require("firestore" in firebase_json, "firebase.json must define Firestore rules", errors)
         firestore = firebase_json.get("firestore", {})
@@ -60,6 +58,9 @@ def main():
         require("ios/**/GoogleService-Info.plist" in gitignore, "GoogleService-Info.plist must stay ignored", errors)
         require("functions/.secret.local" in gitignore, "local function secrets must stay ignored", errors)
         require("defineSecret(\"OPENROUTER_API_KEY\")" in functions_index, "AI proxy must use OPENROUTER_API_KEY secret", errors)
+        archived_notice = (ROOT / "functions" / "README.md").read_text(encoding="utf-8")
+        require("must not be deployed" in archived_notice, "archived Functions source needs a deployment warning", errors)
+        require("workers/englishplus-ai-proxy" in archived_notice, "archived Functions notice must name the active Worker", errors)
 
         require(not list(ROOT.glob("**/GoogleService-Info.plist")), "GoogleService-Info.plist must not be committed", errors)
         require(not list(ROOT.glob("**/.secret.local")), "local secret files must not be committed", errors)

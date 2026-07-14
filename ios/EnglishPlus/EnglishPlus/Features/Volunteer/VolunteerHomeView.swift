@@ -38,6 +38,7 @@ struct VolunteerHomeView: View {
                 }
             }
             .navigationTitle("志工工作台")
+            .accessibilityIdentifier("volunteer.home.workspace")
             .toolbar {
                 ToolbarItem(placement: .topBarTrailing) {
                     Menu {
@@ -160,6 +161,7 @@ struct VolunteerServiceClassesView: View {
                 .refreshable { await appState.loadVolunteerServices() }
             }
             .navigationTitle("服務班級")
+            .accessibilityIdentifier("volunteer.service.workspace")
             .task { await appState.loadVolunteerServices() }
             .alert(
                 classPendingLeave?.status == .pendingApproval
@@ -386,6 +388,7 @@ struct VolunteerHandoffWorkspaceView: View {
                 }
             }
             .navigationTitle("接力")
+            .accessibilityIdentifier("volunteer.handoff.workspace")
         }
     }
 }
@@ -632,6 +635,7 @@ struct VolunteerRecordView: View {
                 }
             }
             .navigationTitle("紀錄")
+            .accessibilityIdentifier("volunteer.records.workspace")
         }
     }
 }

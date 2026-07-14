@@ -70,9 +70,9 @@ def main() -> None:
     )
 
     for token in [
-        "allLearningMapNodesCompleted",
+        "isDailyMissionCompleted",
         "todayCompleteCard",
-        "learningMapNodes.allSatisfy",
+        "progressSnapshot?.status == .completed",
         "今天的任務完成了",
     ]:
         require(token in learning_map, f"Learning map must show a clear all-done state: {token}")

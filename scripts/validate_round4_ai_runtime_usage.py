@@ -101,7 +101,8 @@ def main():
     require(
         "RemoteAIService(" in texts["factory"]
         and "CloudflareWorkerAiProxyTransport(" in texts["factory"]
-        and "idTokenProvider: authService.currentIdToken" in texts["factory"],
+        and "try await authService.currentIdToken()" in texts["factory"]
+        and "idTokenProvider: idTokenProvider" in texts["factory"],
         "Service factory must wire RemoteAIService through Cloudflare Worker transport with Firebase ID token provider",
         errors,
     )

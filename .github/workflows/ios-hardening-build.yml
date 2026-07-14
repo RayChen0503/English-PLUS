@@ -27,6 +27,7 @@ on:
       - admin-web/**
       - firebase-tests/**
       - ios/EnglishPlus/**
+      - scripts/**
       - docs/ios-testflight/firebase/**
       - workers/englishplus-ai-proxy/**
 
@@ -141,6 +142,7 @@ jobs:
           python3 scripts/validate_app_store_hardening_round17.py
           python3 scripts/validate_app_store_hardening_round18.py
           python3 scripts/validate_app_store_hardening_round19.py
+          python3 scripts/validate_app_store_hardening_round20.py
 
       - name: Build iOS Simulator test bundle
         run: |

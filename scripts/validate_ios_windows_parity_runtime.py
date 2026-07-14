@@ -102,14 +102,19 @@ def main() -> int:
 
     require("RemoteAIService(" in text["factory"], "Service factory must use RemoteAIService in Firebase runtime", errors)
     require("CloudflareWorkerAiProxyTransport(" in text["factory"], "Service factory must wire Cloudflare Worker AI transport", errors)
-    require("idTokenProvider: authService.currentIdToken" in text["factory"], "Remote AI calls must use Firebase ID token provider when available", errors)
+    require(
+        "try await authService.currentIdToken()" in text["factory"]
+        and "idTokenProvider: idTokenProvider" in text["factory"],
+        "Remote AI calls must use Firebase ID token provider when available",
+        errors,
+    )
     require("ENGLISHPLUS_AI_PROXY_URL" in text["info"], "Info.plist must define AI proxy endpoint", errors)
     require("https://englishplus-ai-proxy.englishplus-ray.workers.dev/ai" in text["info"], "Info.plist must point to the live Groq Cloudflare Worker endpoint", errors)
     for forbidden in ["GROQ_API_KEY", "https://api.groq.com", "gsk_", "OPENROUTER_API_KEY", "https://openrouter.ai", "cloudfunctions.net", "englishPlusAiProxy"]:
         require(forbidden not in all_ios_text, f"iOS app must not expose or call forbidden AI token/endpoint {forbidden}", errors)
 
     for token in [
-        "開始心情檢測",
+        "今天先從四題開始",
         "1. 今天的心情量表",
         "2. 今天有足夠的時間練習英文嗎？",
         "今天會想要挑戰更難的題目嗎？",

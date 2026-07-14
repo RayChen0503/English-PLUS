@@ -8,7 +8,7 @@
 | SKU suggestion | `englishplus-ios-testflight` |
 | Bundle ID | `com.englishplus` |
 | Version | `1.0` |
-| Build | `3` |
+| Build | Assigned automatically by Xcode Cloud |
 | Primary language | Traditional Chinese |
 | Category suggestion | Education |
 | Target testers | Students, teachers, volunteers, project staff |

@@ -1179,15 +1179,25 @@ private struct HumanHelpPhoneLink: View {
     let number: String
     var isEmergency = false
 
+    @ViewBuilder
     var body: some View {
-        Link(destination: URL(string: "tel:\(number)")!) {
-            Label(title, systemImage: "phone.fill")
-                .font(.caption.bold())
-                .foregroundStyle(isEmergency ? EPTheme.warning : EPTheme.primary)
-                .frame(maxWidth: .infinity, minHeight: 44)
-                .background((isEmergency ? EPTheme.warning : EPTheme.primary).opacity(0.10))
-                .clipShape(RoundedRectangle(cornerRadius: 10))
+        if let destination = URL(string: "tel:\(number)") {
+            Link(destination: destination) {
+                linkLabel
+            }
+            .accessibilityHint("撥打 \(number)")
+        } else {
+            linkLabel
+                .accessibilityLabel("\(title)，電話號碼 \(number)")
         }
-        .accessibilityHint("撥打 \(number)")
+    }
+
+    private var linkLabel: some View {
+        Label(title, systemImage: "phone.fill")
+            .font(.caption.bold())
+            .foregroundStyle(isEmergency ? EPTheme.warning : EPTheme.primary)
+            .frame(maxWidth: .infinity, minHeight: 44)
+            .background((isEmergency ? EPTheme.warning : EPTheme.primary).opacity(0.10))
+            .clipShape(RoundedRectangle(cornerRadius: EPTheme.cardRadius))
     }
 }

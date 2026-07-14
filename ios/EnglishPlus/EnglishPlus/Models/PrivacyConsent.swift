@@ -71,12 +71,8 @@ enum LegalSupportConfiguration {
     static let policyEffectiveDate = "2026 年 7 月 13 日"
     static let supportEmail = "englishplus.tw@gmail.com"
 
-    static let privacyPolicyURL = URL(
-        string: "https://sites.google.com/view/englishplus-privacy/%E9%9A%B1%E7%A7%81%E6%94%BF%E7%AD%96"
-    )!
-    static let supportURL = URL(
-        string: "https://sites.google.com/view/englishplus-privacy/%E6%94%AF%E6%8F%B4%E8%88%87%E8%81%AF%E7%B5%A1"
-    )!
+    static let privacyPolicyURL = publicPageURL(pathComponent: "隱私政策")
+    static let supportURL = publicPageURL(pathComponent: "支援與聯絡")
 
     static func supportEmailURL(role: UserRole? = nil) -> URL {
         var components = URLComponents()
@@ -86,7 +82,15 @@ enum LegalSupportConfiguration {
         components.queryItems = [
             URLQueryItem(name: "subject", value: "English+ 使用協助\(roleContext)")
         ]
-        return components.url!
+        return components.url ?? URL(fileURLWithPath: "/")
+    }
+
+    private static func publicPageURL(pathComponent: String) -> URL {
+        var components = URLComponents()
+        components.scheme = "https"
+        components.host = "sites.google.com"
+        components.path = "/view/englishplus-privacy/\(pathComponent)"
+        return components.url ?? URL(fileURLWithPath: "/")
     }
 }
 

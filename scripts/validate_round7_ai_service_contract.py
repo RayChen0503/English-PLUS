@@ -117,7 +117,12 @@ def validate_ios_service_contract(errors: list[str]) -> None:
 
     require("EnglishPlusServiceFactory.makeServices()" in app, "EnglishPlusApp must use EnglishPlusServiceFactory", errors)
     require("CloudflareWorkerAiProxyTransport(" in factory, "Service factory must wire Cloudflare Worker AI transport", errors)
-    require("idTokenProvider: authService.currentIdToken" in factory, "Cloudflare Worker transport must receive Firebase ID token provider", errors)
+    require(
+        "try await authService.currentIdToken()" in factory
+        and "idTokenProvider: idTokenProvider" in factory,
+        "Cloudflare Worker transport must receive Firebase ID token provider",
+        errors,
+    )
     require("ENGLISHPLUS_AI_PROXY_URL" in info, "Info.plist must define ENGLISHPLUS_AI_PROXY_URL", errors)
     require("https://englishplus-ai-proxy.englishplus-ray.workers.dev/ai" in info, "Info.plist must point to the live Cloudflare Worker endpoint", errors)
 

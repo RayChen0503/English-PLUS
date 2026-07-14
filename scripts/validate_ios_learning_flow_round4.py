@@ -72,7 +72,8 @@ require_markers(
         "@Published private(set) var assignedPracticeTasks",
         "func assignPracticeSet(",
         "func startAssignedPracticeTask(",
-        "sourceCheckInId: assignment.id",
+        "guard questions.count == assignment.questionIds.count",
+        "func submitAssignedPracticeAnswer(",
         "updateAssignmentProgressIfNeeded",
     ],
 )

@@ -2,7 +2,9 @@
 
 struct RoleSelectionView: View {
     @EnvironmentObject private var appState: AppState
+    #if DEBUG
     @State private var showingRuntimeDiagnostics = false
+    #endif
 
     var body: some View {
         NavigationStack {
@@ -14,9 +16,11 @@ struct RoleSelectionView: View {
                             Text("English+")
                                 .font(.largeTitle.bold())
                                 .foregroundStyle(EPTheme.ink)
+                                #if DEBUG
                                 .onTapGesture(count: 5) {
                                     showingRuntimeDiagnostics = true
                                 }
+                                #endif
                             Text("你今天要用哪一端？")
                                 .font(.title2.bold())
                                 .foregroundStyle(EPTheme.ink)
@@ -77,9 +81,11 @@ struct RoleSelectionView: View {
                 }
                 .scrollBounceBehavior(.basedOnSize)
             }
-            .sheet(isPresented: $showingRuntimeDiagnostics) {
-                RuntimeDiagnosticsView()
-            }
+            #if DEBUG
+                .sheet(isPresented: $showingRuntimeDiagnostics) {
+                    RuntimeDiagnosticsView()
+                }
+            #endif
         }
     }
 
