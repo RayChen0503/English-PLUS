@@ -161,12 +161,14 @@ checks = {
         token in login_source
         for token in [
             ".scrollDismissesKeyboard(.interactively)",
+            'accessibilityIdentifier("auth.screen")',
             'accessibilityIdentifier("auth.keyboard.dismiss")',
             ".submitLabel(.go)",
             "performPrimaryAction()",
         ]
     )
-    and 'app.buttons["auth.keyboard.dismiss"]' in ui_tests,
+    and 'app.buttons["auth.keyboard.dismiss"]' in ui_tests
+    and 'scrollUntilHittable(emailField, in: authenticationScreen)' in ui_tests,
     "teacher primary workspaces are addressable": all(
         token in teacher_source
         for token in [

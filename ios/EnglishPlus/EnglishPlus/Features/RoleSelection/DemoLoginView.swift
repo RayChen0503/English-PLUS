@@ -54,6 +54,7 @@ struct DemoLoginView: View {
                 .padding(EPTheme.pagePadding)
                 .padding(.bottom, 24)
             }
+            .accessibilityIdentifier("auth.screen")
             .scrollDismissesKeyboard(.interactively)
         }
         .toolbar {

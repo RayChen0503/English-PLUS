@@ -227,13 +227,16 @@ final class EnglishPlusCriticalFlowsUITests: XCTestCase {
         XCTAssertTrue(roleButton.waitForExistence(timeout: 5))
         roleButton.tap()
 
+        let authenticationScreen = app.scrollViews["auth.screen"]
+        XCTAssertTrue(authenticationScreen.waitForExistence(timeout: 8))
+
         let emailField = app.textFields["auth.email"]
-        XCTAssertTrue(emailField.waitForExistence(timeout: 5))
+        scrollUntilHittable(emailField, in: authenticationScreen)
         emailField.tap()
         emailField.typeText(email)
 
         let passwordField = app.secureTextFields["auth.password"]
-        XCTAssertTrue(passwordField.exists)
+        scrollUntilHittable(passwordField, in: authenticationScreen)
         passwordField.tap()
         passwordField.typeText(password)
 
@@ -268,6 +271,22 @@ final class EnglishPlusCriticalFlowsUITests: XCTestCase {
         }
         XCTAssertTrue(element.isHittable, file: file, line: line)
         element.tap()
+    }
+
+    private func scrollUntilHittable(
+        _ element: XCUIElement,
+        in scrollView: XCUIElement,
+        file: StaticString = #filePath,
+        line: UInt = #line
+    ) {
+        for _ in 0..<8 {
+            if element.exists && element.isHittable {
+                return
+            }
+            scrollView.swipeUp()
+        }
+        XCTAssertTrue(element.exists, file: file, line: line)
+        XCTAssertTrue(element.isHittable, file: file, line: line)
     }
 
     private func assertTabBarContains(_ labels: [String]) {
