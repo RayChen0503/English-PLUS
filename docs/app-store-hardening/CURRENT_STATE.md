@@ -42,7 +42,9 @@ learning must remain usable without joining a class.
     (`round-14-automated-quality-gates.md`)
   - Round 15 - question-bank taxonomy, answer balance and duplicate protection
     (`round-15-question-bank-quality.md`)
-- Hardening progress: **15/20 fully signed off**.
+  - Round 16 - mastery, spaced review and Block D audit
+    (`round-16-mastery-spaced-review-block-d-audit.md`)
+- Hardening progress: **16/20 fully signed off**.
 - Do not merge to `main` or trigger Xcode Cloud until the end of a four-round
   block: 4, 8, 12, 16, and 20.
 - Never reset, overwrite, or silently discard user work.
@@ -212,16 +214,16 @@ learning must remain usable without joining a class.
   with retained result bundles for diagnosis. Round 15 run `29307724360`
   passed the clean test-bundle build, all `48/48` Swift tests and all `5/5`
   role UI tests, with its Xcode result artifact retained for diagnosis.
-- Round 16 implementation is complete and awaiting the final current-commit
-  macOS gate. Shared mastery, immediate wrong-answer repair, spaced review and
-  teacher-visible assignment attempts now use one synchronized progress
-  contract. The local Block D preflight passes; Firestore Emulator permissions
-  pass `31/31`; Worker Node tests pass `24/24`; the production security smoke
-  suite passes `45/45`; the administrator portal passes `7/7` plus its
-  production build; and Firebase Functions build and typecheck pass. Worker
-  version `a204be36-8e3c-4644-9ef5-de80c31cc851`, Rules, indexes and the
-  Email-only administrator portal are deployed. The formal `16/20` sign-off
-  remains withheld until the current branch commit passes macOS CI.
+- Round 16 has unified free practice, repair practice, daily missions and
+  teacher assignments into one synchronized mastery and spaced-review
+  contract. Wrong answers are due immediately; correct streaks use 1, 3, 7,
+  14 and 30-day intervals; and teachers see partial progress, retry history
+  and first-try accuracy. Worker version
+  `a204be36-8e3c-4644-9ef5-de80c31cc851`, Firestore Rules, indexes and the
+  Email-only administrator portal are deployed. Production security smoke
+  tests pass `45/45`. Final isolated macOS run `29319943696` passed Worker
+  `34/34`, administrator `7/7`, Firestore Emulator `31/31`, Swift `54/54` and
+  UI `5/5`, with zero English+ Swift source or test warnings in the build log.
   Xcode Cloud remains the release-level gate at the agreed checkpoint.
 - Existing legacy validators can fail because they assert removed UI or old
   copy. Preserve useful behavioral coverage by replacing them, not by reviving
@@ -253,12 +255,10 @@ learning must remain usable without joining a class.
 
 ## Next gate
 
-Round 16 implementation and Windows-side Block D verification are complete on
-`codex/app-store-hardening-d`. Push the work branch and require the current
-macOS GitHub Actions gate to pass the complete Worker pool, administrator
-portal, Firestore Emulator, Swift acceptance and five role UI journeys. Only
-then mark Round 16 passed, update progress to `16/20`, merge once to `main` and
-allow that single main push to trigger Xcode Cloud.
+Round 16 and the complete Block D audit are signed off on
+`codex/app-store-hardening-d`. Merge this release candidate once to `main` and
+allow that single main push to trigger Xcode Cloud. After the release gate,
+Round 17 begins the UI, accessibility and App Store candidate block.
 
 ## Maintenance rule
 

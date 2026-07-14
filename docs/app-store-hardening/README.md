@@ -43,11 +43,11 @@ evidence in the round reports.
 | 13 - Repository decomposition and sync recovery | Complete | `round-13-reliability-decomposition.md` |
 | 14 - Automated quality gates | Complete | `round-14-automated-quality-gates.md` |
 | 15 - Question-bank taxonomy and set quality | Complete | `round-15-question-bank-quality.md` |
-| 16 - Mastery, spaced review and Block D audit | Awaiting final macOS gate | `round-16-mastery-spaced-review-block-d-audit.md` |
+| 16 - Mastery, spaced review and Block D audit | Complete | `round-16-mastery-spaced-review-block-d-audit.md` |
 
 ## Main-branch safety
 
-Block D commits are made on `codex/app-store-hardening-d`. Round 16 becomes a
-release candidate only after its current branch commit passes the full macOS
-gate. One deliberate merge to `main` then triggers Xcode Cloud; no intermediate
-round or documentation-only work may trigger it.
+Block D commits are made on `codex/app-store-hardening-d`. Final macOS run
+`29319943696` passed the full gate for commit `04c75c5`. One deliberate merge
+to `main` now triggers Xcode Cloud; no intermediate round or documentation-only
+work may trigger it.

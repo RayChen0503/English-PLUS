@@ -1,14 +1,14 @@
 # Round 16 - Mastery, spaced review, and Block D audit
 
-Status: In progress - awaiting the final macOS isolated gate
+Status: Passed
 
 Date: 2026-07-14
 
 Branch: `codex/app-store-hardening-d`
 
-Release boundary: the implementation and production backend are validated on
-the hardening branch. The branch must not merge to `main` until the current
-commit passes the complete macOS GitHub Actions gate.
+Release boundary: implementation, production backend and the current branch
+commit passed the complete macOS gate. This Block D release candidate may now
+merge once to `main` and trigger the agreed Xcode Cloud checkpoint.
 
 This report will be finalized only after the Round 13-16 validators, Swift
 acceptance suite, critical UI suite, Worker tests, administrator portal checks,
@@ -70,13 +70,20 @@ Firebase Emulator permissions, and the macOS isolated gate all pass.
   production Vite bundle.
 - Firebase Functions build and no-emit typecheck both pass.
 - The full Cloudflare workerd pool cannot resolve `cloudflare:test-internal`
-  from this Windows Unicode workspace. It remains a mandatory macOS CI check,
-  not a waived test.
+  from this Windows Unicode workspace, so it was run as a mandatory macOS CI
+  check rather than waived.
 
-## Evidence awaiting final sign-off
+## Final sign-off evidence
 
-- Swift acceptance: pending the isolated macOS run for the current commit.
-- Firebase Emulator: local complete permission matrix passes `31/31`.
-- macOS isolated gate: pending the branch push and current-commit run.
-- Formal `Status: Passed` and the `16/20` state update are intentionally
-  withheld until that gate succeeds.
+- Isolated macOS run `29319943696` validated commit
+  `04c75c57bf7e7ac101126ca1141190af77c1bb7c` on Xcode 16.4.
+- Cloudflare workerd tests passed `34/34`; administrator tests passed `7/7`
+  and produced the production bundle; Firestore Emulator passed `31/31`.
+- The iOS test bundle compiled cleanly. The Swift acceptance suite passed
+  `54/54`; all five role and recovery UI journeys passed `5/5`.
+- A complete build-log warning audit found no warning originating from an
+  English+ Swift source or test file. The earlier unused AI fallback value,
+  non-Sendable token provider references and redundant test `try` expressions
+  were fixed before this final run.
+- The run completed with no failed step and preserved both Xcode result
+  bundles for diagnostics.
