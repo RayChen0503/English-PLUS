@@ -1,6 +1,6 @@
 # Round 15 - Question-bank taxonomy and set quality
 
-Status: Awaiting isolated macOS validation
+Status: Complete
 
 Date: 2026-07-14
 
@@ -93,9 +93,21 @@ References:
   runtime complexity validators were migrated to the stronger contract rather
   than retaining obsolete marker expectations.
 
-## Pending sign-off
+## Verification evidence
 
-This report becomes complete only after the full local validator sweep is
-clean, the branch is pushed, and the isolated macOS gate passes compilation,
-all Swift tests and all critical-role UI tests. Round 16 remains the next
-Xcode Cloud checkpoint; this round must not merge to `main` by itself.
+- The complete local validator sweep passed `83/83`.
+- Migration safety retained all 1,080 stable ids and changed no prompt,
+  answer, accepted-answer, explanation, concept, repair-hint or question-type
+  contract. Existing non-translation option sets also remained unchanged.
+- The deterministic Round 15 validator confirmed 1,080 ids, 218 semantic
+  prompts, 36 skills and exact source slots `{0: 270, 1: 270, 2: 270, 3: 270}`.
+- Isolated macOS run `29307724360` compiled the complete test bundle and
+  passed Swift `48/48`, including the six new question-quality acceptance
+  tests, plus critical-role UI `5/5`.
+- The same run passed Worker `34/34`, administrator portal `7/7` plus its
+  production build, and Firestore Emulator `27/27`.
+- The run completed without annotations and preserved the Xcode result
+  artifact as `englishplus-xcresult-29307724360-1`.
+
+Round 16 remains the next Xcode Cloud checkpoint. Round 15 stays on the
+isolated hardening branch and must not merge to `main` by itself.
