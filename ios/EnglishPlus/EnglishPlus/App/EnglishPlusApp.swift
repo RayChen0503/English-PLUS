@@ -21,7 +21,7 @@ struct EnglishPlusApp: App {
             )
         )
         let connectivityMonitor: any NetworkConnectivityMonitoring
-        if EnglishPlusLaunchConfiguration.isUITesting {
+        if EnglishPlusLaunchConfiguration.shouldUseMockServices {
             connectivityMonitor = LaunchArgumentNetworkConnectivityMonitor(
                 status: EnglishPlusLaunchConfiguration.shouldStartOffline
                     ? .disconnected

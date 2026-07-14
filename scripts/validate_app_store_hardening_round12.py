@@ -49,9 +49,11 @@ def main() -> int:
 
     markers(model, (
         'currentVersion = "privacy-v2-2026-07-13"',
-        PRIVACY_URL,
-        SUPPORT_URL,
         SUPPORT_EMAIL,
+        'privacyPolicyURL = publicPageURL(pathComponent: "隱私政策")',
+        'supportURL = publicPageURL(pathComponent: "支援與聯絡")',
+        'components.host = "sites.google.com"',
+        'components.path = "/view/englishplus-privacy/\\(pathComponent)"',
         "case volunteerEvidence",
         "requiredCategories(for role: UserRole)",
         "guardianConsentStatus: GuardianConsentStatus",

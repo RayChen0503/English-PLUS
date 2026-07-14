@@ -813,11 +813,17 @@ private final class ReliabilityTestLearningBackend: LearningRepositoryBackend {
     func assignPracticeSet(_ set: QuestionPracticeSet, to student: StaffStudentSummary, by teacher: DemoUser?) {
         base.assignPracticeSet(set, to: student, by: teacher)
     }
-    func startAssignedPracticeTask(_ assignment: TeacherAssignedPracticeTask) {
-        base.startAssignedPracticeTask(assignment)
+    func startAssignedPracticeTask(_ assignment: TeacherAssignedPracticeTask) async throws {
+        try await base.startAssignedPracticeTask(assignment)
     }
-    func withdrawAssignedPracticeTask(_ assignmentId: String) {
-        base.withdrawAssignedPracticeTask(assignmentId)
+    func submitAssignedPracticeAnswer(
+        _ answer: String,
+        assignmentId: String
+    ) async throws -> PracticeAssignmentQuestionResult? {
+        try await base.submitAssignedPracticeAnswer(answer, assignmentId: assignmentId)
+    }
+    func withdrawAssignedPracticeTask(_ assignmentId: String) async throws {
+        try await base.withdrawAssignedPracticeTask(assignmentId)
     }
     func eraseLocalData(for uid: String) { base.eraseLocalData(for: uid) }
 }
@@ -1468,7 +1474,7 @@ final class MasteryAndSpacedReviewAcceptanceTests: XCTestCase {
         XCTAssertEqual(record.lastAttemptSource, .repairPractice)
     }
 
-    func testTeacherAssignmentPublishesPartialProgressAndRetryHistory() throws {
+    func testTeacherAssignmentPublishesPartialProgressAndRetryHistory() async throws {
         var clock = Date(timeIntervalSince1970: 2_000_000_000)
         let repository = MockLearningRepository(
             now: { clock },
@@ -1489,8 +1495,13 @@ final class MasteryAndSpacedReviewAcceptanceTests: XCTestCase {
 
         repository.assignPracticeSet(set, to: student, by: teacher)
         let assignment = try XCTUnwrap(repository.assignedPracticeTasks.first)
-        repository.startAssignedPracticeTask(assignment)
-        let firstQuestion = try XCTUnwrap(repository.nextMissionQuestion)
+        XCTAssertNil(repository.currentMission)
+        try await repository.startAssignedPracticeTask(assignment)
+        XCTAssertNil(repository.currentMission, "班級作業不可覆蓋學生的每日任務")
+        let firstQuestionId = try XCTUnwrap(assignment.questionIds.first)
+        let firstQuestion = try XCTUnwrap(
+            repository.questionBankItems.first { $0.id == firstQuestionId }
+        )
         let wrongAnswer = try XCTUnwrap(
             firstQuestion.question.options.first {
                 $0.caseInsensitiveCompare(firstQuestion.question.answer) != .orderedSame
@@ -1498,7 +1509,11 @@ final class MasteryAndSpacedReviewAcceptanceTests: XCTestCase {
         )
 
         clock = clock.addingTimeInterval(1)
-        XCTAssertFalse(try XCTUnwrap(repository.submitMissionAnswer(wrongAnswer)).isCorrect)
+        let wrongAttempt = try await repository.submitAssignedPracticeAnswer(
+            wrongAnswer,
+            assignmentId: assignment.id
+        )
+        XCTAssertFalse(try XCTUnwrap(wrongAttempt).isCorrect)
         var tracked = try XCTUnwrap(repository.assignedPracticeTasks.first { $0.id == assignment.id })
         XCTAssertEqual(tracked.status, .active)
         XCTAssertEqual(tracked.questionResults?.count, 1)
@@ -1506,17 +1521,35 @@ final class MasteryAndSpacedReviewAcceptanceTests: XCTestCase {
         XCTAssertEqual(tracked.questionResults?.first?.firstAttemptCorrect, false)
 
         clock = clock.addingTimeInterval(1)
-        XCTAssertTrue(try XCTUnwrap(
-            repository.submitMissionAnswer(firstQuestion.question.answer)
-        ).isCorrect)
+        let correctedAttempt = try await repository.submitAssignedPracticeAnswer(
+            firstQuestion.question.answer,
+            assignmentId: assignment.id
+        )
+        XCTAssertTrue(try XCTUnwrap(correctedAttempt).isCorrect)
         tracked = try XCTUnwrap(repository.assignedPracticeTasks.first { $0.id == assignment.id })
         XCTAssertEqual(tracked.questionResults?.first?.attemptCount, 2)
         XCTAssertEqual(tracked.questionResults?.first?.firstAttemptCorrect, false)
 
         var safetyCounter = 0
-        while let question = repository.nextMissionQuestion, safetyCounter < 20 {
+        while safetyCounter < 20 {
+            let currentAssignment = try XCTUnwrap(
+                repository.assignedPracticeTasks.first { $0.id == assignment.id }
+            )
+            let completedIds = Set(
+                (currentAssignment.questionResults ?? [])
+                    .filter(\.isCorrect)
+                    .map(\.questionId)
+            )
+            guard let questionId = assignment.questionIds.first(where: {
+                !completedIds.contains($0)
+            }), let question = repository.questionBankItems.first(where: {
+                $0.id == questionId
+            }) else { break }
             clock = clock.addingTimeInterval(1)
-            _ = repository.submitMissionAnswer(question.question.answer)
+            _ = try await repository.submitAssignedPracticeAnswer(
+                question.question.answer,
+                assignmentId: assignment.id
+            )
             safetyCounter += 1
         }
         tracked = try XCTUnwrap(repository.assignedPracticeTasks.first { $0.id == assignment.id })

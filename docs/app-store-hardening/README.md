@@ -17,8 +17,8 @@ evidence in the round reports.
 ## Working agreement
 
 - Baseline branch: `main`
-- Current Block D branch: `codex/app-store-hardening-d`
-- Stable main baseline: `d41aa0e` after the FIX-A through FIX-G repair block
+- Current Block E branch: `codex/app-store-hardening-e`
+- Stable main baseline: `51e2beb` after the Round 13 through Round 16 gate
 - Xcode Cloud gate: merge to `main` only after the agreed checkpoints.
 - Verification cadence: focused checks every round, mini regression every two
   rounds, and full audits after rounds 4, 8, 12, 16, and 20.
@@ -44,10 +44,13 @@ evidence in the round reports.
 | 14 - Automated quality gates | Complete | `round-14-automated-quality-gates.md` |
 | 15 - Question-bank taxonomy and set quality | Complete | `round-15-question-bank-quality.md` |
 | 16 - Mastery, spaced review and Block D audit | Complete | `round-16-mastery-spaced-review-block-d-audit.md` |
+| 17 - Student experience | Passed locally | `round-17-student-experience.md` |
+| 18 - Teacher and volunteer workspaces | Passed locally | `round-18-staff-workspaces.md` |
+| 19 - Appearance, accessibility and observability | Passed locally | `round-19-accessibility-observability.md` |
 
 ## Main-branch safety
 
-Block D commits are made on `codex/app-store-hardening-d`. Final macOS run
-`29319943696` passed the full gate for commit `04c75c5`. One deliberate merge
-to `main` now triggers Xcode Cloud; no intermediate round or documentation-only
-work may trigger it.
+Block E commits are made on `codex/app-store-hardening-e`. Rounds 17 through 19
+remain local to the branch until Round 20 completes the combined release audit.
+One deliberate merge to `main` then triggers Xcode Cloud; no intermediate round
+or documentation-only work may trigger it.

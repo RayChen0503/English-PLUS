@@ -104,14 +104,20 @@ function supportThread(threadId, studentUid, createdAt = activityAt) {
   };
 }
 
-function supportMessage(messageId, authorUid, authorRole, messageType) {
+function supportMessage(
+  messageId,
+  authorUid,
+  authorRole,
+  messageType,
+  visibility = "studentVisible"
+) {
   return {
     messageId,
     authorUid,
     authorName: authorUid,
     authorRole,
     body: "A useful reply.",
-    visibility: "studentVisible",
+    visibility,
     messageType,
     createdAt: changedAt,
   };
@@ -314,6 +320,40 @@ test("support replies use the authenticated role and immutable student context",
     studentLastReadAt: changedAt,
     updatedAt: changedAt,
   }));
+});
+
+test("student support message listener must scope itself to student-visible replies", async () => {
+  const student = dbFor("studentA");
+  await testEnv.withSecurityRulesDisabled(async (context) => {
+    const db = context.firestore();
+    const threadPath = ["classes", CLASS_ID, "supportThreads", "visibility-thread"];
+    await setDoc(
+      doc(db, ...threadPath),
+      supportThread("visibility-thread", "studentA")
+    );
+    await setDoc(
+      doc(db, ...threadPath, "messages", "visible-reply"),
+      supportMessage("visible-reply", "teacherA", "teacher", "teacherReply")
+    );
+    await setDoc(
+      doc(db, ...threadPath, "messages", "staff-note"),
+      supportMessage("staff-note", "teacherA", "teacher", "staffNote", "staffOnly")
+    );
+  });
+
+  const messages = collection(
+    student,
+    "classes",
+    CLASS_ID,
+    "supportThreads",
+    "visibility-thread",
+    "messages"
+  );
+  await assertSucceeds(getDocs(query(
+    messages,
+    where("visibility", "==", "studentVisible")
+  )));
+  await assertFails(getDocs(messages));
 });
 
 test("leaving a class preserves readable history but blocks every new support write", async () => {

@@ -3,6 +3,7 @@
 struct StudentLearningMapView: View {
     @EnvironmentObject private var appState: AppState
     @EnvironmentObject private var learningRepository: LearningRepositoryStore
+    @State private var showsRestartConfirmation = false
 
     let onOpenHome: () -> Void
 
@@ -20,7 +21,7 @@ struct StudentLearningMapView: View {
                         if learningRepository.masterySummary.trackedSkillCount > 0 {
                             masteryCard
                         }
-                        if allLearningMapNodesCompleted {
+                        if isDailyMissionCompleted {
                             todayCompleteCard
                         }
                         flowActionCard
@@ -30,6 +31,18 @@ struct StudentLearningMapView: View {
                 }
             }
             .navigationTitle("學習地圖")
+            .alert("重新安排今天的任務？", isPresented: $showsRestartConfirmation) {
+                Button("取消", role: .cancel) {}
+                Button("重新檢測", role: .destructive) {
+                    learningRepository.startNewLearningRound(
+                        for: appState.currentUser,
+                        profile: appState.currentProfile
+                    )
+                    onOpenHome()
+                }
+            } message: {
+                Text("目前這一輪會停止，接著回首頁重新回答四題。已完成的學習紀錄不會被刪除。")
+            }
         }
     }
 
@@ -44,21 +57,18 @@ struct StudentLearningMapView: View {
                 .foregroundStyle(EPTheme.secondaryInk)
 
             if let progress = learningRepository.progressSnapshot {
-                ProgressView(value: progress.progressFraction)
-                    .tint(trackColor)
-                HStack {
-                    Text(progress.progressText)
-                    Spacer()
-                    Text(progress.status == .completed ? "完成" : "進行中")
+                HStack(spacing: 8) {
+                    Image(systemName: progress.status == .completed ? "checkmark.circle.fill" : "target")
+                    Text(progress.status == .completed
+                        ? "今日指定題目已完成"
+                        : "今日任務 \(progress.correctCount)/\(progress.targetCorrectCount) 題")
                 }
-                .font(.caption.bold())
+                .font(.subheadline.bold())
                 .foregroundStyle(progress.status == .completed ? EPTheme.support : EPTheme.primary)
             } else {
-                ProgressView(value: 0)
-                    .tint(EPTheme.primary)
-                Text("完成心情檢測後，這裡會只追蹤今日題目任務。")
-                    .font(.caption)
-                    .foregroundStyle(EPTheme.secondaryInk)
+                Label("心情檢測尚未完成", systemImage: "circle.dashed")
+                    .font(.subheadline.bold())
+                    .foregroundStyle(EPTheme.primary)
             }
         }
         .padding(16)
@@ -73,7 +83,7 @@ struct StudentLearningMapView: View {
                 .font(.title3.bold())
                 .foregroundStyle(EPTheme.support)
 
-            Text("心情檢測、今日題目、低壓修復、自由練習和支持回覆都已整理好。你可以休息，也可以繼續自由練習。")
+            Text("今天的必要題目已完成。自由練習是選用的；你可以休息，想多練時再開始一組。")
                 .font(.subheadline)
                 .foregroundStyle(EPTheme.secondaryInk)
                 .fixedSize(horizontal: false, vertical: true)
@@ -156,16 +166,13 @@ struct StudentLearningMapView: View {
             }
 
             Button {
-                learningRepository.startNewLearningRound(
-                    for: appState.currentUser,
-                    profile: appState.currentProfile
-                )
-                onOpenHome()
+                handleFlowAction()
             } label: {
-                Label("重新檢測", systemImage: "checklist")
+                Label(flowActionButtonTitle, systemImage: flowActionButtonIcon)
                     .frame(maxWidth: .infinity)
             }
             .buttonStyle(PrimaryActionButtonStyle())
+            .accessibilityIdentifier("student.map.primaryAction")
         }
         .padding(16)
         .background(EPTheme.card)
@@ -249,7 +256,7 @@ struct StudentLearningMapView: View {
         guard learningRepository.currentMission != nil else {
             return "還沒產生今日任務，先回首頁做心情檢測。"
         }
-        return "一個節點接一個節點，不同功能不混在同一張卡裡。"
+        return "先完成必要任務；自由練習與真人支持會依需要出現。"
     }
 
     private var learningMapNodes: [LearningMapNode] {
@@ -257,9 +264,7 @@ struct StudentLearningMapView: View {
         let currentMission = learningRepository.currentMission
         let progress = learningRepository.progressSnapshot
         let isComplete = progress?.status == .completed
-        let missionTitle = currentMission?.track.uiTitle ?? "等待產生任務"
-
-        return [
+        var nodes = [
             LearningMapNode(
                 title: "心情檢測",
                 detail: hasCheckIn ? "已完成，系統已知道今天的時間、心情與題型偏好。" : "先回答四題，讓今日任務不要太重。",
@@ -267,16 +272,10 @@ struct StudentLearningMapView: View {
                 icon: "checklist"
             ),
             LearningMapNode(
-                title: "今日題目任務",
+                title: currentMission.map { "今日任務 · \($0.track.uiTitle)" } ?? "今日任務",
                 detail: missionDetail,
                 state: currentMission == nil ? .locked : (isComplete ? .done : .current),
                 icon: "target"
-            ),
-            LearningMapNode(
-                title: missionTitle,
-                detail: trackDetail,
-                state: currentMission == nil ? .locked : (isComplete ? .done : .current),
-                icon: trackIcon
             ),
             LearningMapNode(
                 title: "自由練習",
@@ -284,17 +283,21 @@ struct StudentLearningMapView: View {
                 state: freePracticeNodeState,
                 icon: "pencil.and.list.clipboard"
             ),
-            LearningMapNode(
+        ]
+
+        if appState.currentProfile?.activeClassId != nil || !studentSupportRequests.isEmpty {
+            nodes.append(LearningMapNode(
                 title: "支持回覆",
                 detail: supportReplyDetail,
                 state: supportReplyNodeState,
                 icon: "heart"
-            ),
-        ]
+            ))
+        }
+        return nodes
     }
 
-    private var allLearningMapNodesCompleted: Bool {
-        !learningMapNodes.isEmpty && learningMapNodes.allSatisfy { $0.state == .done }
+    private var isDailyMissionCompleted: Bool {
+        learningRepository.progressSnapshot?.status == .completed
     }
 
     private var hasCompletedFreePracticeSession: Bool {
@@ -305,17 +308,17 @@ struct StudentLearningMapView: View {
         if hasCompletedFreePracticeSession {
             return .done
         }
-        if learningRepository.progressSnapshot?.status == .completed {
+        if learningRepository.learningFlow.stage == .freePractice {
             return .current
         }
-        return .available
+        return .optional
     }
 
     private var freePracticeDetail: String {
         if hasCompletedFreePracticeSession {
             return "已完成至少一組自由練習，之後可以繼續挑戰。"
         }
-        return "完成今日任務後可以自己挑戰，不會改變今日任務進度。"
+        return "想多練時再開始，不會影響今日任務是否完成。"
     }
 
     private var pendingSupportRequests: [StudentSupportRequest] {
@@ -331,7 +334,10 @@ struct StudentLearningMapView: View {
     }
 
     private var supportReplyNodeState: LearningMapNode.State {
-        supportRepliesCleared ? .done : .current
+        if supportRepliesCleared {
+            return .done
+        }
+        return unreadSupportReplyCount > 0 ? .current : .waiting
     }
 
     private var supportReplyDetail: String {
@@ -352,9 +358,25 @@ struct StudentLearningMapView: View {
             return "尚未開始。"
         }
         if let progress = learningRepository.progressSnapshot {
-            return "已答對 \(progress.correctCount)/\(progress.targetCorrectCount) 題，約 \(currentMission.recommendedMinutes) 分鐘。"
+            return "\(trackDetail) 已答對 \(progress.correctCount)/\(progress.targetCorrectCount) 題。"
         }
-        return "約 \(currentMission.recommendedMinutes) 分鐘。"
+        return "\(trackDetail) 約 \(currentMission.recommendedMinutes) 分鐘。"
+    }
+
+    private var flowActionButtonTitle: String {
+        learningRepository.currentMission == nil ? "前往心情檢測" : "重新做心情檢測"
+    }
+
+    private var flowActionButtonIcon: String {
+        learningRepository.currentMission == nil ? "arrow.right.circle.fill" : "arrow.clockwise"
+    }
+
+    private func handleFlowAction() {
+        guard learningRepository.currentMission != nil else {
+            onOpenHome()
+            return
+        }
+        showsRestartConfirmation = true
     }
 
     private var trackBadgeTitle: String {
@@ -385,19 +407,6 @@ struct StudentLearningMapView: View {
         }
     }
 
-    private var trackIcon: String {
-        switch learningRepository.currentMission?.track {
-        case .repair:
-            return "bandage"
-        case .steady:
-            return "figure.walk"
-        case .challenge:
-            return "flame"
-        case nil:
-            return "map"
-        }
-    }
-
     private var trackColor: Color {
         switch learningRepository.currentMission?.track {
         case .repair:
@@ -420,7 +429,8 @@ private struct LearningMapNode: Identifiable {
     enum State {
         case done
         case current
-        case available
+        case optional
+        case waiting
         case locked
     }
 
@@ -473,8 +483,10 @@ private struct LearningMapNodeRow: View {
             return "完成"
         case .current:
             return "現在"
-        case .available:
-            return "可用"
+        case .optional:
+            return "選用"
+        case .waiting:
+            return "等待中"
         case .locked:
             return "稍後"
         }
@@ -486,7 +498,9 @@ private struct LearningMapNodeRow: View {
             return EPTheme.support
         case .current:
             return EPTheme.primary
-        case .available:
+        case .optional:
+            return EPTheme.secondaryInk
+        case .waiting:
             return EPTheme.warning
         case .locked:
             return EPTheme.secondaryInk

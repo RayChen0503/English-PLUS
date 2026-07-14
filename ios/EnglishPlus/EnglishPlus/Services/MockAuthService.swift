@@ -107,6 +107,18 @@ struct MockAuthService: AuthService, Sendable {
         )
     }
 
+    func loadVolunteerApplicationReviewState(
+        in session: AuthSession
+    ) async throws -> VolunteerApplicationReviewState? {
+        guard session.user.role == .volunteer else { return nil }
+        return VolunteerApplicationReviewState(
+            status: .draft,
+            reviewNote: nil,
+            reviewedAt: nil,
+            updatedAt: nil
+        )
+    }
+
     func currentUserIsAdministrator() async -> Bool { false }
 
     private static func profile(id: String, displayName: String, role: UserRole) -> AppUserProfile {

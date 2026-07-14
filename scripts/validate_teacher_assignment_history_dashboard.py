@@ -49,7 +49,8 @@ require(models, "var questionResults: [PracticeAssignmentQuestionResult]? = nil"
 
 for needle, label in [
     ("assignedPracticeTasks[index].questionResults", "local assignment result snapshot write"),
-    ("latestAttemptsByQuestionId", "latest attempt grouping for assignment snapshots"),
+    ("attemptCount: (previousResult?.attemptCount ?? 0) + 1", "per-question retry accumulation"),
+    ("firstAttemptCorrect: previousResult?.firstAttemptCorrect ?? isCorrect", "first-attempt outcome preservation"),
     ("PracticeAssignmentQuestionResult(", "assignment snapshot construction"),
 ]:
     require(mock_repo, needle, label)

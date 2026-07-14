@@ -15,6 +15,7 @@
 		100000000000000000000103 /* AppRoute.swift in Sources */ = {isa = PBXBuildFile; fileRef = 100000000000000000000003 /* AppRoute.swift */; };
 		100000000000000000000104 /* RootView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 100000000000000000000004 /* RootView.swift */; };
 		100000000000000000000105 /* EPTheme.swift in Sources */ = {isa = PBXBuildFile; fileRef = 100000000000000000000005 /* EPTheme.swift */; };
+		100000000000000000000218 /* AppDiagnostics.swift in Sources */ = {isa = PBXBuildFile; fileRef = 100000000000000000000074 /* AppDiagnostics.swift */; };
 		100000000000000000000106 /* UserRole.swift in Sources */ = {isa = PBXBuildFile; fileRef = 100000000000000000000006 /* UserRole.swift */; };
 		100000000000000000000107 /* DemoUser.swift in Sources */ = {isa = PBXBuildFile; fileRef = 100000000000000000000007 /* DemoUser.swift */; };
 		100000000000000000000108 /* Question.swift in Sources */ = {isa = PBXBuildFile; fileRef = 100000000000000000000008 /* Question.swift */; };
@@ -61,6 +62,7 @@
 		100000000000000000000149 /* FirebaseCore in Frameworks */ = {isa = PBXBuildFile; productRef = 100000000000000000000702 /* FirebaseCore */; };
 		100000000000000000000150 /* FirebaseAuth in Frameworks */ = {isa = PBXBuildFile; productRef = 100000000000000000000703 /* FirebaseAuth */; };
 		100000000000000000000151 /* FirebaseFirestore in Frameworks */ = {isa = PBXBuildFile; productRef = 100000000000000000000704 /* FirebaseFirestore */; };
+		100000000000000000000219 /* FirebaseCrashlytics in Frameworks */ = {isa = PBXBuildFile; productRef = 100000000000000000000708 /* FirebaseCrashlytics */; };
 		100000000000000000000152 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 100000000000000000000051 /* Assets.xcassets */; };
 		100000000000000000000153 /* RuntimeDiagnostics.swift in Sources */ = {isa = PBXBuildFile; fileRef = 100000000000000000000052 /* RuntimeDiagnostics.swift */; };
 		100000000000000000000154 /* RuntimeDiagnosticsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 100000000000000000000053 /* RuntimeDiagnosticsView.swift */; };
@@ -114,6 +116,7 @@
 		100000000000000000000003 /* AppRoute.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppRoute.swift; sourceTree = "<group>"; };
 		100000000000000000000004 /* RootView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RootView.swift; sourceTree = "<group>"; };
 		100000000000000000000005 /* EPTheme.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EPTheme.swift; sourceTree = "<group>"; };
+		100000000000000000000074 /* AppDiagnostics.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppDiagnostics.swift; sourceTree = "<group>"; };
 		100000000000000000000006 /* UserRole.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UserRole.swift; sourceTree = "<group>"; };
 		100000000000000000000007 /* DemoUser.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DemoUser.swift; sourceTree = "<group>"; };
 		100000000000000000000008 /* Question.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Question.swift; sourceTree = "<group>"; };
@@ -205,6 +208,7 @@
 				100000000000000000000149 /* FirebaseCore in Frameworks */,
 				100000000000000000000150 /* FirebaseAuth in Frameworks */,
 				100000000000000000000151 /* FirebaseFirestore in Frameworks */,
+				100000000000000000000219 /* FirebaseCrashlytics in Frameworks */,
 				100000000000000000000160 /* GoogleSignIn in Frameworks */,
 				100000000000000000000166 /* GoogleSignInSwift in Frameworks */,
 			);
@@ -284,6 +288,7 @@
 			isa = PBXGroup;
 			children = (
 				100000000000000000000005 /* EPTheme.swift */,
+				100000000000000000000074 /* AppDiagnostics.swift */,
 			);
 			path = Core;
 			sourceTree = "<group>";
@@ -500,6 +505,7 @@
 				100000000000000000000202 /* Sources */,
 				100000000000000000000201 /* Frameworks */,
 				100000000000000000000203 /* Resources */,
+				100000000000000000000204 /* Upload Crashlytics Symbols */,
 			);
 			buildRules = (
 			);
@@ -510,6 +516,7 @@
 				100000000000000000000702 /* FirebaseCore */,
 				100000000000000000000703 /* FirebaseAuth */,
 				100000000000000000000704 /* FirebaseFirestore */,
+				100000000000000000000708 /* FirebaseCrashlytics */,
 				100000000000000000000706 /* GoogleSignIn */,
 				100000000000000000000707 /* GoogleSignInSwift */,
 			);
@@ -583,6 +590,34 @@
 		};
 /* End PBXResourcesBuildPhase section */
 
+/* Begin PBXShellScriptBuildPhase section */
+		100000000000000000000204 /* Upload Crashlytics Symbols */ = {
+			isa = PBXShellScriptBuildPhase;
+			alwaysOutOfDate = 1;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			inputFileListPaths = (
+			);
+			inputPaths = (
+				"${DWARF_DSYM_FOLDER_PATH}/${DWARF_DSYM_FILE_NAME}",
+				"${DWARF_DSYM_FOLDER_PATH}/${DWARF_DSYM_FILE_NAME}/Contents/Resources/DWARF/${PRODUCT_NAME}",
+				"${DWARF_DSYM_FOLDER_PATH}/${DWARF_DSYM_FILE_NAME}/Contents/Info.plist",
+				"$(TARGET_BUILD_DIR)/$(UNLOCALIZED_RESOURCES_FOLDER_PATH)/GoogleService-Info.plist",
+				"$(TARGET_BUILD_DIR)/$(EXECUTABLE_PATH)",
+			);
+			name = "Upload Crashlytics Symbols";
+			outputFileListPaths = (
+			);
+			outputPaths = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+			shellPath = /bin/sh;
+			shellScript = "if [ \"${CONFIGURATION}\" = \"Release\" ]; then\n  \"${BUILD_DIR%/Build/*}/SourcePackages/checkouts/firebase-ios-sdk/Crashlytics/run\"\nfi\n";
+			showEnvVarsInLog = 0;
+		};
+/* End PBXShellScriptBuildPhase section */
+
 /* Begin PBXSourcesBuildPhase section */
 		300000000000000000000202 /* Sources */ = {
 			isa = PBXSourcesBuildPhase;
@@ -610,6 +645,7 @@
 				100000000000000000000103 /* AppRoute.swift in Sources */,
 				100000000000000000000104 /* RootView.swift in Sources */,
 				100000000000000000000105 /* EPTheme.swift in Sources */,
+				100000000000000000000218 /* AppDiagnostics.swift in Sources */,
 				100000000000000000000106 /* UserRole.swift in Sources */,
 				100000000000000000000107 /* DemoUser.swift in Sources */,
 				100000000000000000000108 /* Question.swift in Sources */,
@@ -1013,6 +1049,11 @@
 			isa = XCSwiftPackageProductDependency;
 			package = 100000000000000000000701 /* XCRemoteSwiftPackageReference "firebase-ios-sdk" */;
 			productName = FirebaseFirestore;
+		};
+		100000000000000000000708 /* FirebaseCrashlytics */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 100000000000000000000701 /* XCRemoteSwiftPackageReference "firebase-ios-sdk" */;
+			productName = FirebaseCrashlytics;
 		};
 		100000000000000000000706 /* GoogleSignIn */ = {
 			isa = XCSwiftPackageProductDependency;

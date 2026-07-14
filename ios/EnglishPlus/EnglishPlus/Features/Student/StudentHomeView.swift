@@ -20,6 +20,7 @@ struct StudentHomeView: View {
     @State private var missionSupportSentQuestionIds = Set<String>()
     @State private var showsHumanSupportConfirmation = false
     @State private var showsAccountData = false
+    @State private var showsFreshCheckIn = false
 
     init(
         onOpenSupport: @escaping () -> Void = {},
@@ -36,14 +37,7 @@ struct StudentHomeView: View {
                 ScrollView {
                     VStack(alignment: .leading, spacing: 16) {
                         header
-                        LearningFlowStatusCard(
-                            flow: learningRepository.learningFlow,
-                            progress: learningRepository.progressSnapshot
-                        )
-
                         studentFlowContent
-
-                        freePracticeCard
                     }
                     .padding(EPTheme.pagePadding)
                 }
@@ -72,6 +66,11 @@ struct StudentHomeView: View {
                 AccountDataView()
             }
             .onAppear(perform: initializePreferredTypes)
+            .onChange(of: learningRepository.learningFlow.stage) { _, stage in
+                if stage != .needsCheckIn {
+                    showsFreshCheckIn = false
+                }
+            }
             .alert("送出真人求助？", isPresented: $showsHumanSupportConfirmation) {
                 Button("取消", role: .cancel) {}
                 Button("送給老師與志工") {
@@ -89,10 +88,11 @@ struct StudentHomeView: View {
     private var studentFlowContent: some View {
         switch learningRepository.learningFlow.stage {
         case .needsCheckIn:
-            if learningRepository.canContinuePreviousProgress {
-                continuationCard
+            if learningRepository.canContinuePreviousProgress && !showsFreshCheckIn {
+                returnChoiceCard
+            } else {
+                checkInCard
             }
-            checkInCard
         case .missionActive:
             missionCard
             if shouldOfferHumanSupport {
@@ -109,51 +109,96 @@ struct StudentHomeView: View {
     }
 
     private var header: some View {
-        VStack(alignment: .leading, spacing: 6) {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(spacing: 8) {
+                Label(homeStageTitle, systemImage: homeStageIcon)
+                    .font(.caption.bold())
+                    .foregroundStyle(homeStageColor)
+
+                Text(appState.currentProfile?.activeClassId == nil ? "個人模式" : "班級模式")
+                    .font(.caption.bold())
+                    .foregroundStyle(EPTheme.secondaryInk)
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 5)
+                    .background(EPTheme.secondarySurface)
+                    .clipShape(Capsule())
+            }
+
             Text("嗨，\(appState.currentUser?.displayName ?? "同學")")
                 .font(.title.bold())
                 .foregroundStyle(EPTheme.ink)
-            Text(learningRepository.currentMission == nil
-                ? "先做一個短短的心情檢測，English+ 會用 AI 幫你排今天最適合的任務。"
-                : "照著今日任務前進。答對才會增加進度，完成後可以自由練習。")
+            Text(homeStageDetail)
                 .font(.subheadline)
                 .foregroundStyle(EPTheme.secondaryInk)
                 .fixedSize(horizontal: false, vertical: true)
         }
+        .accessibilityIdentifier("student.home.header")
     }
 
-    private var continuationCard: some View {
+    private var returnChoiceCard: some View {
         VStack(alignment: .leading, spacing: 12) {
-            Text("可以延續上次進度")
-                .font(.headline)
-                .foregroundStyle(EPTheme.ink)
+            HStack(alignment: .top, spacing: 12) {
+                Image(systemName: "clock.arrow.circlepath")
+                    .font(.title2)
+                    .foregroundStyle(EPTheme.primary)
+                    .frame(width: 40, height: 40)
+                    .background(EPTheme.primary.opacity(0.10))
+                    .clipShape(RoundedRectangle(cornerRadius: 10))
+
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("接著上次，還是重新安排？")
+                        .font(.headline)
+                        .foregroundStyle(EPTheme.ink)
+                    Text("先選一條路，首頁就只會留下這次要做的內容。")
+                        .font(.subheadline)
+                        .foregroundStyle(EPTheme.secondaryInk)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+            }
 
             if let continuation = learningRepository.learningFlow.continuation {
-                Text("上一輪：\(continuation.progressText)")
+                Label("上一輪 \(continuation.progressText)", systemImage: "target")
                     .font(.subheadline)
-                    .foregroundStyle(EPTheme.secondaryInk)
+                    .foregroundStyle(EPTheme.ink)
             }
 
             Button {
                 learningRepository.continueLearningFlow()
             } label: {
-                Label("延續上次任務", systemImage: "arrow.clockwise.circle")
+                Label("繼續上次任務", systemImage: "play.fill")
                     .frame(maxWidth: .infinity)
             }
             .buttonStyle(PrimaryActionButtonStyle())
+            .accessibilityIdentifier("student.home.continue")
+
+            Button {
+                beginFreshCheckIn()
+            } label: {
+                Label("重新做今天的心情檢測", systemImage: "checklist")
+                    .frame(maxWidth: .infinity)
+            }
+            .buttonStyle(SecondaryActionButtonStyle())
+            .accessibilityIdentifier("student.home.restartCheckIn")
         }
         .padding(16)
-        .background(EPTheme.primary.opacity(0.08))
+        .background(EPTheme.card)
         .clipShape(RoundedRectangle(cornerRadius: EPTheme.cardRadius))
+        .accessibilityIdentifier("student.home.returnChoice")
     }
 
     private var checkInCard: some View {
         VStack(alignment: .leading, spacing: 16) {
             VStack(alignment: .leading, spacing: 6) {
-                Text("開始心情檢測")
-                    .font(.headline)
-                    .foregroundStyle(EPTheme.ink)
-                Text("這裡只問四題。系統會依照你的狀態、時間與想練的題型，產生今日任務。")
+                HStack(alignment: .firstTextBaseline) {
+                    Text("今天先從四題開始")
+                        .font(.headline)
+                        .foregroundStyle(EPTheme.ink)
+                    Spacer()
+                    Text("約 1 分鐘")
+                        .font(.caption.bold())
+                        .foregroundStyle(EPTheme.primary)
+                }
+                Text("你的選擇只用來調整今天的題量、難度和題型。")
                     .font(.subheadline)
                     .foregroundStyle(EPTheme.secondaryInk)
                     .fixedSize(horizontal: false, vertical: true)
@@ -188,6 +233,7 @@ struct StudentHomeView: View {
             .buttonStyle(PrimaryActionButtonStyle())
             .disabled(preferredTypesInDisplayOrder.isEmpty || isGeneratingMissionWithAI)
             .opacity(preferredTypesInDisplayOrder.isEmpty || isGeneratingMissionWithAI ? 0.45 : 1)
+            .accessibilityIdentifier("student.home.generateMission")
 
             if isGeneratingMissionWithAI {
                 Label("正在請 AI 判斷今天適合先修復、穩定練習，還是挑戰更難題。", systemImage: "sparkles")
@@ -199,6 +245,7 @@ struct StudentHomeView: View {
         .padding(16)
         .background(EPTheme.card)
         .clipShape(RoundedRectangle(cornerRadius: EPTheme.cardRadius))
+        .accessibilityIdentifier("student.home.checkIn")
     }
 
     private var missionCard: some View {
@@ -216,7 +263,7 @@ struct StudentHomeView: View {
                                 .foregroundStyle(EPTheme.secondaryInk)
                         }
                         Spacer()
-                        Text("\(progress.correctCount)/\(progress.targetCorrectCount)")
+                        Text(progress.remainingCount == 0 ? "完成" : "還差 \(progress.remainingCount) 題")
                             .font(.headline.bold())
                             .foregroundStyle(EPTheme.primary)
                             .padding(.horizontal, 12)
@@ -227,6 +274,8 @@ struct StudentHomeView: View {
 
                     ProgressView(value: progress.progressFraction)
                         .tint(EPTheme.primary)
+                        .accessibilityLabel("今日任務進度")
+                        .accessibilityValue(progress.progressText)
                     Text(progress.progressText)
                         .font(.caption)
                         .foregroundStyle(EPTheme.secondaryInk)
@@ -258,6 +307,7 @@ struct StudentHomeView: View {
         .padding(16)
         .background(EPTheme.card)
         .clipShape(RoundedRectangle(cornerRadius: EPTheme.cardRadius))
+        .accessibilityIdentifier("student.home.mission")
     }
 
     private var missionCompletionActions: some View {
@@ -276,6 +326,7 @@ struct StudentHomeView: View {
                     .frame(maxWidth: .infinity)
             }
             .buttonStyle(PrimaryActionButtonStyle())
+            .accessibilityIdentifier("student.home.openFreePractice")
         }
         .padding(16)
         .background(EPTheme.card)
@@ -287,7 +338,7 @@ struct StudentHomeView: View {
             Text("自由練習模式")
                 .font(.headline)
                 .foregroundStyle(EPTheme.ink)
-            Text("這裡不計入每日任務進度。想回到今天任務時，可以切回任務流程；想重新安排，請到學習地圖按重新檢測。")
+            Text("你正在做選用的額外練習，不會改變已完成的今日任務。")
                 .font(.subheadline)
                 .foregroundStyle(EPTheme.secondaryInk)
                 .fixedSize(horizontal: false, vertical: true)
@@ -296,7 +347,7 @@ struct StudentHomeView: View {
                 Button {
                     learningRepository.returnToMissionFlow()
                 } label: {
-                    Label("回到今日任務", systemImage: "target")
+                    Label(missionReturnButtonTitle, systemImage: "target")
                         .frame(maxWidth: .infinity, minHeight: 44)
                 }
                 .buttonStyle(SecondaryActionButtonStyle())
@@ -311,22 +362,6 @@ struct StudentHomeView: View {
             }
         }
         .padding(16)
-        .background(EPTheme.card)
-        .clipShape(RoundedRectangle(cornerRadius: EPTheme.cardRadius))
-    }
-
-    private var freePracticeCard: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            Text("自由練習")
-                .font(.headline)
-                .foregroundStyle(EPTheme.ink)
-            Text("完成今日任務後，可以到練習中心自由挑題。自由練習不會影響今日任務進度。")
-                .font(.subheadline)
-                .foregroundStyle(EPTheme.secondaryInk)
-                .fixedSize(horizontal: false, vertical: true)
-        }
-        .padding(16)
-        .frame(maxWidth: .infinity, alignment: .leading)
         .background(EPTheme.card)
         .clipShape(RoundedRectangle(cornerRadius: EPTheme.cardRadius))
     }
@@ -395,6 +430,72 @@ struct StudentHomeView: View {
     private func initializePreferredTypes() {
         guard selectedTypes.isEmpty else { return }
         selectedTypes = Set(learningRepository.defaultPreferredQuestionTypes)
+    }
+
+    private func beginFreshCheckIn() {
+        learningRepository.startNewLearningRound(
+            for: appState.currentUser,
+            profile: appState.currentProfile
+        )
+        selectedAnswer = ""
+        latestWrongAnswerAIResponse = nil
+        missionAIRequestId = nil
+        missionSupportConfirmation = nil
+        showsFreshCheckIn = true
+    }
+
+    private var homeStageTitle: String {
+        switch learningRepository.learningFlow.stage {
+        case .needsCheckIn:
+            return "今天的起點"
+        case .missionActive:
+            return "今日任務"
+        case .missionCompleted:
+            return "今日完成"
+        case .freePractice:
+            return "自由練習"
+        }
+    }
+
+    private var homeStageIcon: String {
+        switch learningRepository.learningFlow.stage {
+        case .needsCheckIn:
+            return "sun.max.fill"
+        case .missionActive:
+            return "target"
+        case .missionCompleted:
+            return "checkmark.seal.fill"
+        case .freePractice:
+            return "pencil.and.list.clipboard"
+        }
+    }
+
+    private var homeStageColor: Color {
+        switch learningRepository.learningFlow.stage {
+        case .needsCheckIn, .missionActive, .freePractice:
+            return EPTheme.primary
+        case .missionCompleted:
+            return EPTheme.support
+        }
+    }
+
+    private var homeStageDetail: String {
+        switch learningRepository.learningFlow.stage {
+        case .needsCheckIn:
+            return learningRepository.canContinuePreviousProgress && !showsFreshCheckIn
+                ? "選擇接著上次任務，或用四題短檢測重新安排今天。"
+                : "完成四題短檢測，English+ 會安排今天做得到的任務。"
+        case .missionActive:
+            return "先完成眼前這一題；答對才會推進今日任務。"
+        case .missionCompleted:
+            return "必要任務已完成。你可以休息，也可以選擇自由練習。"
+        case .freePractice:
+            return "依自己的節奏多練一組，隨時可以回來查看今日成果。"
+        }
+    }
+
+    private var missionReturnButtonTitle: String {
+        learningRepository.currentMission?.status == .completed ? "查看今日成果" : "回到今日任務"
     }
 
     @MainActor
@@ -622,88 +723,6 @@ struct StudentHomeView: View {
         isExplainingWrongAnswer = false
         missionSupportConfirmation = nil
         onOpenPractice()
-    }
-}
-
-private struct LearningFlowStatusCard: View {
-    let flow: LearningFlowState
-    let progress: StudentProgressSnapshot?
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            HStack(alignment: .top) {
-                VStack(alignment: .leading, spacing: 4) {
-                    Text(stageTitle)
-                        .font(.headline)
-                        .foregroundStyle(EPTheme.ink)
-                    Text(stageDetail)
-                        .font(.subheadline)
-                        .foregroundStyle(EPTheme.secondaryInk)
-                        .fixedSize(horizontal: false, vertical: true)
-                }
-                Spacer()
-                Text("第 \(flow.roundNumber) 輪")
-                    .font(.caption.bold())
-                    .padding(.horizontal, 10)
-                    .padding(.vertical, 6)
-                    .foregroundStyle(stageColor)
-                    .background(stageColor.opacity(0.12))
-                    .clipShape(Capsule())
-            }
-
-            if let progress, (flow.stage == .missionActive || flow.stage == .missionCompleted) {
-                ProgressView(value: progress.progressFraction)
-                    .tint(stageColor)
-                Text(progress.progressText)
-                    .font(.caption.bold())
-                    .foregroundStyle(stageColor)
-            }
-        }
-        .padding(16)
-        .background(EPTheme.card)
-        .clipShape(RoundedRectangle(cornerRadius: EPTheme.cardRadius))
-    }
-
-    private var stageTitle: String {
-        switch flow.stage {
-        case .needsCheckIn:
-            return "先完成心情檢測"
-        case .missionActive:
-            return "今日任務進行中"
-        case .missionCompleted:
-            return "今日任務完成"
-        case .freePractice:
-            return "自由練習中"
-        }
-    }
-
-    private var stageDetail: String {
-        switch flow.stage {
-        case .needsCheckIn:
-            if let continuation = flow.continuation {
-                return "可以延續上一輪：\(continuation.progressText)。若想重新安排，請到學習地圖按重新檢測。"
-            }
-            return "回答四題短檢測後，系統會安排今天的任務。"
-        case .missionActive:
-            return "答對題目才會推進每日任務進度。"
-        case .missionCompleted:
-            return "你已完成今天的任務，下一步可以自由練習。"
-        case .freePractice:
-            return "自由練習不影響每日任務完成度。"
-        }
-    }
-
-    private var stageColor: Color {
-        switch flow.stage {
-        case .needsCheckIn:
-            return EPTheme.primary
-        case .missionActive:
-            return EPTheme.warning
-        case .missionCompleted:
-            return EPTheme.support
-        case .freePractice:
-            return EPTheme.primary
-        }
     }
 }
 
@@ -1160,15 +1179,25 @@ private struct HumanHelpPhoneLink: View {
     let number: String
     var isEmergency = false
 
+    @ViewBuilder
     var body: some View {
-        Link(destination: URL(string: "tel:\(number)")!) {
-            Label(title, systemImage: "phone.fill")
-                .font(.caption.bold())
-                .foregroundStyle(isEmergency ? EPTheme.warning : EPTheme.primary)
-                .frame(maxWidth: .infinity, minHeight: 44)
-                .background((isEmergency ? EPTheme.warning : EPTheme.primary).opacity(0.10))
-                .clipShape(RoundedRectangle(cornerRadius: 10))
+        if let destination = URL(string: "tel:\(number)") {
+            Link(destination: destination) {
+                linkLabel
+            }
+            .accessibilityHint("撥打 \(number)")
+        } else {
+            linkLabel
+                .accessibilityLabel("\(title)，電話號碼 \(number)")
         }
-        .accessibilityHint("撥打 \(number)")
+    }
+
+    private var linkLabel: some View {
+        Label(title, systemImage: "phone.fill")
+            .font(.caption.bold())
+            .foregroundStyle(isEmergency ? EPTheme.warning : EPTheme.primary)
+            .frame(maxWidth: .infinity, minHeight: 44)
+            .background((isEmergency ? EPTheme.warning : EPTheme.primary).opacity(0.10))
+            .clipShape(RoundedRectangle(cornerRadius: EPTheme.cardRadius))
     }
 }

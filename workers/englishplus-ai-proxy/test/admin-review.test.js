@@ -2,16 +2,30 @@ import assert from "node:assert/strict";
 import { test } from "vitest";
 
 import worker, {
+  adminEvidenceHeaders,
   filterVolunteerApplications,
   normalizeAdminApplicationQuery,
   normalizeAdminReviewRequest,
   summarizeVolunteerApplications,
 } from "../src/index.js";
 
+test("admin evidence preview is browser-readable without downloading or caching", () => {
+  const headers = adminEvidenceHeaders({
+    filename: "qualification.pdf",
+    contentType: "application/pdf",
+    requestId: "evidence-request",
+  });
+  assert.equal(headers.get("Access-Control-Allow-Origin"), "*");
+  assert.equal(headers.get("Content-Type"), "application/pdf");
+  assert.equal(headers.get("Content-Disposition"), 'inline; filename="qualification.pdf"');
+  assert.equal(headers.get("Cache-Control"), "private, no-store");
+  assert.equal(headers.get("X-Content-Type-Options"), "nosniff");
+});
+
 test("admin review input accepts valid decisions and protects consequential actions", () => {
   assert.deepEqual(
-    normalizeAdminReviewRequest({ action: "approved", note: "" }),
-    { action: "approved", note: "", expectedVersion: "" }
+    normalizeAdminReviewRequest({ action: "approved", note: "資料完整，核准加入志工服務" }),
+    { action: "approved", note: "資料完整，核准加入志工服務", expectedVersion: "" }
   );
   assert.deepEqual(
     normalizeAdminReviewRequest({
@@ -26,6 +40,10 @@ test("admin review input accepts valid decisions and protects consequential acti
     }
   );
   assert.throws(
+    () => normalizeAdminReviewRequest({ action: "approved", note: "" }),
+    (error) => error.code === "REVIEW_NOTE_REQUIRED"
+  );
+  assert.throws(
     () => normalizeAdminReviewRequest({ action: "rejected", note: "" }),
     (error) => error.code === "REVIEW_NOTE_REQUIRED"
   );
@@ -34,7 +52,12 @@ test("admin review input accepts valid decisions and protects consequential acti
     (error) => error.code === "INVALID_REVIEW_ACTION"
   );
   assert.throws(
-    () => normalizeAdminReviewRequest({ action: "approved", expectedVersion: "old" }),
+    () =>
+      normalizeAdminReviewRequest({
+        action: "approved",
+        note: "資格文件已確認。",
+        expectedVersion: "old",
+      }),
     (error) => error.code === "INVALID_REVIEW_VERSION"
   );
 });

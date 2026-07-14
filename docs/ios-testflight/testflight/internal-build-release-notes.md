@@ -1,32 +1,40 @@
-﻿# English+ TestFlight Internal Build Notes
+# English+ TestFlight Internal Build Notes
 
-Build: `1.0 (3)`
+Version: `1.0`
+Build: assigned by Xcode Cloud
 Bundle ID: `com.englishplus`
 Audience: internal student, teacher, and volunteer testers  
 Language: Traditional Chinese first
 
 ## What To Test
 
-- Student role selection, demo sign-in, privacy consent, mood check-in, daily mission, answer feedback, mission completion, free practice, support request, and learning map.
-- Teacher dashboard, priority student cards, support request queue, student state summary, and teacher feedback reply.
-- Volunteer dashboard, assigned support queue, waiting-student view, encouragement reply, and relay records.
+- Google, Apple and Email sign-in, account restoration after relaunch, privacy consent and role-specific onboarding.
+- Student personal learning, mood check-in, AI-generated daily mission, answer feedback, post-answer AI explanation, free practice, remedial practice and learning map.
+- Classroom join/switch/leave, teacher assignments, live assignment progress and question-specific support across devices.
+- Teacher classroom creation, roster, assignment/retraction, support reply, volunteer invitation/approval and class reports.
+- Volunteer evidence application, review status, authorized class service, support reply and relay records.
 - Role separation: student, teacher, and volunteer screens should not expose each other's controls.
-- Sensitive data handling: no OpenRouter key, Firebase debug state, backend setup text, or internal implementation wording should appear in normal user screens.
+- Sensitive data handling: no AI key, Firebase debug state, backend setup text, user ID or internal implementation wording should appear in normal user screens.
 
-## Known Boundaries For This Build
+## Connected Services And Boundaries
 
-- Firebase Auth and Firestore still run through replaceable mock services until `GoogleService-Info.plist`, Firebase SDK wiring, and deployed rules are ready.
-- AI responses still use `MockAIService` by default. `RemoteAIService` is prepared for the Cloud Functions proxy but requires real Firebase Auth ID tokens and deployed backend access.
-- App Store Connect upload requires an Apple Distribution signing path and App Store Connect permission. If Xcode asks for Apple ID two-factor authentication, account agreements, paid account actions, or certificate/profile creation approval, pause and let the Account Holder handle it.
+- TestFlight builds use Firebase Authentication and Firestore. The protected Firebase configuration is injected during Xcode Cloud post-clone and is not stored in Git.
+- Google, Apple and Email sign-in are real authentication providers. Account linking prevents the same person from silently receiving duplicate English+ accounts.
+- AI requests use a Firebase-authenticated Cloudflare Worker and Groq. The app contains no Groq key and shows a recoverable fallback if the service is unavailable.
+- Classroom assignments, support replies, volunteer service scope and review state synchronize through Firestore across signed-in devices.
+- Teacher school affiliation is currently self-declared. Volunteer access requires both platform approval and approval for each service class.
+- English+ provides learning support, not medical, psychological or emergency services. High-risk messages show human-help options but are not automatically reported.
 
 ## Internal Tester Focus
 
 - Can students understand the next step without reading technical instructions?
+- Does first-time Google, Apple and Email sign-in lead to the correct role without skipping consent?
 - Does the four-question mood check-in feel short and clear?
 - Does daily mission progress only advance after correct answers?
-- Are wrong-answer explanations useful and not overwhelming?
+- Does AI explanation remain hidden until an answer is submitted, and does remedial practice return to the original set?
+- Do assignments and support replies update correctly on a second device?
 - Do teachers immediately see who needs attention?
-- Do volunteers see only the context they need for encouragement and relay?
+- Do volunteers see only approved classes and the minimum question context needed to reply?
 - Is any screen crowded, duplicated, or showing debug/backend language?
 
 ## Feedback Format
@@ -35,10 +43,12 @@ Ask testers to report:
 
 ```text
 Role tested:
-Screen:
+Account/provider:
+Screen and action:
 What happened:
 What they expected:
 Screenshot or short recording:
 Device model:
 iOS version:
+Network state:
 ```

@@ -91,7 +91,7 @@ def validate_round_3_student_flow(errors):
         "submitMissionAnswer",
         "FeedbackCard",
         "CompletionCard",
-        "freePracticeCard",
+        "freePracticeModeCard",
     ]:
         require(token in student, f"student flow missing {token}", errors)
 

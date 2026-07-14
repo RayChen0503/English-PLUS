@@ -50,6 +50,18 @@ enum EPTheme {
         light: UIColor(red: 0.82, green: 0.20, blue: 0.20, alpha: 1),
         dark: UIColor(red: 1.00, green: 0.46, blue: 0.46, alpha: 1)
     )
+    static let successSurface = adaptiveColor(
+        light: UIColor(red: 0.90, green: 0.97, blue: 0.94, alpha: 1),
+        dark: UIColor(red: 0.08, green: 0.22, blue: 0.19, alpha: 1)
+    )
+    static let warningSurface = adaptiveColor(
+        light: UIColor(red: 0.99, green: 0.95, blue: 0.89, alpha: 1),
+        dark: UIColor(red: 0.25, green: 0.16, blue: 0.08, alpha: 1)
+    )
+    static let dangerSurface = adaptiveColor(
+        light: UIColor(red: 0.99, green: 0.92, blue: 0.92, alpha: 1),
+        dark: UIColor(red: 0.25, green: 0.10, blue: 0.11, alpha: 1)
+    )
     static let hairline = adaptiveColor(
         light: UIColor(red: 0.84, green: 0.88, blue: 0.86, alpha: 1),
         dark: UIColor(red: 0.24, green: 0.31, blue: 0.34, alpha: 1)
@@ -77,26 +89,30 @@ enum EPTheme {
 
 struct PrimaryActionButtonStyle: ButtonStyle {
     @Environment(\.isEnabled) private var isEnabled
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
             .font(.headline)
-            .frame(maxWidth: .infinity)
             .padding(.vertical, 14)
+            .frame(maxWidth: .infinity, minHeight: 48)
             .foregroundStyle(.white)
             .background(isEnabled ? (configuration.isPressed ? EPTheme.primary.opacity(0.78) : EPTheme.primary) : EPTheme.disabledSurface)
             .clipShape(RoundedRectangle(cornerRadius: EPTheme.cardRadius))
+            .scaleEffect(configuration.isPressed && !reduceMotion ? 0.985 : 1)
+            .animation(reduceMotion ? nil : .easeOut(duration: 0.12), value: configuration.isPressed)
     }
 }
 
 struct SecondaryActionButtonStyle: ButtonStyle {
     @Environment(\.isEnabled) private var isEnabled
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
             .font(.headline)
-            .frame(maxWidth: .infinity)
             .padding(.vertical, 12)
+            .frame(maxWidth: .infinity, minHeight: 48)
             .foregroundStyle(isEnabled ? EPTheme.primary : EPTheme.disabledInk)
             .background(isEnabled ? (configuration.isPressed ? EPTheme.primary.opacity(0.16) : EPTheme.buttonSecondarySurface) : EPTheme.disabledSurface)
             .overlay(
@@ -104,5 +120,7 @@ struct SecondaryActionButtonStyle: ButtonStyle {
                     .stroke(isEnabled ? EPTheme.primary.opacity(0.35) : EPTheme.hairline, lineWidth: 1)
             )
             .clipShape(RoundedRectangle(cornerRadius: EPTheme.cardRadius))
+            .scaleEffect(configuration.isPressed && !reduceMotion ? 0.985 : 1)
+            .animation(reduceMotion ? nil : .easeOut(duration: 0.12), value: configuration.isPressed)
     }
 }

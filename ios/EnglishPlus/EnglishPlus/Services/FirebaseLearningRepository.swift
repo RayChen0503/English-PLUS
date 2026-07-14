@@ -287,6 +287,7 @@ final class FirebaseLearningRepository: LearningRepositoryBackend {
     func submitMissionAnswer(_ answer: String) -> MissionAttempt? {
         let preservingSupportRequests = currentSnapshot.supportRequests
         let preservingAssignedPracticeTasks = currentSnapshot.assignedPracticeTasks
+        fallback.replaceRuntimeSnapshot(currentSnapshot)
         let attempt = fallback.submitMissionAnswer(answer)
         currentSnapshot = fallbackSnapshot(
             preservingSupportRequests: preservingSupportRequests,
@@ -294,13 +295,10 @@ final class FirebaseLearningRepository: LearningRepositoryBackend {
         )
         if let attempt {
             mirrorAttemptIfPossible(attempt)
-            mirrorMasteryForQuestionIfPossible(attempt.questionId)
             mirrorMissionIfPossible()
+            mirrorMasteryForQuestionIfPossible(attempt.questionId)
             mirrorLearningFlowIfPossible()
             mirrorStudentSummaryIfPossible()
-            currentSnapshot.assignedPracticeTasks
-                .first { $0.id == currentSnapshot.currentMission?.sourceCheckInId }
-                .map(mirrorPracticeAssignmentIfPossible)
         }
         return attempt
     }
@@ -532,32 +530,93 @@ final class FirebaseLearningRepository: LearningRepositoryBackend {
             .map(mirrorPracticeAssignmentIfPossible)
     }
 
-    func startAssignedPracticeTask(_ assignment: TeacherAssignedPracticeTask) {
+    func startAssignedPracticeTask(_ assignment: TeacherAssignedPracticeTask) async throws {
+        let previousSnapshot = currentSnapshot
         let preservingSupportRequests = currentSnapshot.supportRequests
         let preservingAssignedPracticeTasks = currentSnapshot.assignedPracticeTasks
-        fallback.startAssignedPracticeTask(assignment)
+        fallback.replaceRuntimeSnapshot(currentSnapshot)
+        try await fallback.startAssignedPracticeTask(assignment)
         currentSnapshot = fallbackSnapshot(
             preservingSupportRequests: preservingSupportRequests,
             preservingAssignedPracticeTasks: preservingAssignedPracticeTasks
         )
-        currentSnapshot.assignedPracticeTasks
-            .first { $0.id == assignment.id }
-            .map(mirrorPracticeAssignmentIfPossible)
-        mirrorMissionIfPossible()
+        guard let startedAssignment = currentSnapshot.assignedPracticeTasks.first(where: {
+            $0.id == assignment.id
+        }) else {
+            currentSnapshot = previousSnapshot
+            fallback.replaceRuntimeSnapshot(previousSnapshot)
+            throw PracticeAssignmentMutationError.assignmentUnavailable
+        }
+        do {
+            try await persistAssignmentProgress(startedAssignment)
+        } catch {
+            currentSnapshot = previousSnapshot
+            fallback.replaceRuntimeSnapshot(previousSnapshot)
+            throw error
+        }
         mirrorStudentSummaryIfPossible()
     }
 
-    func withdrawAssignedPracticeTask(_ assignmentId: String) {
+    func submitAssignedPracticeAnswer(
+        _ answer: String,
+        assignmentId: String
+    ) async throws -> PracticeAssignmentQuestionResult? {
+        let previousSnapshot = currentSnapshot
         let preservingSupportRequests = currentSnapshot.supportRequests
         let preservingAssignedPracticeTasks = currentSnapshot.assignedPracticeTasks
-        fallback.withdrawAssignedPracticeTask(assignmentId)
+        fallback.replaceRuntimeSnapshot(currentSnapshot)
+        let result = try await fallback.submitAssignedPracticeAnswer(
+            answer,
+            assignmentId: assignmentId
+        )
         currentSnapshot = fallbackSnapshot(
             preservingSupportRequests: preservingSupportRequests,
             preservingAssignedPracticeTasks: preservingAssignedPracticeTasks
         )
-        currentSnapshot.assignedPracticeTasks
-            .first { $0.id == assignmentId }
-            .map(mirrorPracticeAssignmentIfPossible)
+        guard let assignment = currentSnapshot.assignedPracticeTasks.first(where: {
+            $0.id == assignmentId
+        }) else {
+            currentSnapshot = previousSnapshot
+            fallback.replaceRuntimeSnapshot(previousSnapshot)
+            throw PracticeAssignmentMutationError.assignmentUnavailable
+        }
+        do {
+            try await persistAssignmentProgress(assignment)
+        } catch {
+            currentSnapshot = previousSnapshot
+            fallback.replaceRuntimeSnapshot(previousSnapshot)
+            throw error
+        }
+        if let result {
+            mirrorMasteryForQuestionIfPossible(result.questionId)
+        }
+        return result
+    }
+
+    func withdrawAssignedPracticeTask(_ assignmentId: String) async throws {
+        let previousSnapshot = currentSnapshot
+        let preservingSupportRequests = currentSnapshot.supportRequests
+        let preservingAssignedPracticeTasks = currentSnapshot.assignedPracticeTasks
+        fallback.replaceRuntimeSnapshot(currentSnapshot)
+        try await fallback.withdrawAssignedPracticeTask(assignmentId)
+        currentSnapshot = fallbackSnapshot(
+            preservingSupportRequests: preservingSupportRequests,
+            preservingAssignedPracticeTasks: preservingAssignedPracticeTasks
+        )
+        guard let assignment = currentSnapshot.assignedPracticeTasks.first(where: {
+            $0.id == assignmentId
+        }) else {
+            currentSnapshot = previousSnapshot
+            fallback.replaceRuntimeSnapshot(previousSnapshot)
+            throw PracticeAssignmentMutationError.assignmentUnavailable
+        }
+        do {
+            try await persistAssignmentWithdrawal(assignment)
+        } catch {
+            currentSnapshot = previousSnapshot
+            fallback.replaceRuntimeSnapshot(previousSnapshot)
+            throw error
+        }
     }
 
     private func mirrorCheckInAndMissionIfPossible(profile: AppUserProfile?) {
@@ -709,6 +768,93 @@ final class FirebaseLearningRepository: LearningRepositoryBackend {
             ),
             data: firestoreData(from: assignment)
         )
+    }
+
+    private func persistAssignmentProgress(
+        _ assignment: TeacherAssignedPracticeTask
+    ) async throws {
+        #if canImport(FirebaseFirestore)
+        guard let db else { throw PracticeAssignmentMutationError.remoteSyncUnavailable }
+        let reference = db.document(
+            FirestorePath.practiceAssignment(
+                classId: assignment.classId,
+                assignmentId: assignment.id
+            )
+        )
+        do {
+            try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
+                reference.updateData(assignmentProgressData(assignment)) { error in
+                    if let error {
+                        continuation.resume(throwing: error)
+                    } else {
+                        continuation.resume()
+                    }
+                }
+            }
+        } catch {
+            throw PracticeAssignmentMutationError.remoteSyncUnavailable
+        }
+        #else
+        throw PracticeAssignmentMutationError.remoteSyncUnavailable
+        #endif
+    }
+
+    private func persistAssignmentWithdrawal(
+        _ assignment: TeacherAssignedPracticeTask
+    ) async throws {
+        #if canImport(FirebaseFirestore)
+        guard let db else { throw PracticeAssignmentMutationError.remoteSyncUnavailable }
+        let reference = db.document(
+            FirestorePath.practiceAssignment(
+                classId: assignment.classId,
+                assignmentId: assignment.id
+            )
+        )
+        do {
+            try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
+                reference.updateData(
+                    [
+                        "status": PracticeAssignmentStatus.withdrawn.rawValue,
+                        "updatedAt": assignment.updatedAt,
+                    ]
+                ) { error in
+                    if let error {
+                        continuation.resume(throwing: error)
+                    } else {
+                        continuation.resume()
+                    }
+                }
+            }
+        } catch {
+            throw PracticeAssignmentMutationError.remoteSyncUnavailable
+        }
+        #else
+        throw PracticeAssignmentMutationError.remoteSyncUnavailable
+        #endif
+    }
+
+    private func assignmentProgressData(
+        _ assignment: TeacherAssignedPracticeTask
+    ) -> [String: Any] {
+        [
+            "status": assignment.status.rawValue,
+            "questionResults": (assignment.questionResults ?? []).map { result in
+                [
+                    "id": result.id,
+                    "questionId": result.questionId,
+                    "prompt": result.prompt,
+                    "selectedAnswer": result.selectedAnswer,
+                    "acceptedAnswer": result.acceptedAnswer,
+                    "isCorrect": result.isCorrect,
+                    "explanation": result.explanation,
+                    "repairHint": result.repairHint,
+                    "answeredAt": result.answeredAt,
+                    "attemptCount": result.attemptCount,
+                    "firstAttemptCorrect": result.firstAttemptCorrect,
+                ]
+            },
+            "updatedAt": assignment.updatedAt,
+        ]
     }
 
     private func appendSupportReply(
@@ -1255,11 +1401,18 @@ final class FirebaseLearningRepository: LearningRepositoryBackend {
             .forEach { entry in
                 entry.value.remove()
                 supportMessageRegistrations[entry.key] = nil
-            }
+        }
 
         for request in requests where supportMessageRegistrations[request.id] == nil {
             let path = "\(FirestorePath.supportThread(classId: classId, threadId: request.id))/messages"
-            let registration = db.collection(path).addSnapshotListener { [weak self] snapshot, error in
+            let messagesCollection = db.collection(path)
+            let messagesQuery: Query = activeUserRole == .student
+                ? messagesCollection.whereField(
+                    "visibility",
+                    isEqualTo: MessageVisibility.studentVisible.rawValue
+                )
+                : messagesCollection
+            let registration = messagesQuery.addSnapshotListener { [weak self] snapshot, error in
                 if let error {
                     Task { @MainActor in onError(error) }
                     return

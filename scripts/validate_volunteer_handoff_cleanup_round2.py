@@ -4,6 +4,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 VOLUNTEER_HOME = ROOT / "ios" / "EnglishPlus" / "EnglishPlus" / "Features" / "Volunteer" / "VolunteerHomeView.swift"
+SHARED_HANDOFF = ROOT / "ios" / "EnglishPlus" / "EnglishPlus" / "Features" / "Shared" / "StaffSupportActionBar.swift"
 
 
 def read(path: Path) -> str:
@@ -27,6 +28,7 @@ def main() -> int:
         return 1
 
     volunteer = read(VOLUNTEER_HOME)
+    shared = read(SHARED_HANDOFF)
 
     forbid(
         volunteer,
@@ -97,38 +99,44 @@ def main() -> int:
     )
     require(
         volunteer,
-        "VolunteerHandoffSummaryCard()",
-        "volunteer handoff uses teacher-style summary card",
-        errors,
-    )
-    require(
-        volunteer,
         "ForEach(learningRepository.volunteerQueue) { request in",
         "volunteer handoff lists all queue requests like teacher handoff",
         errors,
     )
     require(
         volunteer,
-        "VolunteerSupportRequestCard(request: request)",
-        "volunteer handoff uses teacher-style request cards",
+        "StaffSupportQueueRow(request: request)",
+        "volunteer handoff uses shared compact queue rows",
         errors,
     )
     require(
         volunteer,
+        "StaffSupportDetailView(initialRequest: request, role: .volunteer)",
+        "volunteer handoff opens the shared request detail",
+        errors,
+    )
+    require(
+        shared,
         "StaffSupportActionBar(",
-        "volunteer handoff uses shared staff action bar",
+        "shared request detail uses the staff action bar",
         errors,
     )
     require(
-        volunteer,
+        shared,
         "learningRepository.addVolunteerReply(to: request.id, body: replyDraft)",
-        "volunteer request card persists volunteer replies",
+        "shared request detail persists volunteer replies",
         errors,
     )
     require(
+        shared,
+        "appState.coachVolunteerReplyWithAI(",
+        "shared request detail keeps volunteer AI drafting",
+        errors,
+    )
+    forbid(
         volunteer,
-        "appState.coachVolunteerReplyWithAI(context: SupportAIContext(request: request))",
-        "volunteer request card keeps volunteer AI drafting",
+        "VolunteerSupportRequestCard(request: request)",
+        "legacy inline volunteer response composer",
         errors,
     )
     for old_call in [

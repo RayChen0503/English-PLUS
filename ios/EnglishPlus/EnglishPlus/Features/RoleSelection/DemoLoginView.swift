@@ -7,6 +7,20 @@ import GoogleSignInSwift
 #endif
 
 struct DemoLoginView: View {
+    private enum FocusedField: Hashable {
+        case email
+        case password
+        case other
+
+        var scrollAnchorID: String? {
+            switch self {
+            case .email: "auth.email"
+            case .password: "auth.password"
+            case .other: nil
+            }
+        }
+    }
+
     @EnvironmentObject private var appState: AppState
     @Environment(\.colorScheme) private var colorScheme
 
@@ -22,30 +36,48 @@ struct DemoLoginView: View {
     @State private var volunteerAcceptedConduct = false
     @State private var volunteerMotivation = ""
     @State private var appleRawNonce: String?
+    @FocusState private var focusedField: FocusedField?
 
     var body: some View {
         ZStack {
             EPTheme.background.ignoresSafeArea()
-            ScrollView {
-                VStack(alignment: .leading, spacing: 20) {
-                    backButton
-                    header
-                    if let provider = federatedOnboardingProvider {
-                        federatedSetupBanner(provider)
-                    } else {
-                        modePicker
-                        if appState.canUseFederatedSignIn {
-                            federatedButtons
-                            divider
+            ScrollViewReader { scrollProxy in
+                ScrollView {
+                    VStack(alignment: .leading, spacing: 20) {
+                        backButton
+                        header
+                        if let provider = federatedOnboardingProvider {
+                            federatedSetupBanner(provider)
+                        } else {
+                            modePicker
+                            if appState.canUseFederatedSignIn {
+                                federatedButtons
+                                divider
+                            }
                         }
-                    }
 
-                    emailAccountForm
-                    feedback
-                    primaryButton
+                        emailAccountForm
+                        feedback
+                        primaryButton
+                    }
+                    .padding(EPTheme.pagePadding)
+                    .padding(.bottom, 24)
                 }
-                .padding(EPTheme.pagePadding)
-                .padding(.bottom, 24)
+                .accessibilityIdentifier("auth.screen")
+                .scrollDismissesKeyboard(.interactively)
+                .onChange(of: focusedField) { _, field in
+                    guard let anchorID = field?.scrollAnchorID else { return }
+                    scrollProxy.scrollTo(anchorID, anchor: .center)
+                }
+            }
+        }
+        .toolbar {
+            ToolbarItemGroup(placement: .keyboard) {
+                Spacer()
+                Button("收起鍵盤") {
+                    dismissKeyboard()
+                }
+                .accessibilityIdentifier("auth.keyboard.dismiss")
             }
         }
         .onChange(of: mode) { _, _ in
@@ -260,11 +292,24 @@ struct DemoLoginView: View {
                 .textInputAutocapitalization(.never)
                 .keyboardType(keyboardType)
                 .autocorrectionDisabled()
+                .focused(
+                    $focusedField,
+                    equals: accessibilityIdentifier == "auth.email" ? .email : .other
+                )
+                .submitLabel(accessibilityIdentifier == "auth.email" ? .next : .done)
+                .onSubmit {
+                    if accessibilityIdentifier == "auth.email" {
+                        focusedField = .password
+                    } else {
+                        dismissKeyboard()
+                    }
+                }
                 .padding(12)
                 .background(EPTheme.secondarySurface)
                 .clipShape(RoundedRectangle(cornerRadius: EPTheme.cardRadius))
                 .accessibilityIdentifier(accessibilityIdentifier ?? "")
         }
+        .id(accessibilityIdentifier ?? title)
     }
 
     private var passwordField: some View {
@@ -282,6 +327,11 @@ struct DemoLoginView: View {
                 }
                 .textInputAutocapitalization(.never)
                 .autocorrectionDisabled()
+                .focused($focusedField, equals: .password)
+                .submitLabel(.go)
+                .onSubmit {
+                    performPrimaryAction()
+                }
                 .accessibilityIdentifier("auth.password")
 
                 Button {
@@ -297,6 +347,7 @@ struct DemoLoginView: View {
             .background(EPTheme.secondarySurface)
             .clipShape(RoundedRectangle(cornerRadius: EPTheme.cardRadius))
         }
+        .id("auth.password")
     }
 
     private var recoveryActions: some View {
@@ -338,19 +389,33 @@ struct DemoLoginView: View {
     }
 
     private var primaryButton: some View {
-        Button(primaryButtonTitle) {
-            Task {
-                if federatedOnboardingProvider != nil {
-                    guard let profile = registrationProfile else { return }
-                    await appState.completeFederatedOnboarding(profile: profile)
-                } else {
-                    await submitEmailForm()
-                }
-            }
-        }
+        Button(primaryButtonTitle, action: performPrimaryAction)
         .disabled(primaryActionDisabled)
         .buttonStyle(PrimaryActionButtonStyle())
         .accessibilityIdentifier("auth.submit")
+    }
+
+    private func performPrimaryAction() {
+        guard !primaryActionDisabled else { return }
+        dismissKeyboard()
+        Task {
+            if federatedOnboardingProvider != nil {
+                guard let profile = registrationProfile else { return }
+                await appState.completeFederatedOnboarding(profile: profile)
+            } else {
+                await submitEmailForm()
+            }
+        }
+    }
+
+    private func dismissKeyboard() {
+        focusedField = nil
+        UIApplication.shared.sendAction(
+            #selector(UIResponder.resignFirstResponder),
+            to: nil,
+            from: nil,
+            for: nil
+        )
     }
 
     private var headerDescription: String {

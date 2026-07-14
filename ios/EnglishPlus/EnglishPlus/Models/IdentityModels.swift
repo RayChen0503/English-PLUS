@@ -159,6 +159,22 @@ enum VolunteerApplicationStatus: String, Codable {
     case suspended
 }
 
+struct VolunteerApplicationReviewState: Equatable {
+    let status: VolunteerApplicationStatus
+    let reviewNote: String?
+    let reviewedAt: Date?
+    let updatedAt: Date?
+
+    var isEditable: Bool {
+        status == .draft || status == .needsMoreInformation || status == .rejected
+    }
+
+    var normalizedReviewNote: String? {
+        let note = reviewNote?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        return note.isEmpty ? nil : note
+    }
+}
+
 struct VolunteerEvidenceReference: Identifiable, Codable, Equatable {
     let id: String
     let kind: VolunteerQualificationKind

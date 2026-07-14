@@ -12,13 +12,23 @@ struct VolunteerHomeView: View {
                 ScrollView {
                     VStack(alignment: .leading, spacing: 16) {
                         VolunteerHeaderCard()
+                        if let reviewState = appState.volunteerApplicationReviewState,
+                           reviewState.status == .approved,
+                           let note = reviewState.normalizedReviewNote {
+                            VolunteerApprovalNoteCard(note: note, reviewedAt: reviewState.reviewedAt)
+                        }
                         if appState.currentProfile?.activeClassId == nil {
                             VolunteerNoActiveServiceCard()
                         } else {
                             VolunteerMetricStrip()
 
                             if let firstRequest = learningRepository.volunteerQueue.first {
-                                VolunteerTodayPriorityCard(request: firstRequest)
+                                NavigationLink {
+                                    StaffSupportDetailView(initialRequest: firstRequest, role: .volunteer)
+                                } label: {
+                                    StaffSupportQueueRow(request: firstRequest)
+                                }
+                                .buttonStyle(.plain)
                             } else {
                                 VolunteerEmptyQueueCard()
                             }
@@ -28,6 +38,7 @@ struct VolunteerHomeView: View {
                 }
             }
             .navigationTitle("志工工作台")
+            .accessibilityIdentifier("volunteer.home.workspace")
             .toolbar {
                 ToolbarItem(placement: .topBarTrailing) {
                     Menu {
@@ -54,6 +65,32 @@ struct VolunteerHomeView: View {
     }
 }
 
+private struct VolunteerApprovalNoteCard: View {
+    let note: String
+    let reviewedAt: Date?
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Label("志工資格已通過", systemImage: "checkmark.seal.fill")
+                .font(.headline)
+                .foregroundStyle(EPTheme.support)
+            Text(note)
+                .font(.subheadline)
+                .foregroundStyle(EPTheme.ink)
+                .fixedSize(horizontal: false, vertical: true)
+            if let reviewedAt {
+                Text("審核時間：\(reviewedAt.formatted(date: .abbreviated, time: .shortened))")
+                    .font(.caption)
+                    .foregroundStyle(EPTheme.secondaryInk)
+            }
+        }
+        .padding(16)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(EPTheme.support.opacity(0.10))
+        .clipShape(RoundedRectangle(cornerRadius: EPTheme.cardRadius))
+    }
+}
+
 struct VolunteerServiceClassesView: View {
     @EnvironmentObject private var appState: AppState
     @State private var inviteCode = ""
@@ -77,17 +114,36 @@ struct VolunteerServiceClassesView: View {
                         joinCard
 
                         if appState.isLoadingVolunteerServices && appState.volunteerServices.isEmpty {
-                            ProgressView("正在載入服務班級...")
-                                .frame(maxWidth: .infinity, alignment: .leading)
-                                .padding(16)
+                            EPContentStateView(
+                                state: .loading(
+                                    title: "正在載入服務班級",
+                                    detail: "你仍可留在此頁，完成後會自動更新。"
+                                )
+                            )
                         }
 
                         if !pendingServices.isEmpty {
                             serviceSection(title: "等待老師核准", services: pendingServices)
                         }
 
-                        if activeServices.isEmpty && pendingServices.isEmpty && !appState.isLoadingVolunteerServices {
-                            emptyServiceCard
+                        if let error = appState.volunteerServiceErrorMessage,
+                           activeServices.isEmpty,
+                           pendingServices.isEmpty,
+                           !appState.isLoadingVolunteerServices {
+                            EPContentStateView(
+                                state: .failure(title: "服務班級尚未載入", detail: error),
+                                onRetry: {
+                                    Task { await appState.loadVolunteerServices() }
+                                }
+                            )
+                        } else if activeServices.isEmpty && pendingServices.isEmpty && !appState.isLoadingVolunteerServices {
+                            EPContentStateView(
+                                state: .empty(
+                                    systemImage: "person.3",
+                                    title: "目前沒有服務班級",
+                                    detail: "在老師核准前，接力頁不會顯示任何學生資料。"
+                                )
+                            )
                         } else if !activeServices.isEmpty {
                             serviceSection(title: "我服務的班級", services: activeServices)
                         }
@@ -95,7 +151,8 @@ struct VolunteerServiceClassesView: View {
                         if let notice = appState.volunteerServiceNoticeMessage {
                             VolunteerServiceMessage(text: notice, isError: false)
                         }
-                        if let error = appState.volunteerServiceErrorMessage {
+                        if let error = appState.volunteerServiceErrorMessage,
+                           !activeServices.isEmpty || !pendingServices.isEmpty {
                             VolunteerServiceMessage(text: error, isError: true)
                         }
                     }
@@ -104,6 +161,7 @@ struct VolunteerServiceClassesView: View {
                 .refreshable { await appState.loadVolunteerServices() }
             }
             .navigationTitle("服務班級")
+            .accessibilityIdentifier("volunteer.service.workspace")
             .task { await appState.loadVolunteerServices() }
             .alert(
                 classPendingLeave?.status == .pendingApproval
@@ -138,7 +196,7 @@ struct VolunteerServiceClassesView: View {
             Label("先加入服務班級，再開始接力", systemImage: "person.badge.key")
                 .font(.headline)
                 .foregroundStyle(EPTheme.ink)
-            Text("平台資格審核只確認你可以擔任志工。輸入老師提供的志工邀請碼並經老師核准後，你才會看到該班學生主動送出的求助；不會看到完整學習紀錄或心情資料。")
+            Text("加入並經老師核准後，只會看到該班學生主動送出的求助。")
                 .font(.subheadline)
                 .foregroundStyle(EPTheme.secondaryInk)
                 .fixedSize(horizontal: false, vertical: true)
@@ -180,21 +238,6 @@ struct VolunteerServiceClassesView: View {
             .opacity(normalizedInviteCode.count == 8 && !appState.isManagingVolunteerService ? 1 : 0.45)
         }
         .padding(16)
-        .background(EPTheme.card)
-        .clipShape(RoundedRectangle(cornerRadius: EPTheme.cardRadius))
-    }
-
-    private var emptyServiceCard: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Label("目前沒有服務班級", systemImage: "person.3")
-                .font(.headline)
-                .foregroundStyle(EPTheme.ink)
-            Text("在老師核准前，接力頁不會顯示任何學生資料。")
-                .font(.subheadline)
-                .foregroundStyle(EPTheme.secondaryInk)
-        }
-        .padding(16)
-        .frame(maxWidth: .infinity, alignment: .leading)
         .background(EPTheme.card)
         .clipShape(RoundedRectangle(cornerRadius: EPTheme.cardRadius))
     }
@@ -307,7 +350,7 @@ struct VolunteerHandoffWorkspaceView: View {
                             .font(.title.bold())
                             .foregroundStyle(EPTheme.ink)
 
-                        Text("排序規則：只顯示學生主動送出的求助；需要真人陪伴與閱讀卡點會優先排列。")
+                        Text("先選一筆待辦，再進入題目與回覆畫面。高優先求助會排在前面。")
                             .font(.subheadline)
                             .foregroundStyle(EPTheme.secondaryInk)
                             .fixedSize(horizontal: false, vertical: true)
@@ -324,10 +367,20 @@ struct VolunteerHandoffWorkspaceView: View {
                                 tint: EPTheme.primary
                             )
 
-                            VolunteerHandoffSummaryCard()
-
-                            ForEach(learningRepository.volunteerQueue) { request in
-                                VolunteerSupportRequestCard(request: request)
+                            if learningRepository.volunteerQueue.isEmpty {
+                                VolunteerEmptyQueueCard()
+                            } else {
+                                LazyVStack(spacing: 10) {
+                                    ForEach(learningRepository.volunteerQueue) { request in
+                                        NavigationLink {
+                                            StaffSupportDetailView(initialRequest: request, role: .volunteer)
+                                        } label: {
+                                            StaffSupportQueueRow(request: request)
+                                        }
+                                        .buttonStyle(.plain)
+                                        .accessibilityIdentifier("volunteer.handoff.request.\(request.id)")
+                                    }
+                                }
                             }
                         }
                     }
@@ -335,6 +388,7 @@ struct VolunteerHandoffWorkspaceView: View {
                 }
             }
             .navigationTitle("接力")
+            .accessibilityIdentifier("volunteer.handoff.workspace")
         }
     }
 }
@@ -581,6 +635,7 @@ struct VolunteerRecordView: View {
                 }
             }
             .navigationTitle("紀錄")
+            .accessibilityIdentifier("volunteer.records.workspace")
         }
     }
 }
@@ -759,6 +814,7 @@ private struct VolunteerRecordStatusCard: View {
 
 private struct VolunteerRecordRequestCard: View {
     let request: StudentSupportRequest
+    @State private var isExpanded = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
@@ -777,25 +833,34 @@ private struct VolunteerRecordRequestCard: View {
                     .foregroundStyle(EPTheme.support)
             }
 
-            if let snapshot = request.questionSnapshot {
-                SupportQuestionSnapshotCard(
-                    snapshot: snapshot,
-                    title: "已處理題目",
-                    showsExplanation: true
-                )
-            } else {
-                VolunteerMissingQuestionSnapshotLabel()
-            }
+            DisclosureGroup(isExpanded: $isExpanded) {
+                VStack(alignment: .leading, spacing: 10) {
+                    if let snapshot = request.questionSnapshot {
+                        SupportQuestionSnapshotCard(
+                            snapshot: snapshot,
+                            title: "已處理題目",
+                            showsExplanation: true
+                        )
+                    } else {
+                        VolunteerMissingQuestionSnapshotLabel()
+                    }
 
-            ForEach(request.staffReplies.filter { $0.authorRole == .volunteer }) { reply in
-                Text(reply.body)
-                    .font(.subheadline)
-                    .foregroundStyle(EPTheme.ink)
-                    .fixedSize(horizontal: false, vertical: true)
-                    .padding(10)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .background(EPTheme.secondarySurface)
-                    .clipShape(RoundedRectangle(cornerRadius: 10))
+                    ForEach(request.staffReplies.filter { $0.authorRole == .volunteer }) { reply in
+                        Text(reply.body)
+                            .font(.subheadline)
+                            .foregroundStyle(EPTheme.ink)
+                            .fixedSize(horizontal: false, vertical: true)
+                            .padding(10)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .background(EPTheme.secondarySurface)
+                            .clipShape(RoundedRectangle(cornerRadius: 10))
+                    }
+                }
+                .padding(.top, 8)
+            } label: {
+                Label(isExpanded ? "收起紀錄" : "查看題目與回覆", systemImage: "text.magnifyingglass")
+                    .font(.subheadline.bold())
+                    .foregroundStyle(EPTheme.primary)
             }
         }
         .padding(16)

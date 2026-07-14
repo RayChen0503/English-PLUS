@@ -34,6 +34,8 @@ struct SupportView: View {
 
             if appState.currentProfile?.activeClassId == nil {
                 PersonalSupportModeCard()
+            } else if studentRequests.isEmpty {
+                SupportEmptyStateCard()
             } else {
                 SupportReplyCenterSummaryCard(
                     waitingCount: waitingRequestCount,
@@ -41,23 +43,20 @@ struct SupportView: View {
                     answeredCount: answeredRequestCount
                 )
 
-                if studentRequests.isEmpty {
-                    SupportEmptyStateCard()
-                } else {
-                    ForEach(studentRequests) { request in
-                        SupportRequestInboxCard(
-                            request: request,
-                            isProcessing: learningRepository.isSupportActionPending(for: request.id),
-                            onArchive: {
-                                Task {
-                                    _ = await learningRepository.archiveSupportThreadForStudent(request.id)
-                                }
+                ForEach(studentRequests) { request in
+                    SupportRequestInboxCard(
+                        request: request,
+                        isProcessing: learningRepository.isSupportActionPending(for: request.id),
+                        onArchive: {
+                            Task {
+                                _ = await learningRepository.archiveSupportThreadForStudent(request.id)
                             }
-                        )
-                    }
+                        }
+                    )
                 }
             }
         }
+        .accessibilityIdentifier("student.support.inbox")
     }
 
     private var studentRequests: [StudentSupportRequest] {

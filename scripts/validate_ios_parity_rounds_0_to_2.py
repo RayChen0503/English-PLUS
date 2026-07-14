@@ -121,13 +121,13 @@ def validate_learning_map(errors):
         "LearningMapNode",
         "今日路線",
         "心情檢測",
-        "今日題目任務",
-        "低壓修復",
+        "今日任務",
         "自由練習",
         "支持回覆",
-        "ProgressView",
+        "todayCompleteCard",
         "currentMission",
         "progressSnapshot",
+        "student.map.primaryAction",
     ]
     for marker in required_markers:
         if marker not in map_text:

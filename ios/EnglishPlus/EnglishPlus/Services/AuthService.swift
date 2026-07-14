@@ -100,6 +100,9 @@ protocol AuthService {
     func loadVolunteerApplication(
         in session: AuthSession
     ) async throws -> VolunteerApplicationInput?
+    func loadVolunteerApplicationReviewState(
+        in session: AuthSession
+    ) async throws -> VolunteerApplicationReviewState?
     func currentUserIsAdministrator() async -> Bool
     func sendPasswordReset(email: String) async throws
     func resendVerification(email: String, password: String) async throws
@@ -178,6 +181,12 @@ extension AuthService {
     func loadVolunteerApplication(
         in session: AuthSession
     ) async throws -> VolunteerApplicationInput? {
+        nil
+    }
+
+    func loadVolunteerApplicationReviewState(
+        in session: AuthSession
+    ) async throws -> VolunteerApplicationReviewState? {
         nil
     }
 

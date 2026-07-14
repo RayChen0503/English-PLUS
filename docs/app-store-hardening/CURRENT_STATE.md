@@ -4,7 +4,7 @@
 > concise. It is the working source of truth, not a replacement for the
 > round reports.
 
-Last verified: 2026-07-14
+Last verified: 2026-07-15
 
 ## Product in one paragraph
 
@@ -17,10 +17,11 @@ learning must remain usable without joining a class.
 ## Repository and release safety
 
 - Repository: `RayChen0503/English-PLUS`
-- Stable release baseline: `main` at `d41aa0e`, containing the completed
-  FIX-A through FIX-G repair block.
-- Active hardening branch: `codex/app-store-hardening-d` for Round 13 through
-  Round 16. It remains isolated from `main` until the four-round Block D gate.
+- Stable release baseline before the final merge: `main` at `51e2beb`,
+  containing the completed Round 13 through Round 16 Block D release gate.
+- Block E release candidate: `codex/app-store-hardening-e`. Rounds 17 through
+  20 and the combined macOS release gate are signed off; the deliberate merge
+  to `main` is the remaining release action.
 - Completed hardening rounds:
   - Round 1 - baseline audit (`round-01-baseline-audit.md`)
   - Round 2 - personal and multi-class domain (`round-02-personal-and-class-domain.md`)
@@ -44,7 +45,17 @@ learning must remain usable without joining a class.
     (`round-15-question-bank-quality.md`)
   - Round 16 - mastery, spaced review and Block D audit
     (`round-16-mastery-spaced-review-block-d-audit.md`)
-- Hardening progress: **16/20 fully signed off**.
+  - Round 17 - student experience and information hierarchy
+    (`round-17-student-experience.md`)
+  - Round 18 - teacher and volunteer workspaces
+    (`round-18-staff-workspaces.md`)
+  - Round 19 - appearance, accessibility and observability
+    (`round-19-accessibility-observability.md`)
+  - Round 20 - release candidate and complete A-E audit
+    (`round-20-release-candidate-audit.md`)
+- Hardening progress: **20/20 fully signed off**. The combined macOS gate run
+  `29351922007` passed backend, Firestore, all hardening contracts, iOS build,
+  Swift integration, all-role UI and the small/large appearance matrix.
 - Do not merge to `main` or trigger Xcode Cloud until the end of a four-round
   block: 4, 8, 12, 16, and 20.
 - Never reset, overwrite, or silently discard user work.
@@ -184,6 +195,33 @@ learning must remain usable without joining a class.
   validator sweep passes `83/83`; isolated macOS run `29307724360` passed
   Swift `48/48`, UI `5/5`, Worker `34/34`, administrator `7/7`, and Firestore
   Emulator `27/27`.
+- Round 17 has reduced the student experience to one contextual next action,
+  separated returning-session continuation from a fresh check-in, removed
+  duplicate status and map progress surfaces, made free practice optional, and
+  placed class assignments ahead of class administration. Student navigation
+  now carries real support and assignment badges, AI practice discovery is
+  clearer, and a sixth critical UI journey protects the new information
+  architecture. Isolated macOS run `29323656069` passed the Xcode 16.4 test
+  bundle build, the complete Swift unit/integration step and all `6/6` UI
+  journeys for commit `7d3e07d`.
+- Round 18 has replaced duplicate teacher and volunteer support forms with one
+  shared queue-to-detail workflow, kept role-specific replies and AI drafting,
+  collapsed low-frequency settings and report detail, and added stable staff
+  UI regression identifiers.
+- Round 19 has completed semantic light/dark surfaces, adaptive staff metrics,
+  shared loading/empty/failure states and Reduce Motion-aware interactions.
+  Firebase Crashlytics is linked with dSYM upload, defaults to off, and is
+  enabled only by an explicit optional choice; reports exclude direct user and
+  learning-content identifiers. Two dark/large-text UI journeys now run across
+  a small and large iPhone matrix in the macOS gate.
+- Round 20 has converted the complete A-E program into one traceable release
+  candidate gate. It removes production diagnostics, protects external help
+  links, exposes stable all-role UI routes, reconciles release/privacy
+  metadata, and adds a complete real-device TestFlight checklist. The final
+  audit also repaired administrator-review test coverage, test-host Firebase
+  isolation, large-text login keyboard/scroll behavior and deterministic
+  consent state confirmation. macOS run `29351922007` passed every step,
+  including the two-device Dark Mode and Dynamic Type matrix.
 - FIX-A through FIX-E repair cross-device support, finite layered practice,
   class deletion, private volunteer review administration, and teacher-scoped
   volunteer service classes. FIX-F makes question AI an explicit post-answer
@@ -214,6 +252,16 @@ learning must remain usable without joining a class.
   with retained result bundles for diagnosis. Round 15 run `29307724360`
   passed the clean test-bundle build, all `48/48` Swift tests and all `5/5`
   role UI tests, with its Xcode result artifact retained for diagnosis.
+- Round 17 run `29323656069` passed the clean test-bundle build, the complete
+  Swift unit/integration step and all `6/6` role and student UI journeys. Its
+  Xcode result artifact is retained for diagnosis. The branch remains isolated
+  from `main`, so this verification did not trigger Xcode Cloud.
+- Round 20 run `29351922007` passed Worker, administrator portal, Firestore
+  Emulator, 20-round contracts, iOS build-for-testing, Swift integration,
+  critical student/teacher/volunteer UI journeys and the complete small/large
+  iPhone Dark Mode and Dynamic Type matrix. Its diagnostic artifact is retained
+  for seven days. The release branch can now be merged deliberately to trigger
+  the one agreed Xcode Cloud build.
 - Round 16 has unified free practice, repair practice, daily missions and
   teacher assignments into one synchronized mastery and spaced-review
   contract. Wrong answers are due immediately; correct streaks use 1, 3, 7,
@@ -255,10 +303,10 @@ learning must remain usable without joining a class.
 
 ## Next gate
 
-Round 16 and the complete Block D audit are signed off on
-`codex/app-store-hardening-d`. Merge this release candidate once to `main` and
-allow that single main push to trigger Xcode Cloud. After the release gate,
-Round 17 begins the UI, accessibility and App Store candidate block.
+Merge the signed-off Block E release candidate to `main` and let Xcode Cloud
+produce the TestFlight build. Before App Store submission, execute every item
+in `round-20-manual-testflight-checklist-zh-TW.md` on real devices. Any release
+blocker found there starts a new repair cycle; it must not be waived silently.
 
 ## Maintenance rule
 

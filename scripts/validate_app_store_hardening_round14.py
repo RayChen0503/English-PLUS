@@ -82,7 +82,7 @@ def main() -> int:
             "-EnglishPlusResetState",
             "-EnglishPlusStartOffline",
             "EnglishPlusLaunchConfiguration.prepareProcessIfNeeded()",
-            "EnglishPlusLaunchConfiguration.isUITesting",
+            "EnglishPlusLaunchConfiguration.shouldUseMockServices",
             "return makeMockServices()",
             "LaunchArgumentNetworkConnectivityMonitor",
         ),

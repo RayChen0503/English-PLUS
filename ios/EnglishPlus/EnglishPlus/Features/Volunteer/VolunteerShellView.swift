@@ -25,8 +25,9 @@ struct VolunteerShellView: View {
             VolunteerRecordView()
                 .tabItem {
                     Label("紀錄", systemImage: "list.bullet.rectangle")
-                }
+            }
         }
+        .tint(EPTheme.primary)
     }
 
     @EnvironmentObject private var appState: AppState

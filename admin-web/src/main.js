@@ -286,7 +286,7 @@ async function commitReview(note) {
   const application = selectedApplication();
   const action = state.pendingAction;
   if (!application || !action) return;
-  if (action !== "approved" && note.length < 3) {
+  if (note.length < 3) {
     showToast("請填寫至少 3 個字的審核原因。", "error");
     return;
   }
@@ -504,12 +504,11 @@ function emptyDetail() {
 function reviewDialog(application) {
   if (!application || !state.pendingAction) return `<dialog id="review-dialog"></dialog>`;
   const action = actionPresentation[state.pendingAction];
-  const noteRequired = state.pendingAction !== "approved";
   return `<dialog id="review-dialog" class="review-dialog">
     <form id="review-form" method="dialog">
       <div class="dialog-heading"><div><p class="eyebrow">${escapeHtml(application.displayName)}</p><h2>${escapeHtml(action.confirm)}</h2></div><button class="icon-button" type="button" data-action="close-review" aria-label="關閉"><i data-lucide="x"></i></button></div>
       <p>${reviewActionExplanation(state.pendingAction)}</p>
-      <label>審核備註${noteRequired ? "（必填）" : "（選填）"}<textarea name="note" rows="4" minlength="${noteRequired ? 3 : 0}" maxlength="1000" placeholder="${noteRequired ? "說明原因，這段文字會保留在審核紀錄中" : "可補充核准依據"}" ${noteRequired ? "required" : ""}></textarea></label>
+      <label>審核備註（必填）<textarea name="note" rows="4" minlength="3" maxlength="1000" placeholder="說明結果與下一步；申請人會在 App 中看到這段文字" required></textarea></label>
       <div class="dialog-actions"><button class="button secondary" type="button" data-action="close-review">取消</button><button class="button ${action.tone}" type="submit" ${state.actionLoading ? "disabled" : ""}>${state.actionLoading ? "儲存中…" : escapeHtml(action.label)}</button></div>
     </form>
   </dialog>`;

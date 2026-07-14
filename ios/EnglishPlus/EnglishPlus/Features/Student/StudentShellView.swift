@@ -16,7 +16,7 @@ struct StudentShellView: View {
                 }
             )
             .tabItem {
-                Label("首頁", systemImage: "house")
+                Label("首頁", systemImage: selectedTab == .home ? "house.fill" : "house")
             }
             .tag(StudentTab.home)
 
@@ -36,15 +36,16 @@ struct StudentShellView: View {
                 }
             )
             .tabItem {
-                Label("班級", systemImage: "person.3")
+                Label("班級", systemImage: selectedTab == .classroom ? "person.3.fill" : "person.3")
             }
             .badge(pendingAssignmentCount)
             .tag(StudentTab.classroom)
 
             SupportView()
             .tabItem {
-                Label("支持", systemImage: "heart")
+                Label("支持", systemImage: selectedTab == .support ? "heart.fill" : "heart")
             }
+            .badge(unreadSupportReplyCount)
             .tag(StudentTab.support)
 
             StudentLearningMapView(
@@ -53,10 +54,11 @@ struct StudentShellView: View {
                 }
             )
             .tabItem {
-                Label("地圖", systemImage: "map")
+                Label("地圖", systemImage: selectedTab == .map ? "map.fill" : "map")
             }
             .tag(StudentTab.map)
         }
+        .tint(EPTheme.primary)
     }
 
     private var pendingAssignmentCount: Int {
@@ -64,6 +66,13 @@ struct StudentShellView: View {
         guard let studentUid else { return 0 }
         return learningRepository.assignedPracticeTasks
             .filter { $0.studentUid == studentUid && ($0.status == .pending || $0.status == .active) }
+            .count
+    }
+
+    private var unreadSupportReplyCount: Int {
+        let studentUid = appState.currentUser?.id ?? appState.currentProfile?.id
+        return learningRepository.supportRequests(forStudentUid: studentUid)
+            .filter(\.hasStudentUnreadReply)
             .count
     }
 }

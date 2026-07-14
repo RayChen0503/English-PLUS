@@ -56,7 +56,7 @@ enum FirebaseAppConfigurator {
 enum EnglishPlusServiceFactory {
     @MainActor
     static func makeServices() -> EnglishPlusServiceBundle {
-        if EnglishPlusLaunchConfiguration.isUITesting {
+        if EnglishPlusLaunchConfiguration.shouldUseMockServices {
             return makeMockServices()
         }
 
