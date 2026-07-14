@@ -205,7 +205,8 @@ final class MockLearningRepository: ObservableObject {
             aiPlan: aiMission?.questionPlan,
             preferredTypes: selectedTypes,
             track: track,
-            targetCount: targetCorrectCount
+            targetCount: targetCorrectCount,
+            rotationSeed: "mission-\(studentUid)-\(dateKey)-r\(roundNumber)"
         )
 
         currentCheckIn = checkIn
@@ -278,7 +279,11 @@ final class MockLearningRepository: ObservableObject {
 
     func assignPracticeSet(_ set: QuestionPracticeSet, to student: StaffStudentSummary, by teacher: DemoUser?) {
         let date = now()
-        let assignmentQuestions = balancedAssignmentQuestions(for: set)
+        let assignmentSeed = "assignment-\(student.studentUid)-\(set.id)-\(date.timeIntervalSince1970)"
+        let assignmentQuestions = balancedAssignmentQuestions(
+            for: set,
+            rotationSeed: assignmentSeed
+        )
         let assignment = TeacherAssignedPracticeTask(
             id: "practice-assignment-\(date.timeIntervalSince1970)-\(student.studentUid)-\(set.id)",
             classId: student.classCode,
@@ -308,7 +313,8 @@ final class MockLearningRepository: ObservableObject {
         let dateKey = todayKey(from: date)
         let questions = QuestionGroupingEngine.balancedItems(
             from: questionBankItems(for: assignment.questionIds),
-            limit: 12
+            limit: 12,
+            rotationSeed: "assigned-\(assignment.id)"
         )
         guard !questions.isEmpty else { return }
         let targetCount = max(1, min(questions.count, 12))
@@ -706,7 +712,8 @@ final class MockLearningRepository: ObservableObject {
 
     private func balancedAssignmentQuestions(
         for set: QuestionPracticeSet,
-        targetCount: Int = 12
+        targetCount: Int = 12,
+        rotationSeed: String
     ) -> [QuestionBankItem] {
         let target = max(1, targetCount)
         let normalizedSetSkill = normalizedAssignmentSkill(set.skill)
@@ -736,10 +743,15 @@ final class MockLearningRepository: ObservableObject {
                 preferredLevels: [set.level],
                 from: fallbackWindow
             ),
-            limit: target
+            limit: target,
+            rotationSeed: rotationSeed
         )
         return selection.items.isEmpty
-            ? QuestionGroupingEngine.balancedItems(from: set.items, limit: min(target, set.items.count))
+            ? QuestionGroupingEngine.balancedItems(
+                from: set.items,
+                limit: min(target, set.items.count),
+                rotationSeed: rotationSeed
+            )
             : selection.items
     }
 
@@ -754,7 +766,8 @@ final class MockLearningRepository: ObservableObject {
         aiPlan: [AiQuestionPlanItem]?,
         preferredTypes: [QuestionType],
         track: MissionTrack,
-        targetCount: Int
+        targetCount: Int,
+        rotationSeed: String
     ) -> [QuestionBankItem] {
         let allowedTypes = preferredTypes.isEmpty ? defaultPreferredQuestionTypes : preferredTypes
         let preferredSet = Set(allowedTypes)
@@ -782,7 +795,8 @@ final class MockLearningRepository: ObservableObject {
                         preferredLevels: preferredPlanLevels,
                         from: cachedQuestionBankItems.filter { !selectedIds.contains($0.id) }
                     ),
-                    limit: requestedCount
+                    limit: requestedCount,
+                    rotationSeed: "\(rotationSeed)-plan-\(selected.count)"
                 )
                 selected.append(contentsOf: segment.items.filter { item in
                     !selected.contains(where: { $0.id == item.id })
@@ -803,12 +817,18 @@ final class MockLearningRepository: ObservableObject {
                         preferredLevels: preferredLevels,
                         from: remaining
                     ),
-                    limit: target - selected.count
+                    limit: target - selected.count,
+                    rotationSeed: "\(rotationSeed)-plan-fill"
                 )
                 selected.append(contentsOf: fill.items)
             }
 
-            let balanced = QuestionGroupingEngine.balancedItems(from: selected, limit: target)
+            let balanced = QuestionGroupingEngine.practiceSelection(
+                from: selected,
+                fallbackCandidates: cachedQuestionBankItems,
+                limit: target,
+                rotationSeed: "\(rotationSeed)-plan-balanced"
+            ).items
             if !balanced.isEmpty {
                 return balanced
             }
@@ -839,11 +859,16 @@ final class MockLearningRepository: ObservableObject {
                     limit: max(36, target * 6)
                 )
             ),
-            limit: target
+            limit: target,
+            rotationSeed: rotationSeed
         )
         let fallbackUsed = selection.fallbackUsed
         return fallbackUsed
-            ? QuestionGroupingEngine.balancedItems(from: selection.items, limit: selection.items.count)
+            ? QuestionGroupingEngine.balancedItems(
+                from: selection.items,
+                limit: selection.items.count,
+                rotationSeed: "\(rotationSeed)-fallback-balanced"
+            )
             : selection.items
     }
 

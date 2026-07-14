@@ -47,7 +47,7 @@ def validate_question_bank(errors):
     items = seed.get("items", [])
     prompts = set()
 
-    require(seed.get("questionBankSchemaVersion") == 5, "question bank schema version must be 5", errors)
+    require(seed.get("questionBankSchemaVersion") == 6, "question bank schema version must be 6", errors)
     require(items, "question bank must contain at least one item", errors)
 
     for item in items:

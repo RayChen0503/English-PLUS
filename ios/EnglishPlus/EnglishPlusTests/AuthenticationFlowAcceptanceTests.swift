@@ -1213,6 +1213,132 @@ final class PostSubmissionAssistanceAcceptanceTests: XCTestCase {
     }
 }
 
+final class QuestionBankQualityAcceptanceTests: XCTestCase {
+    private var items: [QuestionBankItem] {
+        SeedData.approvedQuestionBankItems
+    }
+
+    func testCurriculumTaxonomyAndSourceOptionsMeetRound15Contract() {
+        XCTAssertEqual(items.count, 1_080)
+        XCTAssertGreaterThanOrEqual(Set(items.map(\.skill)).count, 30)
+        XCTAssertEqual(Set(items.map(\.level)), Set(QuestionLevel.allCases))
+        XCTAssertEqual(Set(items.map(\.question.type)), Set(QuestionType.allCases))
+
+        let semanticFamilies = Dictionary(grouping: items, by: \.semanticKey)
+        XCTAssertGreaterThanOrEqual(semanticFamilies.count, 200)
+        XCTAssertTrue(semanticFamilies.values.allSatisfy { family in
+            Set(family.map(\.curriculumKey)).count == 1
+        })
+
+        let sourceAnswerSlots = items.compactMap { item in
+            item.question.options.firstIndex { option in
+                option.caseInsensitiveCompare(item.question.answer) == .orderedSame
+            }
+        }
+        XCTAssertEqual(sourceAnswerSlots.count, items.count)
+        XCTAssertTrue(items.allSatisfy { Set($0.question.options.map { $0.lowercased() }).count == 4 })
+        let slotCounts = Dictionary(grouping: sourceAnswerSlots, by: { $0 }).mapValues(\.count)
+        XCTAssertLessThanOrEqual((slotCounts.values.max() ?? 0) - (slotCounts.values.min() ?? 0), 1)
+    }
+
+    func testBalancedSessionRejectsSemanticDuplicatesAndRepeatedAnswers() {
+        let session = QuestionGroupingEngine.balancedItems(
+            from: items,
+            limit: 50,
+            rotationSeed: "round15-semantic-quality"
+        )
+        XCTAssertEqual(session.count, 50)
+        XCTAssertEqual(Set(session.map(\.id)).count, session.count)
+        XCTAssertEqual(Set(session.map(\.semanticKey)).count, session.count)
+
+        let grammarItems = items.filter { $0.question.type == .grammar }
+        let grammarSession = QuestionGroupingEngine.balancedItems(
+            from: grammarItems,
+            limit: 12,
+            rotationSeed: "round15-be-verb-balance"
+        )
+        let answerCounts = Dictionary(
+            grouping: grammarSession.map { $0.question.answer.lowercased() },
+            by: { $0 }
+        ).mapValues(\.count)
+        XCTAssertEqual(grammarSession.count, 12)
+        XCTAssertLessThanOrEqual((answerCounts.values.max() ?? 0) - (answerCounts.values.min() ?? 0), 1)
+    }
+
+    func testRuntimeOptionOrderUsesEveryCorrectAnswerSlotEvenly() {
+        let session = QuestionGroupingEngine.balancedItems(
+            from: items,
+            limit: 12,
+            rotationSeed: "round15-option-session"
+        )
+        let slots = session.enumerated().compactMap { index, item in
+            QuestionGroupingEngine.balancedOptions(
+                for: item,
+                sessionIndex: index,
+                rotationSeed: "round15-option-session"
+            ).firstIndex { option in
+                option.caseInsensitiveCompare(item.question.answer) == .orderedSame
+            }
+        }
+        let counts = Dictionary(grouping: slots, by: { $0 }).mapValues(\.count)
+        XCTAssertEqual(slots.count, 12)
+        XCTAssertEqual(Set(slots), Set(0...3))
+        XCTAssertTrue(counts.values.allSatisfy { $0 == 3 })
+    }
+
+    func testRepairSetDoesNotRepeatAnyQuestionFromPrimarySession() {
+        let primary = QuestionGroupingEngine.balancedItems(
+            from: items.filter { $0.question.type == .grammar },
+            limit: 12,
+            rotationSeed: "round15-primary-repair-source"
+        )
+        guard let source = primary.first else {
+            return XCTFail("Primary session should not be empty")
+        }
+        let repair = QuestionGroupingEngine.repairSelection(
+            after: source,
+            from: items,
+            excluding: Set(primary.map(\.id)),
+            limit: 3,
+            rotationSeed: "round15-repair"
+        ).items
+        let primaryKeys = Set(primary.map(\.semanticKey))
+        XCTAssertEqual(repair.count, 3)
+        XCTAssertTrue(repair.allSatisfy { !primaryKeys.contains($0.semanticKey) })
+        XCTAssertEqual(Set(repair.map(\.semanticKey)).count, repair.count)
+    }
+
+    func testRotationSeedChangesQuestionsWithoutChangingQualityContract() {
+        let first = QuestionGroupingEngine.balancedItems(
+            from: items,
+            limit: 12,
+            rotationSeed: "round15-rotation-a"
+        )
+        let second = QuestionGroupingEngine.balancedItems(
+            from: items,
+            limit: 12,
+            rotationSeed: "round15-rotation-b"
+        )
+        XCTAssertNotEqual(first.map(\.semanticKey), second.map(\.semanticKey))
+        XCTAssertEqual(Set(first.map(\.semanticKey)).count, first.count)
+        XCTAssertEqual(Set(second.map(\.semanticKey)).count, second.count)
+    }
+
+    func testPracticeCatalogUsesGranularSkillsAndFiniteUniqueSets() {
+        let catalog = QuestionPracticeSet.catalog(from: items)
+        XCTAssertGreaterThanOrEqual(catalog.count, 40)
+        XCTAssertGreaterThanOrEqual(Set(catalog.map(\.skill)).count, 30)
+        XCTAssertTrue(catalog.allSatisfy { !$0.items.isEmpty && $0.items.count <= 12 })
+        XCTAssertTrue(catalog.allSatisfy { set in
+            Set(set.items.map(\.semanticKey)).count == set.items.count
+        })
+        XCTAssertEqual(
+            Set(catalog.flatMap(\.items).map(\.semanticKey)).count,
+            Set(items.map(\.semanticKey)).count
+        )
+    }
+}
+
 private final class RecordingAuthService: AuthService {
     var providerSignInResult: Result<AuthSession, AuthServiceError> = .failure(.profileUnavailable)
     var providerCreationResult: Result<AccountCreationOutcome, AuthServiceError> = .failure(.operationUnavailable)

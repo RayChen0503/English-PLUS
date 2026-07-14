@@ -452,7 +452,11 @@ struct PracticeCenterView: View {
     }
 
     private var visiblePracticeSets: [QuestionPracticeSet] {
-        Array(learningRepository.questionPracticeSets.prefix(18))
+        learningRepository.questionPracticeSets.filter { set in
+            let typeMatches = selectedPracticeType == nil || set.type == selectedPracticeType
+            let levelMatches = selectedPracticeLevel == nil || set.level == selectedPracticeLevel
+            return typeMatches && levelMatches
+        }
     }
 
     private var questionBankItems: [QuestionBankItem] {
@@ -547,7 +551,11 @@ struct PracticeCenterView: View {
     }
 
     private func startFreePracticeSession() {
-        let sessionSelection = buildPracticeSessionItems(from: filteredPracticeItems)
+        let rotationSeed = UUID().uuidString
+        let sessionSelection = buildPracticeSessionItems(
+            from: filteredPracticeItems,
+            rotationSeed: rotationSeed
+        )
         requestPrimarySessionStart(
             PracticeSessionProposal(
                 items: sessionSelection.items,
@@ -561,15 +569,27 @@ struct PracticeCenterView: View {
         with items: [QuestionBankItem],
         sourceTitle: String?,
         note: String?,
-        phase: PracticeCenterPhase
+        phase: PracticeCenterPhase,
+        rotationSeed: String = UUID().uuidString
     ) {
-        let sessionItems = QuestionGroupingEngine.balancedItems(from: items, limit: freePracticeSessionLimit)
+        let sessionItems = QuestionGroupingEngine.balancedItems(
+            from: items,
+            limit: freePracticeSessionLimit,
+            rotationSeed: rotationSeed
+        )
         freePracticeSessionItems = sessionItems
         activePracticeSourceTitle = sourceTitle
         practiceSelectionNote = note
         practiceOptionOrderByQuestionId = Dictionary(
             sessionItems.enumerated().map { index, item in
-                (item.id, QuestionGroupingEngine.balancedOptions(for: item, sessionIndex: index))
+                (
+                    item.id,
+                    QuestionGroupingEngine.balancedOptions(
+                        for: item,
+                        sessionIndex: index,
+                        rotationSeed: rotationSeed
+                    )
+                )
             },
             uniquingKeysWith: { _, latest in latest }
         )
@@ -852,6 +872,7 @@ struct PracticeCenterView: View {
     }
 
     private func buildAIRecommendationPlan(from response: AiProxyResponse) -> AIPracticeRecommendationPlan? {
+        let rotationSeed = practiceRecommendationRequestId?.uuidString ?? UUID().uuidString
         let searchText = recommendationSearchText(from: response)
         let structuredPlan = response.output.practicePlan
         let structuredTypes = structuredPlan?.questionPlan.compactMap { questionType(fromAIValue: $0.type) } ?? []
@@ -892,7 +913,8 @@ struct PracticeCenterView: View {
             structuredRecommendationSelection(
                 plan: $0,
                 fallbackScoredItems: scoredItems,
-                targetCount: targetCount
+                targetCount: targetCount,
+                rotationSeed: rotationSeed
             )
         } ?? QuestionGroupingEngine.practiceSelection(
             from: scoredItems,
@@ -900,7 +922,8 @@ struct PracticeCenterView: View {
                 inferredTypes: inferredTypes,
                 inferredLevels: inferredLevels
             ),
-            limit: targetCount
+            limit: targetCount,
+            rotationSeed: rotationSeed
         )
         let selectedItems = selection.items
         guard let firstItem = selectedItems.first else { return nil }
@@ -934,7 +957,8 @@ struct PracticeCenterView: View {
     private func structuredRecommendationSelection(
         plan: AiPracticePlanOutput,
         fallbackScoredItems: [QuestionBankItem],
-        targetCount: Int
+        targetCount: Int,
+        rotationSeed: String
     ) -> QuestionPracticeSelection {
         var selected: [QuestionBankItem] = []
         var usedFallback = false
@@ -971,7 +995,8 @@ struct PracticeCenterView: View {
                     preferredLevels: levels,
                     from: questionBankItems.filter { !selectedIds.contains($0.id) }
                 ),
-                limit: requestedCount
+                limit: requestedCount,
+                rotationSeed: "\(rotationSeed)-segment-\(selected.count)"
             )
             usedFallback = usedFallback || segment.fallbackUsed
             selected.append(contentsOf: segment.items.filter { item in
@@ -984,15 +1009,22 @@ struct PracticeCenterView: View {
             let fill = QuestionGroupingEngine.practiceSelection(
                 from: fallbackScoredItems.filter { !selectedIds.contains($0.id) },
                 fallbackCandidates: questionBankItems.filter { !selectedIds.contains($0.id) },
-                limit: targetCount - selected.count
+                limit: targetCount - selected.count,
+                rotationSeed: "\(rotationSeed)-fill"
             )
             selected.append(contentsOf: fill.items)
             usedFallback = true
         }
 
+        let finalSelection = QuestionGroupingEngine.practiceSelection(
+            from: selected,
+            fallbackCandidates: questionBankItems,
+            limit: targetCount,
+            rotationSeed: "\(rotationSeed)-balanced"
+        )
         return QuestionPracticeSelection(
-            items: QuestionGroupingEngine.balancedItems(from: selected, limit: targetCount),
-            fallbackUsed: usedFallback
+            items: finalSelection.items,
+            fallbackUsed: usedFallback || finalSelection.fallbackUsed
         )
     }
 
@@ -1182,11 +1214,15 @@ struct PracticeCenterView: View {
         )
     }
 
-    private func buildPracticeSessionItems(from candidates: [QuestionBankItem]) -> PracticeSessionSelection {
+    private func buildPracticeSessionItems(
+        from candidates: [QuestionBankItem],
+        rotationSeed: String
+    ) -> PracticeSessionSelection {
         let selection = QuestionGroupingEngine.practiceSelection(
             from: candidates,
             fallbackCandidates: fallbackPracticeCandidates(),
-            limit: freePracticeSessionLimit
+            limit: freePracticeSessionLimit,
+            rotationSeed: rotationSeed
         )
         let note = selection.items.isEmpty
             ? "目前題庫還沒有可用題目。"
@@ -1294,7 +1330,8 @@ struct PracticeCenterView: View {
             after: item,
             from: questionBankItems,
             excluding: Set(freePracticeSessionItems.map(\.id)),
-            limit: 3
+            limit: 3,
+            rotationSeed: UUID().uuidString
         ).items
     }
 
@@ -1766,7 +1803,7 @@ private struct PracticeSetSelectionCard: View {
             ScrollView(.horizontal, showsIndicators: false) {
                 HStack(spacing: 10) {
                     setButton(title: "全部題目", subtitle: "自由挑戰", setId: nil)
-                    ForEach(sets.prefix(18)) { set in
+                    ForEach(sets) { set in
                         setButton(
                             title: set.title,
                             subtitle: set.subtitle,

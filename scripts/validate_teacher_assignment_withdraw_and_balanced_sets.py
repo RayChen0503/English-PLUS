@@ -53,7 +53,8 @@ mock_markers = [
     ("if currentMission?.sourceCheckInId == assignmentId", "active assigned mission cleanup"),
     ("currentMission = nil", "active mission reset after withdraw"),
     ("learningFlow = .initial", "learning flow reset after withdraw"),
-    ("balancedAssignmentQuestions(for: set)", "balanced assignment question selection"),
+    ("balancedAssignmentQuestions(", "balanced assignment question selection"),
+    ("rotationSeed: assignmentSeed", "assignment-specific question rotation"),
     ("assignmentQuestions.map(\\.id)", "assignment stores expanded balanced question ids"),
     ("QuestionGroupingEngine.practiceSelection", "practice grouping engine used for assignments"),
 ]

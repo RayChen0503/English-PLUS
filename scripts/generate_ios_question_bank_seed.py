@@ -1,14 +1,15 @@
 #!/usr/bin/env python3
 import json
+import re
 from datetime import datetime, timezone
 from pathlib import Path
 
 
 ROOT = Path(__file__).resolve().parents[1]
 SEED_PATH = ROOT / "ios" / "EnglishPlus" / "EnglishPlus" / "Resources" / "SeedData" / "question_bank_seed.json"
-GENERATED_AT = datetime(2026, 6, 26, 12, 0, 0, tzinfo=timezone.utc).isoformat().replace("+00:00", "Z")
-SOURCE = "English+ Android parity generated seed"
-IMPORT_BATCH_ID = "ios-parity-round-1-question-bank"
+GENERATED_AT = datetime(2026, 7, 14, 12, 0, 0, tzinfo=timezone.utc).isoformat().replace("+00:00", "Z")
+SOURCE = "English+ original curriculum-aligned seed"
+IMPORT_BATCH_ID = "app-store-hardening-round-15-question-taxonomy"
 
 
 def unique_options(options):
@@ -19,49 +20,154 @@ def unique_options(options):
     return result[:4]
 
 
-def level_for(question_type, index):
-    pattern = {
-        "vocabulary": ["A1", "A1", "A2", "A2", "B1", "B2"],
-        "grammar": ["A1", "A2", "A2", "B1", "B1", "B2"],
-        "fillBlank": ["A2", "A2", "B1", "B1", "B2", "A1"],
-        "cloze": ["A2", "B1", "B1", "B2", "A2", "B2"],
-        "reading": ["A2", "B1", "B1", "B2", "A2", "B2"],
-        "translation": ["A2", "B1", "B1", "B2", "A2", "B2"],
-        "dialogue": ["A1", "A2", "A2", "B1", "B1", "B2"],
-    }[question_type]
-    return pattern[index % len(pattern)]
+def numbered_concept(concept):
+    match = re.search(r"(\d+)$", concept)
+    return int(match.group(1)) if match else 0
 
 
-def unit_for(question_type):
-    return {
-        "vocabulary": "生活單字",
-        "grammar": "基礎文法",
-        "fillBlank": "文法填空",
-        "cloze": "短文克漏字",
-        "reading": "閱讀理解",
-        "translation": "翻譯與句子重組",
-        "dialogue": "情境對話",
-    }[question_type]
+def curriculum_metadata(question_type, concept, answer, prompt):
+    if question_type == "vocabulary":
+        foundation = {"library", "neighbor", "umbrella", "medicine", "schedule", "habit", "direction"}
+        exam_ready = {"environment", "volunteer", "patient", "protect", "improve", "reduce", "confident"}
+        level = "A1" if answer in foundation else ("B1" if answer in exam_ready else "A2")
+        if answer in {"library", "schedule", "direction"}:
+            skill = "校園與生活字彙"
+        elif answer in {"neighbor", "volunteer", "patient", "confident"}:
+            skill = "人物與情緒字彙"
+        elif answer in {"medicine", "temperature", "habit"}:
+            skill = "健康與習慣字彙"
+        else:
+            skill = "環境與行動字彙"
+        return level, "字彙與語意", skill
+
+    if question_type == "grammar":
+        compound_subject_markers = ("The students", "Those books", "The cats", "My parents", "The boys", "Two tickets", "Some apples", "My shoes", "Many people", "These stories")
+        level = "A2" if any(marker in prompt for marker in compound_subject_markers) else "A1"
+        return level, "文法與句構", "be 動詞與主詞一致"
+
+    number = numbered_concept(concept)
+    if question_type == "fillBlank":
+        metadata = {
+            1: ("A2", "時間介系詞與完成式"), 2: ("A2", "被動語態"),
+            3: ("A2", "動名詞與不定詞"), 4: ("A1", "常用片語動詞"),
+            5: ("B1", "關係代名詞"), 6: ("B1", "不定詞句型"),
+            7: ("A2", "介系詞固定搭配"), 8: ("B1", "完成式"),
+            9: ("B1", "形容詞句型"), 10: ("B1", "比較級句型"),
+            11: ("B2", "名詞子句"), 12: ("B2", "動名詞與被動概念"),
+            13: ("A2", "條件句"), 14: ("A2", "介系詞固定搭配"),
+            15: ("A2", "動名詞與不定詞"), 16: ("B1", "動名詞與不定詞"),
+            17: ("A2", "動詞受詞結構"), 18: ("A1", "連接詞與因果"),
+        }
+        level, skill = metadata[number]
+        return level, "文法與句構", skill
+
+    if question_type == "cloze":
+        if number in {1, 8, 9}:
+            return "B1", "克漏字與文意", "語篇連接與邏輯"
+        if number in {4, 5, 12, 16}:
+            return "B2", "克漏字與文意", "時態與語法線索"
+        if number in {2, 3, 6, 7, 10, 11, 13, 14, 15}:
+            return "B1", "克漏字與文意", "上下文詞義推論"
+        return "A2", "克漏字與文意", "基礎文意理解"
+
+    if question_type == "reading":
+        if number in {4, 11}:
+            return "B1", "閱讀理解", "主旨與作者意圖"
+        if number in {5, 6, 8, 9, 13}:
+            return "A2", "閱讀理解", "數據與細節定位"
+        if number in {3, 7, 12, 14}:
+            return "B1", "閱讀理解", "因果與訊息整合"
+        return "A2", "閱讀理解", "生活文本資訊擷取"
+
+    if question_type == "translation":
+        if number in {1, 4, 7, 15, 16}:
+            return "A2", "翻譯與表達", "基本語序與疑問句"
+        if number in {3, 5, 10, 13}:
+            return "B1", "翻譯與表達", "時態與條件句"
+        if number in {2, 8, 11, 17}:
+            return "B1", "翻譯與表達", "不定詞與動名詞句型"
+        return "B2", "翻譯與表達", "複合句與進階句型"
+
+    if question_type == "dialogue":
+        if number in {1, 7, 11}:
+            return "A2", "溝通與情境", "請求與確認"
+        if number in {2, 4, 12}:
+            return "A1", "溝通與情境", "道謝、道歉與稱讚"
+        if number in {3, 9}:
+            return "A2", "溝通與情境", "邀請與提議"
+        if number in {5, 8, 10}:
+            return "A2", "溝通與情境", "問路、時間與原因"
+        return "B1", "溝通與情境", "情緒支持與回應"
+
+    raise ValueError(f"Unsupported question type: {question_type}")
 
 
-def skill_for(question_type):
-    return {
-        "vocabulary": "字義判斷",
-        "grammar": "主詞與時態",
-        "fillBlank": "句型搭配",
-        "cloze": "文意推論",
-        "reading": "定位與推論",
-        "translation": "句序與時態",
-        "dialogue": "情境回應",
-    }[question_type]
+def balanced_options(options, answer, index):
+    values = unique_options(options + [answer])
+    normalized_answer = answer.strip().casefold()
+    correct = next(value for value in values if value.strip().casefold() == normalized_answer)
+    distractors = [value for value in values if value.strip().casefold() != normalized_answer]
+    if distractors:
+        offset = (index * 7) % len(distractors)
+        distractors = distractors[offset:] + distractors[:offset]
+    target_slot = (index - 1) % len(values)
+    result = list(distractors)
+    result.insert(min(target_slot, len(result)), correct)
+    return result
+
+
+def translation_options(answer):
+    candidates = [answer]
+    replacements = [
+        ("I ", "Me "), ("We ", "Us "), ("He ", "Him "), ("She ", "Her "),
+        (" is ", " are "), (" are ", " is "), (" was ", " is "),
+        (" were ", " are "), (" will ", " would "), (" have ", " has "),
+        (" has ", " have "), (" can ", " could "), (" took ", " takes "),
+        (" got ", " gets "), (" to ", " for "), (" before ", " after "),
+        (" whether ", " why "), (" not only ", " only "),
+    ]
+    padded = f" {answer}"
+    for original, replacement in replacements:
+        if original in padded:
+            changed = padded.replace(original, replacement, 1).lstrip()
+            if changed not in candidates:
+                candidates.append(changed)
+
+    base = answer.rstrip(".?")
+    words = base.split()
+    if len(words) >= 4:
+        question_subject = words[0] if words[0] == "I" else words[0].lower()
+        candidates.append("Did " + question_subject + " " + " ".join(words[1:]) + "?")
+    auxiliary_index = next(
+        (index for index, word in enumerate(words) if word.lower() in {"am", "is", "are", "was", "were", "will", "can", "have", "has"}),
+        None,
+    )
+    if auxiliary_index is not None:
+        negative = words[: auxiliary_index + 1] + ["not"] + words[auxiliary_index + 1 :]
+        candidates.append(" ".join(negative) + ("?" if answer.endswith("?") else "."))
+    else:
+        contextual_base = base if base.startswith("I ") else base[0].lower() + base[1:]
+        candidates.append("Yesterday, " + contextual_base + ".")
+
+    if len(words) >= 3:
+        reversed_tail = words[:-2] + [words[-1], words[-2]]
+        candidates.append(" ".join(reversed_tail) + ("?" if answer.endswith("?") else "."))
+    modal_base = base if base.startswith("I ") else base[0].lower() + base[1:]
+    candidates.append("Maybe " + modal_base + ".")
+
+    unique = unique_options(candidates)
+    if len(unique) != 4:
+        raise ValueError(f"Could not generate four translation options for: {answer}")
+    return unique
 
 
 def make_item(index, question_type, prompt, options, answer, explanation, concept, repair_hint):
+    level, unit, skill = curriculum_metadata(question_type, concept, answer, prompt)
     return {
         "id": f"ios-cap-{index:04d}",
-        "level": level_for(question_type, index),
-        "unit": unit_for(question_type),
-        "skill": skill_for(question_type),
+        "level": level,
+        "unit": unit,
+        "skill": skill,
         "source": SOURCE,
         "reviewState": "approved",
         "importBatchId": IMPORT_BATCH_ID,
@@ -69,7 +175,7 @@ def make_item(index, question_type, prompt, options, answer, explanation, concep
         "question": {
             "prompt": prompt,
             "type": question_type,
-            "options": unique_options(options),
+            "options": balanced_options(options, answer, index),
             "answer": answer,
             "acceptedAnswers": [answer],
             "explanation": explanation,
@@ -307,12 +413,7 @@ def translation_items(start_index):
     items = []
     for round_index in range(10):
         for translation_index, (zh, answer) in enumerate(translations):
-            options = [
-                answer,
-                answer.replace("I ", "Me ", 1),
-                answer.replace(" is ", " are "),
-                answer.replace(" to ", " for ", 1),
-            ]
+            options = translation_options(answer)
             prompt = f"Translation {round_index + 1}-{translation_index + 1}: Choose the best English sentence for 「{zh}」"
             items.append(
                 make_item(
@@ -385,7 +486,7 @@ def build_items():
 def main():
     items = build_items()
     seed = {
-        "questionBankSchemaVersion": 5,
+        "questionBankSchemaVersion": 6,
         "app": "English+",
         "items": items,
     }

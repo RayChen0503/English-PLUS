@@ -38,7 +38,9 @@ def main() -> int:
         "answerSlot(",
         "recentAnswerPenalty",
         "recentSkillPenalty",
-        "recentSlotPenalty",
+        "recentConceptPenalty",
+        "semanticKey(for:",
+        "rotationSeed:",
         "fallbackUsed",
     ]:
         require(question_model, marker, "shared question grouping engine")
@@ -111,6 +113,7 @@ def main() -> int:
         "QuestionGroupingEngine.balancedItems(",
         "QuestionGroupingEngine.balancedFallbackCandidates(",
         "fallbackUsed",
+        "rotationSeed:",
     ]:
         require(mock_repository, marker, "daily mission balanced selection")
 

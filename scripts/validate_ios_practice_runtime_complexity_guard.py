@@ -116,7 +116,7 @@ answer_state_body = function_body(
 require(
     "QuestionGroupingEngine.normalizedAnswer" in answer_state_body
     and "QuestionGroupingEngine.normalizedSkill" in answer_state_body
-    and "QuestionGroupingEngine.answerSlot" in answer_state_body,
+    and "QuestionGroupingEngine.normalizedConcept" in answer_state_body,
     "Nested answer distribution state must call QuestionGroupingEngine helpers explicitly so Xcode Cloud can resolve them safely.",
 )
 require(
