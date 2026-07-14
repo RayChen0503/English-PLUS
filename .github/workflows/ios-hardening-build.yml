@@ -15,6 +15,7 @@ on:
       - .github/ci-triggers/round12-ios-build
       - .github/ci-triggers/fix-d-admin-portal
       - .github/ci-triggers/fix-e-volunteer-service-scope
+      - .github/ci-triggers/fix-g-stabilization-audit
       - admin-web/**
       - firebase-tests/**
       - ios/EnglishPlus/**
