@@ -50,6 +50,10 @@ The isolated macOS workflow now has separate gates for:
 
 Both Xcode test commands use explicit execution timeouts. A hung test therefore
 fails with an inspectable result bundle instead of consuming the whole job.
+The workflow compiles the app and both test bundles once with
+`build-for-testing`; unit and UI gates then use `test-without-building` against
+the same DerivedData directory. This avoids recompiling Firebase and Google
+Sign-In for each test stage.
 
 ## Acceptance result
 

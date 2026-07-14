@@ -132,7 +132,7 @@ jobs:
           python3 scripts/validate_app_store_hardening_round13.py
           python3 scripts/validate_app_store_hardening_round14.py
 
-      - name: Build iOS Simulator target
+      - name: Build iOS Simulator test bundle
         run: |
           set -o pipefail
           xcodebuild \
@@ -143,7 +143,7 @@ jobs:
             -destination 'generic/platform=iOS Simulator' \
             -derivedDataPath "$RUNNER_TEMP/EnglishPlusDerivedData" \
             CODE_SIGNING_ALLOWED=NO \
-            clean build
+            clean build-for-testing
 
       - name: Run Swift unit and integration tests
         shell: bash
@@ -158,14 +158,14 @@ jobs:
             -scheme EnglishPlus \
             -configuration Debug \
             -destination "platform=iOS Simulator,id=$SIMULATOR_UDID" \
-            -derivedDataPath "$RUNNER_TEMP/EnglishPlusTestDerivedData" \
+            -derivedDataPath "$RUNNER_TEMP/EnglishPlusDerivedData" \
             -resultBundlePath "$RUNNER_TEMP/EnglishPlusUnitTests.xcresult" \
             -only-testing:EnglishPlusTests \
             -test-timeouts-enabled YES \
             -default-test-execution-time-allowance 60 \
             -maximum-test-execution-time-allowance 120 \
             CODE_SIGNING_ALLOWED=NO \
-            test
+            test-without-building
 
       - name: Run critical role UI tests
         shell: bash
@@ -180,7 +180,7 @@ jobs:
             -scheme EnglishPlus \
             -configuration Debug \
             -destination "platform=iOS Simulator,id=$SIMULATOR_UDID" \
-            -derivedDataPath "$RUNNER_TEMP/EnglishPlusTestDerivedData" \
+            -derivedDataPath "$RUNNER_TEMP/EnglishPlusDerivedData" \
             -resultBundlePath "$RUNNER_TEMP/EnglishPlusUITests.xcresult" \
             -only-testing:EnglishPlusUITests \
             -parallel-testing-enabled NO \
@@ -188,7 +188,7 @@ jobs:
             -default-test-execution-time-allowance 120 \
             -maximum-test-execution-time-allowance 240 \
             CODE_SIGNING_ALLOWED=NO \
-            test
+            test-without-building
 
       - name: Preserve Xcode test diagnostics
         if: always()

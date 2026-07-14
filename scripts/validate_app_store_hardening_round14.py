@@ -137,6 +137,9 @@ def main() -> int:
             "-only-testing:EnglishPlusTests",
             "Run critical role UI tests",
             "-only-testing:EnglishPlusUITests",
+            "clean build-for-testing",
+            "test-without-building",
+            'derivedDataPath "$RUNNER_TEMP/EnglishPlusDerivedData"',
             "-parallel-testing-enabled NO",
             "-test-timeouts-enabled YES",
             "EnglishPlusUnitTests.xcresult",
@@ -145,6 +148,11 @@ def main() -> int:
             "Validate Firestore rules and classroom lifecycle",
         ),
         "macOS quality gate",
+        errors,
+    )
+    require(
+        "EnglishPlusTestDerivedData" not in workflow,
+        "Xcode test steps still rebuild dependencies in a second DerivedData directory",
         errors,
     )
     require_markers(
