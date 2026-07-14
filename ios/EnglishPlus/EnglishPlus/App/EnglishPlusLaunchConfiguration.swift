@@ -16,6 +16,15 @@ enum EnglishPlusLaunchConfiguration {
         arguments.contains(Argument.uiTesting)
     }
 
+    static var isUnitTesting: Bool {
+        ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] != nil
+            && !isUITesting
+    }
+
+    static var shouldUseMockServices: Bool {
+        isUITesting || isUnitTesting
+    }
+
     static var shouldStartOffline: Bool {
         isUITesting && arguments.contains(Argument.startOffline)
     }
@@ -27,6 +36,8 @@ enum EnglishPlusLaunchConfiguration {
     }
     #else
     static let isUITesting = false
+    static let isUnitTesting = false
+    static let shouldUseMockServices = false
     static let shouldStartOffline = false
 
     static func prepareProcessIfNeeded() {}

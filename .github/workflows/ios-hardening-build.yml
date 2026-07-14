@@ -96,7 +96,7 @@ jobs:
 
           path = Path("ios/EnglishPlus/EnglishPlus/GoogleService-Info.plist")
           payload = {
-              "API_KEY": "ci-placeholder",
+              "API_KEY": "A" + ("0" * 38),
               "GCM_SENDER_ID": "000000000000",
               "PLIST_VERSION": "1",
               "BUNDLE_ID": "com.englishplus",

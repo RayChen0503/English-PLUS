@@ -79,6 +79,12 @@ ui_tests = read(
 project = read("ios/EnglishPlus/EnglishPlus.xcodeproj/project.pbxproj")
 post_clone = read("ios/EnglishPlus/ci_scripts/ci_post_clone.sh")
 workflow = read(".github/workflows/ios-hardening-build.yml")
+launch_configuration = read(
+    "ios/EnglishPlus/EnglishPlus/App/EnglishPlusLaunchConfiguration.swift"
+)
+service_factory = read(
+    "ios/EnglishPlus/EnglishPlus/Services/FirebaseAppConfigurator.swift"
+)
 release_notes = read(
     "docs/ios-testflight/testflight/internal-build-release-notes.md"
 )
@@ -138,6 +144,16 @@ checks = {
         ]
     )
     and "let errorType = underlying.map" not in diagnostics_source,
+    "unit and UI tests cannot initialize production Firebase services": all(
+        token in launch_configuration
+        for token in [
+            'environment["XCTestConfigurationFilePath"]',
+            "static var shouldUseMockServices",
+            "isUITesting || isUnitTesting",
+        ]
+    )
+    and "EnglishPlusLaunchConfiguration.shouldUseMockServices" in service_factory
+    and '"API_KEY": "A" + ("0" * 38)' in workflow,
     "teacher primary workspaces are addressable": all(
         token in teacher_source
         for token in [
