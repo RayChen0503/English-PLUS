@@ -1,6 +1,6 @@
 # Round 14 - Automated quality gates
 
-Status: Implementation complete; macOS validation pending
+Status: Complete
 
 Date: 2026-07-14
 
@@ -57,6 +57,19 @@ Sign-In for each test stage.
 
 ## Acceptance result
 
-Pending isolated macOS execution. This section will be replaced with the exact
-run, build, XCTest, UI-test and Firebase Emulator evidence before Round 14 is
-marked complete.
+- Full Python contract sweep: `82/82` passed.
+- Cloudflare Worker tests: `34/34` passed.
+- Administrator portal tests: `7/7` passed and the production bundle built.
+- Functions TypeScript build: passed.
+- Firestore Emulator role, lifecycle and query matrix: `27/27` passed.
+- Xcode scheme XML and project membership checks: passed, with no duplicate
+  project object definitions.
+- Initial isolated macOS run `29305007890` passed the clean Simulator build,
+  Swift tests `42/42`, critical role UI tests `5/5`, and uploaded both result
+  bundles. This run exposed a duplicated dependency compilation between the
+  build and unit-test stages.
+- Final isolated macOS run `29305917660` passed `build-for-testing`, Swift tests
+  `42/42` in 7.5 seconds, critical role UI tests `5/5` in 132.1 seconds, and
+  uploaded a 793,908-byte `.xcresult` artifact (`8300340274`).
+- The final workflow finished in approximately 10 minutes, down from about 18
+  minutes, while preserving identical test coverage.
