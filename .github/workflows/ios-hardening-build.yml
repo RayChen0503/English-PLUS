@@ -9,6 +9,7 @@ on:
       - codex/fix-e-volunteer-service-scope
       - codex/fix-f-post-answer-ai
       - codex/fix-g-stabilization-audit
+      - codex/app-store-hardening-d
     paths:
       - .github/workflows/ios-hardening-build.yml
       - .github/ci-triggers/round10-ios-build
@@ -17,6 +18,7 @@ on:
       - .github/ci-triggers/fix-d-admin-portal
       - .github/ci-triggers/fix-e-volunteer-service-scope
       - .github/ci-triggers/fix-g-stabilization-audit
+      - .github/ci-triggers/round13-ios-build
       - admin-web/**
       - firebase-tests/**
       - ios/EnglishPlus/**
@@ -126,6 +128,7 @@ jobs:
           python3 scripts/validate_fix_e_volunteer_service_scope.py
           python3 scripts/validate_fix_f_post_answer_ai.py
           python3 scripts/validate_fix_g_stabilization_audit.py
+          python3 scripts/validate_app_store_hardening_round13.py
 
       - name: Build iOS Simulator target
         run: |

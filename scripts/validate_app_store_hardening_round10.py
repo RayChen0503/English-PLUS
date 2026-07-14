@@ -30,6 +30,7 @@ def main() -> int:
     student = read("ios/EnglishPlus/EnglishPlus/Features/Student/StudentHomeView.swift")
     questions = read("ios/EnglishPlus/EnglishPlus/Models/Question.swift")
     repository = read("ios/EnglishPlus/EnglishPlus/Services/LearningRepositoryStore.swift")
+    repository += read("ios/EnglishPlus/EnglishPlus/Services/LearningRepositoryContracts.swift")
     mission_repository = read("ios/EnglishPlus/EnglishPlus/Services/MockLearningRepository.swift")
     teacher = read("ios/EnglishPlus/EnglishPlus/Features/Teacher/TeacherHomeView.swift")
     volunteer = read("ios/EnglishPlus/EnglishPlus/Features/Volunteer/VolunteerHomeView.swift")

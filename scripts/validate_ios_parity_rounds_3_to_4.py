@@ -11,6 +11,7 @@ TEACHER_HOME = IOS_ROOT / "Features" / "Teacher" / "TeacherHomeView.swift"
 VOLUNTEER_SHELL = IOS_ROOT / "Features" / "Volunteer" / "VolunteerShellView.swift"
 VOLUNTEER_HOME = IOS_ROOT / "Features" / "Volunteer" / "VolunteerHomeView.swift"
 LEARNING_STORE = IOS_ROOT / "Services" / "LearningRepositoryStore.swift"
+LEARNING_REPORTING = IOS_ROOT / "Services" / "LearningRepositoryStore+Reporting.swift"
 
 
 def read_text(path: Path) -> str:
@@ -32,7 +33,7 @@ def reject_markers(errors: list[str], label: str, text: str, markers: list[str])
 def validate_teacher_parity(errors: list[str]) -> None:
     shell = read_text(TEACHER_SHELL)
     home = read_text(TEACHER_HOME)
-    store = read_text(LEARNING_STORE)
+    store = read_text(LEARNING_STORE) + read_text(LEARNING_REPORTING)
 
     require_markers(
         errors,
@@ -100,7 +101,7 @@ def validate_teacher_parity(errors: list[str]) -> None:
 def validate_volunteer_parity(errors: list[str]) -> None:
     shell = read_text(VOLUNTEER_SHELL)
     home = read_text(VOLUNTEER_HOME)
-    store = read_text(LEARNING_STORE)
+    store = read_text(LEARNING_STORE) + read_text(LEARNING_REPORTING)
 
     require_markers(
         errors,

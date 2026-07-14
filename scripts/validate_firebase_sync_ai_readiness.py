@@ -15,6 +15,8 @@ FILES = {
     "firebase_auth": SERVICES / "FirebaseAuthService.swift",
     "firebase_firestore": SERVICES / "FirebaseFirestoreService.swift",
     "learning_store": SERVICES / "LearningRepositoryStore.swift",
+    "learning_contracts": SERVICES / "LearningRepositoryContracts.swift",
+    "learning_reporting": SERVICES / "LearningRepositoryStore+Reporting.swift",
     "firebase_learning": SERVICES / "FirebaseLearningRepository.swift",
     "mock_learning": SERVICES / "MockLearningRepository.swift",
     "remote_ai": SERVICES / "RemoteAIService.swift",
@@ -104,7 +106,10 @@ def validate_firebase_ready(errors):
 
 
 def validate_sync_ready(errors):
-    store = read(FILES["learning_store"])
+    store = "\n".join(
+        read(FILES[key])
+        for key in ["learning_store", "learning_contracts", "learning_reporting"]
+    )
     firebase_learning = read(FILES["firebase_learning"])
     root = read(FILES["root"])
     combined_views = "\n".join(read(FILES[key]) for key in ["student", "practice", "support", "teacher", "volunteer"])

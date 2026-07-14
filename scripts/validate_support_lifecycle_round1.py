@@ -18,6 +18,7 @@ def main() -> None:
     models = read("ios/EnglishPlus/EnglishPlus/Models/LearningModels.swift")
     schema = read("ios/EnglishPlus/EnglishPlus/Models/FirestoreSchema.swift")
     store = read("ios/EnglishPlus/EnglishPlus/Services/LearningRepositoryStore.swift")
+    store += read("ios/EnglishPlus/EnglishPlus/Services/LearningRepositoryStore+Reporting.swift")
     mock = read("ios/EnglishPlus/EnglishPlus/Services/MockLearningRepository.swift")
     firebase = read("ios/EnglishPlus/EnglishPlus/Services/FirebaseLearningRepository.swift")
 

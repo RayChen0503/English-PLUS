@@ -78,6 +78,10 @@
 		100000000000000000000168 /* AccountLifecycleService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 100000000000000000000066 /* AccountLifecycleService.swift */; };
 		100000000000000000000169 /* AccountDataView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 100000000000000000000067 /* AccountDataView.swift */; };
 		100000000000000000000170 /* PrivacyInfo.xcprivacy in Resources */ = {isa = PBXBuildFile; fileRef = 100000000000000000000068 /* PrivacyInfo.xcprivacy */; };
+		100000000000000000000171 /* LearningRepositoryConnectivity.swift in Sources */ = {isa = PBXBuildFile; fileRef = 100000000000000000000069 /* LearningRepositoryConnectivity.swift */; };
+		100000000000000000000172 /* LearningRepositoryStore+Reporting.swift in Sources */ = {isa = PBXBuildFile; fileRef = 100000000000000000000070 /* LearningRepositoryStore+Reporting.swift */; };
+		100000000000000000000173 /* RepositorySyncBanner.swift in Sources */ = {isa = PBXBuildFile; fileRef = 100000000000000000000071 /* RepositorySyncBanner.swift */; };
+		100000000000000000000174 /* LearningRepositoryContracts.swift in Sources */ = {isa = PBXBuildFile; fileRef = 100000000000000000000072 /* LearningRepositoryContracts.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -161,6 +165,10 @@
 		100000000000000000000066 /* AccountLifecycleService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AccountLifecycleService.swift; sourceTree = "<group>"; };
 		100000000000000000000067 /* AccountDataView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AccountDataView.swift; sourceTree = "<group>"; };
 		100000000000000000000068 /* PrivacyInfo.xcprivacy */ = {isa = PBXFileReference; lastKnownFileType = text.xml; path = PrivacyInfo.xcprivacy; sourceTree = "<group>"; };
+		100000000000000000000069 /* LearningRepositoryConnectivity.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LearningRepositoryConnectivity.swift; sourceTree = "<group>"; };
+		100000000000000000000070 /* LearningRepositoryStore+Reporting.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "LearningRepositoryStore+Reporting.swift"; sourceTree = "<group>"; };
+		100000000000000000000071 /* RepositorySyncBanner.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RepositorySyncBanner.swift; sourceTree = "<group>"; };
+		100000000000000000000072 /* LearningRepositoryContracts.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LearningRepositoryContracts.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -289,7 +297,10 @@
 				100000000000000000000037 /* FirestoreService.swift */,
 				100000000000000000000038 /* MockFirestoreService.swift */,
 				100000000000000000000047 /* FirebaseFirestoreService.swift */,
+				100000000000000000000069 /* LearningRepositoryConnectivity.swift */,
+				100000000000000000000072 /* LearningRepositoryContracts.swift */,
 				100000000000000000000048 /* LearningRepositoryStore.swift */,
+				100000000000000000000070 /* LearningRepositoryStore+Reporting.swift */,
 				100000000000000000000041 /* MockLearningRepository.swift */,
 				100000000000000000000049 /* FirebaseLearningRepository.swift */,
 			);
@@ -401,6 +412,7 @@
 			children = (
 				100000000000000000000054 /* SupportQuestionSnapshotCard.swift */,
 				100000000000000000000055 /* StaffSupportActionBar.swift */,
+				100000000000000000000071 /* RepositorySyncBanner.swift */,
 				100000000000000000000067 /* AccountDataView.swift */,
 			);
 			path = Shared;
@@ -573,7 +585,10 @@
 				100000000000000000000135 /* FirestoreService.swift in Sources */,
 				100000000000000000000136 /* MockFirestoreService.swift in Sources */,
 				100000000000000000000145 /* FirebaseFirestoreService.swift in Sources */,
+				100000000000000000000171 /* LearningRepositoryConnectivity.swift in Sources */,
+				100000000000000000000174 /* LearningRepositoryContracts.swift in Sources */,
 				100000000000000000000146 /* LearningRepositoryStore.swift in Sources */,
+				100000000000000000000172 /* LearningRepositoryStore+Reporting.swift in Sources */,
 				100000000000000000000139 /* MockLearningRepository.swift in Sources */,
 				100000000000000000000147 /* FirebaseLearningRepository.swift in Sources */,
 				100000000000000000000112 /* RoleSelectionView.swift in Sources */,
@@ -587,6 +602,7 @@
 				100000000000000000000117 /* SupportView.swift in Sources */,
 				100000000000000000000155 /* SupportQuestionSnapshotCard.swift in Sources */,
 				100000000000000000000156 /* StaffSupportActionBar.swift in Sources */,
+				100000000000000000000173 /* RepositorySyncBanner.swift in Sources */,
 				100000000000000000000169 /* AccountDataView.swift in Sources */,
 				100000000000000000000154 /* RuntimeDiagnosticsView.swift in Sources */,
 				100000000000000000000118 /* TeacherShellView.swift in Sources */,

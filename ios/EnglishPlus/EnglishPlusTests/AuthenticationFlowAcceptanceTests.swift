@@ -519,6 +519,251 @@ final class StabilizationDashboardAcceptanceTests: XCTestCase {
     }
 }
 
+@MainActor
+final class LearningRepositoryReliabilityTests: XCTestCase {
+    func testDisconnectKeepsLocalDataAndReconnectRestartsListener() async {
+        let connectivity = ManualNetworkConnectivityMonitor(initialStatus: .connected)
+        let backend = ReliabilityTestLearningBackend(behaviors: [.snapshot, .snapshot])
+        let store = LearningRepositoryStore(
+            backend: backend,
+            connectivityMonitor: connectivity,
+            retryDelaysNanoseconds: [1_000_000]
+        )
+
+        store.startRealtimeSync(classId: "class-a", user: nil, profile: nil)
+        XCTAssertEqual(store.syncStatus, .listening(classId: "class-a"))
+        XCTAssertNotNil(store.lastSuccessfulSyncAt)
+
+        connectivity.send(.disconnected)
+        try? await Task.sleep(nanoseconds: 1_000_000)
+        guard case .offlineFallback = store.syncStatus else {
+            return XCTFail("Disconnect must switch to the local-data fallback state")
+        }
+
+        connectivity.send(.connected)
+        try? await Task.sleep(nanoseconds: 1_000_000)
+        XCTAssertEqual(backend.listenerStartCount, 2)
+        XCTAssertEqual(store.syncStatus, .listening(classId: "class-a"))
+    }
+
+    func testListenerFailureRetriesWithBackoffAndRecovers() async {
+        let connectivity = ManualNetworkConnectivityMonitor(initialStatus: .connected)
+        let backend = ReliabilityTestLearningBackend(behaviors: [.failure, .snapshot])
+        let store = LearningRepositoryStore(
+            backend: backend,
+            connectivityMonitor: connectivity,
+            retryDelaysNanoseconds: [1_000_000]
+        )
+
+        store.startRealtimeSync(classId: "class-b", user: nil, profile: nil)
+        guard case .offlineFallback = store.syncStatus else {
+            return XCTFail("Listener errors must preserve local data and expose recovery")
+        }
+
+        try? await Task.sleep(nanoseconds: 25_000_000)
+        XCTAssertEqual(backend.listenerStartCount, 2)
+        XCTAssertEqual(store.syncStatus, .listening(classId: "class-b"))
+    }
+
+    func testStoppingSyncCancelsScheduledRetry() async {
+        let connectivity = ManualNetworkConnectivityMonitor(initialStatus: .connected)
+        let backend = ReliabilityTestLearningBackend(behaviors: [.failure, .snapshot])
+        let store = LearningRepositoryStore(
+            backend: backend,
+            connectivityMonitor: connectivity,
+            retryDelaysNanoseconds: [50_000_000]
+        )
+
+        store.startRealtimeSync(classId: "class-c", user: nil, profile: nil)
+        store.stopRealtimeSync()
+        try? await Task.sleep(nanoseconds: 80_000_000)
+
+        XCTAssertEqual(backend.listenerStartCount, 1)
+        XCTAssertEqual(store.syncStatus, .idle)
+    }
+
+    func testRepeatedStartForSameScopeDoesNotRestartListener() {
+        let connectivity = ManualNetworkConnectivityMonitor(initialStatus: .connected)
+        let backend = ReliabilityTestLearningBackend(behaviors: [.snapshot])
+        let store = LearningRepositoryStore(
+            backend: backend,
+            connectivityMonitor: connectivity,
+            retryDelaysNanoseconds: [1_000_000]
+        )
+
+        store.startRealtimeSync(classId: "class-d", user: nil, profile: nil)
+        store.startRealtimeSync(classId: "class-d", user: nil, profile: nil)
+
+        XCTAssertEqual(backend.listenerStartCount, 1)
+        XCTAssertEqual(store.syncStatus, .listening(classId: "class-d"))
+    }
+}
+
+private final class ManualNetworkConnectivityMonitor: NetworkConnectivityMonitoring, @unchecked Sendable {
+    private(set) var currentStatus: NetworkConnectivityStatus
+    private var onChange: (@Sendable (NetworkConnectivityStatus) -> Void)?
+
+    init(initialStatus: NetworkConnectivityStatus) {
+        currentStatus = initialStatus
+    }
+
+    func start(onChange: @escaping @Sendable (NetworkConnectivityStatus) -> Void) {
+        self.onChange = onChange
+    }
+
+    func stop() {
+        onChange = nil
+    }
+
+    func send(_ status: NetworkConnectivityStatus) {
+        currentStatus = status
+        onChange?(status)
+    }
+}
+
+@MainActor
+private final class ReliabilityTestLearningBackend: LearningRepositoryBackend {
+    enum ListenerBehavior {
+        case snapshot
+        case failure
+    }
+
+    private let base = MockLearningRepository(localPersistence: MemoryLearningPersistence())
+    private var behaviors: [ListenerBehavior]
+    private(set) var listenerStartCount = 0
+
+    init(behaviors: [ListenerBehavior]) {
+        self.behaviors = behaviors
+    }
+
+    var snapshot: LearningRepositorySnapshot { base.snapshot }
+    var supportedQuestionTypes: [QuestionType] { base.supportedQuestionTypes }
+    var defaultPreferredQuestionTypes: [QuestionType] { base.defaultPreferredQuestionTypes }
+    var questionBankItems: [QuestionBankItem] { base.questionBankItems }
+    var questionPracticeSets: [QuestionPracticeSet] { base.questionPracticeSets }
+
+    func refresh() async throws {}
+
+    func startRealtimeListener(
+        classId: String,
+        user: DemoUser?,
+        profile: AppUserProfile?,
+        onChange: @escaping @MainActor (LearningRepositorySnapshot) -> Void,
+        onError: @escaping @MainActor (Error) -> Void
+    ) -> LearningRepositoryListenerToken {
+        listenerStartCount += 1
+        let behavior = behaviors.isEmpty ? .snapshot : behaviors.removeFirst()
+        switch behavior {
+        case .snapshot:
+            onChange(snapshot)
+        case .failure:
+            onError(ReliabilityTestError.offline)
+        }
+        return AnyLearningRepositoryListenerToken {}
+    }
+
+    func generateMission(
+        for user: DemoUser?,
+        profile: AppUserProfile?,
+        moodScore: Int,
+        availableTimeLevel: Int,
+        wantsChallenge: Bool,
+        preferredQuestionTypes: [QuestionType],
+        aiMission: AiMissionOutput?
+    ) {
+        base.generateMission(
+            for: user,
+            profile: profile,
+            moodScore: moodScore,
+            availableTimeLevel: availableTimeLevel,
+            wantsChallenge: wantsChallenge,
+            preferredQuestionTypes: preferredQuestionTypes,
+            aiMission: aiMission
+        )
+    }
+
+    func startNewLearningRound(for user: DemoUser?, profile: AppUserProfile?) {
+        base.startNewLearningRound(for: user, profile: profile)
+    }
+
+    func continueLearningFlow() { base.continueLearningFlow() }
+    func enterFreePracticeMode() { base.enterFreePracticeMode() }
+    func returnToMissionFlow() { base.returnToMissionFlow() }
+    func completeFreePracticeSession(correctCount: Int, totalCount: Int) {
+        base.completeFreePracticeSession(correctCount: correctCount, totalCount: totalCount)
+    }
+    func submitMissionAnswer(_ answer: String) -> MissionAttempt? {
+        base.submitMissionAnswer(answer)
+    }
+    func supportRequests(forStudentUid studentUid: String?) -> [StudentSupportRequest] {
+        base.supportRequests(forStudentUid: studentUid)
+    }
+    func sendSupportRequest(
+        from user: DemoUser?,
+        profile: AppUserProfile?,
+        option: SupportOption,
+        message: String?
+    ) async throws {
+        try await base.sendSupportRequest(from: user, profile: profile, option: option, message: message)
+    }
+    func sendQuestionSupportRequest(
+        from user: DemoUser?,
+        profile: AppUserProfile?,
+        option: SupportOption,
+        questionItem: QuestionBankItem,
+        selectedAnswer: String?,
+        message: String
+    ) async throws {
+        try await base.sendQuestionSupportRequest(
+            from: user,
+            profile: profile,
+            option: option,
+            questionItem: questionItem,
+            selectedAnswer: selectedAnswer,
+            message: message
+        )
+    }
+    func addTeacherReply(to requestId: String, body: String) async throws {
+        try await base.addTeacherReply(to: requestId, body: body)
+    }
+    func addVolunteerReply(to requestId: String, body: String) async throws {
+        try await base.addVolunteerReply(to: requestId, body: body)
+    }
+    func markSupportThreadReadByStudent(_ requestId: String) async throws {
+        try await base.markSupportThreadReadByStudent(requestId)
+    }
+    func archiveSupportThreadForStudent(_ requestId: String) async throws {
+        try await base.archiveSupportThreadForStudent(requestId)
+    }
+    func withdrawSupportRequest(_ requestId: String) async throws {
+        try await base.withdrawSupportRequest(requestId)
+    }
+    func markSupportThreadHandledWithoutReply(_ requestId: String, by staffUser: DemoUser?) async throws {
+        try await base.markSupportThreadHandledWithoutReply(requestId, by: staffUser)
+    }
+    func archiveSupportThreadForStaff(_ requestId: String, by staffUser: DemoUser?) async throws {
+        try await base.archiveSupportThreadForStaff(requestId, by: staffUser)
+    }
+    func assignPracticeSet(_ set: QuestionPracticeSet, to student: StaffStudentSummary, by teacher: DemoUser?) {
+        base.assignPracticeSet(set, to: student, by: teacher)
+    }
+    func startAssignedPracticeTask(_ assignment: TeacherAssignedPracticeTask) {
+        base.startAssignedPracticeTask(assignment)
+    }
+    func withdrawAssignedPracticeTask(_ assignmentId: String) {
+        base.withdrawAssignedPracticeTask(assignmentId)
+    }
+    func eraseLocalData(for uid: String) { base.eraseLocalData(for: uid) }
+}
+
+private enum ReliabilityTestError: LocalizedError {
+    case offline
+
+    var errorDescription: String? {
+        "測試網路暫時無法使用。"
+    }
+}
+
 private final class MemoryLearningPersistence: LocalLearningPersistence {
     private var snapshot: LocalLearningSnapshot?
 

@@ -20,6 +20,7 @@ student_shell = read("ios/EnglishPlus/EnglishPlus/Features/Student/StudentShellV
 student_home = read("ios/EnglishPlus/EnglishPlus/Features/Student/StudentHomeView.swift")
 teacher = read("ios/EnglishPlus/EnglishPlus/Features/Teacher/TeacherHomeView.swift")
 repository = read("ios/EnglishPlus/EnglishPlus/Services/LearningRepositoryStore.swift")
+repository += read("ios/EnglishPlus/EnglishPlus/Services/LearningRepositoryStore+Reporting.swift")
 tests = read("ios/EnglishPlus/EnglishPlusTests/AuthenticationFlowAcceptanceTests.swift")
 report = read("docs/app-store-hardening/fix-g-stabilization-audit.md")
 

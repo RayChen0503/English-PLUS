@@ -79,8 +79,12 @@ struct RuntimeDiagnosticsView: View {
         switch learningRepository.syncStatus {
         case .idle:
             return "idle"
+        case .connecting(let classId):
+            return "connecting \(classId)"
         case .listening(let classId):
             return "listening \(classId)"
+        case .retrying(let classId, let attempt):
+            return "retrying \(classId) attempt \(attempt)"
         case .offlineFallback(let reason):
             return "fallback \(reason)"
         }

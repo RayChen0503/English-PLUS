@@ -33,6 +33,13 @@ struct RootView: View {
         .onChange(of: appState.currentProfile?.activeClassId) { _, _ in
             startRealtimeSyncIfNeeded()
         }
+        .safeAreaInset(edge: .top, spacing: 0) {
+            RepositorySyncBanner(
+                status: learningRepository.syncStatus,
+                lastSuccessfulSyncAt: learningRepository.lastSuccessfulSyncAt,
+                onRetry: learningRepository.retryRealtimeSync
+            )
+        }
         .alert(
             "同步未完成",
             isPresented: Binding(

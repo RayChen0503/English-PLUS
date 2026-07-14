@@ -7,6 +7,7 @@ FILES = {
     "theme": ROOT / "ios" / "EnglishPlus" / "EnglishPlus" / "Core" / "EPTheme.swift",
     "models": ROOT / "ios" / "EnglishPlus" / "EnglishPlus" / "Models" / "LearningModels.swift",
     "store": ROOT / "ios" / "EnglishPlus" / "EnglishPlus" / "Services" / "LearningRepositoryStore.swift",
+    "reporting": ROOT / "ios" / "EnglishPlus" / "EnglishPlus" / "Services" / "LearningRepositoryStore+Reporting.swift",
     "mock_repo": ROOT / "ios" / "EnglishPlus" / "EnglishPlus" / "Services" / "MockLearningRepository.swift",
     "map": ROOT / "ios" / "EnglishPlus" / "EnglishPlus" / "Features" / "Student" / "StudentLearningMapView.swift",
 }
@@ -27,7 +28,7 @@ def main() -> None:
 
     theme = read(FILES["theme"])
     models = read(FILES["models"])
-    store = read(FILES["store"])
+    store = read(FILES["store"]) + read(FILES["reporting"])
     mock_repo = read(FILES["mock_repo"])
     learning_map = read(FILES["map"])
 

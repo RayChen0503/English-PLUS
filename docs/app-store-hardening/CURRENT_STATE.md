@@ -17,9 +17,10 @@ learning must remain usable without joining a class.
 ## Repository and release safety
 
 - Repository: `RayChen0503/English-PLUS`
-- Stable release baseline: `main` at `2b43bdc`
-- Active stabilization branch: `codex/fix-g-stabilization-audit`, stacked on
-  completed FIX-A through FIX-F branches for one later release checkpoint.
+- Stable release baseline: `main` at `d41aa0e`, containing the completed
+  FIX-A through FIX-G repair block.
+- Active hardening branch: `codex/app-store-hardening-d` for Round 13 through
+  Round 16. It remains isolated from `main` until the four-round Block D gate.
 - Completed hardening rounds:
   - Round 1 - baseline audit (`round-01-baseline-audit.md`)
   - Round 2 - personal and multi-class domain (`round-02-personal-and-class-domain.md`)
@@ -201,10 +202,10 @@ learning must remain usable without joining a class.
 
 ## Next gate
 
-FIX-G is complete on `codex/fix-g-stabilization-audit`. Keep the branch
-isolated until the user explicitly chooses the next release checkpoint. Do not
-merge `main`, deploy backend resources or trigger Xcode Cloud without that
-instruction.
+Round 13 implementation is ready for its isolated macOS compile and Swift-test
+gate on `codex/app-store-hardening-d`. Do not merge this branch to `main`,
+deploy backend resources or trigger Xcode Cloud; the next release checkpoint
+is the complete Round 13-16 Block D audit.
 
 ## Maintenance rule
 

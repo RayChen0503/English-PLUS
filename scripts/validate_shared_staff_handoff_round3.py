@@ -21,6 +21,7 @@ def reject(text: str, needle: str, label: str) -> None:
 def main() -> None:
     model = read("ios/EnglishPlus/EnglishPlus/Models/LearningModels.swift")
     store = read("ios/EnglishPlus/EnglishPlus/Services/LearningRepositoryStore.swift")
+    store += read("ios/EnglishPlus/EnglishPlus/Services/LearningRepositoryStore+Reporting.swift")
     mock_repo = read("ios/EnglishPlus/EnglishPlus/Services/MockLearningRepository.swift")
     firebase_repo = read("ios/EnglishPlus/EnglishPlus/Services/FirebaseLearningRepository.swift")
     student = read("ios/EnglishPlus/EnglishPlus/Features/Student/StudentHomeView.swift")

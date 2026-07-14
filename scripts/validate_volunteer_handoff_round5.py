@@ -7,6 +7,7 @@ VOLUNTEER_HOME = ROOT / "ios" / "EnglishPlus" / "EnglishPlus" / "Features" / "Vo
 VOLUNTEER_SHELL = ROOT / "ios" / "EnglishPlus" / "EnglishPlus" / "Features" / "Volunteer" / "VolunteerShellView.swift"
 SUPPORT_VIEW = ROOT / "ios" / "EnglishPlus" / "EnglishPlus" / "Features" / "Support" / "SupportView.swift"
 STORE = ROOT / "ios" / "EnglishPlus" / "EnglishPlus" / "Services" / "LearningRepositoryStore.swift"
+REPORTING_STORE = ROOT / "ios" / "EnglishPlus" / "EnglishPlus" / "Services" / "LearningRepositoryStore+Reporting.swift"
 MOCK_REPOSITORY = ROOT / "ios" / "EnglishPlus" / "EnglishPlus" / "Services" / "MockLearningRepository.swift"
 FIREBASE_REPOSITORY = ROOT / "ios" / "EnglishPlus" / "EnglishPlus" / "Services" / "FirebaseLearningRepository.swift"
 
@@ -22,7 +23,7 @@ def read(path: Path) -> str:
 
 def main() -> int:
     errors: list[str] = []
-    for path in [VOLUNTEER_HOME, VOLUNTEER_SHELL, SUPPORT_VIEW, STORE, MOCK_REPOSITORY, FIREBASE_REPOSITORY]:
+    for path in [VOLUNTEER_HOME, VOLUNTEER_SHELL, SUPPORT_VIEW, STORE, REPORTING_STORE, MOCK_REPOSITORY, FIREBASE_REPOSITORY]:
         require(path.exists(), f"missing file: {path.relative_to(ROOT)}", errors)
 
     if errors:
@@ -33,7 +34,7 @@ def main() -> int:
     volunteer_home = read(VOLUNTEER_HOME)
     volunteer_shell = read(VOLUNTEER_SHELL)
     support_view = read(SUPPORT_VIEW)
-    store = read(STORE)
+    store = read(STORE) + read(REPORTING_STORE)
     mock_repository = read(MOCK_REPOSITORY)
     firebase_repository = read(FIREBASE_REPOSITORY)
 

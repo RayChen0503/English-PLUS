@@ -1,133 +1,14 @@
 import Foundation
 
-struct LearningRepositorySnapshot: Equatable {
-    var currentCheckIn: MoodCheckIn?
-    var currentMission: DailyMission?
-    var missionAttempts: [MissionAttempt]
-    var supportRequests: [StudentSupportRequest]
-    var assignedPracticeTasks: [TeacherAssignedPracticeTask]
-    var learningFlow: LearningFlowState
-}
+private struct LearningRepositorySyncContext {
+    let classId: String
+    let user: DemoUser?
+    let profile: AppUserProfile?
 
-enum LearningRepositorySyncStatus: Equatable {
-    case idle
-    case listening(classId: String)
-    case offlineFallback(reason: String)
-}
-
-struct PracticeLaunchRequest: Identifiable, Equatable {
-    let id: String
-    let title: String
-    let questionIds: [String]
-}
-
-enum SupportMutationError: LocalizedError {
-    case remoteSyncUnavailable
-    case classRequired
-    case unauthenticated
-    case roleNotAllowed
-    case requestNotFound
-    case requestAlreadyHandled
-    case emptyReply
-    case invalidSupportContext
-
-    var errorDescription: String? {
-        switch self {
-        case .remoteSyncUnavailable:
-            return "目前無法連上班級同步服務，請確認網路後再試一次。"
-        case .classRequired:
-            return "請先加入或切換到班級，再使用老師與志工協助。"
-        case .unauthenticated:
-            return "登入狀態已失效，請重新登入後再試一次。"
-        case .roleNotAllowed:
-            return "目前帳號沒有執行這個操作的權限。"
-        case .requestNotFound:
-            return "這筆求助已不存在或已被收回，列表即將重新整理。"
-        case .requestAlreadyHandled:
-            return "這筆求助已有新回覆或狀態已改變，請重新確認後再操作。"
-        case .emptyReply:
-            return "請先輸入回覆內容。"
-        case .invalidSupportContext:
-            return "題目資料不完整，這次沒有送出。請回到題目後重新求助。"
-        }
+    var scopeKey: String {
+        [classId, profile?.id ?? user?.id ?? "anonymous", profile?.role.rawValue ?? user?.role.rawValue ?? "unknown"]
+            .joined(separator: "|")
     }
-}
-
-protocol LearningRepositoryListenerToken {
-    func cancel()
-}
-
-final class AnyLearningRepositoryListenerToken: LearningRepositoryListenerToken {
-    private let onCancel: () -> Void
-
-    init(onCancel: @escaping () -> Void) {
-        self.onCancel = onCancel
-    }
-
-    func cancel() {
-        onCancel()
-    }
-}
-
-@MainActor
-protocol LearningRepositoryBackend: AnyObject {
-    var snapshot: LearningRepositorySnapshot { get }
-    var supportedQuestionTypes: [QuestionType] { get }
-    var defaultPreferredQuestionTypes: [QuestionType] { get }
-    var questionBankItems: [QuestionBankItem] { get }
-    var questionPracticeSets: [QuestionPracticeSet] { get }
-
-    func refresh() async throws
-    func startRealtimeListener(
-        classId: String,
-        user: DemoUser?,
-        profile: AppUserProfile?,
-        onChange: @escaping @MainActor (LearningRepositorySnapshot) -> Void,
-        onError: @escaping @MainActor (Error) -> Void
-    ) -> LearningRepositoryListenerToken
-
-    func generateMission(
-        for user: DemoUser?,
-        profile: AppUserProfile?,
-        moodScore: Int,
-        availableTimeLevel: Int,
-        wantsChallenge: Bool,
-        preferredQuestionTypes: [QuestionType],
-        aiMission: AiMissionOutput?
-    )
-
-    func startNewLearningRound(for user: DemoUser?, profile: AppUserProfile?)
-    func continueLearningFlow()
-    func enterFreePracticeMode()
-    func returnToMissionFlow()
-    func completeFreePracticeSession(correctCount: Int, totalCount: Int)
-    func submitMissionAnswer(_ answer: String) -> MissionAttempt?
-    func supportRequests(forStudentUid studentUid: String?) -> [StudentSupportRequest]
-    func sendSupportRequest(
-        from user: DemoUser?,
-        profile: AppUserProfile?,
-        option: SupportOption,
-        message: String?
-    ) async throws
-    func sendQuestionSupportRequest(
-        from user: DemoUser?,
-        profile: AppUserProfile?,
-        option: SupportOption,
-        questionItem: QuestionBankItem,
-        selectedAnswer: String?,
-        message: String
-    ) async throws
-    func addTeacherReply(to requestId: String, body: String) async throws
-    func addVolunteerReply(to requestId: String, body: String) async throws
-    func markSupportThreadReadByStudent(_ requestId: String) async throws
-    func archiveSupportThreadForStudent(_ requestId: String) async throws
-    func withdrawSupportRequest(_ requestId: String) async throws
-    func markSupportThreadHandledWithoutReply(_ requestId: String, by staffUser: DemoUser?) async throws
-    func archiveSupportThreadForStaff(_ requestId: String, by staffUser: DemoUser?) async throws
-    func assignPracticeSet(_ set: QuestionPracticeSet, to student: StaffStudentSummary, by teacher: DemoUser?)
-    func startAssignedPracticeTask(_ assignment: TeacherAssignedPracticeTask)
-    func withdrawAssignedPracticeTask(_ assignmentId: String)
-    func eraseLocalData(for uid: String)
 }
 
 @MainActor
@@ -139,24 +20,47 @@ final class LearningRepositoryStore: ObservableObject {
     @Published private(set) var assignedPracticeTasks: [TeacherAssignedPracticeTask] = []
     @Published private(set) var learningFlow: LearningFlowState = .initial(dateKey: "1970-01-01")
     @Published private(set) var syncStatus: LearningRepositorySyncStatus = .idle
+    @Published private(set) var connectivityStatus: NetworkConnectivityStatus = .unknown
+    @Published private(set) var lastSuccessfulSyncAt: Date?
     @Published private(set) var pendingPracticeLaunch: PracticeLaunchRequest?
     @Published private(set) var pendingSupportActionKeys = Set<String>()
     @Published private(set) var supportActionErrorMessage: String?
 
     private let backend: any LearningRepositoryBackend
+    private let connectivityMonitor: any NetworkConnectivityMonitoring
+    private let retryDelaysNanoseconds: [UInt64]
     private var listener: LearningRepositoryListenerToken?
+    private var retryTask: Task<Void, Never>?
+    private var syncContext: LearningRepositorySyncContext?
+    private var consecutiveSyncFailures = 0
 
     convenience init() {
         self.init(backend: MockLearningRepository())
     }
 
-    init(backend: any LearningRepositoryBackend) {
+    init(
+        backend: any LearningRepositoryBackend,
+        connectivityMonitor: any NetworkConnectivityMonitoring = NetworkConnectivityMonitor(),
+        retryDelaysNanoseconds: [UInt64] = [1_000_000_000, 2_000_000_000, 5_000_000_000, 10_000_000_000]
+    ) {
         self.backend = backend
+        self.connectivityMonitor = connectivityMonitor
+        self.retryDelaysNanoseconds = retryDelaysNanoseconds.isEmpty
+            ? [1_000_000_000]
+            : retryDelaysNanoseconds
         apply(backend.snapshot)
+        connectivityStatus = connectivityMonitor.currentStatus
+        connectivityMonitor.start { [weak self] status in
+            Task { @MainActor [weak self] in
+                self?.handleConnectivityChange(status)
+            }
+        }
     }
 
     deinit {
+        retryTask?.cancel()
         listener?.cancel()
+        connectivityMonitor.stop()
     }
 
     var supportedQuestionTypes: [QuestionType] {
@@ -191,223 +95,110 @@ final class LearningRepositoryStore: ObservableObject {
         learningFlow.hasCompletedFreePracticeSession
     }
 
-    var recentAccuracy: Double? {
-        guard !missionAttempts.isEmpty else { return nil }
-        let correctCount = missionAttempts.filter(\.isCorrect).count
-        return Double(correctCount) / Double(missionAttempts.count)
-    }
-
-    var recentWeakSkills: [String] {
-        guard let currentMission else { return [] }
-        let questionsById = Dictionary(
-            currentMission.questions.map { ($0.id, $0) },
-            uniquingKeysWith: { existing, _ in existing }
-        )
-        let missedSkills = missionAttempts
-            .filter { !$0.isCorrect }
-            .compactMap { questionsById[$0.questionId]?.question.concept }
-        return Array(missedSkills.uniqued().prefix(3))
-    }
-
-    var progressSnapshot: StudentProgressSnapshot? {
-        guard let currentMission else { return nil }
-        return StudentProgressSnapshot(
-            correctCount: uniqueCorrectQuestionIds.count,
-            targetCorrectCount: currentMission.targetCorrectCount,
-            status: currentMission.status
-        )
-    }
-
-    var nextMissionQuestion: QuestionBankItem? {
-        guard let currentMission else { return nil }
-        return currentMission.questions.first { !uniqueCorrectQuestionIds.contains($0.id) }
-    }
-
-    var teacherQueue: [StudentSupportRequest] {
-        supportRequests
-            .filter { $0.isVisibleInStaffQueue(for: .teacher) }
-            .sorted { priorityScore($0.priority) > priorityScore($1.priority) }
-    }
-
-    var volunteerQueue: [StudentSupportRequest] {
-        supportRequests
-            .filter { $0.isVisibleInStaffQueue(for: .volunteer) }
-            .sorted { priorityScore($0.priority) > priorityScore($1.priority) }
-    }
-
-    var staffStudentSummaries: [StaffStudentSummary] {
-        supportRequests.map { request in
-            StaffStudentSummary(
-                id: request.studentUid,
-                studentUid: request.studentUid,
-                studentName: request.studentName,
-                classCode: request.classCode,
-                moodScore: request.moodScore,
-                riskLevel: request.priority,
-                missionProgress: request.status.uiTitle,
-                nextAction: request.status == .replied ? "確認學生是否已讀回覆" : "先回應學生求助"
-            )
-        }
-        .uniqued(by: \.studentUid)
-    }
-
-    var staffDashboardMetrics: StaffDashboardMetrics {
-        let moodScores = supportRequests.compactMap(\.moodScore)
-        let averageMood = moodScores.isEmpty
-            ? "尚無"
-            : String(format: "%.1f/5", Double(moodScores.reduce(0, +)) / Double(moodScores.count))
-
-        return StaffDashboardMetrics(
-            studentCount: staffStudentSummaries.count,
-            priorityHelpCount: teacherQueue.filter { $0.priority == .high }.count,
-            waitingHelpCount: supportRequests.filter { $0.countsTowardSharedStaffBadge(for: .teacher) }.count,
-            repliedCount: supportRequests.filter { $0.status == .replied || $0.status == .readByStudent || $0.status == .staffHandledNoReply }.count,
-            questionCount: SeedData.approvedQuestionBankItems.count,
-            averageMoodText: averageMood
-        )
-    }
-
-    var volunteerDashboardMetrics: VolunteerDashboardMetrics {
-        VolunteerDashboardMetrics(
-            waitingCount: supportRequests.filter { $0.countsTowardSharedStaffBadge(for: .volunteer) }.count,
-            highPriorityCount: volunteerQueue.filter { $0.priority == .high }.count,
-            repliedByVolunteerCount: supportRequests.filter { request in
-                request.replies.contains {
-                    $0.authorRole == .volunteer && $0.visibleToStudent
-                }
-            }.count,
-            syncRecordCount: supportRequests.reduce(0) { count, request in
-                count + request.replies.count
-            }
-        )
-    }
-
-    var questionBankOverview: [QuestionBankTypeOverview] {
-        let groupedByType = Dictionary(grouping: SeedData.approvedQuestionBankItems) { item in
-            item.question.type
-        }
-
-        return QuestionType.allCases.compactMap { type in
-            guard let items = groupedByType[type], !items.isEmpty else { return nil }
-            let levelCounts = Dictionary(grouping: items) { item in
-                item.level
-            }.mapValues(\.count)
-
-            return QuestionBankTypeOverview(
-                type: type,
-                totalCount: items.count,
-                levelCounts: levelCounts
-            )
-        }
-    }
-
-    var classroomReportExport: ClassroomReportExport {
-        makeClassroomReportExport()
-    }
-
-    func makeClassroomReportExport(
-        rosterStudentCount: Int? = nil,
-        activeClassId: String? = nil
-    ) -> ClassroomReportExport {
-        let metrics = staffDashboardMetrics
-        let priorityRows = teacherQueue.prefix(5).map { request in
-            ClassroomReportStudentRow(
-                id: request.id,
-                studentName: request.studentName,
-                classCode: request.classCode,
-                priorityText: request.priority.uiTitle,
-                statusText: request.status.uiTitle,
-                summary: request.studentMessage
-            )
-        }
-        let questionRows = questionBankOverview.map { overview in
-            ClassroomReportQuestionBankRow(
-                id: overview.id,
-                typeTitle: overview.type.title,
-                totalCount: overview.totalCount,
-                levelSummary: overview.levelSummary
-            )
-        }
-
-        return ClassroomReportExport(
-            title: "English+ 班級週報",
-            classCode: activeClassId ?? priorityRows.first?.classCode ?? "未選擇班級",
-            generatedAtText: Self.teacherReportDateFormatter.string(from: Date()),
-            metrics: [
-                ClassroomReportMetric(
-                    id: "students",
-                    label: "追蹤學生",
-                    value: "\(rosterStudentCount ?? metrics.studentCount)",
-                    detail: "位"
-                ),
-                ClassroomReportMetric(
-                    id: "priority-help",
-                    label: "優先關懷",
-                    value: "\(metrics.priorityHelpCount)",
-                    detail: "位"
-                ),
-                ClassroomReportMetric(
-                    id: "waiting-help",
-                    label: "待回應求助",
-                    value: "\(metrics.waitingHelpCount)",
-                    detail: "件"
-                ),
-                ClassroomReportMetric(
-                    id: "average-mood",
-                    label: "平均心情",
-                    value: metrics.averageMoodText,
-                    detail: ""
-                ),
-            ],
-            priorityStudents: priorityRows,
-            questionBankRows: questionRows,
-            recommendedActions: recommendedReportActions
-        )
-    }
-
-    var visibleVolunteerReplies: [SupportReply] {
-        supportRequests
-            .flatMap(\.replies)
-            .filter { $0.authorRole == .volunteer && $0.visibleToStudent }
-            .sorted { $0.createdAt > $1.createdAt }
-    }
-
     func startRealtimeSync(classId: String, user: DemoUser?, profile: AppUserProfile?) {
-        listener?.cancel()
-        listener = backend.startRealtimeListener(
+        let context = LearningRepositorySyncContext(
             classId: classId,
             user: user,
             profile: profile
-        ) { [weak self] snapshot in
-            self?.apply(snapshot)
-        } onError: { [weak self] error in
-            self?.updateSyncStatus(.offlineFallback(reason: String(describing: error)))
+        )
+        if syncContext?.scopeKey == context.scopeKey, listener != nil {
+            syncContext = context
+            return
         }
-        updateSyncStatus(.listening(classId: classId))
+
+        retryTask?.cancel()
+        retryTask = nil
+        consecutiveSyncFailures = 0
+        syncContext = context
+        beginRealtimeListening(context: context, isRetry: false)
+    }
+
+    func retryRealtimeSync() {
+        guard let context = syncContext else { return }
+        retryTask?.cancel()
+        retryTask = nil
+        beginRealtimeListening(context: context, isRetry: true)
+    }
+
+    private func beginRealtimeListening(
+        context: LearningRepositorySyncContext,
+        isRetry: Bool
+    ) {
+        listener?.cancel()
+        let attempt = max(consecutiveSyncFailures + (isRetry ? 1 : 0), 1)
+        updateSyncStatus(
+            isRetry
+                ? .retrying(classId: context.classId, attempt: attempt)
+                : .connecting(classId: context.classId)
+        )
+        listener = backend.startRealtimeListener(
+            classId: context.classId,
+            user: context.user,
+            profile: context.profile
+        ) { [weak self] snapshot in
+            guard let self else { return }
+            retryTask?.cancel()
+            retryTask = nil
+            consecutiveSyncFailures = 0
+            lastSuccessfulSyncAt = Date()
+            apply(snapshot)
+            if connectivityStatus == .disconnected {
+                updateSyncStatus(.offlineFallback(reason: Self.disconnectedMessage))
+            } else {
+                updateSyncStatus(.listening(classId: context.classId))
+            }
+        } onError: { [weak self] error in
+            self?.handleRealtimeSyncFailure(error)
+        }
     }
 
     func stopRealtimeSync() {
+        retryTask?.cancel()
+        retryTask = nil
         listener?.cancel()
         listener = nil
+        syncContext = nil
+        consecutiveSyncFailures = 0
         updateSyncStatus(.idle)
     }
 
     func eraseLocalData(for uid: String) {
+        retryTask?.cancel()
+        retryTask = nil
         listener?.cancel()
         listener = nil
+        syncContext = nil
+        consecutiveSyncFailures = 0
         backend.eraseLocalData(for: uid)
         pendingPracticeLaunch = nil
+        lastSuccessfulSyncAt = nil
         updateSyncStatus(.idle)
         apply(backend.snapshot)
     }
 
     func refresh() async {
+        let context = syncContext
+        if let context {
+            updateSyncStatus(
+                .retrying(
+                    classId: context.classId,
+                    attempt: max(consecutiveSyncFailures + 1, 1)
+                )
+            )
+        }
         do {
             try await backend.refresh()
             apply(backend.snapshot)
+            lastSuccessfulSyncAt = Date()
+            consecutiveSyncFailures = 0
+            if let context {
+                beginRealtimeListening(context: context, isRetry: true)
+            } else {
+                updateSyncStatus(.idle)
+            }
         } catch {
-            updateSyncStatus(.offlineFallback(reason: String(describing: error)))
             apply(backend.snapshot)
+            handleRealtimeSyncFailure(error)
         }
     }
 
@@ -640,49 +431,68 @@ final class LearningRepositoryStore: ObservableObject {
         }
     }
 
+    private func handleRealtimeSyncFailure(_ error: Error) {
+        consecutiveSyncFailures += 1
+        updateSyncStatus(
+            .offlineFallback(reason: Self.syncFailureMessage(for: error))
+        )
+        scheduleAutomaticRetryIfPossible()
+    }
+
+    private func scheduleAutomaticRetryIfPossible() {
+        guard connectivityStatus != .disconnected,
+              let context = syncContext,
+              retryTask == nil
+        else { return }
+
+        let index = min(
+            max(consecutiveSyncFailures - 1, 0),
+            retryDelaysNanoseconds.count - 1
+        )
+        let delay = retryDelaysNanoseconds[index]
+        retryTask = Task { @MainActor [weak self] in
+            do {
+                try await Task.sleep(nanoseconds: delay)
+            } catch {
+                return
+            }
+            guard let self,
+                  self.syncContext?.scopeKey == context.scopeKey,
+                  self.connectivityStatus != .disconnected
+            else { return }
+            self.retryTask = nil
+            self.beginRealtimeListening(context: context, isRetry: true)
+        }
+    }
+
+    private func handleConnectivityChange(_ status: NetworkConnectivityStatus) {
+        let previousStatus = connectivityStatus
+        connectivityStatus = status
+
+        switch status {
+        case .unknown:
+            break
+        case .disconnected:
+            retryTask?.cancel()
+            retryTask = nil
+            guard syncContext != nil else { return }
+            updateSyncStatus(.offlineFallback(reason: Self.disconnectedMessage))
+        case .connected:
+            guard previousStatus == .disconnected, syncContext != nil else { return }
+            retryRealtimeSync()
+        }
+    }
+
+    private static func syncFailureMessage(for _: Error) -> String {
+        "同步暫時中斷；你仍可查看目前資料，連線恢復後會自動重試。"
+    }
+
+    private static let disconnectedMessage = "網路連線中斷，已切換為裝置上的資料。"
+
     private func updateSyncStatus(_ status: LearningRepositorySyncStatus) {
         syncStatus = status
     }
 
-    private var uniqueCorrectQuestionIds: Set<String> {
-        Set(missionAttempts.filter(\.isCorrect).map(\.questionId))
-    }
-
-    private func priorityScore(_ riskLevel: RiskLevel) -> Int {
-        switch riskLevel {
-        case .low:
-            return 1
-        case .medium:
-            return 2
-        case .high:
-            return 3
-        }
-    }
-
-    private var recommendedReportActions: [String] {
-        var actions: [String] = []
-        if staffDashboardMetrics.waitingHelpCount > 0 {
-            actions.append("先回應待處理求助，讓學生知道有人接住。")
-        }
-        if staffDashboardMetrics.priorityHelpCount > 0 {
-            actions.append("先回覆學生主動送出的優先求助，再決定是否需要志工接力。")
-        }
-        if visibleVolunteerReplies.isEmpty {
-            actions.append("可請志工先使用陪伴腳本，補上學生看得到的鼓勵。")
-        } else {
-            actions.append("檢查志工回覆是否能被學生理解，必要時補一則老師總結。")
-        }
-        actions.append("下次任務優先從錯題題型與閱讀卡點挑選，不用用排名壓力推進。")
-        return actions
-    }
-
-    private static let teacherReportDateFormatter: DateFormatter = {
-        let formatter = DateFormatter()
-        formatter.calendar = Calendar(identifier: .gregorian)
-        formatter.locale = Locale(identifier: "zh_Hant_TW")
-        formatter.dateFormat = "yyyy/MM/dd HH:mm"
-        return formatter
-    }()
 }
 
 extension MockLearningRepository: LearningRepositoryBackend {

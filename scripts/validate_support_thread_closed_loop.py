@@ -30,6 +30,7 @@ def main() -> None:
     mock_repo = read("ios/EnglishPlus/EnglishPlus/Services/MockLearningRepository.swift")
     firebase_repo = read("ios/EnglishPlus/EnglishPlus/Services/FirebaseLearningRepository.swift")
     store = read("ios/EnglishPlus/EnglishPlus/Services/LearningRepositoryStore.swift")
+    store += read("ios/EnglishPlus/EnglishPlus/Services/LearningRepositoryStore+Reporting.swift")
     ai_service = read("ios/EnglishPlus/EnglishPlus/Services/AIService.swift")
 
     require(models, "struct SupportQuestionSnapshot", "question snapshot model")

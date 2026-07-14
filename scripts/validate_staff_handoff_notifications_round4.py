@@ -13,6 +13,7 @@ teacher_shell = read("ios/EnglishPlus/EnglishPlus/Features/Teacher/TeacherShellV
 volunteer_home = read("ios/EnglishPlus/EnglishPlus/Features/Volunteer/VolunteerHomeView.swift")
 volunteer_shell = read("ios/EnglishPlus/EnglishPlus/Features/Volunteer/VolunteerShellView.swift")
 repository_store = read("ios/EnglishPlus/EnglishPlus/Services/LearningRepositoryStore.swift")
+repository_store += read("ios/EnglishPlus/EnglishPlus/Services/LearningRepositoryStore+Reporting.swift")
 
 
 required_teacher_markers = [

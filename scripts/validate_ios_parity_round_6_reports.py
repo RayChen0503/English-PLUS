@@ -9,6 +9,7 @@ DOC_ROOT = ROOT / "docs" / "ios-parity"
 
 LEARNING_MODELS = IOS_ROOT / "Models" / "LearningModels.swift"
 LEARNING_STORE = IOS_ROOT / "Services" / "LearningRepositoryStore.swift"
+LEARNING_REPORTING = IOS_ROOT / "Services" / "LearningRepositoryStore+Reporting.swift"
 TEACHER_HOME = IOS_ROOT / "Features" / "Teacher" / "TeacherHomeView.swift"
 DOC = DOC_ROOT / "round-6-report-export-parity.md"
 
@@ -46,7 +47,7 @@ def validate_models(errors: list[str]) -> None:
 
 
 def validate_store(errors: list[str]) -> None:
-    text = read_text(LEARNING_STORE)
+    text = read_text(LEARNING_STORE) + read_text(LEARNING_REPORTING)
     require_markers(
         errors,
         "LearningRepositoryStore report export",
