@@ -59,6 +59,20 @@ Firestore, Cloudflare Worker and local-resume boundaries.
 - The isolated macOS GitHub Actions gate must complete a clean Simulator build
   and run the Swift acceptance suite before FIX-G is considered complete.
 
+## Verification evidence
+
+- Local validation passed all `80/80` Python contract validators.
+- Cloudflare Worker tests passed `24/24`, the administrator portal passed
+  `7/7`, the Functions TypeScript build passed, and `git diff --check` passed.
+- Isolated macOS GitHub Actions run `29300137275` completed successfully on
+  commit `d1834f4` in `17m 34s`.
+- The Xcode 16.4 Simulator build and Swift acceptance suite passed `36/36`
+  tests with zero failures.
+- The workflow uses Node 24-compatible `setup-node@v6` and `setup-java@v5`;
+  the final run completed with no annotations or deprecation warnings.
+- Workflow-file changes are now included in the branch gate path filters, so
+  future CI configuration edits cannot silently skip validation.
+
 ## Release boundary
 
 FIX-G may be pushed to its isolated branch for macOS compilation. It must not

@@ -152,9 +152,12 @@ learning must remain usable without joining a class.
   action, removes duplicate automatic requests, and rejects incomplete
   explanation contexts before quota reservation.
 - FIX-F isolated macOS run `29294581537` attempt 2 passed the clean Simulator
-  build and Swift acceptance suite. FIX-G is auditing FIX-A through FIX-F as
-  one product, including session bootstrap, role-scoped listeners, true roster
-  counts, thread-based handoff metrics and side-effect-free tab navigation.
+  build and Swift acceptance suite. FIX-G completed the integrated FIX-A
+  through FIX-F audit, including consent-gated role listeners, authoritative
+  roster counts, thread-based handoff metrics and side-effect-free tab
+  navigation. Final isolated macOS run `29300137275` passed the clean Xcode
+  16.4 Simulator build and all `36/36` Swift acceptance tests with no
+  annotations.
 
 ## Current technical constraints
 
@@ -165,8 +168,9 @@ learning must remain usable without joining a class.
   GitHub Actions gate passed the Round 9 clean iOS Simulator build in run
   `29241754603`; Round 10 branch-only run `29243976304`, Round 11 run
   `29252015455`, Round 12 run `29261085031`, and FIX-F run `29294581537`
-  attempt 2 also passed clean Xcode 16.4 iOS Simulator builds. Xcode Cloud
-  remains the release-level gate at the agreed checkpoint.
+  attempt 2 also passed clean Xcode 16.4 iOS Simulator builds. FIX-G run
+  `29300137275` passed the complete Simulator build and `36/36` Swift tests.
+  Xcode Cloud remains the release-level gate at the agreed checkpoint.
 - Existing legacy validators can fail because they assert removed UI or old
   copy. Preserve useful behavioral coverage by replacing them, not by reviving
   obsolete UI.
@@ -197,10 +201,10 @@ learning must remain usable without joining a class.
 
 ## Next gate
 
-Complete the FIX-G isolated macOS compile/test gate and reconcile any Swift,
-Worker, administrator portal or Firestore Emulator failures. Do not merge
-`main`, deploy the Worker, or trigger Xcode Cloud until that audit passes and
-the user explicitly approves the release checkpoint.
+FIX-G is complete on `codex/fix-g-stabilization-audit`. Keep the branch
+isolated until the user explicitly chooses the next release checkpoint. Do not
+merge `main`, deploy backend resources or trigger Xcode Cloud without that
+instruction.
 
 ## Maintenance rule
 
