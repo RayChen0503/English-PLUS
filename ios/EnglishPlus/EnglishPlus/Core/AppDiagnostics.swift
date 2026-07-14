@@ -99,7 +99,7 @@ final class AppDiagnostics {
     }
 
     func record(_ category: AppDiagnosticCategory, underlying error: Error? = nil) {
-        let errorType = underlying.map { String(reflecting: type(of: $0)) } ?? "unknown"
+        let errorType = error.map { String(reflecting: type(of: $0)) } ?? "unknown"
         logger.error("Non-fatal category=\(category.rawValue, privacy: .public) type=\(errorType, privacy: .public)")
 
         #if canImport(FirebaseCrashlytics)

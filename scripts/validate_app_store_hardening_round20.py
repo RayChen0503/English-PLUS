@@ -70,6 +70,9 @@ teacher_source = read(
 volunteer_source = read(
     "ios/EnglishPlus/EnglishPlus/Features/Volunteer/VolunteerHomeView.swift"
 )
+diagnostics_source = read(
+    "ios/EnglishPlus/EnglishPlus/Core/AppDiagnostics.swift"
+)
 ui_tests = read(
     "ios/EnglishPlus/EnglishPlusUITests/EnglishPlusCriticalFlowsUITests.swift"
 )
@@ -127,6 +130,14 @@ checks = {
     "human-help links avoid force unwrap": 'URL(string: "tel:\\(number)")!'
     not in student_source
     and "if let destination = URL(string:" in student_source,
+    "diagnostic underlying errors compile with the local parameter name": all(
+        token in diagnostics_source
+        for token in [
+            "underlying error: Error? = nil",
+            "let errorType = error.map",
+        ]
+    )
+    and "let errorType = underlying.map" not in diagnostics_source,
     "teacher primary workspaces are addressable": all(
         token in teacher_source
         for token in [
