@@ -46,7 +46,10 @@ learning must remain usable without joining a class.
     (`round-16-mastery-spaced-review-block-d-audit.md`)
   - Round 17 - student experience and information hierarchy
     (`round-17-student-experience.md`)
-- Hardening progress: **17/20 fully signed off**.
+  - Round 18 - teacher and volunteer workspaces
+    (`round-18-staff-workspaces.md`)
+- Hardening progress: **16/20 fully signed off**; Rounds 17 and 18 have also
+  passed their local Block E gates and await the combined macOS verification.
 - Do not merge to `main` or trigger Xcode Cloud until the end of a four-round
   block: 4, 8, 12, 16, and 20.
 - Never reset, overwrite, or silently discard user work.
@@ -270,10 +273,10 @@ learning must remain usable without joining a class.
 
 ## Next gate
 
-Round 17 is signed off on `codex/app-store-hardening-e`. Round 18 will refine
-the teacher and volunteer class, relay, assignment, reply and report journeys.
-Do not merge to `main` or trigger Xcode Cloud until Rounds 18 through 20 and the
-complete Block E audit are signed off.
+Rounds 17 and 18 have passed locally on `codex/app-store-hardening-e`. Round 19 will
+complete dark mode, accessibility, device-size, loading/failure-state and
+crash-observability hardening. Do not merge to `main` or trigger Xcode Cloud
+until Rounds 19 and 20 and the complete Block E audit are signed off.
 
 ## Maintenance rule
 

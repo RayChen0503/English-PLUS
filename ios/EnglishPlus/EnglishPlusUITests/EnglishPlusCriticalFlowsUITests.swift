@@ -53,6 +53,20 @@ final class EnglishPlusCriticalFlowsUITests: XCTestCase {
         assertTabBarContains(["首頁", "班級", "接力", "紀錄"])
     }
 
+    func testTeacherWorkspaceKeepsDailyActionsSeparateFromSettingsAndReportDetail() {
+        launchAndEnterHome(
+            roleIdentifier: "role.teacher",
+            email: "teacher.demo@englishplus.test",
+            password: "EnglishPlusTeacher2026!"
+        )
+
+        app.tabBars.buttons["班級"].tap()
+        XCTAssertTrue(app.descendants(matching: .any)["teacher.class.settings"].waitForExistence(timeout: 5))
+
+        app.tabBars.buttons["報告"].tap()
+        XCTAssertTrue(app.descendants(matching: .any)["teacher.report.preview"].waitForExistence(timeout: 5))
+    }
+
     func testOfflineStudentStillReachesNavigationAndSeesRecoveryAction() {
         app.launchArguments.append("-EnglishPlusStartOffline")
         launchAndEnterHome(

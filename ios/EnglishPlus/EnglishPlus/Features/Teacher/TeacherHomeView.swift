@@ -28,7 +28,12 @@ struct TeacherHomeView: View {
                                 TeacherEmptyQueueCard()
                             } else {
                                 ForEach(learningRepository.teacherQueue.prefix(3)) { request in
-                                    TeacherSupportRequestCard(request: request)
+                                    NavigationLink {
+                                        StaffSupportDetailView(initialRequest: request, role: .teacher)
+                                    } label: {
+                                        StaffSupportQueueRow(request: request)
+                                    }
+                                    .buttonStyle(.plain)
                                 }
                             }
                         }
@@ -78,7 +83,7 @@ struct TeacherHandoffView: View {
                             .font(.title.bold())
                             .foregroundStyle(EPTheme.ink)
 
-                        Text("排序規則：只顯示學生主動送出的求助；需要真人陪伴與閱讀卡點會優先排列。")
+                        Text("先選一筆待辦，再進入題目與回覆畫面。高優先求助會排在前面。")
                             .font(.subheadline)
                             .foregroundStyle(EPTheme.secondaryInk)
                             .fixedSize(horizontal: false, vertical: true)
@@ -92,10 +97,20 @@ struct TeacherHandoffView: View {
                             tint: EPTheme.primary
                         )
 
-                        TeacherHandoffSummaryCard()
-
-                        ForEach(learningRepository.teacherQueue) { request in
-                            TeacherSupportRequestCard(request: request)
+                        if learningRepository.teacherQueue.isEmpty {
+                            TeacherEmptyQueueCard()
+                        } else {
+                            LazyVStack(spacing: 10) {
+                                ForEach(learningRepository.teacherQueue) { request in
+                                    NavigationLink {
+                                        StaffSupportDetailView(initialRequest: request, role: .teacher)
+                                    } label: {
+                                        StaffSupportQueueRow(request: request)
+                                    }
+                                    .buttonStyle(.plain)
+                                    .accessibilityIdentifier("teacher.handoff.request.\(request.id)")
+                                }
+                            }
                         }
                     }
                     .padding(EPTheme.pagePadding)
@@ -523,24 +538,26 @@ private struct TeacherReportActionList: View {
 
 private struct TeacherReportPreviewCard: View {
     let report: ClassroomReportExport
+    @State private var isExpanded = false
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            Label("報告預覽", systemImage: "doc.plaintext")
-                .font(.headline)
-                .foregroundStyle(EPTheme.ink)
-
+        DisclosureGroup(isExpanded: $isExpanded) {
             Text(report.shareText)
                 .font(.caption)
                 .foregroundStyle(EPTheme.secondaryInk)
-                .lineLimit(10)
                 .textSelection(.enabled)
                 .fixedSize(horizontal: false, vertical: true)
+                .padding(.top, 10)
+        } label: {
+            Label("報告預覽", systemImage: "doc.plaintext")
+                .font(.headline)
+                .foregroundStyle(EPTheme.ink)
         }
         .padding(16)
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(EPTheme.card)
         .clipShape(RoundedRectangle(cornerRadius: EPTheme.cardRadius))
+        .accessibilityIdentifier("teacher.report.preview")
     }
 }
 
@@ -574,6 +591,7 @@ struct TeacherClassAssignmentView: View {
     @State private var classIdPendingCodeReset: String?
     @State private var classroomPendingDeletion: ClassroomSummary?
     @State private var copiedClassCode: String?
+    @State private var showsClassroomSettings = false
 
     var body: some View {
         NavigationStack {
@@ -596,6 +614,7 @@ struct TeacherClassAssignmentView: View {
             .task {
                 await appState.loadClassrooms()
                 showsCreateClassroom = teacherClassrooms.isEmpty
+                showsClassroomSettings = teacherClassrooms.isEmpty
                 editingClassroomName = activeTeacherClassroom?.name ?? ""
             }
             .onChange(of: appState.currentProfile?.activeClassId) { _, _ in
@@ -757,7 +776,7 @@ struct TeacherClassAssignmentView: View {
                         .foregroundStyle(EPTheme.ink)
                     Text(activeTeacherClassroom == nil
                         ? "先建立或選擇班級，再查看學生與指派任務。"
-                        : "目前管理「\(activeTeacherClassroom?.name ?? "班級")」。學生用下方代碼加入。")
+                        : "目前管理「\(activeTeacherClassroom?.name ?? "班級")」。日常任務在下方，邀請與設定需要時再展開。")
                         .font(.subheadline)
                         .foregroundStyle(EPTheme.secondaryInk)
                         .fixedSize(horizontal: false, vertical: true)
@@ -798,8 +817,10 @@ struct TeacherClassAssignmentView: View {
                 }
             }
 
-            if let classroom = activeTeacherClassroom {
-                if showsRenameClassroom {
+            DisclosureGroup(isExpanded: $showsClassroomSettings) {
+                VStack(alignment: .leading, spacing: 14) {
+                if let classroom = activeTeacherClassroom {
+                    if showsRenameClassroom {
                     VStack(alignment: .leading, spacing: 10) {
                         Text("班級名稱")
                             .font(.caption.bold())
@@ -838,21 +859,21 @@ struct TeacherClassAssignmentView: View {
                     .padding(12)
                     .background(EPTheme.secondarySurface)
                     .clipShape(RoundedRectangle(cornerRadius: EPTheme.cardRadius))
-                } else {
-                    Button {
-                        editingClassroomName = classroom.name
-                        showsRenameClassroom = true
-                    } label: {
-                        Label("編輯班級名稱", systemImage: "pencil")
-                            .font(.subheadline.bold())
-                            .frame(maxWidth: .infinity, minHeight: 44)
+                    } else {
+                        Button {
+                            editingClassroomName = classroom.name
+                            showsRenameClassroom = true
+                        } label: {
+                            Label("編輯班級名稱", systemImage: "pencil")
+                                .font(.subheadline.bold())
+                                .frame(maxWidth: .infinity, minHeight: 44)
+                        }
+                        .buttonStyle(SecondaryActionButtonStyle())
                     }
-                    .buttonStyle(SecondaryActionButtonStyle())
                 }
-            }
 
-            if let classroom = activeTeacherClassroom,
-               let displayCode = classroom.formattedJoinCode {
+                if let classroom = activeTeacherClassroom,
+                   let displayCode = classroom.formattedJoinCode {
                 VStack(alignment: .leading, spacing: 10) {
                     Text("學生加入代碼")
                         .font(.caption.bold())
@@ -890,9 +911,9 @@ struct TeacherClassAssignmentView: View {
                 .padding(12)
                 .background(EPTheme.primary.opacity(0.06))
                 .clipShape(RoundedRectangle(cornerRadius: EPTheme.cardRadius))
-            }
+                }
 
-            if let classroom = activeTeacherClassroom, classroom.joinCode == nil {
+                if let classroom = activeTeacherClassroom, classroom.joinCode == nil {
                 Button {
                     classIdPendingCodeReset = classroom.classId
                 } label: {
@@ -902,41 +923,49 @@ struct TeacherClassAssignmentView: View {
                 }
                 .buttonStyle(PrimaryActionButtonStyle())
                 .disabled(appState.isManagingClassroom)
-            }
-
-
-            if let classroom = activeTeacherClassroom {
-                TeacherVolunteerServiceCard(classroom: classroom)
-            }
-
-            if showsCreateClassroom || teacherClassrooms.isEmpty {
-                createClassroomForm
-            } else {
-                Button {
-                    showsCreateClassroom = true
-                } label: {
-                    Label("建立另一個班級", systemImage: "plus.circle")
-                        .font(.subheadline.bold())
-                        .frame(maxWidth: .infinity, minHeight: 44)
                 }
-                .buttonStyle(SecondaryActionButtonStyle())
-            }
 
-            if let classroom = activeTeacherClassroom {
-                Divider()
-                    .overlay(EPTheme.hairline)
-
-                Button(role: .destructive) {
-                    classroomPendingDeletion = classroom
-                } label: {
-                    Label("刪除這個班級", systemImage: "trash")
-                        .font(.subheadline.bold())
-                        .foregroundStyle(EPTheme.warning)
-                        .frame(maxWidth: .infinity, minHeight: 44)
+                if let classroom = activeTeacherClassroom {
+                    TeacherVolunteerServiceCard(classroom: classroom)
                 }
-                .buttonStyle(SecondaryActionButtonStyle())
-                .disabled(appState.isManagingClassroom)
+
+                if showsCreateClassroom || teacherClassrooms.isEmpty {
+                    createClassroomForm
+                } else {
+                    Button {
+                        showsCreateClassroom = true
+                    } label: {
+                        Label("建立另一個班級", systemImage: "plus.circle")
+                            .font(.subheadline.bold())
+                            .frame(maxWidth: .infinity, minHeight: 44)
+                    }
+                    .buttonStyle(SecondaryActionButtonStyle())
+                }
+
+                if let classroom = activeTeacherClassroom {
+                    Divider()
+                        .overlay(EPTheme.hairline)
+
+                    Button(role: .destructive) {
+                        classroomPendingDeletion = classroom
+                    } label: {
+                        Label("刪除這個班級", systemImage: "trash")
+                            .font(.subheadline.bold())
+                            .foregroundStyle(EPTheme.warning)
+                            .frame(maxWidth: .infinity, minHeight: 44)
+                    }
+                    .buttonStyle(SecondaryActionButtonStyle())
+                    .disabled(appState.isManagingClassroom)
+                }
+                }
+                .padding(.top, 10)
+            } label: {
+                Label("班級設定與邀請", systemImage: "gearshape")
+                    .font(.subheadline.bold())
+                    .foregroundStyle(EPTheme.ink)
+                    .frame(minHeight: 44)
             }
+            .accessibilityIdentifier("teacher.class.settings")
 
             if let notice = appState.classroomNoticeMessage {
                 TeacherClassroomMessage(text: notice, isError: false)
@@ -2487,8 +2516,14 @@ private struct TeacherClassSummary: View {
                     systemImage: "person.badge.plus"
                 )
             } else {
-                ForEach(classroomStudents) { summary in
+                ForEach(classroomStudents.prefix(4)) { summary in
                     studentRow(summary)
+                }
+                if classroomStudents.count > 4 {
+                    Label("其餘 \(classroomStudents.count - 4) 位學生請到「班級」查看", systemImage: "ellipsis.circle")
+                        .font(.caption.bold())
+                        .foregroundStyle(EPTheme.primary)
+                        .padding(.top, 2)
                 }
             }
         }

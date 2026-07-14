@@ -139,6 +139,7 @@ jobs:
           python3 scripts/validate_app_store_hardening_round16.py
           python3 scripts/validate_app_store_hardening_block_d.py --preflight
           python3 scripts/validate_app_store_hardening_round17.py
+          python3 scripts/validate_app_store_hardening_round18.py
 
       - name: Build iOS Simulator test bundle
         run: |
