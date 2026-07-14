@@ -71,7 +71,8 @@ def validate_teacher_ui(errors: list[str]) -> None:
         "TeacherReportView",
         text,
         [
-            "let report = learningRepository.classroomReportExport",
+            "let report = learningRepository.makeClassroomReportExport(",
+            "rosterStudentCount: appState.classroomStudents.count",
             "TeacherReportMetricGrid(report: report)",
             "TeacherReportPrioritySection(report: report)",
             "TeacherReportQuestionBankSection(report: report)",

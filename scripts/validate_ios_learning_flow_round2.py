@@ -67,10 +67,11 @@ def main() -> int:
         "onOpenHome:",
         "selectedTab = .home",
         ".tag(StudentTab.practice)",
-        ".onChange(of: selectedTab)",
-        "learningRepository.enterFreePracticeMode()",
     ]:
         require(shell, marker, "student shell free practice navigation state")
+
+    reject(shell, ".onChange(of: selectedTab)", "tab-driven flow mutation")
+    reject(shell, "learningRepository.enterFreePracticeMode()", "implicit free-practice mode change")
 
     if "freePracticeModeMarker" in practice:
         raise AssertionError("PracticeCenterView should not hide flow-state changes in an invisible marker")

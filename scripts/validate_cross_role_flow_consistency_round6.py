@@ -60,6 +60,20 @@ def main() -> int:
         [
             "selectedTab = .practice",
             "selectedTab = .home",
+        ],
+        errors,
+    )
+    require_absent(
+        "student tab switching side effects",
+        student_shell,
+        ["learningRepository.enterFreePracticeMode()"],
+        errors,
+    )
+    require_contains(
+        "explicit free-practice entry",
+        student_home,
+        [
+            "private func openFreePractice()",
             "learningRepository.enterFreePracticeMode()",
         ],
         errors,

@@ -310,6 +310,78 @@ final class AuthenticationFlowAcceptanceTests: XCTestCase {
         XCTAssertTrue(appState.classroomNoticeMessage?.contains("自動回到個人模式") == true)
     }
 
+    func testTeacherSessionStartsTheActiveClassRosterWithoutOpeningTheClassTab() async {
+        let auth = RecordingAuthService()
+        let classroomService = MockClassroomService()
+        let now = Date(timeIntervalSince1970: 1_800_000_000)
+        let classId = "CLASS-TEACHER-ACTIVE"
+        let membership = ClassMembership(
+            classId: classId,
+            className: "八年甲班",
+            role: .teacher,
+            groupId: nil,
+            status: .active,
+            joinedAt: now,
+            visibilityStartsAt: now,
+            leftAt: nil
+        )
+        let profile = AppUserProfile(
+            id: "teacher-roster",
+            displayName: "林老師",
+            role: .teacher,
+            classId: classId,
+            groupId: nil,
+            consentStatus: .accepted,
+            isDemo: false,
+            createdAt: now,
+            updatedAt: now,
+            memberships: [membership],
+            activeClassId: classId
+        )
+        auth.restoredSession = AuthSession(
+            user: DemoUser(id: profile.id, displayName: profile.displayName, role: .teacher),
+            profile: profile
+        )
+        classroomService.seedStudents(
+            [
+                ClassroomStudentSummary(
+                    id: "student-1",
+                    studentUid: "student-1",
+                    studentName: "小安",
+                    classId: classId,
+                    gradeBand: "8",
+                    currentLevel: "A2",
+                    recommendedTrack: "steady",
+                    moodScore: 4,
+                    riskLevel: .low,
+                    missionStatus: MissionStatus.active.rawValue,
+                    lastActivityAt: nil,
+                    joinedAt: ISO8601DateFormatter().string(from: now)
+                )
+            ],
+            classId: classId
+        )
+        let appState = makeAppState(auth: auth, classroomService: classroomService)
+
+        await appState.restoreSessionIfPossible()
+
+        XCTAssertEqual(classroomService.studentListenerStartCount, 0)
+        XCTAssertEqual(appState.route, .privacyConsent(.teacher))
+
+        await appState.acceptPrivacyConsent(
+            categories: PrivacyConsentCategory.allCases,
+            guardianConsentStatus: .notRequired
+        )
+
+        XCTAssertEqual(classroomService.studentListenerStartCount, 1)
+        XCTAssertEqual(classroomService.lastStudentListenerClassId, classId)
+        XCTAssertEqual(appState.classroomStudents.map(\.studentUid), ["student-1"])
+        XCTAssertEqual(appState.route, .home(.teacher))
+
+        await appState.loadClassrooms()
+        XCTAssertEqual(classroomService.studentListenerStartCount, 1)
+    }
+
     private func makeAppState(
         auth: RecordingAuthService,
         firestore: MockFirestoreService = MockFirestoreService(),
@@ -396,6 +468,82 @@ final class AuthenticationFlowAcceptanceTests: XCTestCase {
             user: DemoUser(id: profile.id, displayName: profile.displayName, role: role),
             profile: profile
         )
+    }
+}
+
+@MainActor
+final class StabilizationDashboardAcceptanceTests: XCTestCase {
+    func testAnEmptySupportDatasetReportsZeroStudents() {
+        let persistence = MemoryLearningPersistence(
+            snapshot: LocalLearningSnapshot(
+                currentCheckIn: nil,
+                currentMission: nil,
+                missionAttempts: [],
+                supportRequests: [],
+                assignedPracticeTasks: [],
+                savedAt: Date(timeIntervalSince1970: 1_800_000_000)
+            )
+        )
+        let store = LearningRepositoryStore(
+            backend: MockLearningRepository(localPersistence: persistence)
+        )
+
+        XCTAssertEqual(store.staffDashboardMetrics.studentCount, 0)
+        XCTAssertEqual(store.staffDashboardMetrics.waitingHelpCount, 0)
+        XCTAssertEqual(store.classroomReportExport.classCode, "未選擇班級")
+        XCTAssertEqual(
+            store.classroomReportExport.metrics.first { $0.id == "students" }?.value,
+            "0"
+        )
+    }
+
+    func testVolunteerCompletedCountTracksThreadsInsteadOfReplyMessages() async {
+        let store = LearningRepositoryStore(
+            backend: MockLearningRepository(localPersistence: MemoryLearningPersistence())
+        )
+
+        XCTAssertEqual(store.volunteerDashboardMetrics.repliedByVolunteerCount, 0)
+        let firstReplySucceeded = await store.addVolunteerReply(
+            to: "support-seed-teacher-1",
+            body: "先看主詞。"
+        )
+        let secondReplySucceeded = await store.addVolunteerReply(
+            to: "support-seed-teacher-1",
+            body: "再確認動詞形式。"
+        )
+
+        XCTAssertTrue(firstReplySucceeded)
+        XCTAssertTrue(secondReplySucceeded)
+        XCTAssertEqual(store.visibleVolunteerReplies.count, 2)
+        XCTAssertEqual(store.volunteerDashboardMetrics.repliedByVolunteerCount, 1)
+    }
+}
+
+private final class MemoryLearningPersistence: LocalLearningPersistence {
+    private var snapshot: LocalLearningSnapshot?
+
+    init(snapshot: LocalLearningSnapshot? = nil) {
+        self.snapshot = snapshot
+    }
+
+    func loadSnapshot() -> LocalLearningSnapshot? {
+        snapshot
+    }
+
+    func saveSnapshot(_ snapshot: LocalLearningSnapshot) {
+        self.snapshot = snapshot
+    }
+
+    func clearSnapshot() {
+        snapshot = nil
+    }
+
+    func clearAllScopes(for uid: String) {
+        snapshot = nil
+    }
+
+    func scoped(for uid: String) -> any LocalLearningPersistence {
+        self
     }
 }
 

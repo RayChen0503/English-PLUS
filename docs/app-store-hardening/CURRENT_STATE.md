@@ -4,7 +4,7 @@
 > concise. It is the working source of truth, not a replacement for the
 > round reports.
 
-Last verified: 2026-07-13
+Last verified: 2026-07-14
 
 ## Product in one paragraph
 
@@ -18,8 +18,8 @@ learning must remain usable without joining a class.
 
 - Repository: `RayChen0503/English-PLUS`
 - Stable release baseline: `main` at `2b43bdc`
-- Active stabilization branch: `codex/fix-f-post-answer-ai`, stacked on
-  completed FIX-A through FIX-E branches for one later release checkpoint.
+- Active stabilization branch: `codex/fix-g-stabilization-audit`, stacked on
+  completed FIX-A through FIX-F branches for one later release checkpoint.
 - Completed hardening rounds:
   - Round 1 - baseline audit (`round-01-baseline-audit.md`)
   - Round 2 - personal and multi-class domain (`round-02-personal-and-class-domain.md`)
@@ -151,6 +151,10 @@ learning must remain usable without joining a class.
   volunteer service classes. FIX-F makes question AI an explicit post-answer
   action, removes duplicate automatic requests, and rejects incomplete
   explanation contexts before quota reservation.
+- FIX-F isolated macOS run `29294581537` attempt 2 passed the clean Simulator
+  build and Swift acceptance suite. FIX-G is auditing FIX-A through FIX-F as
+  one product, including session bootstrap, role-scoped listeners, true roster
+  counts, thread-based handoff metrics and side-effect-free tab navigation.
 
 ## Current technical constraints
 
@@ -160,9 +164,9 @@ learning must remain usable without joining a class.
 - Swift compilation is not available on this Windows host. The isolated macOS
   GitHub Actions gate passed the Round 9 clean iOS Simulator build in run
   `29241754603`; Round 10 branch-only run `29243976304`, Round 11 run
-  `29252015455`, and Round 12 run `29261085031` also passed clean Xcode 16.4
-  iOS Simulator builds. Xcode Cloud remains the release-level gate at the
-  agreed checkpoint.
+  `29252015455`, Round 12 run `29261085031`, and FIX-F run `29294581537`
+  attempt 2 also passed clean Xcode 16.4 iOS Simulator builds. Xcode Cloud
+  remains the release-level gate at the agreed checkpoint.
 - Existing legacy validators can fail because they assert removed UI or old
   copy. Preserve useful behavioral coverage by replacing them, not by reviving
   obsolete UI.
@@ -193,10 +197,10 @@ learning must remain usable without joining a class.
 
 ## Next gate
 
-Complete the FIX-F isolated macOS compile/test gate, then audit FIX-A through
-FIX-F as one stabilization package. Do not merge `main`, deploy the Worker, or
-trigger Xcode Cloud until that audit passes and the user explicitly approves
-the release checkpoint.
+Complete the FIX-G isolated macOS compile/test gate and reconcile any Swift,
+Worker, administrator portal or Firestore Emulator failures. Do not merge
+`main`, deploy the Worker, or trigger Xcode Cloud until that audit passes and
+the user explicitly approves the release checkpoint.
 
 ## Maintenance rule
 

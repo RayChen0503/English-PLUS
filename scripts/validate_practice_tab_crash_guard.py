@@ -38,8 +38,9 @@ require(
 )
 
 require(
-    "Task { @MainActor in" in student_shell,
-    "Practice tab side effects should be deferred onto MainActor instead of mutating repository state synchronously during TabView selection updates.",
+    ".onChange(of: selectedTab)" not in student_shell
+    and "learningRepository.enterFreePracticeMode()" not in student_shell,
+    "Practice tab selection must not mutate repository flow state during TabView updates.",
 )
 
 print("practice tab crash guard passed")

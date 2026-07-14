@@ -57,12 +57,6 @@ struct StudentShellView: View {
             }
             .tag(StudentTab.map)
         }
-        .onChange(of: selectedTab) { _, tab in
-            guard tab == .practice else { return }
-            Task { @MainActor in
-                learningRepository.enterFreePracticeMode()
-            }
-        }
     }
 
     private var pendingAssignmentCount: Int {

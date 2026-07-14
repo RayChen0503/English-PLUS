@@ -48,6 +48,7 @@ final class AppState: ObservableObject {
     private let classroomService: ClassroomService
     private let accountLifecycleService: AccountLifecycleService
     private var classroomRosterListener: ClassroomRosterListenerToken?
+    private var classroomRosterListenerClassId: String?
     private var classroomMembershipListener: ClassroomRosterListenerToken?
     private var classroomMembershipListenerUid: String?
     private var volunteerServiceListener: ClassroomRosterListenerToken?
@@ -447,6 +448,12 @@ final class AppState: ObservableObject {
         do {
             try await firestoreService.saveConsent(record)
             hasAcceptedConsent = true
+            startClassroomMembershipSyncIfNeeded(userUid: currentUser.id)
+            synchronizeRoleScopedClassroomData(for: currentProfile)
+            startVolunteerServiceSyncIfNeeded(
+                userUid: currentUser.id,
+                role: currentProfile.role
+            )
             route = .home(currentUser.role)
         } catch {
             consentErrorMessage = "資料使用確認尚未保存，請檢查網路後再試一次。你不需要重新勾選。"
@@ -489,6 +496,7 @@ final class AppState: ObservableObject {
         volunteerServiceNoticeMessage = nil
         classroomRosterListener?.cancel()
         classroomRosterListener = nil
+        classroomRosterListenerClassId = nil
         classroomMembershipListener?.cancel()
         classroomMembershipListener = nil
         classroomMembershipListenerUid = nil
@@ -520,6 +528,7 @@ final class AppState: ObservableObject {
             self.currentProfile = session.profile
             selectedRole = session.user.role
             startClassroomMembershipSyncIfNeeded(userUid: session.user.id)
+            synchronizeRoleScopedClassroomData(for: session.profile)
             runtimeDiagnostics = runtimeDiagnostics.withSession(
                 user: session.user,
                 profile: session.profile
@@ -528,20 +537,6 @@ final class AppState: ObservableObject {
             classroomNoticeMessage = classId == nil
                 ? "已切換到個人學習模式。"
                 : "已切換班級。"
-            if session.user.role == .teacher, let classId {
-                classroomVolunteerServices = []
-                startClassroomVolunteerSyncIfNeeded(classId: classId)
-                startClassroomRosterSync(classId: classId)
-            } else {
-                classroomRosterListener?.cancel()
-                classroomRosterListener = nil
-                classroomStudents = []
-                classroomRosterErrorMessage = nil
-                classroomVolunteerListener?.cancel()
-                classroomVolunteerListener = nil
-                classroomVolunteerListenerClassId = nil
-                classroomVolunteerServices = []
-            }
         } catch {
             signInErrorMessage = "無法切換班級，請確認你仍是該班級的成員。"
             classroomErrorMessage = signInErrorMessage
@@ -564,6 +559,7 @@ final class AppState: ObservableObject {
             } else {
                 classroomRosterListener?.cancel()
                 classroomRosterListener = nil
+                classroomRosterListenerClassId = nil
                 classroomStudents = []
             }
         } catch {
@@ -595,7 +591,11 @@ final class AppState: ObservableObject {
     }
 
     private func startClassroomRosterSync(classId: String) {
+        guard classroomRosterListenerClassId != classId || classroomRosterListener == nil else {
+            return
+        }
         classroomRosterListener?.cancel()
+        classroomRosterListenerClassId = classId
         classroomStudents = []
         classroomRosterErrorMessage = nil
         isLoadingClassroomStudents = true
@@ -675,6 +675,7 @@ final class AppState: ObservableObject {
             try await classroomService.deleteClassroom(classId: classId)
             classroomRosterListener?.cancel()
             classroomRosterListener = nil
+            classroomRosterListenerClassId = nil
             classroomStudents = []
             classroomRosterErrorMessage = nil
             classrooms.removeAll { $0.classId == classId }
@@ -853,6 +854,9 @@ final class AppState: ObservableObject {
             return
         }
         hasAcceptedConsent = await acceptedConsentStatus(for: session.user.id)
+        if hasAcceptedConsent {
+            synchronizeRoleScopedClassroomData(for: session.profile)
+        }
         route = hasAcceptedConsent ? .home(session.user.role) : .privacyConsent(session.user.role)
     }
 
@@ -909,6 +913,7 @@ final class AppState: ObservableObject {
         currentProfile = session.profile
         selectedRole = session.user.role
         startClassroomMembershipSyncIfNeeded(userUid: session.user.id)
+        synchronizeRoleScopedClassroomData(for: session.profile)
         startVolunteerServiceSyncIfNeeded(
             userUid: session.user.id,
             role: session.profile.role
@@ -1061,6 +1066,31 @@ final class AppState: ObservableObject {
         volunteerServiceNoticeMessage = nil
     }
 
+    private func synchronizeRoleScopedClassroomData(for profile: AppUserProfile) {
+        guard profile.role == .teacher,
+              let classId = profile.activeClassId
+        else {
+            classroomRosterListener?.cancel()
+            classroomRosterListener = nil
+            classroomRosterListenerClassId = nil
+            classroomStudents = []
+            classroomRosterErrorMessage = nil
+            isLoadingClassroomStudents = false
+
+            classroomVolunteerListener?.cancel()
+            classroomVolunteerListener = nil
+            classroomVolunteerListenerClassId = nil
+            classroomVolunteerServices = []
+            return
+        }
+
+        if classroomVolunteerListenerClassId != classId {
+            classroomVolunteerServices = []
+        }
+        startClassroomRosterSync(classId: classId)
+        startClassroomVolunteerSyncIfNeeded(classId: classId)
+    }
+
     private func startVolunteerServiceSyncIfNeeded(userUid: String, role: UserRole) {
         guard role == .volunteer else {
             volunteerServiceListener?.cancel()
@@ -1165,6 +1195,7 @@ final class AppState: ObservableObject {
            !activeClassIds.contains(previousActiveClassId) {
             classroomRosterListener?.cancel()
             classroomRosterListener = nil
+            classroomRosterListenerClassId = nil
             classroomStudents = []
             classroomRosterErrorMessage = nil
             let className = previousActiveClassName.map { "「\($0)」" } ?? "原班級"
@@ -1205,6 +1236,7 @@ final class AppState: ObservableObject {
         volunteerServiceNoticeMessage = nil
         classroomRosterListener?.cancel()
         classroomRosterListener = nil
+        classroomRosterListenerClassId = nil
         classroomMembershipListener?.cancel()
         classroomMembershipListener = nil
         classroomMembershipListenerUid = nil

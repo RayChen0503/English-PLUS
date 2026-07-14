@@ -258,7 +258,7 @@ final class LearningRepositoryStore: ObservableObject {
             : String(format: "%.1f/5", Double(moodScores.reduce(0, +)) / Double(moodScores.count))
 
         return StaffDashboardMetrics(
-            studentCount: max(staffStudentSummaries.count, 1),
+            studentCount: staffStudentSummaries.count,
             priorityHelpCount: teacherQueue.filter { $0.priority == .high }.count,
             waitingHelpCount: supportRequests.filter { $0.countsTowardSharedStaffBadge(for: .teacher) }.count,
             repliedCount: supportRequests.filter { $0.status == .replied || $0.status == .readByStudent || $0.status == .staffHandledNoReply }.count,
@@ -271,7 +271,11 @@ final class LearningRepositoryStore: ObservableObject {
         VolunteerDashboardMetrics(
             waitingCount: supportRequests.filter { $0.countsTowardSharedStaffBadge(for: .volunteer) }.count,
             highPriorityCount: volunteerQueue.filter { $0.priority == .high }.count,
-            repliedByVolunteerCount: visibleVolunteerReplies.count,
+            repliedByVolunteerCount: supportRequests.filter { request in
+                request.replies.contains {
+                    $0.authorRole == .volunteer && $0.visibleToStudent
+                }
+            }.count,
             syncRecordCount: supportRequests.reduce(0) { count, request in
                 count + request.replies.count
             }
@@ -298,6 +302,13 @@ final class LearningRepositoryStore: ObservableObject {
     }
 
     var classroomReportExport: ClassroomReportExport {
+        makeClassroomReportExport()
+    }
+
+    func makeClassroomReportExport(
+        rosterStudentCount: Int? = nil,
+        activeClassId: String? = nil
+    ) -> ClassroomReportExport {
         let metrics = staffDashboardMetrics
         let priorityRows = teacherQueue.prefix(5).map { request in
             ClassroomReportStudentRow(
@@ -320,13 +331,13 @@ final class LearningRepositoryStore: ObservableObject {
 
         return ClassroomReportExport(
             title: "English+ 班級週報",
-            classCode: priorityRows.first?.classCode ?? FirebaseBackendConfig.firstClassId,
+            classCode: activeClassId ?? priorityRows.first?.classCode ?? "未選擇班級",
             generatedAtText: Self.teacherReportDateFormatter.string(from: Date()),
             metrics: [
                 ClassroomReportMetric(
                     id: "students",
                     label: "追蹤學生",
-                    value: "\(metrics.studentCount)",
+                    value: "\(rosterStudentCount ?? metrics.studentCount)",
                     detail: "位"
                 ),
                 ClassroomReportMetric(

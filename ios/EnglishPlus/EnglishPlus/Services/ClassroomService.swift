@@ -600,6 +600,8 @@ struct UnavailableClassroomService: ClassroomService {
 final class MockClassroomService: ClassroomService {
     private var classrooms: [ClassroomSummary] = []
     private var studentsByClass: [String: [ClassroomStudentSummary]] = [:]
+    private(set) var studentListenerStartCount = 0
+    private(set) var lastStudentListenerClassId: String?
     private var membershipChangeHandler: (@MainActor ([String]) -> Void)?
     private var volunteerServiceChangeHandler: (@MainActor ([VolunteerServiceSummary]) -> Void)?
     private var classroomVolunteerChangeHandlers: [String: @MainActor ([VolunteerServiceSummary]) -> Void] = [:]
@@ -947,8 +949,14 @@ final class MockClassroomService: ClassroomService {
         onChange: @escaping @MainActor ([ClassroomStudentSummary]) -> Void,
         onError: @escaping @MainActor (Error) -> Void
     ) -> ClassroomRosterListenerToken {
+        studentListenerStartCount += 1
+        lastStudentListenerClassId = classId
         onChange(studentsByClass[classId, default: []])
         return AnyClassroomRosterListenerToken {}
+    }
+
+    func seedStudents(_ students: [ClassroomStudentSummary], classId: String) {
+        studentsByClass[classId] = students
     }
 
     private static func normalizedCode(_ value: String) -> String {

@@ -326,10 +326,14 @@ private struct StaffMissingQuestionSnapshotLabel: View {
 }
 
 struct TeacherReportView: View {
+    @EnvironmentObject private var appState: AppState
     @EnvironmentObject private var learningRepository: LearningRepositoryStore
 
     var body: some View {
-        let report = learningRepository.classroomReportExport
+        let report = learningRepository.makeClassroomReportExport(
+            rosterStudentCount: appState.classroomStudents.count,
+            activeClassId: appState.currentProfile?.activeClassId
+        )
 
         NavigationStack {
             ZStack {
@@ -340,21 +344,25 @@ struct TeacherReportView: View {
                             .font(.title.bold())
                             .foregroundStyle(EPTheme.ink)
 
-                        Text("用進步證據取代排名壓力，整理學生任務、求助與接力紀錄。")
-                            .font(.subheadline)
-                            .foregroundStyle(EPTheme.secondaryInk)
+                        if appState.currentProfile?.activeClassId == nil {
+                            TeacherReportNoActiveClassCard()
+                        } else {
+                            Text("用進步證據取代排名壓力，整理學生任務、求助與接力紀錄。")
+                                .font(.subheadline)
+                                .foregroundStyle(EPTheme.secondaryInk)
 
-                        TeacherReportMetricGrid(report: report)
-                        TeacherReportPrioritySection(report: report)
-                        TeacherReportQuestionBankSection(report: report)
-                        TeacherReportActionList(report: report)
+                            TeacherReportMetricGrid(report: report)
+                            TeacherReportPrioritySection(report: report)
+                            TeacherReportQuestionBankSection(report: report)
+                            TeacherReportActionList(report: report)
 
-                        ShareLink(item: report.shareText) {
-                            Label("分享週報", systemImage: "square.and.arrow.up")
+                            ShareLink(item: report.shareText) {
+                                Label("分享週報", systemImage: "square.and.arrow.up")
+                            }
+                                .buttonStyle(PrimaryActionButtonStyle())
+
+                            TeacherReportPreviewCard(report: report)
                         }
-                            .buttonStyle(PrimaryActionButtonStyle())
-
-                        TeacherReportPreviewCard(report: report)
                     }
                     .padding(EPTheme.pagePadding)
                 }
@@ -1229,6 +1237,24 @@ private struct TeacherVolunteerServiceCard: View {
         } message: {
             Text("移除後，對方會立即失去本班求助資料與通知權限。")
         }
+    }
+}
+
+private struct TeacherReportNoActiveClassCard: View {
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Label("先選擇一個班級", systemImage: "person.3")
+                .font(.headline)
+                .foregroundStyle(EPTheme.ink)
+            Text("到「班級」建立或切換班級後，English+ 才會整理該班的任務、求助與接力紀錄。")
+                .font(.subheadline)
+                .foregroundStyle(EPTheme.secondaryInk)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        .padding(16)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(EPTheme.card)
+        .clipShape(RoundedRectangle(cornerRadius: EPTheme.cardRadius))
     }
 }
 
@@ -2307,30 +2333,42 @@ private struct TeacherStatusTile: View {
 }
 
 private struct TeacherClassSummary: View {
+    @EnvironmentObject private var appState: AppState
     @EnvironmentObject private var learningRepository: LearningRepositoryStore
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
             Text("班級狀態")
                 .font(.headline)
-            ForEach(learningRepository.staffStudentSummaries) { summary in
-                HStack(alignment: .top) {
-                    VStack(alignment: .leading, spacing: 4) {
-                        Text(summary.studentName)
-                            .font(.subheadline.bold())
-                        Text(summary.missionProgress)
-                            .font(.caption)
-                            .foregroundStyle(EPTheme.secondaryInk)
-                    }
-                    Spacer()
-                    Text(summary.nextAction)
-                        .font(.caption)
-                        .foregroundStyle(EPTheme.ink)
-                        .multilineTextAlignment(.trailing)
+
+            if appState.currentProfile?.activeClassId == nil {
+                TeacherClassSummaryState(
+                    title: "目前是個人模式",
+                    message: "到「班級」建立或切換班級後，這裡會顯示學生任務與求助狀態。",
+                    systemImage: "person.3"
+                )
+            } else if appState.isLoadingClassroomStudents && appState.classroomStudents.isEmpty {
+                ProgressView("正在同步班級名冊...")
+                    .font(.footnote)
+                    .foregroundStyle(EPTheme.secondaryInk)
+                    .frame(maxWidth: .infinity, minHeight: 56, alignment: .leading)
+            } else if let rosterError = appState.classroomRosterErrorMessage,
+                      appState.classroomStudents.isEmpty {
+                TeacherClassSummaryState(
+                    title: "名冊暫時無法同步",
+                    message: rosterError,
+                    systemImage: "wifi.exclamationmark"
+                )
+            } else if classroomStudents.isEmpty {
+                TeacherClassSummaryState(
+                    title: "班級目前還沒有學生",
+                    message: "分享班級代碼讓學生加入；加入後會自動出現在這裡。",
+                    systemImage: "person.badge.plus"
+                )
+            } else {
+                ForEach(classroomStudents) { summary in
+                    studentRow(summary)
                 }
-                .padding(12)
-                .background(EPTheme.secondarySurface)
-                .clipShape(RoundedRectangle(cornerRadius: EPTheme.cardRadius))
             }
         }
         .padding(16)
@@ -2338,9 +2376,82 @@ private struct TeacherClassSummary: View {
         .clipShape(RoundedRectangle(cornerRadius: EPTheme.cardRadius))
     }
 
+    private var classroomStudents: [StaffStudentSummary] {
+        let supportByStudent = Dictionary(
+            learningRepository.staffStudentSummaries.map { ($0.studentUid, $0) },
+            uniquingKeysWith: { first, _ in first }
+        )
+        return appState.classroomStudents.map { rosterStudent in
+            guard let support = supportByStudent[rosterStudent.studentUid] else {
+                return rosterStudent.staffSummary
+            }
+            return StaffStudentSummary(
+                id: rosterStudent.studentUid,
+                studentUid: rosterStudent.studentUid,
+                studentName: rosterStudent.studentName,
+                classCode: rosterStudent.classId,
+                moodScore: support.moodScore ?? rosterStudent.moodScore,
+                riskLevel: support.riskLevel,
+                missionProgress: rosterStudent.staffSummary.missionProgress,
+                nextAction: support.nextAction
+            )
+        }
+    }
+
+    private func studentRow(_ summary: StaffStudentSummary) -> some View {
+        HStack(alignment: .top) {
+            VStack(alignment: .leading, spacing: 4) {
+                Text(summary.studentName)
+                    .font(.subheadline.bold())
+                Text(summary.missionProgress)
+                    .font(.caption)
+                    .foregroundStyle(EPTheme.secondaryInk)
+            }
+            Spacer()
+            Text(summary.nextAction)
+                .font(.caption)
+                .foregroundStyle(EPTheme.ink)
+                .multilineTextAlignment(.trailing)
+        }
+        .padding(12)
+        .background(EPTheme.secondarySurface)
+        .clipShape(RoundedRectangle(cornerRadius: EPTheme.cardRadius))
+    }
+}
+
+private struct TeacherClassSummaryState: View {
+    let title: String
+    let message: String
+    let systemImage: String
+
+    var body: some View {
+        HStack(alignment: .top, spacing: 12) {
+            Image(systemName: systemImage)
+                .font(.title3)
+                .foregroundStyle(EPTheme.primary)
+                .frame(width: 32, height: 32)
+                .background(EPTheme.primary.opacity(0.10))
+                .clipShape(RoundedRectangle(cornerRadius: 8))
+
+            VStack(alignment: .leading, spacing: 4) {
+                Text(title)
+                    .font(.subheadline.bold())
+                    .foregroundStyle(EPTheme.ink)
+                Text(message)
+                    .font(.caption)
+                    .foregroundStyle(EPTheme.secondaryInk)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        }
+        .padding(12)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(EPTheme.secondarySurface)
+        .clipShape(RoundedRectangle(cornerRadius: EPTheme.cardRadius))
+    }
 }
 
 private struct TeacherHandoffSummaryCard: View {
+    @EnvironmentObject private var appState: AppState
     @EnvironmentObject private var learningRepository: LearningRepositoryStore
 
     var body: some View {
@@ -2357,7 +2468,7 @@ private struct TeacherHandoffSummaryCard: View {
             HStack(spacing: 10) {
                 TeacherStatusTile(
                     title: "學生",
-                    value: "\(learningRepository.staffDashboardMetrics.studentCount)",
+                    value: "\(appState.classroomStudents.count)",
                     color: EPTheme.primary
                 )
                 TeacherStatusTile(

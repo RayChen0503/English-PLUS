@@ -8,6 +8,7 @@ on:
       - codex/fix-d-admin-portal
       - codex/fix-e-volunteer-service-scope
       - codex/fix-f-post-answer-ai
+      - codex/fix-g-stabilization-audit
     paths:
       - .github/ci-triggers/round10-ios-build
       - .github/ci-triggers/round11-ios-build
@@ -122,6 +123,7 @@ jobs:
           python3 scripts/validate_fix_d_admin_portal.py
           python3 scripts/validate_fix_e_volunteer_service_scope.py
           python3 scripts/validate_fix_f_post_answer_ai.py
+          python3 scripts/validate_fix_g_stabilization_audit.py
 
       - name: Build iOS Simulator target
         run: |
