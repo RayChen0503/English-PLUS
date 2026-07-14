@@ -7,6 +7,7 @@ struct ConsentView: View {
     @State private var acceptsPrivacy = false
     @State private var acceptsMoodAndAi = false
     @State private var confirmsGuardianContext = false
+    @State private var sharesStabilityDiagnostics = false
 
     private var canContinue: Bool {
         acceptsPrivacy
@@ -87,6 +88,16 @@ struct ConsentView: View {
                     .background(EPTheme.card)
                     .clipShape(RoundedRectangle(cornerRadius: EPTheme.cardRadius))
 
+                    ConsentToggle(
+                        title: "選用：當機與穩定性診斷",
+                        text: "協助修復閃退與同步失敗；只傳送 App 版本、角色、所在流程與錯誤類別，不傳姓名、Email、題目、心情分數或班級名稱。未開啟也能完整使用。",
+                        accessibilityIdentifier: "consent.diagnostics",
+                        isOn: $sharesStabilityDiagnostics
+                    )
+                    .padding(16)
+                    .background(EPTheme.secondarySurface)
+                    .clipShape(RoundedRectangle(cornerRadius: EPTheme.cardRadius))
+
                     Text(PrivacyPolicyCopy.refusalPath)
                         .font(.footnote)
                         .foregroundStyle(EPTheme.secondaryInk)
@@ -115,6 +126,9 @@ struct ConsentView: View {
                                 categories: PrivacyPolicyCopy.requiredCategories(for: role),
                                 guardianConsentStatus: role == .student ? .received : .notRequired
                             )
+                            if case .home = appState.route {
+                                AppDiagnostics.shared.setCollectionEnabled(sharesStabilityDiagnostics)
+                            }
                         }
                     } label: {
                         if appState.isSavingConsent {

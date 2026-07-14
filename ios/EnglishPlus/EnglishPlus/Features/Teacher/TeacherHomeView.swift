@@ -692,20 +692,21 @@ struct TeacherClassAssignmentView: View {
         )
 
         if appState.isLoadingClassroomStudents {
-            ProgressView("正在載入班級學生...")
-                .font(.footnote)
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .padding(12)
+            EPContentStateView(
+                state: .loading(
+                    title: "正在載入班級學生",
+                    detail: "名冊同步完成後，就能選學生與指派任務。"
+                )
+            )
         } else if let rosterError = appState.classroomRosterErrorMessage {
-            TeacherClassroomMessage(text: rosterError, isError: true)
-            Button {
-                guard let classId = appState.currentProfile?.activeClassId else { return }
-                Task { await appState.loadClassroomStudents(classId: classId) }
-            } label: {
-                Label("重新載入學生", systemImage: "arrow.clockwise")
-                    .frame(maxWidth: .infinity, minHeight: 44)
-            }
-            .buttonStyle(SecondaryActionButtonStyle())
+            EPContentStateView(
+                state: .failure(title: "班級名冊尚未載入", detail: rosterError),
+                retryTitle: "重新載入學生",
+                onRetry: {
+                    guard let classId = appState.currentProfile?.activeClassId else { return }
+                    Task { await appState.loadClassroomStudents(classId: classId) }
+                }
+            )
         }
 
         if !appState.isLoadingClassroomStudents && appState.classroomRosterErrorMessage == nil {

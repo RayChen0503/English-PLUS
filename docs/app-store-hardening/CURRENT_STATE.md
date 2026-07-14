@@ -48,7 +48,9 @@ learning must remain usable without joining a class.
     (`round-17-student-experience.md`)
   - Round 18 - teacher and volunteer workspaces
     (`round-18-staff-workspaces.md`)
-- Hardening progress: **16/20 fully signed off**; Rounds 17 and 18 have also
+- Round 19 - appearance, accessibility and observability
+    (`round-19-accessibility-observability.md`)
+- Hardening progress: **16/20 fully signed off**; Rounds 17 through 19 have also
   passed their local Block E gates and await the combined macOS verification.
 - Do not merge to `main` or trigger Xcode Cloud until the end of a four-round
   block: 4, 8, 12, 16, and 20.
@@ -198,6 +200,16 @@ learning must remain usable without joining a class.
   architecture. Isolated macOS run `29323656069` passed the Xcode 16.4 test
   bundle build, the complete Swift unit/integration step and all `6/6` UI
   journeys for commit `7d3e07d`.
+- Round 18 has replaced duplicate teacher and volunteer support forms with one
+  shared queue-to-detail workflow, kept role-specific replies and AI drafting,
+  collapsed low-frequency settings and report detail, and added stable staff
+  UI regression identifiers.
+- Round 19 has completed semantic light/dark surfaces, adaptive staff metrics,
+  shared loading/empty/failure states and Reduce Motion-aware interactions.
+  Firebase Crashlytics is linked with dSYM upload, defaults to off, and is
+  enabled only by an explicit optional choice; reports exclude direct user and
+  learning-content identifiers. Two dark/large-text UI journeys now run across
+  a small and large iPhone matrix in the macOS gate.
 - FIX-A through FIX-E repair cross-device support, finite layered practice,
   class deletion, private volunteer review administration, and teacher-scoped
   volunteer service classes. FIX-F makes question AI an explicit post-answer
@@ -273,10 +285,10 @@ learning must remain usable without joining a class.
 
 ## Next gate
 
-Rounds 17 and 18 have passed locally on `codex/app-store-hardening-e`. Round 19 will
-complete dark mode, accessibility, device-size, loading/failure-state and
-crash-observability hardening. Do not merge to `main` or trigger Xcode Cloud
-until Rounds 19 and 20 and the complete Block E audit are signed off.
+Rounds 17 through 19 have passed locally on `codex/app-store-hardening-e`.
+Round 20 will perform the complete App Store, TestFlight and Block E release
+candidate audit. Do not merge to `main` or trigger Xcode Cloud until Round 20
+and the complete Block E audit are signed off.
 
 ## Maintenance rule
 

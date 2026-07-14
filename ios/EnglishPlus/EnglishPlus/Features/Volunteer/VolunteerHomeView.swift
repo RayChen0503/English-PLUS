@@ -113,17 +113,36 @@ struct VolunteerServiceClassesView: View {
                         joinCard
 
                         if appState.isLoadingVolunteerServices && appState.volunteerServices.isEmpty {
-                            ProgressView("正在載入服務班級...")
-                                .frame(maxWidth: .infinity, alignment: .leading)
-                                .padding(16)
+                            EPContentStateView(
+                                state: .loading(
+                                    title: "正在載入服務班級",
+                                    detail: "你仍可留在此頁，完成後會自動更新。"
+                                )
+                            )
                         }
 
                         if !pendingServices.isEmpty {
                             serviceSection(title: "等待老師核准", services: pendingServices)
                         }
 
-                        if activeServices.isEmpty && pendingServices.isEmpty && !appState.isLoadingVolunteerServices {
-                            emptyServiceCard
+                        if let error = appState.volunteerServiceErrorMessage,
+                           activeServices.isEmpty,
+                           pendingServices.isEmpty,
+                           !appState.isLoadingVolunteerServices {
+                            EPContentStateView(
+                                state: .failure(title: "服務班級尚未載入", detail: error),
+                                onRetry: {
+                                    Task { await appState.loadVolunteerServices() }
+                                }
+                            )
+                        } else if activeServices.isEmpty && pendingServices.isEmpty && !appState.isLoadingVolunteerServices {
+                            EPContentStateView(
+                                state: .empty(
+                                    systemImage: "person.3",
+                                    title: "目前沒有服務班級",
+                                    detail: "在老師核准前，接力頁不會顯示任何學生資料。"
+                                )
+                            )
                         } else if !activeServices.isEmpty {
                             serviceSection(title: "我服務的班級", services: activeServices)
                         }
@@ -131,7 +150,8 @@ struct VolunteerServiceClassesView: View {
                         if let notice = appState.volunteerServiceNoticeMessage {
                             VolunteerServiceMessage(text: notice, isError: false)
                         }
-                        if let error = appState.volunteerServiceErrorMessage {
+                        if let error = appState.volunteerServiceErrorMessage,
+                           !activeServices.isEmpty || !pendingServices.isEmpty {
                             VolunteerServiceMessage(text: error, isError: true)
                         }
                     }
@@ -216,21 +236,6 @@ struct VolunteerServiceClassesView: View {
             .opacity(normalizedInviteCode.count == 8 && !appState.isManagingVolunteerService ? 1 : 0.45)
         }
         .padding(16)
-        .background(EPTheme.card)
-        .clipShape(RoundedRectangle(cornerRadius: EPTheme.cardRadius))
-    }
-
-    private var emptyServiceCard: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Label("目前沒有服務班級", systemImage: "person.3")
-                .font(.headline)
-                .foregroundStyle(EPTheme.ink)
-            Text("在老師核准前，接力頁不會顯示任何學生資料。")
-                .font(.subheadline)
-                .foregroundStyle(EPTheme.secondaryInk)
-        }
-        .padding(16)
-        .frame(maxWidth: .infinity, alignment: .leading)
         .background(EPTheme.card)
         .clipShape(RoundedRectangle(cornerRadius: EPTheme.cardRadius))
     }

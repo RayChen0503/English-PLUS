@@ -35,5 +35,6 @@ struct TeacherShellView: View {
                     .badge(appState.volunteerReviewApplications.count)
             }
         }
+        .tint(EPTheme.primary)
     }
 }

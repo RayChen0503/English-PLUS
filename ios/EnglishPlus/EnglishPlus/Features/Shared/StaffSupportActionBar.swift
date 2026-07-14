@@ -28,7 +28,7 @@ struct StaffSupportQueueHeaderCard: View {
                     .foregroundStyle(tint)
                     .frame(width: 40, height: 40)
                     .background(tint.opacity(0.12))
-                    .clipShape(RoundedRectangle(cornerRadius: 12))
+                    .clipShape(RoundedRectangle(cornerRadius: EPTheme.cardRadius))
 
                 VStack(alignment: .leading, spacing: 5) {
                     Text(title)
@@ -54,16 +54,27 @@ struct StaffSupportQueueHeaderCard: View {
                 }
             }
 
-            HStack(spacing: 10) {
-                StaffSupportMetricPill(title: "未處理", value: "\(waitingCount)", tint: EPTheme.warning)
-                StaffSupportMetricPill(title: "高優先", value: "\(highPriorityCount)", tint: EPTheme.primary)
-                StaffSupportMetricPill(title: "已處理", value: "\(handledCount)", tint: EPTheme.support)
+            ViewThatFits(in: .horizontal) {
+                HStack(spacing: 10) {
+                    metricPills
+                }
+
+                VStack(spacing: 8) {
+                    metricPills
+                }
             }
         }
         .padding(16)
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(EPTheme.card)
         .clipShape(RoundedRectangle(cornerRadius: EPTheme.cardRadius))
+    }
+
+    @ViewBuilder
+    private var metricPills: some View {
+        StaffSupportMetricPill(title: "未處理", value: "\(waitingCount)", tint: EPTheme.warning)
+        StaffSupportMetricPill(title: "高優先", value: "\(highPriorityCount)", tint: EPTheme.primary)
+        StaffSupportMetricPill(title: "已處理", value: "\(handledCount)", tint: EPTheme.support)
     }
 }
 
@@ -85,7 +96,9 @@ private struct StaffSupportMetricPill: View {
         .padding(12)
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(tint.opacity(0.08))
-        .clipShape(RoundedRectangle(cornerRadius: 12))
+        .clipShape(RoundedRectangle(cornerRadius: EPTheme.cardRadius))
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("\(title) \(value) 件")
     }
 }
 
@@ -125,7 +138,7 @@ struct StaffSupportActionBar: View {
         }
         .padding(12)
         .background(EPTheme.support.opacity(0.08))
-        .clipShape(RoundedRectangle(cornerRadius: 12))
+        .clipShape(RoundedRectangle(cornerRadius: EPTheme.cardRadius))
     }
 }
 

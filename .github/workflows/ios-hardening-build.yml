@@ -140,6 +140,7 @@ jobs:
           python3 scripts/validate_app_store_hardening_block_d.py --preflight
           python3 scripts/validate_app_store_hardening_round17.py
           python3 scripts/validate_app_store_hardening_round18.py
+          python3 scripts/validate_app_store_hardening_round19.py
 
       - name: Build iOS Simulator test bundle
         run: |
@@ -199,6 +200,44 @@ jobs:
             CODE_SIGNING_ALLOWED=NO \
             test-without-building
 
+      - name: Run dark mode and Dynamic Type device matrix
+        shell: bash
+        run: |
+          set -o pipefail
+          DEVICE_UDIDS=()
+          while IFS= read -r UDID; do
+            DEVICE_UDIDS+=("$UDID")
+          done < <(xcrun simctl list devices available -j | python3 -c '
+          import json, sys
+          data = json.load(sys.stdin)
+          devices = [device for runtime in data["devices"].values() for device in runtime if device["name"].startswith("iPhone")]
+          small = next((device for device in devices if "SE" in device["name"]), devices[0])
+          large = next((device for device in devices if "Pro Max" in device["name"]), devices[-1])
+          for udid in dict.fromkeys([small["udid"], large["udid"]]):
+              print(udid)
+          ')
+          test "${#DEVICE_UDIDS[@]}" -ge 1
+          for INDEX in "${!DEVICE_UDIDS[@]}"; do
+            UDID="${DEVICE_UDIDS[$INDEX]}"
+            xcrun simctl boot "$UDID" 2>/dev/null || true
+            xcrun simctl bootstatus "$UDID" -b
+            xcodebuild \
+              -project ios/EnglishPlus/EnglishPlus.xcodeproj \
+              -scheme EnglishPlus \
+              -configuration Debug \
+              -destination "platform=iOS Simulator,id=$UDID" \
+              -derivedDataPath "$RUNNER_TEMP/EnglishPlusDerivedData" \
+              -resultBundlePath "$RUNNER_TEMP/EnglishPlusAppearance-${INDEX}.xcresult" \
+              -only-testing:EnglishPlusUITests/EnglishPlusCriticalFlowsUITests/testDarkModeAndAccessibilityTextKeepRoleChoiceUsable \
+              -only-testing:EnglishPlusUITests/EnglishPlusCriticalFlowsUITests/testDarkModeLargeTextStudentFlowKeepsPrimaryActionsReachable \
+              -parallel-testing-enabled NO \
+              -test-timeouts-enabled YES \
+              -default-test-execution-time-allowance 120 \
+              -maximum-test-execution-time-allowance 240 \
+              CODE_SIGNING_ALLOWED=NO \
+              test-without-building
+          done
+
       - name: Preserve Xcode test diagnostics
         if: always()
         uses: actions/upload-artifact@v4
@@ -207,5 +246,6 @@ jobs:
           path: |
             ${{ runner.temp }}/EnglishPlusUnitTests.xcresult
             ${{ runner.temp }}/EnglishPlusUITests.xcresult
+            ${{ runner.temp }}/EnglishPlusAppearance-*.xcresult
           if-no-files-found: warn
           retention-days: 7

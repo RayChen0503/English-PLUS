@@ -53,6 +53,21 @@ final class EnglishPlusCriticalFlowsUITests: XCTestCase {
         assertTabBarContains(["首頁", "班級", "接力", "紀錄"])
     }
 
+    func testDarkModeAndAccessibilityTextKeepRoleChoiceUsable() {
+        app.launchArguments.append(contentsOf: [
+            "-AppleInterfaceStyle", "Dark",
+            "-UIPreferredContentSizeCategoryName", "UICTContentSizeCategoryAccessibilityExtraExtraExtraLarge",
+        ])
+        app.launch()
+
+        let studentButton = app.buttons["role.student"]
+        XCTAssertTrue(studentButton.waitForExistence(timeout: 5))
+        XCTAssertTrue(studentButton.isHittable)
+        XCTAssertTrue(app.buttons["role.teacher"].exists)
+        XCTAssertTrue(app.buttons["role.volunteer"].exists)
+        XCTAssertTrue(app.descendants(matching: .any)["閱讀完整隱私政策"].exists)
+    }
+
     func testTeacherWorkspaceKeepsDailyActionsSeparateFromSettingsAndReportDetail() {
         launchAndEnterHome(
             roleIdentifier: "role.teacher",
@@ -79,6 +94,24 @@ final class EnglishPlusCriticalFlowsUITests: XCTestCase {
         XCTAssertTrue(app.staticTexts["目前為離線模式"].waitForExistence(timeout: 5))
         XCTAssertTrue(app.buttons["重試"].exists)
         assertTabBarContains(["首頁", "練習", "班級", "支持", "地圖"])
+    }
+
+    func testDarkModeLargeTextStudentFlowKeepsPrimaryActionsReachable() {
+        app.launchArguments.append(contentsOf: [
+            "-AppleInterfaceStyle", "Dark",
+            "-UIPreferredContentSizeCategoryName", "UICTContentSizeCategoryAccessibilityExtraExtraLarge",
+        ])
+        launchAndEnterHome(
+            roleIdentifier: "role.student",
+            email: "student.demo@englishplus.test",
+            password: "EnglishPlusStudent2026!",
+            requiresGuardianConsent: true
+        )
+
+        assertTabBarContains(["首頁", "練習", "班級", "支持", "地圖"])
+        app.tabBars.buttons["練習"].tap()
+        XCTAssertTrue(app.buttons["請 AI 推薦練習"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.buttons["開始這組練習"].exists)
     }
 
     func testStudentNewJourneyKeepsOnePrimaryActionAndOptionalPractice() {

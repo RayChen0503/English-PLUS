@@ -23,6 +23,7 @@ struct AccountDataView: View {
                         accountSummary
                         privacyAndSupportSection
                         aiTransparencySection
+                        stabilityDiagnosticsSection
                         deletionEntry
 
                         if showsDeletionDetails && isLoading {
@@ -110,6 +111,37 @@ struct AccountDataView: View {
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(EPTheme.secondarySurface)
         .clipShape(RoundedRectangle(cornerRadius: EPTheme.cardRadius))
+    }
+
+    private var stabilityDiagnosticsSection: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Toggle(
+                isOn: Binding(
+                    get: { AppDiagnostics.shared.isCollectionEnabled },
+                    set: { AppDiagnostics.shared.setCollectionEnabled($0) }
+                )
+            ) {
+                Label("分享當機與穩定性診斷", systemImage: "waveform.path.ecg")
+                    .font(.headline)
+                    .foregroundStyle(EPTheme.ink)
+            }
+            .tint(EPTheme.support)
+
+            Text("開啟後會傳送 App 版本、角色類型、所在流程與錯誤類別，協助修復閃退與同步失敗。")
+                .font(.subheadline)
+                .foregroundStyle(EPTheme.ink)
+                .fixedSize(horizontal: false, vertical: true)
+
+            Label("不傳送姓名、Email、題目內容、心情分數或班級名稱", systemImage: "lock.shield")
+                .font(.caption)
+                .foregroundStyle(EPTheme.secondaryInk)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        .padding(16)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(EPTheme.card)
+        .clipShape(RoundedRectangle(cornerRadius: EPTheme.cardRadius))
+        .accessibilityIdentifier("account.stability-diagnostics")
     }
 
     private var deletionEntry: some View {
@@ -322,6 +354,7 @@ struct AccountDataView: View {
         } catch {
             preview = nil
             errorMessage = userMessage(for: error)
+            AppDiagnostics.shared.record(.accountLifecycle, underlying: error)
         }
         isLoading = false
     }
@@ -342,6 +375,7 @@ struct AccountDataView: View {
             dismiss()
         } catch {
             errorMessage = userMessage(for: error)
+            AppDiagnostics.shared.record(.accountLifecycle, underlying: error)
         }
     }
 

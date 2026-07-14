@@ -1276,5 +1276,8 @@ final class AppState: ObservableObject {
     private func recordAIResponse(_ response: AiProxyResponse) {
         latestAIResponse = response
         runtimeDiagnostics = runtimeDiagnostics.recordingAIResponse(response)
+        if !response.ok {
+            AppDiagnostics.shared.record(.aiProxy)
+        }
     }
 }
