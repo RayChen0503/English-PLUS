@@ -11,6 +11,7 @@ export default defineConfig({
     environment: "node",
     include: [
       "test/account-deletion.test.js",
+      "test/admin-review.test.js",
       "test/ai-actions.test.js",
       "test/security.test.js",
     ],

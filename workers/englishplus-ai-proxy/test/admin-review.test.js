@@ -52,7 +52,12 @@ test("admin review input accepts valid decisions and protects consequential acti
     (error) => error.code === "INVALID_REVIEW_ACTION"
   );
   assert.throws(
-    () => normalizeAdminReviewRequest({ action: "approved", expectedVersion: "old" }),
+    () =>
+      normalizeAdminReviewRequest({
+        action: "approved",
+        note: "資格文件已確認。",
+        expectedVersion: "old",
+      }),
     (error) => error.code === "INVALID_REVIEW_VERSION"
   );
 });
