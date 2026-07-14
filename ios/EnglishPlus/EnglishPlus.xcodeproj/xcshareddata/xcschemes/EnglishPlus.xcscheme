@@ -29,6 +29,20 @@
             buildForAnalyzing = "NO">
             <BuildableReference
                BuildableIdentifier = "primary"
+               BlueprintIdentifier = "300000000000000000000401"
+               BuildableName = "EnglishPlusUITests.xctest"
+               BlueprintName = "EnglishPlusUITests"
+               ReferencedContainer = "container:EnglishPlus.xcodeproj">
+            </BuildableReference>
+         </BuildActionEntry>
+         <BuildActionEntry
+            buildForTesting = "YES"
+            buildForRunning = "NO"
+            buildForProfiling = "NO"
+            buildForArchiving = "NO"
+            buildForAnalyzing = "NO">
+            <BuildableReference
+               BuildableIdentifier = "primary"
                BlueprintIdentifier = "200000000000000000000401"
                BuildableName = "EnglishPlusTests.xctest"
                BlueprintName = "EnglishPlusTests"
@@ -51,6 +65,16 @@
                BlueprintIdentifier = "200000000000000000000401"
                BuildableName = "EnglishPlusTests.xctest"
                BlueprintName = "EnglishPlusTests"
+               ReferencedContainer = "container:EnglishPlus.xcodeproj">
+            </BuildableReference>
+         </TestableReference>
+         <TestableReference
+            skipped = "NO">
+            <BuildableReference
+               BuildableIdentifier = "primary"
+               BlueprintIdentifier = "300000000000000000000401"
+               BuildableName = "EnglishPlusUITests.xctest"
+               BlueprintName = "EnglishPlusUITests"
                ReferencedContainer = "container:EnglishPlus.xcodeproj">
             </BuildableReference>
          </TestableReference>

@@ -6,6 +6,7 @@ struct EnglishPlusApp: App {
     @StateObject private var learningRepository: LearningRepositoryStore
 
     init() {
+        EnglishPlusLaunchConfiguration.prepareProcessIfNeeded()
         let services = EnglishPlusServiceFactory.makeServices()
         _appState = StateObject(
             wrappedValue: AppState(
@@ -19,8 +20,21 @@ struct EnglishPlusApp: App {
                 runtimeDiagnostics: services.runtimeDiagnostics
             )
         )
+        let connectivityMonitor: any NetworkConnectivityMonitoring
+        if EnglishPlusLaunchConfiguration.isUITesting {
+            connectivityMonitor = LaunchArgumentNetworkConnectivityMonitor(
+                status: EnglishPlusLaunchConfiguration.shouldStartOffline
+                    ? .disconnected
+                    : .connected
+            )
+        } else {
+            connectivityMonitor = NetworkConnectivityMonitor()
+        }
         _learningRepository = StateObject(
-            wrappedValue: LearningRepositoryStore(backend: services.learningBackend)
+            wrappedValue: LearningRepositoryStore(
+                backend: services.learningBackend,
+                connectivityMonitor: connectivityMonitor
+            )
         )
     }
 

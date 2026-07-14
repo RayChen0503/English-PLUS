@@ -185,7 +185,8 @@ def main() -> int:
         (
             "EnglishPlusTests.xctest",
             "AuthenticationFlowAcceptanceTests.swift in Sources",
-            "Run authentication acceptance tests",
+            "Run Swift unit and integration tests",
+            "-only-testing:EnglishPlusTests",
             "xcodebuild \\",
             "test",
         ),

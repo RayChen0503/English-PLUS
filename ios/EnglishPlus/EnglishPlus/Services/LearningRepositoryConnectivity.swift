@@ -59,6 +59,22 @@ final class NetworkConnectivityMonitor: NetworkConnectivityMonitoring, @unchecke
     }
 }
 
+final class LaunchArgumentNetworkConnectivityMonitor: NetworkConnectivityMonitoring {
+    let currentStatus: NetworkConnectivityStatus
+
+    init(status: NetworkConnectivityStatus) {
+        currentStatus = status
+    }
+
+    func start(
+        onChange: @escaping @Sendable (NetworkConnectivityStatus) -> Void
+    ) {
+        onChange(currentStatus)
+    }
+
+    func stop() {}
+}
+
 private extension NSLock {
     func englishPlusWithLock<T>(_ operation: () -> T) -> T {
         lock()

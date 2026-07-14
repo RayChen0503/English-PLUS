@@ -56,6 +56,10 @@ enum FirebaseAppConfigurator {
 enum EnglishPlusServiceFactory {
     @MainActor
     static func makeServices() -> EnglishPlusServiceBundle {
+        if EnglishPlusLaunchConfiguration.isUITesting {
+            return makeMockServices()
+        }
+
         let mode = FirebaseAppConfigurator.configureIfPossible()
 
         switch mode {
@@ -106,26 +110,31 @@ enum EnglishPlusServiceFactory {
                 )
             )
         case .mock:
-            return EnglishPlusServiceBundle(
-                mode: .mock,
-                authService: MockAuthService(),
-                firestoreService: MockFirestoreService(),
-                aiService: MockAIService(),
-                learningBackend: MockLearningRepository(),
-                evidenceUploadService: UnavailableEvidenceUploadService(),
-                volunteerReviewService: UnavailableVolunteerReviewService(),
-                classroomService: MockClassroomService(),
-                accountLifecycleService: MockAccountLifecycleService(),
-                runtimeDiagnostics: RuntimeDiagnosticsSnapshot(
-                    backendMode: .mock,
-                    hasFirebaseConfig: FirebaseAppConfigurator.hasBundledConfig,
-                    authProvider: "MockAuthService",
-                    firestoreProvider: "MockFirestoreService",
-                    learningProvider: "MockLearningRepository",
-                    aiProvider: "MockAIService",
-                    aiProxyEndpoint: EnglishPlusAIProxyConfig.workerEndpoint?.absoluteString
-                )
-            )
+            return makeMockServices()
         }
+    }
+
+    @MainActor
+    private static func makeMockServices() -> EnglishPlusServiceBundle {
+        EnglishPlusServiceBundle(
+            mode: .mock,
+            authService: MockAuthService(),
+            firestoreService: MockFirestoreService(),
+            aiService: MockAIService(),
+            learningBackend: MockLearningRepository(),
+            evidenceUploadService: UnavailableEvidenceUploadService(),
+            volunteerReviewService: UnavailableVolunteerReviewService(),
+            classroomService: MockClassroomService(),
+            accountLifecycleService: MockAccountLifecycleService(),
+            runtimeDiagnostics: RuntimeDiagnosticsSnapshot(
+                backendMode: .mock,
+                hasFirebaseConfig: FirebaseAppConfigurator.hasBundledConfig,
+                authProvider: "MockAuthService",
+                firestoreProvider: "MockFirestoreService",
+                learningProvider: "MockLearningRepository",
+                aiProvider: "MockAIService",
+                aiProxyEndpoint: EnglishPlusAIProxyConfig.workerEndpoint?.absoluteString
+            )
+        )
     }
 }

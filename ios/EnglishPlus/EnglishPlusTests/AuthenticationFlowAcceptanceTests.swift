@@ -597,6 +597,41 @@ final class LearningRepositoryReliabilityTests: XCTestCase {
         XCTAssertEqual(backend.listenerStartCount, 1)
         XCTAssertEqual(store.syncStatus, .listening(classId: "class-d"))
     }
+
+    func testSnapshotFromCancelledScopeCannotReplaceCurrentScope() {
+        let connectivity = ManualNetworkConnectivityMonitor(initialStatus: .connected)
+        let backend = ReliabilityTestLearningBackend(behaviors: [.deferred, .snapshot])
+        let store = LearningRepositoryStore(
+            backend: backend,
+            connectivityMonitor: connectivity,
+            retryDelaysNanoseconds: [1_000_000]
+        )
+
+        store.startRealtimeSync(classId: "class-old", user: nil, profile: nil)
+        store.startRealtimeSync(classId: "class-current", user: nil, profile: nil)
+        backend.emitSnapshot(forListenerAt: 0)
+
+        XCTAssertEqual(backend.listenerStartCount, 2)
+        XCTAssertEqual(store.syncStatus, .listening(classId: "class-current"))
+    }
+
+    func testErrorFromCancelledScopeCannotScheduleRetryForCurrentScope() async {
+        let connectivity = ManualNetworkConnectivityMonitor(initialStatus: .connected)
+        let backend = ReliabilityTestLearningBackend(behaviors: [.deferred, .snapshot])
+        let store = LearningRepositoryStore(
+            backend: backend,
+            connectivityMonitor: connectivity,
+            retryDelaysNanoseconds: [1_000_000]
+        )
+
+        store.startRealtimeSync(classId: "class-old", user: nil, profile: nil)
+        store.startRealtimeSync(classId: "class-current", user: nil, profile: nil)
+        backend.emitError(forListenerAt: 0)
+        try? await Task.sleep(nanoseconds: 10_000_000)
+
+        XCTAssertEqual(backend.listenerStartCount, 2)
+        XCTAssertEqual(store.syncStatus, .listening(classId: "class-current"))
+    }
 }
 
 private final class ManualNetworkConnectivityMonitor: NetworkConnectivityMonitoring, @unchecked Sendable {
@@ -626,10 +661,17 @@ private final class ReliabilityTestLearningBackend: LearningRepositoryBackend {
     enum ListenerBehavior {
         case snapshot
         case failure
+        case deferred
+    }
+
+    private struct ListenerCallbacks {
+        let onChange: @MainActor (LearningRepositorySnapshot) -> Void
+        let onError: @MainActor (Error) -> Void
     }
 
     private let base = MockLearningRepository(localPersistence: MemoryLearningPersistence())
     private var behaviors: [ListenerBehavior]
+    private var listeners: [ListenerCallbacks] = []
     private(set) var listenerStartCount = 0
 
     init(behaviors: [ListenerBehavior]) {
@@ -652,14 +694,25 @@ private final class ReliabilityTestLearningBackend: LearningRepositoryBackend {
         onError: @escaping @MainActor (Error) -> Void
     ) -> LearningRepositoryListenerToken {
         listenerStartCount += 1
+        listeners.append(ListenerCallbacks(onChange: onChange, onError: onError))
         let behavior = behaviors.isEmpty ? .snapshot : behaviors.removeFirst()
         switch behavior {
         case .snapshot:
             onChange(snapshot)
         case .failure:
             onError(ReliabilityTestError.offline)
+        case .deferred:
+            break
         }
         return AnyLearningRepositoryListenerToken {}
+    }
+
+    func emitSnapshot(forListenerAt index: Int) {
+        listeners[index].onChange(snapshot)
+    }
+
+    func emitError(forListenerAt index: Int) {
+        listeners[index].onError(ReliabilityTestError.offline)
     }
 
     func generateMission(

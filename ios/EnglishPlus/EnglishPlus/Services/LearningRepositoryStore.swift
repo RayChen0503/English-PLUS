@@ -137,6 +137,7 @@ final class LearningRepositoryStore: ObservableObject {
             profile: context.profile
         ) { [weak self] snapshot in
             guard let self else { return }
+            guard syncContext?.scopeKey == context.scopeKey else { return }
             retryTask?.cancel()
             retryTask = nil
             consecutiveSyncFailures = 0
@@ -148,7 +149,8 @@ final class LearningRepositoryStore: ObservableObject {
                 updateSyncStatus(.listening(classId: context.classId))
             }
         } onError: { [weak self] error in
-            self?.handleRealtimeSyncFailure(error)
+            guard let self, syncContext?.scopeKey == context.scopeKey else { return }
+            handleRealtimeSyncFailure(error)
         }
     }
 

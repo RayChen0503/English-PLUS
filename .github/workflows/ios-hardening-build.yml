@@ -19,6 +19,7 @@ on:
       - .github/ci-triggers/fix-e-volunteer-service-scope
       - .github/ci-triggers/fix-g-stabilization-audit
       - .github/ci-triggers/round13-ios-build
+      - .github/ci-triggers/round14-test-quality
       - admin-web/**
       - firebase-tests/**
       - ios/EnglishPlus/**
@@ -129,6 +130,7 @@ jobs:
           python3 scripts/validate_fix_f_post_answer_ai.py
           python3 scripts/validate_fix_g_stabilization_audit.py
           python3 scripts/validate_app_store_hardening_round13.py
+          python3 scripts/validate_app_store_hardening_round14.py
 
       - name: Build iOS Simulator target
         run: |
@@ -143,17 +145,58 @@ jobs:
             CODE_SIGNING_ALLOWED=NO \
             clean build
 
-      - name: Run authentication acceptance tests
+      - name: Run Swift unit and integration tests
         shell: bash
         run: |
           set -o pipefail
           SIMULATOR_UDID="$(xcrun simctl list devices available -j | python3 -c 'import json,sys; data=json.load(sys.stdin); print(next(device["udid"] for runtime in data["devices"].values() for device in runtime if device["name"].startswith("iPhone")))')"
           test -n "$SIMULATOR_UDID"
+          xcrun simctl boot "$SIMULATOR_UDID" 2>/dev/null || true
+          xcrun simctl bootstatus "$SIMULATOR_UDID" -b
           xcodebuild \
             -project ios/EnglishPlus/EnglishPlus.xcodeproj \
             -scheme EnglishPlus \
             -configuration Debug \
             -destination "platform=iOS Simulator,id=$SIMULATOR_UDID" \
             -derivedDataPath "$RUNNER_TEMP/EnglishPlusTestDerivedData" \
+            -resultBundlePath "$RUNNER_TEMP/EnglishPlusUnitTests.xcresult" \
+            -only-testing:EnglishPlusTests \
+            -test-timeouts-enabled YES \
+            -default-test-execution-time-allowance 60 \
+            -maximum-test-execution-time-allowance 120 \
             CODE_SIGNING_ALLOWED=NO \
             test
+
+      - name: Run critical role UI tests
+        shell: bash
+        run: |
+          set -o pipefail
+          SIMULATOR_UDID="$(xcrun simctl list devices available -j | python3 -c 'import json,sys; data=json.load(sys.stdin); print(next(device["udid"] for runtime in data["devices"].values() for device in runtime if device["name"].startswith("iPhone")))')"
+          test -n "$SIMULATOR_UDID"
+          xcrun simctl boot "$SIMULATOR_UDID" 2>/dev/null || true
+          xcrun simctl bootstatus "$SIMULATOR_UDID" -b
+          xcodebuild \
+            -project ios/EnglishPlus/EnglishPlus.xcodeproj \
+            -scheme EnglishPlus \
+            -configuration Debug \
+            -destination "platform=iOS Simulator,id=$SIMULATOR_UDID" \
+            -derivedDataPath "$RUNNER_TEMP/EnglishPlusTestDerivedData" \
+            -resultBundlePath "$RUNNER_TEMP/EnglishPlusUITests.xcresult" \
+            -only-testing:EnglishPlusUITests \
+            -parallel-testing-enabled NO \
+            -test-timeouts-enabled YES \
+            -default-test-execution-time-allowance 120 \
+            -maximum-test-execution-time-allowance 240 \
+            CODE_SIGNING_ALLOWED=NO \
+            test
+
+      - name: Preserve Xcode test diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: englishplus-xcresult-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            ${{ runner.temp }}/EnglishPlusUnitTests.xcresult
+            ${{ runner.temp }}/EnglishPlusUITests.xcresult
+          if-no-files-found: warn
+          retention-days: 7

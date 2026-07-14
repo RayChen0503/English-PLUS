@@ -62,12 +62,14 @@ struct ConsentView: View {
                         ConsentToggle(
                             title: "帳號與服務資料",
                             text: PrivacyPolicyCopy.primaryAgreement(for: role),
+                            accessibilityIdentifier: "consent.privacy",
                             isOn: $acceptsPrivacy
                         )
                         Divider()
                         ConsentToggle(
                             title: "第三方 AI 處理",
                             text: PrivacyPolicyCopy.aiAgreement(for: role),
+                            accessibilityIdentifier: "consent.ai",
                             isOn: $acceptsMoodAndAi
                         )
 
@@ -76,6 +78,7 @@ struct ConsentView: View {
                             ConsentToggle(
                                 title: "未成年人使用確認",
                                 text: PrivacyPolicyCopy.guardianAgreement,
+                                accessibilityIdentifier: "consent.guardian",
                                 isOn: $confirmsGuardianContext
                             )
                         }
@@ -128,6 +131,7 @@ struct ConsentView: View {
                     .buttonStyle(PrimaryActionButtonStyle())
                     .disabled(!canContinue || appState.isSavingConsent)
                     .opacity(canContinue && !appState.isSavingConsent ? 1 : 0.45)
+                    .accessibilityIdentifier("consent.continue")
                 }
                 .padding(EPTheme.pagePadding)
             }
@@ -215,6 +219,7 @@ private struct ConsentSummaryRow: View {
 private struct ConsentToggle: View {
     let title: String
     let text: String
+    let accessibilityIdentifier: String
     @Binding var isOn: Bool
 
     var body: some View {
@@ -236,5 +241,6 @@ private struct ConsentToggle: View {
             }
         }
         .buttonStyle(.plain)
+        .accessibilityIdentifier(accessibilityIdentifier)
     }
 }

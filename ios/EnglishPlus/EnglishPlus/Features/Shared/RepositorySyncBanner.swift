@@ -44,7 +44,7 @@ struct RepositorySyncBanner: View {
                     .fill(EPTheme.hairline)
                     .frame(height: 1)
             }
-            .accessibilityElement(children: .combine)
+            .accessibilityElement(children: .contain)
         }
     }
 

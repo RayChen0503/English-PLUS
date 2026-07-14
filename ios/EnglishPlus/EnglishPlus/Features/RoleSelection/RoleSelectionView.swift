@@ -54,6 +54,7 @@ struct RoleSelectionView: View {
                                     .clipShape(RoundedRectangle(cornerRadius: EPTheme.cardRadius))
                                 }
                                 .buttonStyle(.plain)
+                                .accessibilityIdentifier("role.\(role.rawValue)")
                             }
                         }
 

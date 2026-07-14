@@ -188,7 +188,8 @@ struct DemoLoginView: View {
                     title: "Email",
                     placeholder: "name@example.com",
                     text: $email,
-                    keyboardType: .emailAddress
+                    keyboardType: .emailAddress,
+                    accessibilityIdentifier: "auth.email"
                 )
                 passwordField
 
@@ -248,7 +249,8 @@ struct DemoLoginView: View {
         title: String,
         placeholder: String,
         text: Binding<String>,
-        keyboardType: UIKeyboardType
+        keyboardType: UIKeyboardType,
+        accessibilityIdentifier: String? = nil
     ) -> some View {
         VStack(alignment: .leading, spacing: 8) {
             Text(title)
@@ -261,6 +263,7 @@ struct DemoLoginView: View {
                 .padding(12)
                 .background(EPTheme.secondarySurface)
                 .clipShape(RoundedRectangle(cornerRadius: EPTheme.cardRadius))
+                .accessibilityIdentifier(accessibilityIdentifier ?? "")
         }
     }
 
@@ -279,6 +282,7 @@ struct DemoLoginView: View {
                 }
                 .textInputAutocapitalization(.never)
                 .autocorrectionDisabled()
+                .accessibilityIdentifier("auth.password")
 
                 Button {
                     showsPassword.toggle()
@@ -346,6 +350,7 @@ struct DemoLoginView: View {
         }
         .disabled(primaryActionDisabled)
         .buttonStyle(PrimaryActionButtonStyle())
+        .accessibilityIdentifier("auth.submit")
     }
 
     private var headerDescription: String {
