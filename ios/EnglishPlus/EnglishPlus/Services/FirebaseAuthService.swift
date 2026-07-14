@@ -8,7 +8,7 @@ import FirebaseAuth
 import FirebaseFirestore
 #endif
 
-struct FirebaseAuthService: AuthService {
+struct FirebaseAuthService: AuthService, Sendable {
     private let fallback: MockAuthService
 
     init(fallback: MockAuthService = MockAuthService()) {

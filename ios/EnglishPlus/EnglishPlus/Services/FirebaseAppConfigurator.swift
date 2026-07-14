@@ -65,38 +65,41 @@ enum EnglishPlusServiceFactory {
         switch mode {
         case .firebase:
             let authService = FirebaseAuthService()
+            let idTokenProvider: @Sendable () async throws -> String? = {
+                try await authService.currentIdToken()
+            }
             return EnglishPlusServiceBundle(
                 mode: .firebase,
                 authService: authService,
                 firestoreService: FirebaseFirestoreService(),
                 aiService: RemoteAIService(
                     transport: CloudflareWorkerAiProxyTransport(
-                        idTokenProvider: authService.currentIdToken
+                        idTokenProvider: idTokenProvider
                     )
                 ),
                 learningBackend: FirebaseLearningRepository(),
                 evidenceUploadService: EvidenceUploadConfig.workerBaseURL.map { baseURL in
                     RemoteEvidenceUploadService(
                         baseURL: baseURL,
-                        idTokenProvider: authService.currentIdToken
+                        idTokenProvider: idTokenProvider
                     )
                 } ?? UnavailableEvidenceUploadService(),
                 volunteerReviewService: EvidenceUploadConfig.workerBaseURL.map { baseURL in
                     RemoteVolunteerReviewService(
                         baseURL: baseURL,
-                        idTokenProvider: authService.currentIdToken
+                        idTokenProvider: idTokenProvider
                     )
                 } ?? UnavailableVolunteerReviewService(),
                 classroomService: EvidenceUploadConfig.workerBaseURL.map { baseURL in
                     RemoteClassroomService(
                         baseURL: baseURL,
-                        idTokenProvider: authService.currentIdToken
+                        idTokenProvider: idTokenProvider
                     )
                 } ?? UnavailableClassroomService(),
                 accountLifecycleService: EvidenceUploadConfig.workerBaseURL.map { baseURL in
                     RemoteAccountLifecycleService(
                         baseURL: baseURL,
-                        idTokenProvider: authService.currentIdToken
+                        idTokenProvider: idTokenProvider
                     )
                 } ?? UnavailableAccountLifecycleService(),
                 runtimeDiagnostics: RuntimeDiagnosticsSnapshot(

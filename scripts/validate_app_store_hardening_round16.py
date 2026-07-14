@@ -36,6 +36,10 @@ def main() -> int:
     emulator_tests = read("firebase-tests/test/round16-mastery-spaced-review.test.js")
     worker = read("workers/englishplus-ai-proxy/src/index.js")
     workflow = read(".github/workflows/ios-hardening-build.yml")
+    mock_ai = read("ios/EnglishPlus/EnglishPlus/Services/MockAiProxyService.swift")
+    service_factory = read("ios/EnglishPlus/EnglishPlus/Services/FirebaseAppConfigurator.swift")
+    firebase_auth = read("ios/EnglishPlus/EnglishPlus/Services/FirebaseAuthService.swift")
+    mock_auth = read("ios/EnglishPlus/EnglishPlus/Services/MockAuthService.swift")
 
     require_markers(
         models,
@@ -119,6 +123,35 @@ def main() -> int:
     )
     require(rules.count("match /skillMastery/{masteryId}") == 2, "personal and class mastery paths must both be protected", errors)
     require(worker.count('"skillMastery"') >= 2, "account deletion must remove personal and class mastery documents", errors)
+    require_markers(
+        mock_ai,
+        (
+            'summary: "先用一組短練習確認 \\(focusText)',
+            'title: "\\(focusText) 複習"',
+        ),
+        "offline AI recommendation copy",
+        errors,
+    )
+    require_markers(
+        service_factory + firebase_auth + mock_auth,
+        (
+            "let idTokenProvider: @Sendable () async throws -> String?",
+            "struct FirebaseAuthService: AuthService, Sendable",
+            "struct MockAuthService: AuthService, Sendable",
+        ),
+        "warning-free authentication transport",
+        errors,
+    )
+    require(
+        service_factory.count("idTokenProvider: idTokenProvider") == 5,
+        "all five authenticated remote services must share the sendable token provider",
+        errors,
+    )
+    require(
+        "idTokenProvider: authService.currentIdToken" not in service_factory,
+        "non-sendable authentication method references must not be passed to remote services",
+        errors,
+    )
 
     for test_name in (
         "testWrongAnswerBecomesDueImmediatelyAndAffectsMasterySummary",

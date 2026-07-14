@@ -111,10 +111,10 @@ struct MockAiProxyService: AiProxyService {
             qualityMode: request.qualityMode,
             modelUsed: "local-seed-fallback",
             output: AiProxyOutput(
-                summary: "先用一組短練習確認 (focusText)，完成後再決定是否提高難度。",
+                summary: "先用一組短練習確認 \(focusText)，完成後再決定是否提高難度。",
                 recommendedNextAction: "套用題組並直接開始作答。",
                 practicePlan: AiPracticePlanOutput(
-                    title: "(focusText) 複習",
+                    title: "\(focusText) 複習",
                     targetQuestionCount: 8,
                     focusSkills: focusSkills,
                     questionPlan: [

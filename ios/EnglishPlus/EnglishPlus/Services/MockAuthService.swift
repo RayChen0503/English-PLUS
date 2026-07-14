@@ -1,6 +1,6 @@
 import Foundation
 
-struct MockAuthService: AuthService {
+struct MockAuthService: AuthService, Sendable {
     func demoSession(for role: UserRole) -> AuthSession {
         if let account = SeedData.demoAccount(for: role) {
             return AuthSession(

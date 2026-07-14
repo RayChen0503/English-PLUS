@@ -770,7 +770,7 @@ private final class ReliabilityTestLearningBackend: LearningRepositoryBackend {
         option: SupportOption,
         message: String?
     ) async throws {
-        try await base.sendSupportRequest(from: user, profile: profile, option: option, message: message)
+        await base.sendSupportRequest(from: user, profile: profile, option: option, message: message)
     }
     func sendQuestionSupportRequest(
         from user: DemoUser?,
@@ -780,7 +780,7 @@ private final class ReliabilityTestLearningBackend: LearningRepositoryBackend {
         selectedAnswer: String?,
         message: String
     ) async throws {
-        try await base.sendQuestionSupportRequest(
+        await base.sendQuestionSupportRequest(
             from: user,
             profile: profile,
             option: option,
@@ -790,25 +790,25 @@ private final class ReliabilityTestLearningBackend: LearningRepositoryBackend {
         )
     }
     func addTeacherReply(to requestId: String, body: String) async throws {
-        try await base.addTeacherReply(to: requestId, body: body)
+        await base.addTeacherReply(to: requestId, body: body)
     }
     func addVolunteerReply(to requestId: String, body: String) async throws {
-        try await base.addVolunteerReply(to: requestId, body: body)
+        await base.addVolunteerReply(to: requestId, body: body)
     }
     func markSupportThreadReadByStudent(_ requestId: String) async throws {
-        try await base.markSupportThreadReadByStudent(requestId)
+        await base.markSupportThreadReadByStudent(requestId)
     }
     func archiveSupportThreadForStudent(_ requestId: String) async throws {
-        try await base.archiveSupportThreadForStudent(requestId)
+        await base.archiveSupportThreadForStudent(requestId)
     }
     func withdrawSupportRequest(_ requestId: String) async throws {
-        try await base.withdrawSupportRequest(requestId)
+        await base.withdrawSupportRequest(requestId)
     }
     func markSupportThreadHandledWithoutReply(_ requestId: String, by staffUser: DemoUser?) async throws {
-        try await base.markSupportThreadHandledWithoutReply(requestId, by: staffUser)
+        await base.markSupportThreadHandledWithoutReply(requestId, by: staffUser)
     }
     func archiveSupportThreadForStaff(_ requestId: String, by staffUser: DemoUser?) async throws {
-        try await base.archiveSupportThreadForStaff(requestId, by: staffUser)
+        await base.archiveSupportThreadForStaff(requestId, by: staffUser)
     }
     func assignPracticeSet(_ set: QuestionPracticeSet, to student: StaffStudentSummary, by teacher: DemoUser?) {
         base.assignPracticeSet(set, to: student, by: teacher)
