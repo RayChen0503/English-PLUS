@@ -145,6 +145,7 @@ struct PracticeCenterView: View {
             )
         }
 
+        aiRecommendationCard
         filterCard
         practiceSetSelectionCard
         PracticeSessionStartCard(
@@ -153,7 +154,6 @@ struct PracticeCenterView: View {
             selectedSetTitle: selectedPracticeSet?.title ?? "全部題庫",
             onStart: startFreePracticeSession
         )
-        aiRecommendationCard
     }
 
     private var headerCard: some View {
@@ -166,7 +166,7 @@ struct PracticeCenterView: View {
                     Text("自由練習")
                         .font(.title3.bold())
                         .foregroundStyle(EPTheme.ink)
-                    Text("這裡可以自行選題型與難度。自由練習不影響今日任務進度，但答錯時仍可請 AI 解釋。")
+                    Text("自己選一組有限題數，完成後就會結算。答錯時仍可請 AI 換一種方式解釋。")
                         .font(.subheadline)
                         .foregroundStyle(EPTheme.secondaryInk)
                         .fixedSize(horizontal: false, vertical: true)
@@ -182,6 +182,7 @@ struct PracticeCenterView: View {
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(EPTheme.card)
         .clipShape(RoundedRectangle(cornerRadius: EPTheme.cardRadius))
+        .accessibilityIdentifier("student.practice.selectionHeader")
     }
 
     private var practiceSetSelectionCard: some View {
@@ -238,6 +239,7 @@ struct PracticeCenterView: View {
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(EPTheme.card)
         .clipShape(RoundedRectangle(cornerRadius: EPTheme.cardRadius))
+        .accessibilityIdentifier("student.practice.filters")
     }
 
     private var practiceSessionNavigationCard: some View {
@@ -272,6 +274,7 @@ struct PracticeCenterView: View {
         .padding(12)
         .background(EPTheme.card)
         .clipShape(RoundedRectangle(cornerRadius: EPTheme.cardRadius))
+        .accessibilityIdentifier("student.practice.sessionNavigation")
     }
 
     private var finitePracticeCard: some View {
@@ -385,6 +388,7 @@ struct PracticeCenterView: View {
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(EPTheme.card)
         .clipShape(RoundedRectangle(cornerRadius: EPTheme.cardRadius))
+        .accessibilityIdentifier("student.practice.session")
     }
 
     private var aiRecommendationCard: some View {
@@ -414,6 +418,7 @@ struct PracticeCenterView: View {
             }
             .buttonStyle(PrimaryActionButtonStyle())
             .disabled(isLoadingPracticeAI)
+            .accessibilityIdentifier("student.practice.askRecommendation")
 
             if isLoadingPracticeAI {
                 ProgressView()
@@ -432,6 +437,7 @@ struct PracticeCenterView: View {
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(EPTheme.support.opacity(0.10))
         .clipShape(RoundedRectangle(cornerRadius: EPTheme.cardRadius))
+        .accessibilityIdentifier("student.practice.aiRecommendation")
     }
 
     private var typeFilterOptions: [PracticeTypeFilter] {
@@ -1988,6 +1994,7 @@ private struct PracticeSessionStartCard: View {
             .buttonStyle(PrimaryActionButtonStyle())
             .disabled(availableCount == 0)
             .opacity(availableCount == 0 ? 0.45 : 1)
+            .accessibilityIdentifier("student.practice.start")
         }
         .padding(12)
         .frame(maxWidth: .infinity, alignment: .leading)

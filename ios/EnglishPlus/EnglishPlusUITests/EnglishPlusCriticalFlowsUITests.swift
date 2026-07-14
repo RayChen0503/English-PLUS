@@ -67,6 +67,28 @@ final class EnglishPlusCriticalFlowsUITests: XCTestCase {
         assertTabBarContains(["首頁", "練習", "班級", "支持", "地圖"])
     }
 
+    func testStudentNewJourneyKeepsOnePrimaryActionAndOptionalPractice() {
+        launchAndEnterHome(
+            roleIdentifier: "role.student",
+            email: "student.demo@englishplus.test",
+            password: "EnglishPlusStudent2026!",
+            requiresGuardianConsent: true
+        )
+
+        XCTAssertTrue(app.staticTexts["今天先從四題開始"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.buttons["產生今日任務"].exists)
+        XCTAssertFalse(app.staticTexts["先完成心情檢測"].exists)
+
+        app.tabBars.buttons["練習"].tap()
+        XCTAssertTrue(app.staticTexts["不知道要練什麼？"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.buttons["請 AI 推薦練習"].exists)
+        XCTAssertTrue(app.buttons["開始這組練習"].exists)
+
+        app.tabBars.buttons["地圖"].tap()
+        XCTAssertTrue(app.buttons["前往心情檢測"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.staticTexts["選用"].exists)
+    }
+
     private func launchAndEnterHome(
         roleIdentifier: String,
         email: String,

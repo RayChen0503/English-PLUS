@@ -73,7 +73,7 @@ require_markers(
         "func assignPracticeSet(",
         "func startAssignedPracticeTask(",
         "sourceCheckInId: assignment.id",
-        "markAssignmentCompletedIfNeeded",
+        "updateAssignmentProgressIfNeeded",
     ],
 )
 

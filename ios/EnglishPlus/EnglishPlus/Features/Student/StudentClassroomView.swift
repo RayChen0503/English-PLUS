@@ -21,10 +21,12 @@ struct StudentClassroomView: View {
                 ScrollView {
                     VStack(alignment: .leading, spacing: 16) {
                         headerCard
-                        classAccessCard
 
                         if isPersonalMode {
                             personalModeCard
+                            if !studentClassrooms.isEmpty || showsJoinAnotherClass {
+                                classAccessCard
+                            }
                         } else if pendingAssignments.isEmpty {
                             emptyStateCard
                         } else {
@@ -33,6 +35,10 @@ struct StudentClassroomView: View {
 
                         if !isPersonalMode && !completedAssignments.isEmpty {
                             completedSection
+                        }
+
+                        if !isPersonalMode {
+                            classAccessCard
                         }
                     }
                     .padding(EPTheme.pagePadding)
@@ -146,7 +152,7 @@ struct StudentClassroomView: View {
                 }
             }
 
-            if isPersonalMode || showsJoinAnotherClass {
+            if showsJoinAnotherClass {
                 joinClassForm
             } else {
                 Button {
@@ -186,6 +192,7 @@ struct StudentClassroomView: View {
                 .padding(12)
                 .background(EPTheme.secondarySurface)
                 .clipShape(RoundedRectangle(cornerRadius: EPTheme.cardRadius))
+                .accessibilityIdentifier("student.classroom.joinCode")
 
             Button {
                 Task {
@@ -207,6 +214,13 @@ struct StudentClassroomView: View {
             .buttonStyle(PrimaryActionButtonStyle())
             .disabled(normalizedJoinCode.count != 8 || appState.isManagingClassroom)
             .opacity(normalizedJoinCode.count == 8 && !appState.isManagingClassroom ? 1 : 0.45)
+            .accessibilityIdentifier("student.classroom.join")
+
+            Button("取消") {
+                joinCode = ""
+                showsJoinAnotherClass = false
+            }
+            .buttonStyle(SecondaryActionButtonStyle())
         }
     }
 
@@ -233,27 +247,30 @@ struct StudentClassroomView: View {
                     .clipShape(RoundedRectangle(cornerRadius: 12))
 
                 VStack(alignment: .leading, spacing: 4) {
-                    Text(isPersonalMode ? "個人學習模式" : "老師指派任務")
+                    Text("班級任務")
                         .font(.title3.bold())
                         .foregroundStyle(EPTheme.ink)
                     Text(isPersonalMode
-                        ? "沒有加入班級也能使用今日任務、AI 解題與自由練習。加入班級後，老師指派的題組會集中在這裡。"
-                        : "這裡只放老師派給你的題組。老師收回任務後，任務會從這裡消失；完成後會移到完成紀錄。")
+                        ? "目前沒有啟用班級。你的每日任務、AI 解題與自由練習都能照常使用。"
+                        : "先完成老師派給你的題組；完成後會自動移到下方紀錄。")
                         .font(.subheadline)
                         .foregroundStyle(EPTheme.secondaryInk)
                         .fixedSize(horizontal: false, vertical: true)
                 }
             }
 
-            HStack(spacing: 8) {
-                ClassroomStatPill(title: "待完成", value: "\(pendingAssignments.count)")
-                ClassroomStatPill(title: "已完成", value: "\(completedAssignments.count)")
+            if !isPersonalMode {
+                HStack(spacing: 8) {
+                    ClassroomStatPill(title: "待完成", value: "\(pendingAssignments.count)")
+                    ClassroomStatPill(title: "已完成", value: "\(completedAssignments.count)")
+                }
             }
         }
         .padding(16)
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(EPTheme.card)
         .clipShape(RoundedRectangle(cornerRadius: EPTheme.cardRadius))
+        .accessibilityIdentifier("student.classroom.header")
     }
 
     private var personalModeCard: some View {
@@ -266,11 +283,21 @@ struct StudentClassroomView: View {
                 .font(.subheadline)
                 .foregroundStyle(EPTheme.secondaryInk)
                 .fixedSize(horizontal: false, vertical: true)
+
+            Button {
+                showsJoinAnotherClass = true
+            } label: {
+                Label("使用班級代碼加入", systemImage: "person.badge.plus")
+                    .frame(maxWidth: .infinity)
+            }
+            .buttonStyle(PrimaryActionButtonStyle())
+            .accessibilityIdentifier("student.classroom.showJoin")
         }
         .padding(16)
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(EPTheme.card)
         .clipShape(RoundedRectangle(cornerRadius: EPTheme.cardRadius))
+        .accessibilityIdentifier("student.classroom.personalMode")
     }
 
     private var isPersonalMode: Bool {
@@ -296,9 +323,15 @@ struct StudentClassroomView: View {
 
     private var pendingSection: some View {
         VStack(alignment: .leading, spacing: 12) {
-            Text("待完成題組")
-                .font(.headline)
-                .foregroundStyle(EPTheme.ink)
+            HStack {
+                Text("待完成")
+                    .font(.headline)
+                    .foregroundStyle(EPTheme.ink)
+                Spacer()
+                Text("\(pendingAssignments.count) 組")
+                    .font(.caption.bold())
+                    .foregroundStyle(EPTheme.warning)
+            }
 
             ForEach(pendingAssignments) { assignment in
                 ClassroomAssignmentCard(
@@ -313,17 +346,21 @@ struct StudentClassroomView: View {
                 }
             }
         }
-        .padding(16)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(EPTheme.card)
-        .clipShape(RoundedRectangle(cornerRadius: EPTheme.cardRadius))
+        .accessibilityIdentifier("student.classroom.pending")
     }
 
     private var completedSection: some View {
         VStack(alignment: .leading, spacing: 12) {
-            Text("完成紀錄")
-                .font(.headline)
-                .foregroundStyle(EPTheme.ink)
+            HStack {
+                Text("最近完成")
+                    .font(.headline)
+                    .foregroundStyle(EPTheme.ink)
+                Spacer()
+                Text("保留最近 5 組")
+                    .font(.caption)
+                    .foregroundStyle(EPTheme.secondaryInk)
+            }
 
             ForEach(completedAssignments.prefix(5)) { assignment in
                 ClassroomAssignmentCard(
@@ -334,10 +371,8 @@ struct StudentClassroomView: View {
                 )
             }
         }
-        .padding(16)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(EPTheme.card)
-        .clipShape(RoundedRectangle(cornerRadius: EPTheme.cardRadius))
+        .accessibilityIdentifier("student.classroom.completed")
     }
 
     private var pendingAssignments: [TeacherAssignedPracticeTask] {
@@ -406,7 +441,7 @@ private struct ClassroomAssignmentCard: View {
 
             HStack(spacing: 8) {
                 ClassroomStatPill(title: "題數", value: "\(assignment.questionIds.count)")
-                ClassroomStatPill(title: "班級", value: assignment.classId)
+                ClassroomStatPill(title: "進度", value: "\(answeredQuestionCount)/\(assignment.questionIds.count)")
             }
 
             Text(assignment.status == .completed
@@ -429,8 +464,16 @@ private struct ClassroomAssignmentCard: View {
             }
         }
         .padding(14)
-        .background(EPTheme.secondarySurface)
+        .background(EPTheme.card)
+        .overlay(
+            RoundedRectangle(cornerRadius: EPTheme.cardRadius)
+                .stroke(EPTheme.hairline, lineWidth: 1)
+        )
         .clipShape(RoundedRectangle(cornerRadius: EPTheme.cardRadius))
+    }
+
+    private var answeredQuestionCount: Int {
+        Set(assignment.questionResults?.map(\.questionId) ?? []).count
     }
 }
 

@@ -10,6 +10,7 @@ on:
       - codex/fix-f-post-answer-ai
       - codex/fix-g-stabilization-audit
       - codex/app-store-hardening-d
+      - codex/app-store-hardening-e
     paths:
       - .github/workflows/ios-hardening-build.yml
       - .github/ci-triggers/round10-ios-build
@@ -22,6 +23,7 @@ on:
       - .github/ci-triggers/round14-test-quality
       - .github/ci-triggers/round15-question-quality
       - .github/ci-triggers/round16-mastery-review
+      - .github/ci-triggers/round17-student-experience
       - admin-web/**
       - firebase-tests/**
       - ios/EnglishPlus/**
@@ -136,6 +138,7 @@ jobs:
           python3 scripts/validate_app_store_hardening_round15.py
           python3 scripts/validate_app_store_hardening_round16.py
           python3 scripts/validate_app_store_hardening_block_d.py --preflight
+          python3 scripts/validate_app_store_hardening_round17.py
 
       - name: Build iOS Simulator test bundle
         run: |

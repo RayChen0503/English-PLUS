@@ -29,7 +29,8 @@ def main() -> int:
         "case .missionActive",
         "case .missionCompleted",
         "case .freePractice",
-        "LearningFlowStatusCard",
+        "returnChoiceCard",
+        "showsFreshCheckIn",
         "continueLearningFlow()",
         "enterFreePracticeMode()",
         "returnToMissionFlow()",
@@ -38,10 +39,12 @@ def main() -> int:
         "前往自由練習",
         "Label(\"自由練習\"",
         "missionCompletionActions",
+        "startNewLearningRound(",
     ]:
         require(home, marker, "student home flow UI")
 
-    reject(home, "startNewLearningRound(", "home-level recheck action")
+    reject(home, "LearningFlowStatusCard", "duplicate home status card")
+    reject(home, "private var freePracticeCard", "duplicate home free-practice card")
     reject(home, "Label(\"重新檢測\"", "home recheck button")
     reject(home, "Label(\"再跑一輪\"", "home rerun button")
 
@@ -52,7 +55,7 @@ def main() -> int:
         "flowStageDetail",
         "startNewLearningRound(",
         "onOpenHome()",
-        "Label(\"重新檢測\"",
+        "Button(\"重新檢測\"",
     ]:
         require(learning_map, marker, "student learning map flow UI")
 
