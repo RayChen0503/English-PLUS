@@ -237,6 +237,11 @@ final class EnglishPlusCriticalFlowsUITests: XCTestCase {
         passwordField.tap()
         passwordField.typeText(password)
 
+        let dismissKeyboardButton = app.buttons["auth.keyboard.dismiss"]
+        if dismissKeyboardButton.waitForExistence(timeout: 2) {
+            dismissKeyboardButton.tap()
+        }
+
         tapWhenHittable(app.buttons["auth.submit"])
 
         let privacyConsent = app.buttons["consent.privacy"]

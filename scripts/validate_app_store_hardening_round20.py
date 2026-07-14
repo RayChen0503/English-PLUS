@@ -61,6 +61,9 @@ def app_icons_are_store_ready() -> bool:
 role_source = read(
     "ios/EnglishPlus/EnglishPlus/Features/RoleSelection/RoleSelectionView.swift"
 )
+login_source = read(
+    "ios/EnglishPlus/EnglishPlus/Features/RoleSelection/DemoLoginView.swift"
+)
 student_source = read(
     "ios/EnglishPlus/EnglishPlus/Features/Student/StudentHomeView.swift"
 )
@@ -154,6 +157,16 @@ checks = {
     )
     and "EnglishPlusLaunchConfiguration.shouldUseMockServices" in service_factory
     and '"API_KEY": "A" + ("0" * 38)' in workflow,
+    "large-text authentication keeps a keyboard-safe submit path": all(
+        token in login_source
+        for token in [
+            ".scrollDismissesKeyboard(.interactively)",
+            'accessibilityIdentifier("auth.keyboard.dismiss")',
+            ".submitLabel(.go)",
+            "performPrimaryAction()",
+        ]
+    )
+    and 'app.buttons["auth.keyboard.dismiss"]' in ui_tests,
     "teacher primary workspaces are addressable": all(
         token in teacher_source
         for token in [

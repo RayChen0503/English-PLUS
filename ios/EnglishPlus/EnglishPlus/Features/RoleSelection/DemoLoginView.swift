@@ -7,6 +7,12 @@ import GoogleSignInSwift
 #endif
 
 struct DemoLoginView: View {
+    private enum FocusedField: Hashable {
+        case email
+        case password
+        case other
+    }
+
     @EnvironmentObject private var appState: AppState
     @Environment(\.colorScheme) private var colorScheme
 
@@ -22,6 +28,7 @@ struct DemoLoginView: View {
     @State private var volunteerAcceptedConduct = false
     @State private var volunteerMotivation = ""
     @State private var appleRawNonce: String?
+    @FocusState private var focusedField: FocusedField?
 
     var body: some View {
         ZStack {
@@ -46,6 +53,16 @@ struct DemoLoginView: View {
                 }
                 .padding(EPTheme.pagePadding)
                 .padding(.bottom, 24)
+            }
+            .scrollDismissesKeyboard(.interactively)
+        }
+        .toolbar {
+            ToolbarItemGroup(placement: .keyboard) {
+                Spacer()
+                Button("收起鍵盤") {
+                    dismissKeyboard()
+                }
+                .accessibilityIdentifier("auth.keyboard.dismiss")
             }
         }
         .onChange(of: mode) { _, _ in
@@ -260,6 +277,18 @@ struct DemoLoginView: View {
                 .textInputAutocapitalization(.never)
                 .keyboardType(keyboardType)
                 .autocorrectionDisabled()
+                .focused(
+                    $focusedField,
+                    equals: accessibilityIdentifier == "auth.email" ? .email : .other
+                )
+                .submitLabel(accessibilityIdentifier == "auth.email" ? .next : .done)
+                .onSubmit {
+                    if accessibilityIdentifier == "auth.email" {
+                        focusedField = .password
+                    } else {
+                        dismissKeyboard()
+                    }
+                }
                 .padding(12)
                 .background(EPTheme.secondarySurface)
                 .clipShape(RoundedRectangle(cornerRadius: EPTheme.cardRadius))
@@ -282,6 +311,11 @@ struct DemoLoginView: View {
                 }
                 .textInputAutocapitalization(.never)
                 .autocorrectionDisabled()
+                .focused($focusedField, equals: .password)
+                .submitLabel(.go)
+                .onSubmit {
+                    performPrimaryAction()
+                }
                 .accessibilityIdentifier("auth.password")
 
                 Button {
@@ -338,19 +372,33 @@ struct DemoLoginView: View {
     }
 
     private var primaryButton: some View {
-        Button(primaryButtonTitle) {
-            Task {
-                if federatedOnboardingProvider != nil {
-                    guard let profile = registrationProfile else { return }
-                    await appState.completeFederatedOnboarding(profile: profile)
-                } else {
-                    await submitEmailForm()
-                }
-            }
-        }
+        Button(primaryButtonTitle, action: performPrimaryAction)
         .disabled(primaryActionDisabled)
         .buttonStyle(PrimaryActionButtonStyle())
         .accessibilityIdentifier("auth.submit")
+    }
+
+    private func performPrimaryAction() {
+        guard !primaryActionDisabled else { return }
+        dismissKeyboard()
+        Task {
+            if federatedOnboardingProvider != nil {
+                guard let profile = registrationProfile else { return }
+                await appState.completeFederatedOnboarding(profile: profile)
+            } else {
+                await submitEmailForm()
+            }
+        }
+    }
+
+    private func dismissKeyboard() {
+        focusedField = nil
+        UIApplication.shared.sendAction(
+            #selector(UIResponder.resignFirstResponder),
+            to: nil,
+            from: nil,
+            for: nil
+        )
     }
 
     private var headerDescription: String {
