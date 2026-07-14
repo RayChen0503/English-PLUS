@@ -17,10 +17,10 @@ learning must remain usable without joining a class.
 ## Repository and release safety
 
 - Repository: `RayChen0503/English-PLUS`
-- Stable release baseline: `main` at `d41aa0e`, containing the completed
-  FIX-A through FIX-G repair block.
-- Active hardening branch: `codex/app-store-hardening-d` for Round 13 through
-  Round 16. It remains isolated from `main` until the four-round Block D gate.
+- Stable release baseline: `main` at `51e2beb`, containing the completed
+  Round 13 through Round 16 Block D release gate.
+- Active hardening branch: `codex/app-store-hardening-e` for Round 17 through
+  Round 20. It remains isolated from `main` until the four-round Block E gate.
 - Completed hardening rounds:
   - Round 1 - baseline audit (`round-01-baseline-audit.md`)
   - Round 2 - personal and multi-class domain (`round-02-personal-and-class-domain.md`)
@@ -44,7 +44,9 @@ learning must remain usable without joining a class.
     (`round-15-question-bank-quality.md`)
   - Round 16 - mastery, spaced review and Block D audit
     (`round-16-mastery-spaced-review-block-d-audit.md`)
-- Hardening progress: **16/20 fully signed off**.
+  - Round 17 - student experience and information hierarchy
+    (`round-17-student-experience.md`)
+- Hardening progress: **17/20 fully signed off**.
 - Do not merge to `main` or trigger Xcode Cloud until the end of a four-round
   block: 4, 8, 12, 16, and 20.
 - Never reset, overwrite, or silently discard user work.
@@ -184,6 +186,15 @@ learning must remain usable without joining a class.
   validator sweep passes `83/83`; isolated macOS run `29307724360` passed
   Swift `48/48`, UI `5/5`, Worker `34/34`, administrator `7/7`, and Firestore
   Emulator `27/27`.
+- Round 17 has reduced the student experience to one contextual next action,
+  separated returning-session continuation from a fresh check-in, removed
+  duplicate status and map progress surfaces, made free practice optional, and
+  placed class assignments ahead of class administration. Student navigation
+  now carries real support and assignment badges, AI practice discovery is
+  clearer, and a sixth critical UI journey protects the new information
+  architecture. Isolated macOS run `29323656069` passed the Xcode 16.4 test
+  bundle build, the complete Swift unit/integration step and all `6/6` UI
+  journeys for commit `7d3e07d`.
 - FIX-A through FIX-E repair cross-device support, finite layered practice,
   class deletion, private volunteer review administration, and teacher-scoped
   volunteer service classes. FIX-F makes question AI an explicit post-answer
@@ -214,6 +225,10 @@ learning must remain usable without joining a class.
   with retained result bundles for diagnosis. Round 15 run `29307724360`
   passed the clean test-bundle build, all `48/48` Swift tests and all `5/5`
   role UI tests, with its Xcode result artifact retained for diagnosis.
+- Round 17 run `29323656069` passed the clean test-bundle build, the complete
+  Swift unit/integration step and all `6/6` role and student UI journeys. Its
+  Xcode result artifact is retained for diagnosis. The branch remains isolated
+  from `main`, so this verification did not trigger Xcode Cloud.
 - Round 16 has unified free practice, repair practice, daily missions and
   teacher assignments into one synchronized mastery and spaced-review
   contract. Wrong answers are due immediately; correct streaks use 1, 3, 7,
@@ -255,10 +270,10 @@ learning must remain usable without joining a class.
 
 ## Next gate
 
-Round 16 and the complete Block D audit are signed off on
-`codex/app-store-hardening-d`. Merge this release candidate once to `main` and
-allow that single main push to trigger Xcode Cloud. After the release gate,
-Round 17 begins the UI, accessibility and App Store candidate block.
+Round 17 is signed off on `codex/app-store-hardening-e`. Round 18 will refine
+the teacher and volunteer class, relay, assignment, reply and report journeys.
+Do not merge to `main` or trigger Xcode Cloud until Rounds 18 through 20 and the
+complete Block E audit are signed off.
 
 ## Maintenance rule
 

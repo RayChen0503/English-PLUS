@@ -2,6 +2,7 @@
 """Validate Block D preflight contracts or the final signed-off evidence."""
 
 import argparse
+import re
 import subprocess
 import sys
 from pathlib import Path
@@ -53,8 +54,9 @@ def main() -> int:
     else:
         if "Status: Passed" not in report:
             errors.append("Round 16 Block D report is not signed off")
-        if "16/20 fully signed off" not in state:
-            errors.append("CURRENT_STATE does not record 16/20 signed-off rounds")
+        progress_match = re.search(r"Hardening progress: \*\*(\d+)/20 fully signed off\*\*", state)
+        if progress_match is None or int(progress_match.group(1)) < 16:
+            errors.append("CURRENT_STATE does not preserve the 16/20 Block D sign-off")
     for round_number in range(13, 17):
         if f"validate_app_store_hardening_round{round_number}.py" not in workflow:
             errors.append(f"macOS workflow does not run Round {round_number} validator")
