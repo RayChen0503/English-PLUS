@@ -64,7 +64,6 @@ def main() -> None:
         require(contract in worker, f"Worker security contract missing: {contract}")
 
     for workflow in [
-        "signInWithPopup",
         "signInWithEmailAndPassword",
         "sendPasswordResetEmail",
         "loadApplications",
@@ -74,7 +73,23 @@ def main() -> None:
     ]:
         require(workflow in portal, f"Portal workflow missing: {workflow}")
 
+    require(
+        "signInWithPopup" not in portal
+        and "signInWithRedirect" not in portal
+        and 'data-action="google-login"' not in portal,
+        "Admin portal must not expose an unverified federated sign-in path",
+    )
     require("createUserWithEmailAndPassword" not in portal, "Admin portal must not offer public registration")
+    require(
+        'authDomain: "englishplus-testflight.firebaseapp.com"' in config,
+        "Firebase Hosting auth must use the registered OAuth handler domain",
+    )
+    require(
+        'canonicalAdminOrigin = "https://englishplus-testflight.firebaseapp.com"' in portal
+        and 'location.hostname === "englishplus-testflight.web.app"' in portal
+        and "location.replace(canonicalURL.toString())" in portal,
+        "The web.app alias must canonicalize to the same-origin Firebase Auth host",
+    )
     require("Bearer ${token}" in api, "Admin API must send Firebase ID tokens")
     require("OPENROUTER" not in config and "GROQ_API_KEY" not in config, "AI secrets must not enter the portal")
     require("FIREBASE_SERVICE_ACCOUNT_PRIVATE_KEY" not in config, "Service account secret must not enter the portal")

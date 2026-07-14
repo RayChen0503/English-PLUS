@@ -269,11 +269,6 @@ service cloud.firestore {
         );
     }
 
-    function assignedToStudent(classId, studentUid) {
-      return isClassVolunteer(classId)
-        && exists(/databases/$(database)/documents/classes/$(classId)/staffAssignments/$(request.auth.uid + "_" + studentUid));
-    }
-
     function threadPath(classId, threadId) {
       return /databases/$(database)/documents/classes/$(classId)/supportThreads/$(threadId);
     }

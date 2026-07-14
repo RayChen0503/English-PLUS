@@ -17,8 +17,8 @@ evidence in the round reports.
 ## Working agreement
 
 - Baseline branch: `main`
-- Current Block C branch: `codex/app-store-hardening-c`
-- Block C baseline commit: `8b1db6c`
+- Current Block D branch: `codex/app-store-hardening-d`
+- Stable main baseline: `d41aa0e` after the FIX-A through FIX-G repair block
 - Xcode Cloud gate: merge to `main` only after the agreed checkpoints.
 - Verification cadence: focused checks every round, mini regression every two
   rounds, and full audits after rounds 4, 8, 12, 16, and 20.
@@ -40,9 +40,14 @@ evidence in the round reports.
 | 10 - Executable AI learning and staff actions | Complete | `round-10-executable-ai-actions.md` |
 | 11 - Account deletion and explicit human help | Complete | `round-11-account-deletion-human-help.md` |
 | 12 - Privacy, support and Block C audit | Complete | `round-12-privacy-support-block-c-audit.md` |
+| 13 - Repository decomposition and sync recovery | Complete | `round-13-reliability-decomposition.md` |
+| 14 - Automated quality gates | Complete | `round-14-automated-quality-gates.md` |
+| 15 - Question-bank taxonomy and set quality | Complete | `round-15-question-bank-quality.md` |
+| 16 - Mastery, spaced review and Block D audit | Awaiting final macOS gate | `round-16-mastery-spaced-review-block-d-audit.md` |
 
 ## Main-branch safety
 
-Block C commits are made on `codex/app-store-hardening-c`. Round 12 has passed
-the branch-level macOS compile gate; the block represents a release candidate
-only after one deliberate merge to `main` triggers and passes Xcode Cloud.
+Block D commits are made on `codex/app-store-hardening-d`. Round 16 becomes a
+release candidate only after its current branch commit passes the full macOS
+gate. One deliberate merge to `main` then triggers Xcode Cloud; no intermediate
+round or documentation-only work may trigger it.

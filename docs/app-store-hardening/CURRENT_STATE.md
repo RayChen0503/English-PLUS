@@ -212,6 +212,16 @@ learning must remain usable without joining a class.
   with retained result bundles for diagnosis. Round 15 run `29307724360`
   passed the clean test-bundle build, all `48/48` Swift tests and all `5/5`
   role UI tests, with its Xcode result artifact retained for diagnosis.
+- Round 16 implementation is complete and awaiting the final current-commit
+  macOS gate. Shared mastery, immediate wrong-answer repair, spaced review and
+  teacher-visible assignment attempts now use one synchronized progress
+  contract. The local Block D preflight passes; Firestore Emulator permissions
+  pass `31/31`; Worker Node tests pass `24/24`; the production security smoke
+  suite passes `45/45`; the administrator portal passes `7/7` plus its
+  production build; and Firebase Functions build and typecheck pass. Worker
+  version `a204be36-8e3c-4644-9ef5-de80c31cc851`, Rules, indexes and the
+  Email-only administrator portal are deployed. The formal `16/20` sign-off
+  remains withheld until the current branch commit passes macOS CI.
   Xcode Cloud remains the release-level gate at the agreed checkpoint.
 - Existing legacy validators can fail because they assert removed UI or old
   copy. Preserve useful behavioral coverage by replacing them, not by reviving
@@ -243,11 +253,12 @@ learning must remain usable without joining a class.
 
 ## Next gate
 
-Round 15 is complete on `codex/app-store-hardening-d`. Round 16 implements
-mastery, wrong-answer review, spaced repetition and teacher assignment
-tracking, then performs the complete Round 13-16 audit. No further user input
-is required before implementation. Do not merge this branch to `main`, deploy
-backend resources or trigger Xcode Cloud before the Round 16 audit passes.
+Round 16 implementation and Windows-side Block D verification are complete on
+`codex/app-store-hardening-d`. Push the work branch and require the current
+macOS GitHub Actions gate to pass the complete Worker pool, administrator
+portal, Firestore Emulator, Swift acceptance and five role UI journeys. Only
+then mark Round 16 passed, update progress to `16/20`, merge once to `main` and
+allow that single main push to trigger Xcode Cloud.
 
 ## Maintenance rule
 

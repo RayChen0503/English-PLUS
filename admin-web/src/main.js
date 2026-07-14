@@ -1,13 +1,11 @@
 import { initializeApp } from "firebase/app";
 import {
-  GoogleAuthProvider,
   browserLocalPersistence,
   getAuth,
   onAuthStateChanged,
   sendPasswordResetEmail,
   setPersistence,
   signInWithEmailAndPassword,
-  signInWithPopup,
   signOut,
 } from "firebase/auth";
 import {
@@ -68,6 +66,8 @@ const iconSet = {
 
 const appElement = document.querySelector("#app");
 const toastRegion = document.querySelector("#toast-region");
+const canonicalAdminOrigin = "https://englishplus-testflight.firebaseapp.com";
+const shouldUseCanonicalOrigin = location.hostname === "englishplus-testflight.web.app";
 const isLocalPreview =
   new URLSearchParams(location.search).get("preview") === "1" &&
   ["localhost", "127.0.0.1"].includes(location.hostname);
@@ -100,7 +100,11 @@ appElement.addEventListener("click", handleClick);
 appElement.addEventListener("submit", handleSubmit);
 appElement.addEventListener("change", handleChange);
 
-if (isLocalPreview) {
+if (shouldUseCanonicalOrigin) {
+  const canonicalURL = new URL(location.href);
+  canonicalURL.host = new URL(canonicalAdminOrigin).host;
+  location.replace(canonicalURL.toString());
+} else if (isLocalPreview) {
   loadPreviewState();
 } else {
   startAuthentication();
@@ -110,11 +114,7 @@ async function startAuthentication() {
   const firebaseApp = initializeApp(firebaseConfig);
   const auth = getAuth(firebaseApp);
   await setPersistence(auth, browserLocalPersistence);
-  const provider = new GoogleAuthProvider();
-  provider.setCustomParameters({ prompt: "select_account" });
-
   state.auth = auth;
-  state.googleProvider = provider;
   state.api = createAdminApi({
     baseURL: adminApiBaseURL,
     getToken: async (forceRefresh = false) => {
@@ -204,7 +204,6 @@ async function handleClick(event) {
   if (!trigger) return;
   const action = trigger.dataset.action;
 
-  if (action === "google-login") return loginWithGoogle();
   if (action === "reset-password") {
     const email = document.querySelector('#email-login-form input[name="email"]')?.value;
     return resetPassword(email);
@@ -258,15 +257,6 @@ function handleChange(event) {
   if (event.target.id === "status-filter") {
     state.filterStatus = event.target.value;
     loadApplications({ preserveSelection: false });
-  }
-}
-
-async function loginWithGoogle() {
-  clearLoginError();
-  try {
-    await signInWithPopup(state.auth, state.googleProvider);
-  } catch (error) {
-    showToast(firebaseAuthMessage(error.code), "error");
   }
 }
 
@@ -371,15 +361,11 @@ function loginScreen() {
         <div class="brand-lockup"><span class="brand-mark">E+</span><span>English+</span></div>
         <p class="eyebrow">志工申請管理</p>
         <h1 id="login-title">管理員登入</h1>
-        <p class="auth-copy">使用已獲授權的管理員帳號登入。這裡不提供一般帳號註冊。</p>
-        <button class="button google-button" data-action="google-login" type="button">
-          <span class="google-g" aria-hidden="true">G</span>使用 Google 登入
-        </button>
-        <div class="divider"><span>或使用 Email</span></div>
+        <p class="auth-copy">僅限已獲授權的管理員使用 Email 與管理台密碼登入。</p>
         <form id="email-login-form" class="form-stack">
           <label>Email<input name="email" type="email" autocomplete="username" required /></label>
           <label>密碼<input name="password" type="password" autocomplete="current-password" minlength="8" required /></label>
-          <button class="text-button forgot-password" type="button" data-action="reset-password">忘記密碼</button>
+          <button class="text-button forgot-password" type="button" data-action="reset-password">設定或重設管理台密碼</button>
           <button class="button primary" type="submit">登入管理台</button>
         </form>
         <p class="security-note"><i data-lucide="shield-check"></i>申請資料與證明文件只對已授權管理員開放。</p>
@@ -582,13 +568,18 @@ function applyTheme() {
 }
 
 function firebaseAuthMessage(code) {
-  return {
+  const message = {
     "auth/invalid-credential": "Email 或密碼不正確。",
     "auth/popup-closed-by-user": "登入視窗已關閉。",
     "auth/popup-blocked": "瀏覽器封鎖了登入視窗，請允許彈出視窗後重試。",
+    "auth/redirect-cancelled-by-user": "Google 登入已取消，請重新嘗試。",
+    "auth/unauthorized-domain": "這個網址尚未獲得 Firebase 登入授權。",
+    "auth/operation-not-allowed": "Google 登入尚未在 Firebase 啟用。",
+    "auth/web-storage-unsupported": "瀏覽器目前無法保存登入狀態，請允許 Cookie 後重試。",
     "auth/too-many-requests": "嘗試次數過多，請稍後再試。",
     "auth/network-request-failed": "網路連線失敗，請確認網路後重試。",
-  }[code] || "登入未完成，請再試一次。";
+  }[code];
+  return message || `登入未完成（${String(code || "unknown")}），請再試一次。`;
 }
 
 function escapeHtml(value) {

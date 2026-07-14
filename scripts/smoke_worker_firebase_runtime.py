@@ -247,6 +247,17 @@ def main() -> int:
         f"HTTP {unauthenticated_classrooms.status}",
     )
 
+    unauthenticated_volunteer_services = request_json(
+        f"{WORKER_BASE_URL}/volunteer-services"
+    )
+    expect(
+        unauthenticated_volunteer_services.status == 401
+        and unauthenticated_volunteer_services.body.get("error") == "AUTH_REQUIRED",
+        "volunteer_service_list_requires_firebase_auth",
+        results,
+        f"HTTP {unauthenticated_volunteer_services.status}",
+    )
+
     unauthenticated_quota = request_json(f"{WORKER_BASE_URL}/ai/quota")
     expect(
         unauthenticated_quota.status == 401
@@ -350,6 +361,19 @@ def main() -> int:
         )
 
     if student:
+        forbidden_volunteer_services = request_json(
+            f"{WORKER_BASE_URL}/volunteer-services",
+            token=student["idToken"],
+        )
+        expect(
+            forbidden_volunteer_services.status == 403
+            and forbidden_volunteer_services.body.get("error")
+            == "VOLUNTEER_APPROVAL_REQUIRED",
+            "student_cannot_list_volunteer_services",
+            results,
+            f"HTTP {forbidden_volunteer_services.status}",
+        )
+
         quota_before = request_json(
             f"{WORKER_BASE_URL}/ai/quota",
             token=student["idToken"],
@@ -740,7 +764,34 @@ def main() -> int:
             "admin claim active" if admin_list.status == 200 else "ordinary teacher rejected",
         )
 
+        admin_session = request_json(
+            f"{WORKER_BASE_URL}/admin/session",
+            token=teacher["idToken"],
+        )
+        expect(
+            admin_session.status == 403
+            and admin_session.body.get("error") == "ADMIN_REQUIRED",
+            "admin_session_rejects_ordinary_teacher",
+            results,
+            f"HTTP {admin_session.status}",
+        )
+
     if volunteer:
+        volunteer_services = request_json(
+            f"{WORKER_BASE_URL}/volunteer-services",
+            token=volunteer["idToken"],
+        )
+        expect(
+            volunteer_services.status == 200
+            and isinstance(volunteer_services.body.get("services"), list),
+            "approved_volunteer_can_list_service_classes",
+            results,
+            (
+                f"HTTP {volunteer_services.status}; "
+                f"services={len(volunteer_services.body.get('services', []))}"
+            ),
+        )
+
         forbidden_student_ai = request_json(
             f"{WORKER_BASE_URL}/ai",
             method="POST",
