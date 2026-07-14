@@ -249,16 +249,48 @@ final class EnglishPlusCriticalFlowsUITests: XCTestCase {
         tapWhenHittable(app.buttons["auth.submit"])
 
         let privacyConsent = app.buttons["consent.privacy"]
-        tapWhenHittable(privacyConsent)
-        tapWhenHittable(app.buttons["consent.ai"])
+        acceptConsent(privacyConsent)
+        acceptConsent(app.buttons["consent.ai"])
         if requiresGuardianConsent {
-            tapWhenHittable(app.buttons["consent.guardian"])
+            acceptConsent(app.buttons["consent.guardian"])
         }
 
         let continueButton = app.buttons["consent.continue"]
-        XCTAssertTrue(continueButton.isEnabled)
+        waitUntilEnabled(continueButton)
         tapWhenHittable(continueButton)
         XCTAssertTrue(app.tabBars.firstMatch.waitForExistence(timeout: 5))
+    }
+
+    private func acceptConsent(
+        _ element: XCUIElement,
+        file: StaticString = #filePath,
+        line: UInt = #line
+    ) {
+        tapWhenHittable(element, file: file, line: line)
+        let accepted = NSPredicate(format: "value == %@", "已同意")
+        let expectation = XCTNSPredicateExpectation(predicate: accepted, object: element)
+        XCTAssertEqual(
+            XCTWaiter.wait(for: [expectation], timeout: 5),
+            .completed,
+            file: file,
+            line: line
+        )
+    }
+
+    private func waitUntilEnabled(
+        _ element: XCUIElement,
+        file: StaticString = #filePath,
+        line: UInt = #line
+    ) {
+        XCTAssertTrue(element.waitForExistence(timeout: 5), file: file, line: line)
+        let enabled = NSPredicate(format: "enabled == true")
+        let expectation = XCTNSPredicateExpectation(predicate: enabled, object: element)
+        XCTAssertEqual(
+            XCTWaiter.wait(for: [expectation], timeout: 8),
+            .completed,
+            file: file,
+            line: line
+        )
     }
 
     private func tapWhenHittable(

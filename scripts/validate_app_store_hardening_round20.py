@@ -64,6 +64,9 @@ role_source = read(
 login_source = read(
     "ios/EnglishPlus/EnglishPlus/Features/RoleSelection/DemoLoginView.swift"
 )
+consent_source = read(
+    "ios/EnglishPlus/EnglishPlus/Features/Consent/ConsentView.swift"
+)
 student_source = read(
     "ios/EnglishPlus/EnglishPlus/Features/Student/StudentHomeView.swift"
 )
@@ -172,6 +175,17 @@ checks = {
     and 'app.buttons["auth.keyboard.dismiss"]' in ui_tests
     and 'emailField.typeText("\\n")' in ui_tests
     and 'scrollUntilHittable(emailField, in: authenticationScreen)' in ui_tests,
+    "large-text consent exposes and waits for confirmed state": all(
+        token in consent_source
+        for token in [
+            '.accessibilityValue(isOn ? "已同意" : "未同意")',
+            'accessibilityIdentifier: "consent.privacy"',
+            'accessibilityIdentifier: "consent.ai"',
+            'accessibilityIdentifier: "consent.guardian"',
+        ]
+    )
+    and "acceptConsent(privacyConsent)" in ui_tests
+    and "waitUntilEnabled(continueButton)" in ui_tests,
     "teacher primary workspaces are addressable": all(
         token in teacher_source
         for token in [

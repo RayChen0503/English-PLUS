@@ -256,5 +256,6 @@ private struct ConsentToggle: View {
         }
         .buttonStyle(.plain)
         .accessibilityIdentifier(accessibilityIdentifier)
+        .accessibilityValue(isOn ? "已同意" : "未同意")
     }
 }
