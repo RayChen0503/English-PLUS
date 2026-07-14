@@ -1,6 +1,6 @@
 # Round 13 - Reliability and repository decomposition
 
-Status: Implementation complete; isolated macOS gate pending
+Status: Complete
 
 Date: 2026-07-14
 
@@ -67,10 +67,15 @@ Round 5-12 and FIX-A-G contracts remain part of the same gate.
 
 - Local Round 13 validator: passed.
 - Full Python contract sweep: `81/81` passed.
-- Worker Node-compatible tests: `24/24` passed; Functions TypeScript build and
-  administrator portal tests `7/7` passed. The Windows Workers-pool runtime and
-  Vite production bundle are rechecked by the authoritative Node 22 macOS gate.
+- macOS Cloudflare Workers-pool tests: `34/34` passed.
+- Administrator portal tests: `7/7` passed and the production bundle built.
+- Functions TypeScript build: passed.
 - Firestore Emulator permission and lifecycle matrix: `27/27` passed.
-- Xcode 16.4 Simulator build and Swift tests: pending isolated macOS gate.
+- Xcode 16.4 clean Simulator build: passed in isolated run `29303184538`.
+- Swift acceptance tests: `40/40` passed in the same run, including all four
+  new synchronization reliability cases.
 
-These evidence lines are updated only after the corresponding commands pass.
+The first macOS attempt exposed Swift 6's explicit-capture requirement inside
+the connectivity lock closure. The capture was corrected, added to the static
+contract, and the full gate was rerun from a clean checkout before this round
+was marked complete.

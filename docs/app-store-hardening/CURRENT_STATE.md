@@ -36,7 +36,9 @@ learning must remain usable without joining a class.
     (`round-11-account-deletion-human-help.md`)
   - Round 12 - privacy, support and Block C audit
     (`round-12-privacy-support-block-c-audit.md`)
-- Hardening progress: **12/20 fully signed off**.
+  - Round 13 - repository decomposition and synchronization recovery
+    (`round-13-reliability-decomposition.md`)
+- Hardening progress: **13/20 fully signed off**.
 - Do not merge to `main` or trigger Xcode Cloud until the end of a four-round
   block: 4, 8, 12, 16, and 20.
 - Never reset, overwrite, or silently discard user work.
@@ -147,6 +149,15 @@ learning must remain usable without joining a class.
   tracking is disabled, the full validator sweep passes `72/72`, Worker tests
   pass `22/22`, Firestore Emulator tests pass `18/18`, and isolated macOS run
   `29261085031` passed a clean Xcode 16.4 iOS Simulator build.
+- Round 13 has separated synchronization contracts, connectivity monitoring
+  and reporting projections from `LearningRepositoryStore`; the store now
+  preserves local snapshots through disconnects, exposes clear connecting,
+  retrying and offline states, retries failed listeners with bounded backoff,
+  reconnects automatically and cancels obsolete retries on scope changes.
+  The full Python sweep passes `81/81`, Firestore Emulator tests pass `27/27`,
+  the macOS Workers pool passes `34/34`, the administrator portal passes
+  `7/7` plus its production bundle, and isolated macOS run `29303184538`
+  passed the Xcode 16.4 clean Simulator build and all `40/40` Swift tests.
 - FIX-A through FIX-E repair cross-device support, finite layered practice,
   class deletion, private volunteer review administration, and teacher-scoped
   volunteer service classes. FIX-F makes question AI an explicit post-answer
@@ -171,6 +182,8 @@ learning must remain usable without joining a class.
   `29252015455`, Round 12 run `29261085031`, and FIX-F run `29294581537`
   attempt 2 also passed clean Xcode 16.4 iOS Simulator builds. FIX-G run
   `29300137275` passed the complete Simulator build and `36/36` Swift tests.
+  Round 13 run `29303184538` passed the clean Simulator build and expanded
+  `40/40` Swift suite, including four synchronization reliability tests.
   Xcode Cloud remains the release-level gate at the agreed checkpoint.
 - Existing legacy validators can fail because they assert removed UI or old
   copy. Preserve useful behavioral coverage by replacing them, not by reviving
@@ -202,10 +215,11 @@ learning must remain usable without joining a class.
 
 ## Next gate
 
-Round 13 implementation is ready for its isolated macOS compile and Swift-test
-gate on `codex/app-store-hardening-d`. Do not merge this branch to `main`,
-deploy backend resources or trigger Xcode Cloud; the next release checkpoint
-is the complete Round 13-16 Block D audit.
+Round 13 is complete on `codex/app-store-hardening-d`. Round 14 adds XCTest,
+UI-test and Xcode Cloud quality gates on the same isolated branch. No user
+input is required before implementation, but Xcode Cloud must remain healthy
+for the final Block D checkpoint. Do not merge this branch to `main`, deploy
+backend resources or trigger Xcode Cloud before the Round 13-16 audit.
 
 ## Maintenance rule
 

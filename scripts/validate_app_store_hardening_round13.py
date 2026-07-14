@@ -153,7 +153,7 @@ def main() -> int:
         report,
         (
             "Round 13",
-            "Status: Implementation complete",
+            "Status: Complete",
             "automatic backoff",
             "No Xcode Cloud",
         ),
