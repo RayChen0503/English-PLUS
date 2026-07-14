@@ -139,9 +139,17 @@ checks = {
             "RuntimeDiagnosticsView()",
         ]
     ),
-    "human-help links avoid force unwrap": 'URL(string: "tel:\\(number)")!'
-    not in student_source
-    and "if let destination = URL(string:" in student_source,
+    "removed student hotline card does not return": all(
+        token not in student_source
+        for token in [
+            "StudentHumanHelpCard",
+            "HumanHelpPhoneLink",
+            'URL(string: "tel:',
+            "今天先不用硬撐",
+            "安心專線 1925",
+            "保護專線 113",
+        ]
+    ),
     "diagnostic underlying errors compile with the local parameter name": all(
         token in diagnostics_source
         for token in [

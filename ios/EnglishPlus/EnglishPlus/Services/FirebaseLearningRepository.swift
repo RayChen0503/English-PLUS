@@ -94,7 +94,7 @@ final class FirebaseLearningRepository: LearningRepositoryBackend {
         if isPersonalMode {
             currentSnapshot.supportRequests = []
             currentSnapshot.assignedPracticeTasks = []
-        } else if user?.role == .volunteer {
+        } else if activeUserRole == .volunteer {
             currentSnapshot.assignedPracticeTasks = []
         }
         currentSnapshot.supportRequests = sanitizedSupportRequests(currentSnapshot.supportRequests)
@@ -132,15 +132,33 @@ final class FirebaseLearningRepository: LearningRepositoryBackend {
             }
         }
 
-        listenSupportThreads(classId: classId, user: user, onChange: onChange, onError: onError)
-        if user?.role != .volunteer {
-            listenPracticeAssignments(classId: classId, user: user, onChange: onChange, onError: onError)
+        listenSupportThreads(
+            classId: classId,
+            userUid: activeUserUid,
+            role: activeUserRole,
+            onChange: onChange,
+            onError: onError
+        )
+        if activeUserRole != .volunteer {
+            listenPracticeAssignments(
+                classId: classId,
+                userUid: activeUserUid,
+                role: activeUserRole,
+                onChange: onChange,
+                onError: onError
+            )
         }
-        listenStudentMissions(classId: classId, user: user, onChange: onChange, onError: onError)
-        if let user, user.role == .student {
+        listenStudentMissions(
+            classId: classId,
+            userUid: activeUserUid,
+            role: activeUserRole,
+            onChange: onChange,
+            onError: onError
+        )
+        if let activeUserUid, activeUserRole == .student {
             listenSkillMastery(
-                path: "\(FirestorePath.student(classId: classId, studentUid: user.id))/skillMastery",
-                studentUid: user.id,
+                path: "\(FirestorePath.student(classId: classId, studentUid: activeUserUid))/skillMastery",
+                studentUid: activeUserUid,
                 onChange: onChange,
                 onError: onError
             )
@@ -1344,17 +1362,18 @@ final class FirebaseLearningRepository: LearningRepositoryBackend {
 
     private func listenSupportThreads(
         classId: String,
-        user: DemoUser?,
+        userUid: String?,
+        role: UserRole?,
         onChange: @escaping @MainActor (LearningRepositorySnapshot) -> Void,
         onError: @escaping @MainActor (Error) -> Void
     ) {
         guard let db else { return }
 
         let supportQuery: Query
-        switch user?.role {
+        switch role {
         case .student:
             supportQuery = db.collection("\(FirestorePath.classDocument(classId: classId))/supportThreads")
-                .whereField("studentUid", isEqualTo: user?.id ?? "")
+                .whereField("studentUid", isEqualTo: userUid ?? "")
                 .whereField("studentVisible", isEqualTo: true)
         case .volunteer:
             supportQuery = db.collection("\(FirestorePath.classDocument(classId: classId))/supportThreads")
@@ -1448,7 +1467,8 @@ final class FirebaseLearningRepository: LearningRepositoryBackend {
 
     private func listenPracticeAssignments(
         classId: String,
-        user: DemoUser?,
+        userUid: String?,
+        role: UserRole?,
         onChange: @escaping @MainActor (LearningRepositorySnapshot) -> Void,
         onError: @escaping @MainActor (Error) -> Void
     ) {
@@ -1456,8 +1476,8 @@ final class FirebaseLearningRepository: LearningRepositoryBackend {
 
         let assignmentsCollection = db.collection("\(FirestorePath.classDocument(classId: classId))/practiceAssignments")
         let assignmentsQuery: Query
-        if user?.role == .student {
-            assignmentsQuery = assignmentsCollection.whereField("studentUid", isEqualTo: user?.id ?? "")
+        if role == .student {
+            assignmentsQuery = assignmentsCollection.whereField("studentUid", isEqualTo: userUid ?? "")
         } else {
             assignmentsQuery = assignmentsCollection
         }
@@ -1481,13 +1501,14 @@ final class FirebaseLearningRepository: LearningRepositoryBackend {
 
     private func listenStudentMissions(
         classId: String,
-        user: DemoUser?,
+        userUid: String?,
+        role: UserRole?,
         onChange: @escaping @MainActor (LearningRepositorySnapshot) -> Void,
         onError: @escaping @MainActor (Error) -> Void
     ) {
-        guard let db, let user, user.role == .student else { return }
+        guard let db, let userUid, role == .student else { return }
 
-        let path = "\(FirestorePath.student(classId: classId, studentUid: user.id))/dailyMissions"
+        let path = "\(FirestorePath.student(classId: classId, studentUid: userUid))/dailyMissions"
         let registration = db.collection(path).addSnapshotListener { [weak self] snapshot, error in
             if let error {
                 Task { @MainActor in onError(error) }
@@ -1497,12 +1518,12 @@ final class FirebaseLearningRepository: LearningRepositoryBackend {
 
             Task { @MainActor in
                 guard let self else { return }
-                let missions = documents.compactMap { self.mission(from: $0, studentUid: user.id) }
+                let missions = documents.compactMap { self.mission(from: $0, studentUid: userUid) }
                     .sorted { $0.createdAt > $1.createdAt }
                 self.replaceMission(missions.first)
                 self.listenStudentAttempts(
                     classId: classId,
-                    studentUid: user.id,
+                    studentUid: userUid,
                     missionId: missions.first?.id,
                     onChange: onChange,
                     onError: onError

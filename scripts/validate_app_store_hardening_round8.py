@@ -82,7 +82,7 @@ def main() -> int:
         "throw SupportMutationError.roleNotAllowed",
         'authorUid: activeUserUid',
         '.whereField("studentVisible", isEqualTo: true)',
-        'if user?.role != .volunteer',
+        'if activeUserRole != .volunteer',
     ), "authenticated realtime repository", errors)
     require("demo-teacher-1" not in firebase, "Firebase repository still writes a demo teacher UID", errors)
     require("demo-volunteer-1" not in firebase, "Firebase repository still writes a demo volunteer UID", errors)

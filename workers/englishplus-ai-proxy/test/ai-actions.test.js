@@ -51,6 +51,59 @@ test("wrong-answer AI accepts a complete post-submission context", () => {
   assert.equal(request.context.attemptCount, 1);
 });
 
+test("daily mission treats check-in choices as hard constraints", () => {
+  const output = normalizeOutput("dailyMission", {
+    summary: "模型嘗試改成文法進階題。",
+    mission: {
+      track: "challenge",
+      targetCorrectCount: 12,
+      recommendedMinutes: 30,
+      questionPlan: [
+        { type: "multipleChoice", difficulty: "advanced", targetCorrect: 12 },
+      ],
+    },
+  }, {
+    moodScore: 1,
+    availableTimeLevel: 1,
+    wantsChallenge: false,
+    preferredQuestionTypes: ["translation"],
+  });
+
+  assert.equal(output.mission.track, "repair");
+  assert.equal(output.mission.recommendedMinutes, 3);
+  assert.equal(output.mission.targetCorrectCount, 1);
+  assert.deepEqual(output.mission.questionPlan, [
+    { type: "translation", difficulty: "foundation", targetCorrect: 1 },
+  ]);
+});
+
+test("daily mission uses time and challenge intent to raise a bounded ceiling", () => {
+  const output = normalizeOutput("dailyMission", {
+    mission: {
+      track: "repair",
+      targetCorrectCount: 1,
+      recommendedMinutes: 3,
+      questionPlan: [
+        { type: "translation", difficulty: "advanced", targetCorrect: 4 },
+        { type: "reading", difficulty: "core", targetCorrect: 4 },
+      ],
+    },
+  }, {
+    moodScore: 4,
+    availableTimeLevel: 5,
+    wantsChallenge: true,
+    preferredQuestionTypes: ["translation"],
+  });
+
+  assert.equal(output.mission.track, "challenge");
+  assert.equal(output.mission.recommendedMinutes, 12);
+  assert.equal(output.mission.targetCorrectCount, 4);
+  assert.equal(output.mission.questionPlan.length, 1);
+  assert.equal(output.mission.questionPlan[0].type, "translation");
+  assert.equal(output.mission.questionPlan[0].difficulty, "advanced");
+  assert.equal(output.mission.questionPlan[0].targetCorrect, 4);
+});
+
 test("progress summary becomes a bounded executable practice plan", () => {
   const output = normalizeOutput("progressSummary", {
     summary: "先補 be 動詞，再挑戰克漏字。",

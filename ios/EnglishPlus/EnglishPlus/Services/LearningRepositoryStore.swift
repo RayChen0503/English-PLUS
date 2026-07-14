@@ -317,7 +317,7 @@ final class LearningRepositoryStore: ObservableObject {
         option: SupportOption,
         message: String? = nil
     ) async -> Bool {
-        await performSupportAction(key: "create-general") {
+        let succeeded = await performSupportAction(key: "create-general") {
             try await backend.sendSupportRequest(
                 from: user,
                 profile: profile,
@@ -325,6 +325,10 @@ final class LearningRepositoryStore: ObservableObject {
                 message: message
             )
         }
+        if succeeded {
+            restartRealtimeSyncAfterCreatingSupportThread()
+        }
+        return succeeded
     }
 
     func sendQuestionSupportRequest(
@@ -335,7 +339,7 @@ final class LearningRepositoryStore: ObservableObject {
         selectedAnswer: String?,
         message: String
     ) async -> Bool {
-        await performSupportAction(key: "create-question-\(questionItem.id)") {
+        let succeeded = await performSupportAction(key: "create-question-\(questionItem.id)") {
             try await backend.sendQuestionSupportRequest(
                 from: user,
                 profile: profile,
@@ -345,6 +349,10 @@ final class LearningRepositoryStore: ObservableObject {
                 message: message
             )
         }
+        if succeeded {
+            restartRealtimeSyncAfterCreatingSupportThread()
+        }
+        return succeeded
     }
 
     func addTeacherReply(to requestId: String, body: String) async -> Bool {
@@ -511,6 +519,14 @@ final class LearningRepositoryStore: ObservableObject {
             }
             return false
         }
+    }
+
+    private func restartRealtimeSyncAfterCreatingSupportThread() {
+        guard let context = syncContext else { return }
+        retryTask?.cancel()
+        retryTask = nil
+        consecutiveSyncFailures = 0
+        beginRealtimeListening(context: context, isRetry: false)
     }
 
     private func handleRealtimeSyncFailure(_ error: Error) {

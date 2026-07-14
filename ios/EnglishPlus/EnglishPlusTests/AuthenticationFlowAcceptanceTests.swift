@@ -598,6 +598,35 @@ final class LearningRepositoryReliabilityTests: XCTestCase {
         XCTAssertEqual(store.syncStatus, .listening(classId: "class-d"))
     }
 
+    func testCreatingFirstSupportRequestRestartsListenerForThreadMessages() async {
+        let connectivity = ManualNetworkConnectivityMonitor(initialStatus: .connected)
+        let backend = ReliabilityTestLearningBackend(behaviors: [.snapshot, .snapshot])
+        let store = LearningRepositoryStore(
+            backend: backend,
+            connectivityMonitor: connectivity,
+            retryDelaysNanoseconds: [1_000_000]
+        )
+        let option = SupportOption(
+            id: "teacher-help",
+            reason: "Need help",
+            studentText: "Ask for help",
+            platformAction: "Send to staff",
+            route: .humanHandoff
+        )
+
+        store.startRealtimeSync(classId: "class-first-session", user: nil, profile: nil)
+        let succeeded = await store.sendSupportRequest(
+            from: nil,
+            profile: nil,
+            option: option,
+            message: "Please help with this question."
+        )
+
+        XCTAssertTrue(succeeded)
+        XCTAssertEqual(backend.listenerStartCount, 2)
+        XCTAssertEqual(store.syncStatus, .listening(classId: "class-first-session"))
+    }
+
     func testSnapshotFromCancelledScopeCannotReplaceCurrentScope() {
         let connectivity = ManualNetworkConnectivityMonitor(initialStatus: .connected)
         let backend = ReliabilityTestLearningBackend(behaviors: [.deferred, .snapshot])
@@ -971,6 +1000,53 @@ final class SupportLifecycleAcceptanceTests: XCTestCase {
             visibleToStudent: true,
             createdAt: date
         )
+    }
+}
+
+final class VolunteerReviewNoticeStoreTests: XCTestCase {
+    private let suiteName = "VolunteerReviewNoticeStoreTests"
+    private var defaults: UserDefaults!
+
+    override func setUp() {
+        super.setUp()
+        defaults = UserDefaults(suiteName: suiteName)
+        defaults.removePersistentDomain(forName: suiteName)
+    }
+
+    override func tearDown() {
+        defaults.removePersistentDomain(forName: suiteName)
+        defaults = nil
+        super.tearDown()
+    }
+
+    func testDismissalPersistsForSameReviewButNotFutureReview() {
+        let store = VolunteerReviewNoticeStore(defaults: defaults)
+        let firstReview = VolunteerApplicationReviewState(
+            status: .approved,
+            reviewNote: "資料已確認",
+            reviewedAt: Date(timeIntervalSince1970: 2_000),
+            updatedAt: Date(timeIntervalSince1970: 2_000)
+        )
+        let nextReview = VolunteerApplicationReviewState(
+            status: .approved,
+            reviewNote: "新的審核通知",
+            reviewedAt: Date(timeIntervalSince1970: 3_000),
+            updatedAt: Date(timeIntervalSince1970: 3_000)
+        )
+        let firstNoticeID = VolunteerReviewNoticeStore.noticeID(
+            userUID: "volunteer-1",
+            reviewState: firstReview
+        )
+        let nextNoticeID = VolunteerReviewNoticeStore.noticeID(
+            userUID: "volunteer-1",
+            reviewState: nextReview
+        )
+
+        store.dismiss(noticeID: firstNoticeID, for: "volunteer-1")
+
+        XCTAssertEqual(store.dismissedNoticeID(for: "volunteer-1"), firstNoticeID)
+        XCTAssertNotEqual(store.dismissedNoticeID(for: "volunteer-1"), nextNoticeID)
+        XCTAssertNil(store.dismissedNoticeID(for: "volunteer-2"))
     }
 }
 
@@ -1355,6 +1431,235 @@ final class QuestionBankQualityAcceptanceTests: XCTestCase {
             Set(catalog.flatMap(\.items).map(\.semanticKey)).count,
             Set(items.map(\.semanticKey)).count
         )
+    }
+
+    func testStrictManualSelectionNeverFillsFromAnotherTypeOrLevel() {
+        let candidates = Array(items.filter {
+            $0.question.type == .translation && $0.level == .a2
+        }.prefix(5))
+        let selection = QuestionGroupingEngine.strictSelection(
+            from: candidates,
+            limit: 10,
+            rotationSeed: "manual-translation-a2"
+        )
+
+        XCTAssertEqual(selection.items.count, 5)
+        XCTAssertFalse(selection.fallbackUsed)
+        XCTAssertTrue(selection.items.allSatisfy {
+            $0.question.type == .translation && $0.level == .a2
+        })
+    }
+
+    func testStrictManualSelectionMatrixPreservesEveryTypeAndLevelCombination() {
+        for type in QuestionType.allCases {
+            for level in QuestionLevel.allCases {
+                let candidates = items.filter {
+                    $0.question.type == type && $0.level == level
+                }
+                let selection = QuestionGroupingEngine.strictSelection(
+                    from: candidates,
+                    limit: 10,
+                    rotationSeed: "manual-\(type.rawValue)-\(level.rawValue)"
+                )
+
+                XCTAssertFalse(selection.fallbackUsed)
+                XCTAssertLessThanOrEqual(selection.items.count, 10)
+                XCTAssertTrue(
+                    selection.items.allSatisfy {
+                        $0.question.type == type && $0.level == level
+                    },
+                    "Manual selection leaked outside \(type.rawValue) / \(level.rawValue)"
+                )
+                if candidates.isEmpty {
+                    XCTAssertTrue(selection.items.isEmpty)
+                } else {
+                    XCTAssertFalse(selection.items.isEmpty)
+                }
+            }
+        }
+    }
+}
+
+@MainActor
+final class SelectionConstraintAcceptanceTests: XCTestCase {
+    func testDailyMissionRejectsConflictingAITypeAndUsesCheckInDifficulty() throws {
+        let repository = MockLearningRepository(localPersistence: MemoryLearningPersistence())
+        let conflictingAI = AiMissionOutput(
+            track: .challenge,
+            targetCorrectCount: 12,
+            recommendedMinutes: 30,
+            questionPlan: [
+                AiQuestionPlanItem(type: "multipleChoice", difficulty: "advanced", targetCorrect: 12)
+            ]
+        )
+
+        repository.generateMission(
+            for: nil,
+            profile: nil,
+            moodScore: 1,
+            availableTimeLevel: 1,
+            wantsChallenge: false,
+            preferredQuestionTypes: [.fillBlank],
+            aiMission: conflictingAI
+        )
+
+        let mission = try XCTUnwrap(repository.currentMission)
+        XCTAssertEqual(mission.track, .repair)
+        XCTAssertEqual(mission.recommendedMinutes, 3)
+        XCTAssertEqual(mission.targetCorrectCount, 1)
+        XCTAssertEqual(mission.questions.count, 1)
+        XCTAssertTrue(mission.questions.allSatisfy {
+            $0.question.type == .fillBlank && $0.level == .a1
+        })
+    }
+
+    func testDailyMissionTranslationPreferenceSurvivesAIAndTimeChangesQuantity() throws {
+        let repository = MockLearningRepository(localPersistence: MemoryLearningPersistence())
+        let conflictingAI = AiMissionOutput(
+            track: .repair,
+            targetCorrectCount: 1,
+            recommendedMinutes: 3,
+            questionPlan: [
+                AiQuestionPlanItem(type: "multipleChoice", difficulty: "foundation", targetCorrect: 1)
+            ]
+        )
+
+        repository.generateMission(
+            for: nil,
+            profile: nil,
+            moodScore: 4,
+            availableTimeLevel: 5,
+            wantsChallenge: true,
+            preferredQuestionTypes: [.translation],
+            aiMission: conflictingAI
+        )
+
+        let mission = try XCTUnwrap(repository.currentMission)
+        XCTAssertEqual(mission.track, .challenge)
+        XCTAssertEqual(mission.recommendedMinutes, 12)
+        XCTAssertEqual(mission.targetCorrectCount, 4)
+        XCTAssertEqual(mission.questions.count, 4)
+        XCTAssertTrue(mission.questions.allSatisfy {
+            $0.question.type == .translation && [.b1, .b2].contains($0.level)
+        })
+    }
+
+    func testTeacherAssignmentContainsExactlyTheSelectedPracticeSet() throws {
+        let repository = MockLearningRepository(localPersistence: MemoryLearningPersistence())
+        let set = try XCTUnwrap(repository.questionPracticeSets.first {
+            $0.type == .translation && $0.level == .a2
+        })
+        let student = StaffStudentSummary(
+            id: "selection-student",
+            studentUid: "selection-student",
+            studentName: "Selection Student",
+            classCode: "SELECTION-CLASS",
+            moodScore: nil,
+            riskLevel: .low,
+            missionProgress: "尚未開始",
+            nextAction: "完成老師指派"
+        )
+
+        repository.assignPracticeSet(set, to: student, by: nil)
+
+        let assignment = try XCTUnwrap(repository.assignedPracticeTasks.first)
+        XCTAssertEqual(Set(assignment.questionIds), Set(set.questionIds))
+        XCTAssertEqual(assignment.questionIds.count, set.questionIds.count)
+        let assignedItems = repository.questionBankItems.filter {
+            Set(assignment.questionIds).contains($0.id)
+        }
+        XCTAssertTrue(assignedItems.allSatisfy {
+            $0.question.type == set.type
+                && $0.level == set.level
+                && $0.skill == set.skill
+        })
+    }
+
+    func testEveryTeacherPracticeSetPreservesItsExactQuestionIDsAndMetadata() throws {
+        let repository = MockLearningRepository(localPersistence: MemoryLearningPersistence())
+        let student = StaffStudentSummary(
+            id: "all-sets-student",
+            studentUid: "all-sets-student",
+            studentName: "All Sets Student",
+            classCode: "ALL-SETS-CLASS",
+            moodScore: nil,
+            riskLevel: .low,
+            missionProgress: "Not started",
+            nextAction: "Complete assigned practice"
+        )
+
+        for set in repository.questionPracticeSets {
+            repository.assignPracticeSet(set, to: student, by: nil)
+            let assignment = try XCTUnwrap(repository.assignedPracticeTasks.first {
+                $0.studentUid == student.studentUid && $0.setId == set.id
+            })
+            XCTAssertEqual(Set(assignment.questionIds), Set(set.questionIds))
+            XCTAssertEqual(assignment.questionIds.count, set.questionIds.count)
+
+            let assignedIds = Set(assignment.questionIds)
+            let assignedItems = repository.questionBankItems.filter { assignedIds.contains($0.id) }
+            XCTAssertEqual(assignedItems.count, set.items.count)
+            XCTAssertTrue(
+                assignedItems.allSatisfy {
+                    $0.question.type == set.type
+                        && $0.level == set.level
+                        && $0.skill == set.skill
+                },
+                "Teacher assignment leaked outside set \(set.id)"
+            )
+        }
+    }
+
+    func testDailyMissionConstraintMatrixCoversEveryTypeMoodTimeAndChallengeCombination() throws {
+        let expectedMinutes = [1: 3, 2: 3, 3: 5, 4: 8, 5: 12]
+        let expectedTargets = [1: 1, 2: 1, 3: 2, 4: 3, 5: 4]
+
+        for type in QuestionType.allCases {
+            for mood in [1, 3, 5] {
+                for timeLevel in 1...5 {
+                    for wantsChallenge in [false, true] {
+                        let conflictingType = type == .reading ? "grammar" : "reading"
+                        let conflictingAI = AiMissionOutput(
+                            track: wantsChallenge ? .repair : .challenge,
+                            targetCorrectCount: 12,
+                            recommendedMinutes: 30,
+                            questionPlan: [
+                                AiQuestionPlanItem(
+                                    type: conflictingType,
+                                    difficulty: "advanced",
+                                    targetCorrect: 12
+                                )
+                            ]
+                        )
+                        let repository = MockLearningRepository(
+                            localPersistence: MemoryLearningPersistence()
+                        )
+
+                        repository.generateMission(
+                            for: nil,
+                            profile: nil,
+                            moodScore: mood,
+                            availableTimeLevel: timeLevel,
+                            wantsChallenge: wantsChallenge,
+                            preferredQuestionTypes: [type],
+                            aiMission: conflictingAI
+                        )
+
+                        let mission = try XCTUnwrap(repository.currentMission)
+                        let expectedTrack: MissionTrack = wantsChallenge
+                            ? .challenge
+                            : (mood <= 2 ? .repair : .steady)
+                        XCTAssertEqual(mission.track, expectedTrack)
+                        XCTAssertEqual(mission.recommendedMinutes, expectedMinutes[timeLevel])
+                        XCTAssertEqual(mission.targetCorrectCount, expectedTargets[timeLevel])
+                        XCTAssertTrue(
+                            mission.questions.allSatisfy { $0.question.type == type },
+                            "Daily mission leaked outside \(type.rawValue) for mood \(mood), time \(timeLevel), challenge \(wantsChallenge)"
+                        )
+                    }
+                }
+            }
+        }
     }
 }
 

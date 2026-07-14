@@ -4,6 +4,9 @@ struct VolunteerHomeView: View {
     @EnvironmentObject private var appState: AppState
     @EnvironmentObject private var learningRepository: LearningRepositoryStore
     @State private var showsAccountData = false
+    @State private var dismissedApprovalNoticeID: String?
+
+    private let reviewNoticeStore = VolunteerReviewNoticeStore()
 
     var body: some View {
         NavigationStack {
@@ -12,10 +15,21 @@ struct VolunteerHomeView: View {
                 ScrollView {
                     VStack(alignment: .leading, spacing: 16) {
                         VolunteerHeaderCard()
-                        if let reviewState = appState.volunteerApplicationReviewState,
-                           reviewState.status == .approved,
-                           let note = reviewState.normalizedReviewNote {
-                            VolunteerApprovalNoteCard(note: note, reviewedAt: reviewState.reviewedAt)
+                        if let reviewState = approvedReviewState,
+                           let note = reviewState.normalizedReviewNote,
+                           let noticeID = approvalNoticeID,
+                           noticeID != dismissedApprovalNoticeID {
+                            VolunteerApprovalNoteCard(
+                                note: note,
+                                reviewedAt: reviewState.reviewedAt,
+                                onDismiss: {
+                                    guard let userUID = appState.currentUser?.id else { return }
+                                    reviewNoticeStore.dismiss(noticeID: noticeID, for: userUID)
+                                    withAnimation(.easeInOut(duration: 0.18)) {
+                                        dismissedApprovalNoticeID = noticeID
+                                    }
+                                }
+                            )
                         }
                         if appState.currentProfile?.activeClassId == nil {
                             VolunteerNoActiveServiceCard()
@@ -61,19 +75,56 @@ struct VolunteerHomeView: View {
             .sheet(isPresented: $showsAccountData) {
                 AccountDataView()
             }
+            .task(id: approvalNoticeID) {
+                guard let userUID = appState.currentUser?.id else {
+                    dismissedApprovalNoticeID = nil
+                    return
+                }
+                dismissedApprovalNoticeID = reviewNoticeStore.dismissedNoticeID(for: userUID)
+            }
         }
+    }
+
+    private var approvedReviewState: VolunteerApplicationReviewState? {
+        guard let reviewState = appState.volunteerApplicationReviewState,
+              reviewState.status == .approved
+        else { return nil }
+        return reviewState
+    }
+
+    private var approvalNoticeID: String? {
+        guard let userUID = appState.currentUser?.id,
+              let reviewState = approvedReviewState,
+              reviewState.normalizedReviewNote != nil
+        else { return nil }
+        return VolunteerReviewNoticeStore.noticeID(userUID: userUID, reviewState: reviewState)
     }
 }
 
 private struct VolunteerApprovalNoteCard: View {
     let note: String
     let reviewedAt: Date?
+    let onDismiss: () -> Void
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
-            Label("志工資格已通過", systemImage: "checkmark.seal.fill")
-                .font(.headline)
-                .foregroundStyle(EPTheme.support)
+            HStack(alignment: .center, spacing: 8) {
+                Label("志工資格已通過", systemImage: "checkmark.seal.fill")
+                    .font(.headline)
+                    .foregroundStyle(EPTheme.support)
+                Spacer(minLength: 8)
+                Button(action: onDismiss) {
+                    Image(systemName: "checkmark.circle.fill")
+                        .font(.title2)
+                        .foregroundStyle(EPTheme.support)
+                        .frame(width: 44, height: 44)
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("收起資格通知")
+                .accessibilityHint("這則通知不會再於登入時顯示")
+                .accessibilityIdentifier("volunteer.review.notice.dismiss")
+            }
             Text(note)
                 .font(.subheadline)
                 .foregroundStyle(EPTheme.ink)
@@ -88,6 +139,43 @@ private struct VolunteerApprovalNoteCard: View {
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(EPTheme.support.opacity(0.10))
         .clipShape(RoundedRectangle(cornerRadius: EPTheme.cardRadius))
+        .accessibilityIdentifier("volunteer.review.notice")
+    }
+}
+
+struct VolunteerReviewNoticeStore {
+    private static let keyPrefix = "englishplus.volunteer.reviewNotice.dismissed"
+    private let defaults: UserDefaults
+
+    init(defaults: UserDefaults = .standard) {
+        self.defaults = defaults
+    }
+
+    static func noticeID(
+        userUID: String,
+        reviewState: VolunteerApplicationReviewState
+    ) -> String {
+        let reviewedAt = reviewState.reviewedAt?.timeIntervalSince1970 ?? 0
+        let updatedAt = reviewState.updatedAt?.timeIntervalSince1970 ?? reviewedAt
+        return [
+            userUID,
+            reviewState.status.rawValue,
+            String(format: "%.3f", reviewedAt),
+            String(format: "%.3f", updatedAt),
+            reviewState.normalizedReviewNote ?? "",
+        ].joined(separator: "|")
+    }
+
+    func dismissedNoticeID(for userUID: String) -> String? {
+        defaults.string(forKey: storageKey(for: userUID))
+    }
+
+    func dismiss(noticeID: String, for userUID: String) {
+        defaults.set(noticeID, forKey: storageKey(for: userUID))
+    }
+
+    private func storageKey(for userUID: String) -> String {
+        "\(Self.keyPrefix).\(userUID)"
     }
 }
 

@@ -19,15 +19,14 @@ def main() -> None:
     source = PRACTICE_VIEW.read_text(encoding="utf-8")
 
     required_tokens = [
-        ("practiceSelectionNote", "visible relaxed-filter note"),
+        ("practiceSelectionNote", "visible selection note"),
         ("practiceOptionOrderByQuestionId", "stable per-question option order cache"),
         ("PracticeSessionSelection", "practice session selection result"),
         ("buildPracticeSessionItems", "shared practice session builder"),
-        ("QuestionGroupingEngine.practiceSelection(", "shared exact/fallback practice selector"),
-        ("selection.fallbackUsed", "partial-session fallback note"),
-        ("fallbackPracticeCandidates", "relaxed fallback candidate search"),
-        ("QuestionGroupingEngine.balancedFallbackCandidates(", "shared relaxed fallback candidate search"),
-        ("balancedPracticeItems", "balanced item ordering"),
+        ("QuestionGroupingEngine.strictSelection(", "strict manual practice selector"),
+        ("manualSelectionSummary", "visible exact-filter summary"),
+        ("不會用其他題型或難度補滿", "student-facing strict-filter promise"),
+        ("selectedPracticeSetId = nil", "stale small-set reset after filter changes"),
         ("QuestionGroupingEngine.balancedItems(", "shared diversity scoring"),
         ("balancedAnswerOptions", "stable balanced answer option ordering"),
         ("QuestionGroupingEngine.balancedOptions(", "shared answer position balancing"),
@@ -47,6 +46,8 @@ def main() -> None:
         ("ForEach(item.question.options, id: \\.self)", "direct option ordering"),
         ("Array(filteredPracticeItems.prefix(freePracticeSessionLimit))", "direct filtered prefix session"),
         ("buildPracticeSessionItems(from: plan.items)", "generic filler changing the validated AI plan size"),
+        ("fallbackPracticeCandidates", "manual practice silently relaxing explicit filters"),
+        ("已自動放寬條件", "manual practice claiming an unrelated fallback"),
     ]
 
     for token, message in forbidden_tokens:

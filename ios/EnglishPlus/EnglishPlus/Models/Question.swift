@@ -316,6 +316,21 @@ enum QuestionGroupingEngine {
         return QuestionPracticeSelection(items: filledItems, fallbackUsed: fallbackUsed)
     }
 
+    static func strictSelection(
+        from candidates: [QuestionBankItem],
+        limit: Int,
+        rotationSeed: String = "default"
+    ) -> QuestionPracticeSelection {
+        QuestionPracticeSelection(
+            items: balancedItems(
+                from: candidates,
+                limit: min(max(0, limit), candidates.count),
+                rotationSeed: "\(rotationSeed)-strict"
+            ),
+            fallbackUsed: false
+        )
+    }
+
     static func balancedFallbackCandidates(
         preferredTypes: [QuestionType] = [],
         preferredLevels: [QuestionLevel] = [],

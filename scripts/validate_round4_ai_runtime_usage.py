@@ -49,10 +49,18 @@ def main():
         errors,
     )
     require(
-        "aiMission?.recommendedMinutes" in texts["mock_learning"]
-        and "aiMission?.targetCorrectCount" in texts["mock_learning"]
-        and "missionTrack(from: aiMission?.track)" in texts["mock_learning"],
-        "MockLearningRepository must apply AI mission minutes, target count, and track",
+        "let minutes = recommendedMinutes(for: normalizedTimeLevel)" in texts["mock_learning"]
+        and "let targetCorrectCount = questionGoal(for: minutes)" in texts["mock_learning"]
+        and "missionTrack(moodScore: moodScore, wantsChallenge: wantsChallenge)" in texts["mock_learning"]
+        and "aiPlan: aiMission?.questionPlan" in texts["mock_learning"],
+        "MockLearningRepository must use AI sequencing without letting it override check-in constraints",
+        errors,
+    )
+    require(
+        "aiMission?.recommendedMinutes" not in texts["mock_learning"]
+        and "aiMission?.targetCorrectCount" not in texts["mock_learning"]
+        and "missionTrack(from: aiMission?.track)" not in texts["mock_learning"],
+        "AI output must not override the student's time, mood, or challenge choices",
         errors,
     )
     require(

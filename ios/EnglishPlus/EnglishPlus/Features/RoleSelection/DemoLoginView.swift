@@ -152,14 +152,17 @@ struct DemoLoginView: View {
         VStack(spacing: 12) {
             #if canImport(GoogleSignInSwift)
             GoogleSignInButton(
-                scheme: colorScheme == .dark ? .dark : .light,
+                scheme: .light,
                 style: .wide,
                 state: federatedActionDisabled ? .disabled : .normal
             ) {
                 Task { await continueWithGoogle() }
             }
             .frame(maxWidth: .infinity)
-            .frame(height: 50)
+            .frame(height: 52)
+            .clipShape(providerButtonShape)
+            .overlay(providerButtonBorder)
+            .accessibilityIdentifier("auth.google.continue")
             #else
             Button {
                 Task { await continueWithGoogle() }
@@ -171,17 +174,15 @@ struct DemoLoginView: View {
                         .font(.headline)
                 }
                 .frame(maxWidth: .infinity)
-                .frame(height: 50)
-                .foregroundStyle(EPTheme.ink)
-                .background(EPTheme.card)
-                .overlay(
-                    RoundedRectangle(cornerRadius: EPTheme.cardRadius)
-                        .stroke(EPTheme.hairline, lineWidth: 1)
-                )
-                .clipShape(RoundedRectangle(cornerRadius: EPTheme.cardRadius))
+                .frame(height: 52)
+                .foregroundStyle(Color.black)
+                .background(Color.white)
+                .clipShape(providerButtonShape)
+                .overlay(providerButtonBorder)
             }
             .buttonStyle(.plain)
             .disabled(federatedActionDisabled)
+            .accessibilityIdentifier("auth.google.continue")
             #endif
 
             SignInWithAppleButton(
@@ -189,12 +190,25 @@ struct DemoLoginView: View {
                 onRequest: prepareAppleRequest,
                 onCompletion: completeAppleSignIn
             )
-            .signInWithAppleButtonStyle(colorScheme == .dark ? .white : .black)
-            .frame(height: 50)
-            .clipShape(RoundedRectangle(cornerRadius: EPTheme.cardRadius))
+            .signInWithAppleButtonStyle(colorScheme == .dark ? .white : .whiteOutline)
+            .frame(maxWidth: .infinity)
+            .frame(height: 52)
+            .clipShape(providerButtonShape)
+            .overlay(providerButtonBorder)
             .disabled(federatedActionDisabled)
+            .accessibilityIdentifier("auth.apple.continue")
         }
         .opacity(federatedActionDisabled ? 0.48 : 1)
+    }
+
+    private var providerButtonShape: RoundedRectangle {
+        RoundedRectangle(cornerRadius: 8, style: .continuous)
+    }
+
+    private var providerButtonBorder: some View {
+        providerButtonShape
+            .stroke(Color.black.opacity(colorScheme == .dark ? 0.08 : 0.18), lineWidth: 1)
+            .allowsHitTesting(false)
     }
 
     private var divider: some View {

@@ -104,7 +104,10 @@ def main() -> int:
     markers(mission_repository, (
         "aiPlan: aiMission?.questionPlan",
         "for planItem in aiPlan",
-        "questionLevels(from: planItem.difficulty",
+        "let aiLevels = questionLevels(",
+        "from: planItem.difficulty",
+        "fallbackLevels: preferredLevels",
+        "let constrainedLevels = aiLevels.filter { preferredLevels.contains($0) }",
     ), "Daily mission structured selection", errors)
     markers(mock_ai, (
         "practiceRecommendationResponse(for:",

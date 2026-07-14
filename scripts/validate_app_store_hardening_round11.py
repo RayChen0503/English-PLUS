@@ -112,14 +112,19 @@ def main() -> int:
         "hasCompleteQuestionSnapshotForStaff || hasActionableHumanSupportContext",
         "let priorityHelpCount: Int",
     ), "Human-help queue model", errors)
-    markers(student, (
-        'Label("今天先不用硬撐", systemImage: "heart.circle.fill")',
-        'Label("主動請老師或志工陪我", systemImage: "person.2.fill")',
-        'HumanHelpPhoneLink(title: "安心專線 1925"',
-        'HumanHelpPhoneLink(title: "保護專線 113"',
-        'HumanHelpPhoneLink(title: "有立即危險請撥 119"',
-        "showsHumanSupportConfirmation = true",
-    ), "Student explicit human-help flow", errors)
+    for removed in (
+        "StudentHumanHelpCard",
+        "HumanHelpPhoneLink",
+        "今天先不用硬撐",
+        "安心專線 1925",
+        "保護專線 113",
+        "有立即危險請撥 119",
+    ):
+        require(
+            removed not in student,
+            f"Removed student hotline card remains: {removed}",
+            errors,
+        )
     markers(teacher, (
         "StaffHumanSupportRequestCard",
         'TeacherStatusTile(title: "優先回覆"',

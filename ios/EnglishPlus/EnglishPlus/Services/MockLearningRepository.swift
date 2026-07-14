@@ -187,14 +187,19 @@ final class MockLearningRepository: ObservableObject {
         let date = now()
         let dateKey = todayKey(from: date)
         let roundNumber = learningFlow.dateKey == dateKey ? max(learningFlow.roundNumber, 1) : 1
-        let minutes = aiMission?.recommendedMinutes ?? recommendedMinutes(for: availableTimeLevel)
-        let targetCorrectCount = aiMission?.targetCorrectCount ?? questionGoal(for: minutes)
+        let normalizedTimeLevel = min(max(availableTimeLevel, 1), 5)
+        let minutes = recommendedMinutes(for: normalizedTimeLevel)
+        let targetCorrectCount = questionGoal(for: minutes)
         let aiSelectedTypes = questionTypes(from: aiMission?.questionPlan)
         let selectedTypes = typesRespectingStudentPreference(
             aiSelectedTypes: aiSelectedTypes,
             preferredTypes: preferredQuestionTypes
         )
-        let track = missionTrack(from: aiMission?.track) ?? missionTrack(moodScore: moodScore, wantsChallenge: wantsChallenge)
+        let track = missionTrack(moodScore: moodScore, wantsChallenge: wantsChallenge)
+        let missionLevels = preferredLevels(
+            for: track,
+            availableTimeLevel: normalizedTimeLevel
+        )
         let studentUid = user?.id ?? "demo-student"
         let checkIn = MoodCheckIn(
             id: "checkin-\(dateKey)-r\(roundNumber)-\(studentUid)",
@@ -210,7 +215,7 @@ final class MockLearningRepository: ObservableObject {
         let missionQuestions = selectMissionQuestions(
             aiPlan: aiMission?.questionPlan,
             preferredTypes: selectedTypes,
-            track: track,
+            preferredLevels: missionLevels,
             targetCount: targetCorrectCount,
             rotationSeed: "mission-\(studentUid)-\(dateKey)-r\(roundNumber)"
         )
@@ -822,44 +827,18 @@ final class MockLearningRepository: ObservableObject {
         targetCount: Int = 12,
         rotationSeed: String
     ) -> [QuestionBankItem] {
-        let target = max(1, targetCount)
+        let target = min(max(1, targetCount), set.items.count)
         let normalizedSetSkill = normalizedAssignmentSkill(set.skill)
-        let exactSkillMatches = cachedQuestionBankItems.filter { item in
+        let exactSetItems = set.items.filter { item in
             item.question.type == set.type
                 && item.level == set.level
                 && normalizedAssignmentSkill(item.skill.isEmpty ? item.question.concept : item.skill) == normalizedSetSkill
         }
-        let sameTypeLevelMatches = cachedQuestionBankItems.filter { item in
-            item.question.type == set.type && item.level == set.level
-        }
-        let sameTypeMatches = cachedQuestionBankItems.filter { item in
-            item.question.type == set.type
-        }
-        let candidateWindow = missionCandidateWindow(
-            from: (set.items + exactSkillMatches + sameTypeLevelMatches).uniqued(by: \.id),
-            limit: max(24, target * 5)
-        )
-        let fallbackWindow = missionCandidateWindow(
-            from: (sameTypeMatches + cachedQuestionBankItems).uniqued(by: \.id),
-            limit: max(48, target * 7)
-        )
-        let selection = QuestionGroupingEngine.practiceSelection(
-            from: candidateWindow,
-            fallbackCandidates: QuestionGroupingEngine.balancedFallbackCandidates(
-                preferredTypes: [set.type],
-                preferredLevels: [set.level],
-                from: fallbackWindow
-            ),
+        return QuestionGroupingEngine.strictSelection(
+            from: exactSetItems,
             limit: target,
             rotationSeed: rotationSeed
-        )
-        return selection.items.isEmpty
-            ? QuestionGroupingEngine.balancedItems(
-                from: set.items,
-                limit: min(target, set.items.count),
-                rotationSeed: rotationSeed
-            )
-            : selection.items
+        ).items
     }
 
     private func normalizedAssignmentSkill(_ value: String) -> String {
@@ -872,7 +851,7 @@ final class MockLearningRepository: ObservableObject {
     private func selectMissionQuestions(
         aiPlan: [AiQuestionPlanItem]?,
         preferredTypes: [QuestionType],
-        track: MissionTrack,
+        preferredLevels: [QuestionLevel],
         targetCount: Int,
         rotationSeed: String
     ) -> [QuestionBankItem] {
@@ -884,7 +863,12 @@ final class MockLearningRepository: ObservableObject {
             var selected: [QuestionBankItem] = []
             for planItem in aiPlan where selected.count < target {
                 guard let type = questionType(from: planItem.type), preferredSet.contains(type) else { continue }
-                let preferredPlanLevels = questionLevels(from: planItem.difficulty, fallbackTrack: track)
+                let aiLevels = questionLevels(
+                    from: planItem.difficulty,
+                    fallbackLevels: preferredLevels
+                )
+                let constrainedLevels = aiLevels.filter { preferredLevels.contains($0) }
+                let preferredPlanLevels = constrainedLevels.isEmpty ? preferredLevels : constrainedLevels
                 let selectedIds = Set(selected.map(\.id))
                 let exactCandidates = cachedQuestionBankItems.filter { item in
                     !selectedIds.contains(item.id)
@@ -899,8 +883,10 @@ final class MockLearningRepository: ObservableObject {
                     from: exactCandidates,
                     fallbackCandidates: QuestionGroupingEngine.balancedFallbackCandidates(
                         preferredTypes: [type],
-                        preferredLevels: preferredPlanLevels,
-                        from: cachedQuestionBankItems.filter { !selectedIds.contains($0.id) }
+                        preferredLevels: preferredLevels,
+                        from: cachedQuestionBankItems.filter {
+                            !selectedIds.contains($0.id) && $0.question.type == type
+                        }
                     ),
                     limit: requestedCount,
                     rotationSeed: "\(rotationSeed)-plan-\(selected.count)"
@@ -913,7 +899,6 @@ final class MockLearningRepository: ObservableObject {
             if selected.count < target {
                 let selectedIds = Set(selected.map(\.id))
                 let remaining = cachedQuestionBankItems.filter { !selectedIds.contains($0.id) }
-                let preferredLevels = preferredLevels(for: track)
                 let fill = QuestionGroupingEngine.practiceSelection(
                     from: remaining.filter { item in
                         preferredSet.contains(item.question.type)
@@ -922,7 +907,7 @@ final class MockLearningRepository: ObservableObject {
                     fallbackCandidates: QuestionGroupingEngine.balancedFallbackCandidates(
                         preferredTypes: allowedTypes,
                         preferredLevels: preferredLevels,
-                        from: remaining
+                        from: remaining.filter { preferredSet.contains($0.question.type) }
                     ),
                     limit: target - selected.count,
                     rotationSeed: "\(rotationSeed)-plan-fill"
@@ -932,7 +917,9 @@ final class MockLearningRepository: ObservableObject {
 
             let balanced = QuestionGroupingEngine.practiceSelection(
                 from: selected,
-                fallbackCandidates: cachedQuestionBankItems,
+                fallbackCandidates: cachedQuestionBankItems.filter {
+                    preferredSet.contains($0.question.type)
+                },
                 limit: target,
                 rotationSeed: "\(rotationSeed)-plan-balanced"
             ).items
@@ -940,25 +927,22 @@ final class MockLearningRepository: ObservableObject {
                 return integratingMasteryReview(
                     into: balanced,
                     preferredTypes: allowedTypes,
+                    preferredLevels: preferredLevels,
                     targetCount: target,
                     rotationSeed: "\(rotationSeed)-mastery"
                 )
             }
         }
 
-        let preferredLevels = preferredLevels(for: track)
         let exactMatches = cachedQuestionBankItems.filter { item in
             preferredSet.contains(item.question.type) && preferredLevels.contains(item.level)
         }
         let typeMatches = cachedQuestionBankItems.filter { item in
             preferredSet.contains(item.question.type)
         }
-        let sameTypeCandidates = (exactMatches + typeMatches).uniqued(by: \.id)
-        let fallbackPool = sameTypeCandidates.isEmpty
-            ? cachedQuestionBankItems
-            : sameTypeCandidates
+        let fallbackPool = typeMatches
         let candidateWindow = missionCandidateWindow(
-            from: sameTypeCandidates.isEmpty ? cachedQuestionBankItems : sameTypeCandidates,
+            from: exactMatches,
             limit: max(24, target * 5)
         )
         let selection = QuestionGroupingEngine.practiceSelection(
@@ -985,6 +969,7 @@ final class MockLearningRepository: ObservableObject {
         return integratingMasteryReview(
             into: baseSelection,
             preferredTypes: allowedTypes,
+            preferredLevels: preferredLevels,
             targetCount: target,
             rotationSeed: "\(rotationSeed)-mastery"
         )
@@ -993,6 +978,7 @@ final class MockLearningRepository: ObservableObject {
     private func integratingMasteryReview(
         into baseItems: [QuestionBankItem],
         preferredTypes: [QuestionType],
+        preferredLevels: [QuestionLevel],
         targetCount: Int,
         rotationSeed: String
     ) -> [QuestionBankItem] {
@@ -1006,7 +992,8 @@ final class MockLearningRepository: ObservableObject {
         let reviewItems = SpacedRepetitionEngine.reviewQuestions(
             records: masteryRecords,
             questionBank: cachedQuestionBankItems.filter {
-                allowedTypes.isEmpty || allowedTypes.contains($0.question.type)
+                (allowedTypes.isEmpty || allowedTypes.contains($0.question.type))
+                    && (preferredLevels.isEmpty || preferredLevels.contains($0.level))
             },
             limit: reviewLimit,
             at: reviewDate,
@@ -1098,14 +1085,18 @@ final class MockLearningRepository: ObservableObject {
         return result
     }
 
-    private func preferredLevels(for track: MissionTrack) -> [QuestionLevel] {
+    private func preferredLevels(
+        for track: MissionTrack,
+        availableTimeLevel: Int
+    ) -> [QuestionLevel] {
+        let hasRoomForHigherDifficulty = availableTimeLevel >= 4
         switch track {
         case .repair:
-            return [.a1, .a2]
+            return hasRoomForHigherDifficulty ? [.a1, .a2] : [.a1]
         case .steady:
-            return [.a2, .b1]
+            return hasRoomForHigherDifficulty ? [.a2, .b1] : [.a2]
         case .challenge:
-            return [.b1, .b2]
+            return hasRoomForHigherDifficulty ? [.b1, .b2] : [.b1]
         }
     }
 
@@ -1131,19 +1122,6 @@ final class MockLearningRepository: ObservableObject {
             return .repair
         }
         return .steady
-    }
-
-    private func missionTrack(from aiTrack: AiMissionTrack?) -> MissionTrack? {
-        switch aiTrack {
-        case .repair:
-            return .repair
-        case .steady:
-            return .steady
-        case .challenge:
-            return .challenge
-        case nil:
-            return nil
-        }
     }
 
     private func questionTypes(from plan: [AiQuestionPlanItem]?) -> [QuestionType] {
@@ -1198,7 +1176,10 @@ final class MockLearningRepository: ObservableObject {
         learningFlow = .initial(dateKey: Self.dateKey(from: now()), updatedAt: now())
     }
 
-    private func questionLevels(from aiDifficulty: String, fallbackTrack: MissionTrack) -> [QuestionLevel] {
+    private func questionLevels(
+        from aiDifficulty: String,
+        fallbackLevels: [QuestionLevel]
+    ) -> [QuestionLevel] {
         switch aiDifficulty.lowercased() {
         case "foundation", "a1":
             return [.a1]
@@ -1209,7 +1190,7 @@ final class MockLearningRepository: ObservableObject {
         case "advanced", "highschool", "b2":
             return [.b2]
         default:
-            return preferredLevels(for: fallbackTrack)
+            return fallbackLevels
         }
     }
 

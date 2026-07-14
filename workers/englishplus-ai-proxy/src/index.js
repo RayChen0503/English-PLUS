@@ -5282,6 +5282,10 @@ function taskInstruction(taskType) {
         "Return keys: summary, mission.",
         "mission must include track repair|steady|challenge, targetCorrectCount, recommendedMinutes, questionPlan.",
         "questionPlan items must include type, difficulty, targetCorrect.",
+        "Treat moodScore, availableTimeLevel, wantsChallenge, and preferredQuestionTypes as hard constraints.",
+        "Only use question types listed in preferredQuestionTypes; never substitute a different type.",
+        "Use repair for moodScore 1-2 unless wantsChallenge is true; use challenge when wantsChallenge is true; otherwise use steady.",
+        "Map availableTimeLevel 1-5 to 3, 3, 5, 8, 12 minutes and 1, 1, 2, 3, 4 target questions.",
       ].join(" ");
     case "wrongAnswerExplanation":
       return [
@@ -5332,7 +5336,11 @@ function normalizeGroqResponse(request, response) {
     taskType: request.taskType,
     qualityMode: request.qualityMode,
     modelUsed: safeString(response?.model) || modelNameFromRequest(request),
-    output: normalizeOutput(request.taskType, parsed || { summary: safeString(content) || "" }),
+    output: normalizeOutput(
+      request.taskType,
+      parsed || { summary: safeString(content) || "" },
+      request.context
+    ),
     usage: {
       promptTokens: Number(response?.usage?.prompt_tokens || 0),
       completionTokens: Number(response?.usage?.completion_tokens || 0),
@@ -5342,9 +5350,9 @@ function normalizeGroqResponse(request, response) {
   };
 }
 
-function normalizeOutput(taskType, output) {
+function normalizeOutput(taskType, output, context = {}) {
   if (taskType === "dailyMission") {
-    const mission = normalizeMission(output.mission || output);
+    const mission = normalizeMission(output.mission || output, context);
     return {
       summary: safeString(output.summary) || "English+ 已安排今天的小任務。",
       mission,
@@ -5437,22 +5445,81 @@ function normalizePlanTotal(plan, targetCount) {
   return result;
 }
 
-function normalizeMission(raw) {
-  const track = ["repair", "steady", "challenge"].includes(raw?.track)
-    ? raw.track
-    : "steady";
-  const plan = Array.isArray(raw?.questionPlan) ? raw.questionPlan : [];
+function normalizeMission(raw, context = {}) {
+  const policy = dailyMissionPolicy(context);
+  const preferredTypes = policy.preferredTypes;
+  const allowedTypes = new Set(preferredTypes);
+  const allowedDifficulties = new Set(policy.difficulties);
+  const rawPlan = Array.isArray(raw?.questionPlan) ? raw.questionPlan : [];
+  const constrainedPlan = rawPlan.slice(0, 6).flatMap((item) => {
+    const type = normalizeMissionQuestionType(item?.type);
+    if (!type || !allowedTypes.has(type)) return [];
+    const requestedDifficulty = safeString(item?.difficulty);
+    return [{
+      type,
+      difficulty: allowedDifficulties.has(requestedDifficulty)
+        ? requestedDifficulty
+        : policy.difficulties[0],
+      targetCorrect: clampInteger(item?.targetCorrect, 1, policy.targetCorrectCount, 1),
+    }];
+  });
+  const plan = constrainedPlan.length > 0
+    ? constrainedPlan
+    : preferredTypes.map((type, index) => ({
+        type,
+        difficulty: policy.difficulties[index % policy.difficulties.length],
+        targetCorrect: 1,
+      }));
+
+  return {
+    track: policy.track,
+    targetCorrectCount: policy.targetCorrectCount,
+    recommendedMinutes: policy.recommendedMinutes,
+    questionPlan: normalizePlanTotal(plan, policy.targetCorrectCount),
+  };
+}
+
+function dailyMissionPolicy(context = {}) {
+  const timeLevel = clampInteger(context?.availableTimeLevel, 1, 5, 3);
+  const minuteByTimeLevel = [3, 3, 5, 8, 12];
+  const targetByTimeLevel = [1, 1, 2, 3, 4];
+  const moodScore = clampInteger(context?.moodScore, 1, 5, 3);
+  const track = context?.wantsChallenge === true
+    ? "challenge"
+    : moodScore <= 2
+      ? "repair"
+      : "steady";
+  const hasRoomForHigherDifficulty = timeLevel >= 4;
+  const difficulties = track === "repair"
+    ? (hasRoomForHigherDifficulty ? ["foundation", "core"] : ["foundation"])
+    : track === "challenge"
+      ? (hasRoomForHigherDifficulty ? ["exam", "advanced"] : ["exam"])
+      : (hasRoomForHigherDifficulty ? ["core", "exam"] : ["core"]);
+  const preferredTypes = Array.isArray(context?.preferredQuestionTypes)
+    ? [...new Set(context.preferredQuestionTypes.map(normalizeMissionQuestionType).filter(Boolean))]
+    : [];
 
   return {
     track,
-    targetCorrectCount: clampInteger(raw?.targetCorrectCount, 1, 12, 3),
-    recommendedMinutes: clampInteger(raw?.recommendedMinutes, 3, 30, 8),
-    questionPlan: plan.slice(0, 6).map((item) => ({
-      type: safeString(item?.type) || "multipleChoice",
-      difficulty: safeString(item?.difficulty) || "core",
-      targetCorrect: clampInteger(item?.targetCorrect, 1, 6, 1),
-    })),
+    recommendedMinutes: minuteByTimeLevel[timeLevel - 1],
+    targetCorrectCount: targetByTimeLevel[timeLevel - 1],
+    difficulties,
+    preferredTypes: preferredTypes.length > 0 ? preferredTypes : ["multipleChoice"],
   };
+}
+
+function normalizeMissionQuestionType(value) {
+  const normalized = safeString(value);
+  if (normalized === "grammar" || normalized === "choice") return "multipleChoice";
+  return [
+    "vocabulary",
+    "multipleChoice",
+    "fillBlank",
+    "cloze",
+    "reading",
+    "translation",
+    "dialogue",
+  ].includes(normalized) ? normalized : "";
 }
 
 function buildFallbackResponse(request, errorCode) {
@@ -5476,15 +5543,7 @@ function fallbackOutput(request) {
     case "dailyMission":
       return {
         summary: "今天先完成一個短任務，答對才算進度。",
-        mission: {
-          track: "repair",
-          targetCorrectCount: 3,
-          recommendedMinutes: 8,
-          questionPlan: [
-            { type: "multipleChoice", difficulty: "foundation", targetCorrect: 1 },
-            { type: "fillBlank", difficulty: "core", targetCorrect: 2 },
-          ],
-        },
+        mission: normalizeMission({}, request.context),
       };
     case "progressSummary":
       return {

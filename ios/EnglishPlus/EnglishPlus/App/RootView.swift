@@ -36,6 +36,12 @@ struct RootView: View {
         .onChange(of: appState.currentProfile?.activeClassId) { _, _ in
             startRealtimeSyncIfNeeded()
         }
+        .onChange(of: appState.currentUser?.id) { _, _ in
+            startRealtimeSyncIfNeeded()
+        }
+        .onChange(of: appState.currentProfile?.id) { _, _ in
+            startRealtimeSyncIfNeeded()
+        }
         .safeAreaInset(edge: .top, spacing: 0) {
             RepositorySyncBanner(
                 status: learningRepository.syncStatus,

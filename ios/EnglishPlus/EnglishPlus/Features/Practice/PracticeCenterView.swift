@@ -151,7 +151,7 @@ struct PracticeCenterView: View {
         PracticeSessionStartCard(
             availableCount: filteredPracticeItems.count,
             sessionLimit: min(freePracticeSessionLimit, filteredPracticeItems.count),
-            selectedSetTitle: selectedPracticeSet?.title ?? "全部題庫",
+            selectedSetTitle: manualSelectionSummary,
             onStart: startFreePracticeSession
         )
     }
@@ -537,8 +537,11 @@ struct PracticeCenterView: View {
 
     private func count(for type: QuestionType?) -> Int {
         let baseItems = selectedPracticeSet?.items ?? questionBankItems
-        guard let type else { return baseItems.count }
-        return baseItems.filter { $0.question.type == type }.count
+        return baseItems.filter { item in
+            let typeMatches = type == nil || item.question.type == type
+            let levelMatches = selectedPracticeLevel == nil || item.level == selectedPracticeLevel
+            return typeMatches && levelMatches
+        }.count
     }
 
     private func countText(for type: QuestionType?) -> String {
@@ -547,11 +550,13 @@ struct PracticeCenterView: View {
 
     private func selectPracticeType(_ type: QuestionType?) {
         selectedPracticeType = type
+        selectedPracticeSetId = nil
         resetSelectionState()
     }
 
     private func selectPracticeLevel(_ level: QuestionLevel?) {
         selectedPracticeLevel = level
+        selectedPracticeSetId = nil
         resetSelectionState()
     }
 
@@ -560,6 +565,7 @@ struct PracticeCenterView: View {
         isLoadingPracticeAI = false
         practiceAIResponse = nil
         recommendedPracticePlan = nil
+        practiceSelectionNote = nil
         sessionReturnMessage = nil
     }
 
@@ -572,7 +578,7 @@ struct PracticeCenterView: View {
         requestPrimarySessionStart(
             PracticeSessionProposal(
                 items: sessionSelection.items,
-                sourceTitle: selectedPracticeSet?.title ?? "自由練習",
+                sourceTitle: manualSelectionSummary,
                 note: sessionSelection.note
             )
         )
@@ -1231,33 +1237,26 @@ struct PracticeCenterView: View {
         from candidates: [QuestionBankItem],
         rotationSeed: String
     ) -> PracticeSessionSelection {
-        let selection = QuestionGroupingEngine.practiceSelection(
+        let selection = QuestionGroupingEngine.strictSelection(
             from: candidates,
-            fallbackCandidates: fallbackPracticeCandidates(),
-            limit: freePracticeSessionLimit,
+            limit: min(freePracticeSessionLimit, candidates.count),
             rotationSeed: rotationSeed
         )
         let note = selection.items.isEmpty
-            ? "目前題庫還沒有可用題目。"
-            : (selection.fallbackUsed
-                ? "目前條件題數不足，已自動放寬條件，先安排最接近的一組。"
-                : nil)
+            ? "目前沒有符合「\(manualSelectionSummary)」的題目，請保留題型並改選其他難度，或回到全部難度。"
+            : (selection.items.count < freePracticeSessionLimit
+                ? "完全依照「\(manualSelectionSummary)」安排；目前共有 \(selection.items.count) 題，不會用其他題型或難度補滿。"
+                : "完全依照「\(manualSelectionSummary)」安排這組題目。")
         return PracticeSessionSelection(items: selection.items, note: note)
     }
 
-    private func fallbackPracticeCandidates() -> [QuestionBankItem] {
-        let allItems = questionBankItems
-        let preferredTypes = selectedPracticeType.map { [$0] } ?? preferredQuestionTypesForAI
-        let preferredLevels = selectedPracticeLevel.map { [$0] } ?? []
-        return QuestionGroupingEngine.balancedFallbackCandidates(
-            preferredTypes: preferredTypes,
-            preferredLevels: preferredLevels,
-            from: allItems
-        )
-    }
-
-    private func balancedPracticeItems(from items: [QuestionBankItem]) -> [QuestionBankItem] {
-        QuestionGroupingEngine.balancedItems(from: items, limit: freePracticeSessionLimit)
+    private var manualSelectionSummary: String {
+        if let selectedPracticeSet {
+            return selectedPracticeSet.title
+        }
+        let type = selectedPracticeType?.title ?? "全部題型"
+        let level = selectedPracticeLevel?.uiTitle ?? "全部難度"
+        return "\(type) / \(level)"
     }
 
     private func balancedAnswerOptions(for item: QuestionBankItem) -> [String] {
