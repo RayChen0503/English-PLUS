@@ -97,7 +97,8 @@ function dbFor(uid) {
 
 async function createReadyClass() {
   const classroom = await createClassroom(env, teacher, "FIX-E service class");
-  await joinClassroom(env, student, classroom.joinCode);
+  const studentMembership = await joinClassroom(env, student, classroom.joinCode);
+  const activityAt = Timestamp.fromDate(new Date(studentMembership.visibilityStartsAt));
   await testEnv.withSecurityRulesDisabled(async (context) => {
     const db = context.firestore();
     await setDoc(doc(db, "classes", classroom.classId, "supportThreads", "question-help"), {
@@ -121,8 +122,8 @@ async function createReadyClass() {
           },
         },
       },
-      createdAt: now,
-      updatedAt: now,
+      createdAt: activityAt,
+      updatedAt: activityAt,
     });
     await setDoc(doc(db, "classes", classroom.classId, "students", student.sub), {
       uid: student.sub,
@@ -130,8 +131,8 @@ async function createReadyClass() {
       classCode: classroom.classId,
       membershipStatus: "active",
       lastMoodScore: 2,
-      createdAt: now,
-      updatedAt: now,
+      createdAt: activityAt,
+      updatedAt: activityAt,
     });
   });
   return classroom;

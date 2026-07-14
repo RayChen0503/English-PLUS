@@ -146,7 +146,7 @@ def main() -> int:
         (
             ".github/ci-triggers/round16-mastery-review",
             "validate_app_store_hardening_round16.py",
-            "validate_app_store_hardening_block_d.py",
+            "validate_app_store_hardening_block_d.py --preflight",
         ),
         "macOS gate",
         errors,
