@@ -60,8 +60,9 @@ def main() -> int:
     require_all(
         admin,
         (
-            "const popup = window.open",
-            "const blob = await response.blob()",
+            'popup = window.open("", "_blank")',
+            "state.api.evidencePreview(objectKey)",
+            'previewURL.pathname !== "/admin/evidence-file"',
             "審核備註（必填）",
             "申請人會在 App 中看到這段文字",
         ),
@@ -157,7 +158,7 @@ def main() -> int:
     require_all(
         firebase_learning,
         (
-            'whereField("studentUid", isEqualTo: user?.id ?? "")',
+            'whereField("studentUid", isEqualTo: userUid ?? "")',
             '"visibility",\n                    isEqualTo: MessageVisibility.studentVisible.rawValue',
         ),
         "student cross-device support listeners",
