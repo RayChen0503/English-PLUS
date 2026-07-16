@@ -1,5 +1,7 @@
 {
   "projects": {
-    "default": "englishplus-testflight"
+    "default": "englishplus-testflight",
+    "competition": "englishplus-testflight",
+    "production": "englishplus-production"
   }
 }

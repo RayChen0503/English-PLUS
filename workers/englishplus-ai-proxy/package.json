@@ -11,8 +11,10 @@
     "deploy": "wrangler deploy"
   },
   "devDependencies": {
-    "@cloudflare/vitest-pool-workers": "^0.18.4",
-    "vitest": "^4.1.10",
+    "@cloudflare/vitest-pool-workers": "0.18.4",
+    "@vitest/runner": "4.1.0",
+    "@vitest/snapshot": "4.1.0",
+    "vitest": "4.1.0",
     "wrangler": "4.110.0"
   }
 }

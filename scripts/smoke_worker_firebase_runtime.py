@@ -2,6 +2,7 @@
 import argparse
 import datetime
 import json
+import os
 import plistlib
 import re
 import sys
@@ -16,11 +17,24 @@ from typing import Any
 
 WORKER_BASE_URL = "https://englishplus-ai-proxy.englishplus-ray.workers.dev"
 PROJECT_ID = "englishplus-testflight"
-TEST_ACCOUNTS = {
-    "student": ("student.demo@englishplus.test", "EnglishPlusStudent2026!"),
-    "teacher": ("teacher.demo@englishplus.test", "EnglishPlusTeacher2026!"),
-    "volunteer": ("volunteer.demo@englishplus.test", "EnglishPlusVolunteer2026!"),
+TEST_ACCOUNT_ROLES = ("student", "teacher", "volunteer")
+TEST_ACCOUNT_ENV = {
+    "student": ("ENGLISHPLUS_SMOKE_STUDENT_EMAIL", "ENGLISHPLUS_SMOKE_STUDENT_PASSWORD"),
+    "teacher": ("ENGLISHPLUS_SMOKE_TEACHER_EMAIL", "ENGLISHPLUS_SMOKE_TEACHER_PASSWORD"),
+    "volunteer": ("ENGLISHPLUS_SMOKE_VOLUNTEER_EMAIL", "ENGLISHPLUS_SMOKE_VOLUNTEER_PASSWORD"),
 }
+
+
+def load_test_account(role: str) -> tuple[str, str]:
+    email_variable, password_variable = TEST_ACCOUNT_ENV[role]
+    email = os.environ.get(email_variable, "").strip()
+    password = os.environ.get(password_variable, "")
+    if not email or not password:
+        raise SystemExit(
+            f"Set {email_variable} and {password_variable} before running "
+            f"--account-preview-only {role}. Never commit these values."
+        )
+    return email, password
 
 
 @dataclass
@@ -187,7 +201,7 @@ def main() -> int:
     )
     parser.add_argument(
         "--account-preview-only",
-        choices=tuple(TEST_ACCOUNTS),
+        choices=TEST_ACCOUNT_ROLES,
         help="Run only one authenticated account-deletion preview for diagnosis.",
     )
     args = parser.parse_args()
@@ -197,7 +211,7 @@ def main() -> int:
         raise SystemExit("Firebase API_KEY is missing from the supplied plist.")
 
     if args.account_preview_only:
-        email, password = TEST_ACCOUNTS[args.account_preview_only]
+        email, password = load_test_account(args.account_preview_only)
         session = firebase_sign_in(api_key, email, password)
         response = request_json(
             f"{WORKER_BASE_URL}/account/deletion-preview",

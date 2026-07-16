@@ -1,0 +1,66 @@
+{
+  "schemaVersion": 1,
+  "environment": "production-only",
+  "containsCredentials": false,
+  "containsRealPeople": false,
+  "resetPolicy": "idempotent-replace-review-scope",
+  "scope": {
+    "classId": "APP-REVIEW-CLASS",
+    "className": "English+ App Review Demo",
+    "joinCode": "APPREVIEW"
+  },
+  "actors": [
+    {
+      "key": "student",
+      "displayName": "Review Student",
+      "role": "student",
+      "accountStatus": "active",
+      "membership": "active"
+    },
+    {
+      "key": "teacher",
+      "displayName": "Review Teacher",
+      "role": "teacher",
+      "accountStatus": "active",
+      "membership": "owner"
+    },
+    {
+      "key": "volunteer",
+      "displayName": "Review Volunteer",
+      "role": "volunteer",
+      "accountStatus": "approved",
+      "membership": "active-service"
+    }
+  ],
+  "assignment": {
+    "id": "APP-REVIEW-ASSIGNMENT-01",
+    "title": "App Review 五題體驗",
+    "questionIds": [
+      "ios-cap-0001",
+      "ios-cap-0121",
+      "ios-cap-0301",
+      "ios-cap-0481",
+      "ios-cap-0641"
+    ],
+    "studentState": "assigned"
+  },
+  "supportThreads": [
+    {
+      "id": "APP-REVIEW-SUPPORT-PENDING",
+      "questionId": "ios-cap-0301",
+      "state": "awaiting-staff-reply",
+      "audience": ["teacher", "volunteer"]
+    },
+    {
+      "id": "APP-REVIEW-SUPPORT-RESOLVED",
+      "questionId": "ios-cap-0481",
+      "state": "replied-unread-by-student",
+      "audience": ["student", "teacher", "volunteer"]
+    }
+  ],
+  "learningState": {
+    "completedAttemptQuestionId": "ios-cap-0001",
+    "masterySkill": "校園與生活字彙",
+    "dailyMissionState": "not-started"
+  }
+}

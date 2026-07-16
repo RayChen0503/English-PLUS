@@ -19,6 +19,7 @@ student_shell = read("ios/EnglishPlus/EnglishPlus/Features/Student/StudentShellV
 student_classroom = read("ios/EnglishPlus/EnglishPlus/Features/Student/StudentClassroomView.swift")
 student_home = read("ios/EnglishPlus/EnglishPlus/Features/Student/StudentHomeView.swift")
 store = read("ios/EnglishPlus/EnglishPlus/Services/LearningRepositoryStore.swift")
+store_reporting = read("ios/EnglishPlus/EnglishPlus/Services/LearningRepositoryStore+Reporting.swift")
 
 teacher_markers = [
     "struct TeacherClassAssignmentView",
@@ -62,7 +63,7 @@ store_markers = [
     "func withdrawAssignedPracticeTask(_ assignmentId: String)",
 ]
 for marker in store_markers:
-    require(marker in store, f"LearningRepositoryStore missing marker: {marker}")
+    require(marker in store + store_reporting, f"LearningRepositoryStore missing marker: {marker}")
 
 student_shell_markers = [
     "StudentClassroomView",

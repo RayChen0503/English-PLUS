@@ -44,3 +44,48 @@ crons = [ "17 3 * * *" ]
 [observability]
 enabled = true
 head_sampling_rate = 1.0
+
+[env.production]
+name = "englishplus-ai-proxy-production"
+workers_dev = true
+
+[env.production.vars]
+FIREBASE_PROJECT_ID = "englishplus-production"
+GROQ_DEFAULT_MODEL = "llama-3.1-8b-instant"
+GROQ_QUALITY_MODEL = "llama-3.3-70b-versatile"
+AI_QUOTA_MODE = "public"
+
+[[env.production.durable_objects.bindings]]
+name = "AI_QUOTA"
+class_name = "AIQuotaCoordinator"
+
+[[env.production.migrations]]
+tag = "v1-ai-quota"
+new_sqlite_classes = [ "AIQuotaCoordinator" ]
+
+[[env.production.ratelimits]]
+name = "AI_INTERNAL_BURST_LIMITER"
+namespace_id = "92001"
+
+  [env.production.ratelimits.simple]
+  limit = 30
+  period = 60
+
+[[env.production.ratelimits]]
+name = "AI_PUBLIC_BURST_LIMITER"
+namespace_id = "92002"
+
+  [env.production.ratelimits.simple]
+  limit = 8
+  period = 60
+
+[[env.production.r2_buckets]]
+binding = "VOLUNTEER_EVIDENCE"
+bucket_name = "englishplus-volunteer-evidence-production"
+
+[env.production.triggers]
+crons = [ "17 3 * * *" ]
+
+[env.production.observability]
+enabled = true
+head_sampling_rate = 1.0

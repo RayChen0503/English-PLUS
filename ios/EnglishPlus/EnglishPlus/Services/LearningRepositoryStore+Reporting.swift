@@ -1,6 +1,98 @@
 import Foundation
 
 extension LearningRepositoryStore {
+    var supportedQuestionTypes: [QuestionType] {
+        backend.supportedQuestionTypes
+    }
+
+    var defaultPreferredQuestionTypes: [QuestionType] {
+        backend.defaultPreferredQuestionTypes
+    }
+
+    var questionBankItems: [QuestionBankItem] {
+        backend.questionBankItems
+    }
+
+    func supportRequests(forStudentUid studentUid: String?) -> [StudentSupportRequest] {
+        guard let studentUid else { return [] }
+        return supportRequests
+            .filter { $0.studentUid == studentUid }
+            .filter(\.isVisibleToStudent)
+            .filter(\.hasActionableSupportContent)
+            .sorted { $0.updatedAt > $1.updatedAt }
+    }
+
+    func isSupportActionPending(for requestId: String) -> Bool {
+        pendingSupportActionKeys.contains { $0.hasPrefix("\(requestId):") }
+    }
+
+    var isCreatingSupportRequest: Bool {
+        pendingSupportActionKeys.contains { $0.hasPrefix("create-") }
+    }
+
+    func reportSupportReply(
+        requestId: String,
+        reply: SupportReply,
+        reason: SupportSafetyReportReason
+    ) async -> Bool {
+        await performSupportAction(key: "\(requestId):report:\(reply.id)") {
+            try await backend.reportSupportReply(
+                requestId: requestId,
+                reply: reply,
+                reason: reason
+            )
+        }
+    }
+
+    func blockSupportAuthor(_ reply: SupportReply, requestId: String) async -> Bool {
+        await performSupportAction(key: "\(requestId):block:\(reply.authorUid)") {
+            try await backend.blockSupportAuthor(reply, requestId: requestId)
+        }
+    }
+
+    func pendingAssignments(forStudentUid studentUid: String?) -> [TeacherAssignedPracticeTask] {
+        guard let studentUid else { return [] }
+        return assignedPracticeTasks
+            .filter { $0.studentUid == studentUid && $0.status == .pending }
+            .sorted { $0.createdAt > $1.createdAt }
+    }
+
+    func assignments(forStudentUid studentUid: String?) -> [TeacherAssignedPracticeTask] {
+        guard let studentUid else { return [] }
+        return assignedPracticeTasks
+            .filter { $0.studentUid == studentUid }
+            .sorted { $0.createdAt > $1.createdAt }
+    }
+
+    var latestMissionAttempt: MissionAttempt? {
+        missionAttempts.last
+    }
+
+    var canContinuePreviousProgress: Bool {
+        learningFlow.canContinuePreviousProgress
+    }
+
+    var isDailyMissionComplete: Bool {
+        learningFlow.stage == .missionCompleted
+    }
+
+    var hasCompletedFreePracticeSession: Bool {
+        learningFlow.hasCompletedFreePracticeSession
+    }
+
+    var masterySummary: MasterySummary {
+        SpacedRepetitionEngine.summary(records: masteryRecords)
+    }
+
+    func dueReviewQuestions(limit: Int = 8) -> [QuestionBankItem] {
+        SpacedRepetitionEngine.reviewQuestions(
+            records: masteryRecords,
+            questionBank: questionBankItems,
+            limit: limit,
+            rotationSeed: "review-\(UUID().uuidString)"
+        )
+    }
+
     var recentAccuracy: Double? {
         guard !missionAttempts.isEmpty else { return nil }
         let correctCount = missionAttempts.filter(\.isCorrect).count

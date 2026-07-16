@@ -82,7 +82,7 @@ def validate_consent_flow(errors):
     require("hasAcceptedConsent = true\n        route = .home(selectedRole)" not in app_state, "demo login must not auto-accept consent", errors)
     for token in [
         "PrivacyConsentCategory",
-        "currentVersion = \"privacy-v2-2026-07-13\"",
+        "currentVersion = \"privacy-v3-2026-07-16\"",
         "GuardianConsentStatus",
         "ConsentSource",
         "primaryAgreement",
@@ -121,7 +121,7 @@ def validate_firestore_contract(errors):
         "match /aiUsage/{usageId}",
         "match /aiEvents/{eventId}",
         "match /privacyAuditLogs/{eventId}",
-        "request.resource.data.acceptedByUid == request.auth.uid",
+        "validConsentRecord(uid, request.resource.data)",
         "request.resource.data.status == \"requested\"",
     ]:
         require(token in rules, f"firestore rules missing {token}", errors)

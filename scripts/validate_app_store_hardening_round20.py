@@ -272,10 +272,14 @@ checks = {
             "manual checklist",
         ]
     ),
-    "production endpoints are HTTPS": info.get("ENGLISHPLUS_AI_PROXY_URL", "").startswith(
-        "https://"
-    )
-    and info.get("ENGLISHPLUS_EVIDENCE_UPLOAD_URL", "").startswith("https://"),
+    "production endpoints are HTTPS": (
+        info.get("ENGLISHPLUS_AI_PROXY_URL") == "$(ENGLISHPLUS_AI_PROXY_URL)"
+        and info.get("ENGLISHPLUS_EVIDENCE_UPLOAD_URL")
+        == "$(ENGLISHPLUS_EVIDENCE_UPLOAD_URL)"
+        and 'ENGLISHPLUS_DEPLOYMENT_ENVIRONMENT = production;' in project
+        and 'ENGLISHPLUS_AI_PROXY_URL = "https://' in project
+        and 'ENGLISHPLUS_EVIDENCE_UPLOAD_URL = "https://' in project
+    ),
     "no provider secret is bundled in iOS": all(
         token not in ios_source
         for token in ["GROQ_API_KEY", "OPENROUTER_API_KEY", "sk-or-v1-"]

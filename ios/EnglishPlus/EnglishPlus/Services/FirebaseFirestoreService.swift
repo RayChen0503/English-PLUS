@@ -173,6 +173,7 @@ final class FirebaseFirestoreService: FirestoreService {
             "consentSource": record.consentSource.rawValue,
             "schoolApprovalRef": record.schoolApprovalRef,
             "guardianConsentStatus": record.guardianConsentStatus.rawValue,
+            "studentAccessPath": record.studentAccessPath.rawValue,
             "policyUrl": record.policyUrl,
             "categoriesAccepted": record.categoriesAccepted.map(\.rawValue),
         ]
@@ -227,6 +228,9 @@ private extension PrivacyConsentRecord {
             consentSource: source,
             schoolApprovalRef: data["schoolApprovalRef"] as? String ?? "",
             guardianConsentStatus: guardian,
+            studentAccessPath: (data["studentAccessPath"] as? String)
+                .flatMap(StudentAccountAccessPath.init(rawValue:))
+                ?? (actorRole == .student ? .legacyUnspecified : .notApplicable),
             policyUrl: policyUrl,
             categoriesAccepted: categories
         )

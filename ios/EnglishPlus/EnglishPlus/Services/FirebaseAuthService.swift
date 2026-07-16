@@ -24,15 +24,6 @@ struct FirebaseAuthService: AuthService, Sendable {
         fallback.demoSession(for: role)
     }
 
-    func signInDemoAccount(for role: UserRole) async throws -> AuthSession {
-        let credential = DemoAccountCredential.credential(for: role)
-        return try await signIn(
-            email: credential.email,
-            password: credential.password,
-            expectedRole: credential.role
-        )
-    }
-
     func signIn(email: String, password: String, expectedRole: UserRole) async throws -> AuthSession {
         #if canImport(FirebaseAuth) && canImport(FirebaseFirestore)
         guard FirebaseAppConfigurator.hasBundledConfig else {
@@ -424,6 +415,48 @@ struct FirebaseAuthService: AuthService, Sendable {
         #endif
     }
 
+    func currentUserUses(_ provider: AccountIdentityProvider) -> Bool {
+        #if canImport(FirebaseAuth)
+        guard let user = Auth.auth().currentUser else { return false }
+        return Self.firebaseUser(user, uses: provider)
+        #else
+        return false
+        #endif
+    }
+
+    func reauthenticateAndRevokeAppleToken(
+        using credential: AppleAccountDeletionCredential
+    ) async throws {
+        #if canImport(FirebaseAuth)
+        guard FirebaseAppConfigurator.hasBundledConfig,
+              let user = Auth.auth().currentUser,
+              Self.firebaseUser(user, uses: .apple) else {
+            throw AuthServiceError.invalidCredentials
+        }
+
+        do {
+            let firebaseCredential = OAuthProvider.appleCredential(
+                withIDToken: credential.idToken,
+                rawNonce: credential.rawNonce,
+                fullName: nil
+            )
+            _ = try await reauthenticateFirebaseUser(
+                user,
+                credential: firebaseCredential
+            )
+            try await Auth.auth().revokeToken(
+                withAuthorizationCode: credential.authorizationCode
+            )
+        } catch let error as AuthServiceError {
+            throw error
+        } catch {
+            throw Self.normalizedFirebaseError(error)
+        }
+        #else
+        throw AuthServiceError.identityProviderUnavailable
+        #endif
+    }
+
     func sendPasswordReset(email: String) async throws {
         #if canImport(FirebaseAuth)
         guard FirebaseAppConfigurator.hasBundledConfig else {
@@ -588,6 +621,25 @@ struct FirebaseAuthService: AuthService, Sendable {
     ) async throws -> AuthDataResult {
         try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<AuthDataResult, Error>) in
             user.link(with: credential) { result, error in
+                if let error {
+                    continuation.resume(throwing: error)
+                    return
+                }
+                guard let result else {
+                    continuation.resume(throwing: AuthServiceError.operationUnavailable)
+                    return
+                }
+                continuation.resume(returning: result)
+            }
+        }
+    }
+
+    private func reauthenticateFirebaseUser(
+        _ user: User,
+        credential: AuthCredential
+    ) async throws -> AuthDataResult {
+        try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<AuthDataResult, Error>) in
+            user.reauthenticate(with: credential) { result, error in
                 if let error {
                     continuation.resume(throwing: error)
                     return
@@ -777,6 +829,7 @@ struct FirebaseAuthService: AuthService, Sendable {
                 "accountStatus": accountStatus.rawValue,
                 "emailVerificationRequired": emailVerificationRequired,
                 "provisioningSource": provisioningSource.rawValue,
+                "studentAccessPath": profile.studentAccessPath.rawValue,
                 "identityProviders": identityProviders.map(\.rawValue),
             ],
             forDocument: firestore.document(FirestorePath.user(uid: uid)),
@@ -906,6 +959,9 @@ struct FirebaseAuthService: AuthService, Sendable {
         guard selectedRoleIsAllowed else {
             throw AuthServiceError.roleMismatch(expected: selectedRole, actual: primaryRole)
         }
+        let studentAccessPath = (userData["studentAccessPath"] as? String)
+            .flatMap(StudentAccountAccessPath.init(rawValue:))
+            ?? (selectedRole == .student ? .legacyUnspecified : .notApplicable)
 
         let activeMembership: ClassMembership?
         if let requestedMembership, requestedMembership.role == selectedRole {
@@ -940,6 +996,7 @@ struct FirebaseAuthService: AuthService, Sendable {
             id: uid,
             displayName: displayName,
             role: selectedRole,
+            studentAccessPath: studentAccessPath,
             classId: activeMembership?.classId ?? FirebaseBackendConfig.personalScopeId(uid: uid),
             groupId: activeMembership?.groupId,
             consentStatus: .pending,

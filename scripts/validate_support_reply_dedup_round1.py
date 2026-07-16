@@ -57,8 +57,13 @@ def main() -> None:
     )
     require(
         support,
-        "SupportReplyTimeline(replies: visibleReplies)",
-        "student reply timeline contains staff replies",
+        "SupportReplyTimeline(",
+        "student reply timeline is present",
+    )
+    require(
+        support,
+        "replies: visibleReplies",
+        "student reply timeline contains filtered staff replies",
     )
     require(
         support,

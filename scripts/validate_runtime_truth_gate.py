@@ -70,7 +70,9 @@ def main() -> int:
     )
     for token in [
         "backendMode: .firebase",
-        "backendMode: .mock",
+        "backendMode: mode",
+        "case .configurationError",
+        "makeMockServices(mode: .configurationError)",
         "hasFirebaseConfig: FirebaseAppConfigurator.hasBundledConfig",
         "aiProxyEndpoint: EnglishPlusAIProxyConfig.workerEndpoint?.absoluteString",
         "RemoteAIService",

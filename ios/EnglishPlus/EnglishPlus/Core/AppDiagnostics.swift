@@ -139,5 +139,6 @@ enum AppDiagnosticEvent: String {
     case applicationStarted = "application_started"
     case realtimeSyncConnected = "realtime_sync_connected"
     case realtimeSyncOffline = "realtime_sync_offline"
+    case realtimeSyncIssue = "realtime_sync_issue"
     case manualSyncRetry = "manual_sync_retry"
 }

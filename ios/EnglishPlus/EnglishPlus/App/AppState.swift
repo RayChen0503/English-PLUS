@@ -56,6 +56,9 @@ final class AppState: ObservableObject {
     private var volunteerServiceListenerUid: String?
     private var classroomVolunteerListener: ClassroomRosterListenerToken?
     private var classroomVolunteerListenerClassId: String?
+    private var lastVolunteerServiceListenerErrorMessage: String?
+    private var lastClassroomVolunteerListenerErrorMessage: String?
+    private var lastMembershipListenerErrorMessage: String?
     private var isReconcilingClassroomMemberships = false
     private var didAttemptSessionRestore = false
     private var pendingIdentityCredential: FederatedIdentityCredential?
@@ -127,6 +130,10 @@ final class AppState: ObservableObject {
     var canUseFederatedSignIn: Bool {
         runtimeDiagnostics.backendMode == .firebase
             && runtimeDiagnostics.hasFirebaseConfig
+    }
+
+    var currentAccountUsesAppleSignIn: Bool {
+        authService.currentUserUses(.apple)
     }
 
     func signIn(
@@ -399,13 +406,28 @@ final class AppState: ObservableObject {
         return try await accountLifecycleService.deletionPreview()
     }
 
-    func deleteCurrentAccount() async throws -> AccountDeletionReceipt {
+    func deleteCurrentAccount(
+        classTransfers: [String: String]
+    ) async throws -> AccountDeletionReceipt {
         guard currentUser != nil, !isManagingAccount else {
             throw AccountLifecycleError.unauthenticated
         }
         isManagingAccount = true
         defer { isManagingAccount = false }
-        return try await accountLifecycleService.deleteAccount()
+        return try await accountLifecycleService.deleteAccount(
+            classTransfers: classTransfers
+        )
+    }
+
+    func reauthenticateAndRevokeAppleForAccountDeletion(
+        using credential: AppleAccountDeletionCredential
+    ) async throws {
+        guard currentUser != nil, !isManagingAccount else {
+            throw AccountLifecycleError.unauthenticated
+        }
+        isManagingAccount = true
+        defer { isManagingAccount = false }
+        try await authService.reauthenticateAndRevokeAppleToken(using: credential)
     }
 
     func completeAccountDeletion() {
@@ -446,7 +468,8 @@ final class AppState: ObservableObject {
             role: currentUser.role,
             classId: currentProfile.classId,
             categories: categories,
-            guardianConsentStatus: guardianConsentStatus
+            guardianConsentStatus: guardianConsentStatus,
+            studentAccessPath: currentProfile.studentAccessPath
         )
         do {
             try await firestoreService.saveConsent(record)
@@ -459,7 +482,9 @@ final class AppState: ObservableObject {
             )
             route = .home(currentUser.role)
         } catch {
-            consentErrorMessage = "資料使用確認尚未保存，請檢查網路後再試一次。你不需要重新勾選。"
+            let reason = (error as? LocalizedError)?.errorDescription
+                ?? LearningRepositorySyncFailureClassifier.classify(error).message
+            consentErrorMessage = "資料使用確認尚未保存。\(reason) 你不需要重新勾選。"
         }
     }
 
@@ -510,6 +535,9 @@ final class AppState: ObservableObject {
         classroomVolunteerListener?.cancel()
         classroomVolunteerListener = nil
         classroomVolunteerListenerClassId = nil
+        lastVolunteerServiceListenerErrorMessage = nil
+        lastClassroomVolunteerListenerErrorMessage = nil
+        lastMembershipListenerErrorMessage = nil
         isReconcilingClassroomMemberships = false
         pendingIdentityCredential = nil
         pendingIdentityRole = nil
@@ -1088,6 +1116,10 @@ final class AppState: ObservableObject {
             classroomVolunteerListener = nil
             classroomVolunteerListenerClassId = nil
             classroomVolunteerServices = []
+            if volunteerServiceErrorMessage == lastClassroomVolunteerListenerErrorMessage {
+                volunteerServiceErrorMessage = nil
+            }
+            lastClassroomVolunteerListenerErrorMessage = nil
             return
         }
 
@@ -1103,48 +1135,92 @@ final class AppState: ObservableObject {
             volunteerServiceListener?.cancel()
             volunteerServiceListener = nil
             volunteerServiceListenerUid = nil
+            if volunteerServiceErrorMessage == lastVolunteerServiceListenerErrorMessage {
+                volunteerServiceErrorMessage = nil
+            }
+            lastVolunteerServiceListenerErrorMessage = nil
             return
         }
         guard volunteerServiceListenerUid != userUid else { return }
         volunteerServiceListener?.cancel()
+        if volunteerServiceErrorMessage == lastVolunteerServiceListenerErrorMessage {
+            volunteerServiceErrorMessage = nil
+        }
+        lastVolunteerServiceListenerErrorMessage = nil
         volunteerServiceListenerUid = userUid
         volunteerServiceListener = classroomService.startVolunteerServiceListener(
             userUid: userUid
         ) { [weak self] services in
-            self?.volunteerServices = services
-        } onError: { [weak self] _ in
-            self?.volunteerServiceErrorMessage = "服務班級狀態暫時無法同步，請檢查網路後重新整理。"
+            guard let self else { return }
+            self.volunteerServices = services
+            if self.volunteerServiceErrorMessage == self.lastVolunteerServiceListenerErrorMessage {
+                self.volunteerServiceErrorMessage = nil
+            }
+            self.lastVolunteerServiceListenerErrorMessage = nil
+        } onError: { [weak self] error in
+            guard let self else { return }
+            let message = "服務班級：\(self.realtimeListenerMessage(for: error))"
+            self.lastVolunteerServiceListenerErrorMessage = message
+            if self.volunteerServiceErrorMessage != message {
+                self.volunteerServiceErrorMessage = message
+            }
         }
     }
 
     private func startClassroomVolunteerSyncIfNeeded(classId: String) {
         guard classroomVolunteerListenerClassId != classId else { return }
         classroomVolunteerListener?.cancel()
+        if volunteerServiceErrorMessage == lastClassroomVolunteerListenerErrorMessage {
+            volunteerServiceErrorMessage = nil
+        }
+        lastClassroomVolunteerListenerErrorMessage = nil
         classroomVolunteerListenerClassId = classId
         classroomVolunteerListener = classroomService.startClassroomVolunteerListener(
             classId: classId
         ) { [weak self] services in
-            guard self?.currentProfile?.activeClassId == classId else { return }
-            self?.classroomVolunteerServices = services
-        } onError: { [weak self] _ in
-            self?.volunteerServiceErrorMessage = "志工申請暫時無法同步，請檢查網路後重新整理。"
+            guard let self, self.currentProfile?.activeClassId == classId else { return }
+            self.classroomVolunteerServices = services
+            if self.volunteerServiceErrorMessage == self.lastClassroomVolunteerListenerErrorMessage {
+                self.volunteerServiceErrorMessage = nil
+            }
+            self.lastClassroomVolunteerListenerErrorMessage = nil
+        } onError: { [weak self] error in
+            guard let self else { return }
+            let message = "班級志工：\(self.realtimeListenerMessage(for: error))"
+            self.lastClassroomVolunteerListenerErrorMessage = message
+            if self.volunteerServiceErrorMessage != message {
+                self.volunteerServiceErrorMessage = message
+            }
         }
     }
 
     private func startClassroomMembershipSyncIfNeeded(userUid: String) {
         guard classroomMembershipListenerUid != userUid else { return }
         classroomMembershipListener?.cancel()
+        if classroomErrorMessage == lastMembershipListenerErrorMessage {
+            classroomErrorMessage = nil
+        }
+        lastMembershipListenerErrorMessage = nil
         classroomMembershipListenerUid = userUid
         classroomMembershipListener = classroomService.startMembershipListener(
             userUid: userUid
         ) { [weak self] activeClassIds in
             Task { @MainActor [weak self] in
-                await self?.reconcileClassroomMemberships(activeClassIds: Set(activeClassIds))
+                guard let self else { return }
+                if self.classroomErrorMessage == self.lastMembershipListenerErrorMessage {
+                    self.classroomErrorMessage = nil
+                }
+                self.lastMembershipListenerErrorMessage = nil
+                await self.reconcileClassroomMemberships(activeClassIds: Set(activeClassIds))
             }
-        } onError: { [weak self] _ in
+        } onError: { [weak self] error in
             guard let self else { return }
             if self.currentProfile?.activeClassId != nil {
-                self.classroomErrorMessage = "班級狀態暫時無法同步，請檢查網路後重新整理。"
+                let message = "班級狀態：\(self.realtimeListenerMessage(for: error))"
+                self.lastMembershipListenerErrorMessage = message
+                if self.classroomErrorMessage != message {
+                    self.classroomErrorMessage = message
+                }
             }
         }
     }
@@ -1227,6 +1303,14 @@ final class AppState: ObservableObject {
             ?? "目前無法完成班級操作，請稍後再試。"
     }
 
+    private func realtimeListenerMessage(for error: Error) -> String {
+        if let classroomError = error as? ClassroomServiceError,
+           let message = classroomError.errorDescription {
+            return message
+        }
+        return LearningRepositorySyncFailureClassifier.classify(error).message
+    }
+
     private func clearFailedAuthenticationState() {
         currentUser = nil
         currentProfile = nil
@@ -1253,6 +1337,9 @@ final class AppState: ObservableObject {
         classroomVolunteerListener?.cancel()
         classroomVolunteerListener = nil
         classroomVolunteerListenerClassId = nil
+        lastVolunteerServiceListenerErrorMessage = nil
+        lastClassroomVolunteerListenerErrorMessage = nil
+        lastMembershipListenerErrorMessage = nil
         isReconcilingClassroomMemberships = false
         classroomErrorMessage = nil
         classroomRosterErrorMessage = nil

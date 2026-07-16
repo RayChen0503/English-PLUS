@@ -4,7 +4,7 @@
 > concise. It is the working source of truth, not a replacement for the
 > round reports.
 
-Last verified: 2026-07-15
+Last verified: 2026-07-16
 
 ## Product in one paragraph
 
@@ -303,10 +303,37 @@ learning must remain usable without joining a class.
 
 ## Next gate
 
-Merge the signed-off Block E release candidate to `main` and let Xcode Cloud
-produce the TestFlight build. Before App Store submission, execute every item
-in `round-20-manual-testflight-checklist-zh-TW.md` on real devices. Any release
-blocker found there starts a new repair cycle; it must not be waived silently.
+STORE-0 is active on `codex/app-store-release-1.0`. The competition baseline is
+frozen locally at `1207a35` by tag `maic-competition-build-52` and branch
+`release/maic-2026-build-52`. The iOS, Firebase CLI, Worker and administrator
+website configuration now have separate competition and production paths.
+No snapshot ref, App Store branch or production deployment has been pushed.
+See `docs/app-store-release/store-0-competition-freeze.md` for the deployment
+fingerprint and the remaining manual boundary.
+
+STORE-4 automated submission preparation is complete on Windows: the
+prompt-free provenance manifest contains all 1,080 questions, the App Store
+metadata/privacy/age-rating/review packet validates, the repository validator
+sweep passes `97/97`, Firestore Emulator permissions pass `38/38`, Worker tests
+pass `38/38`, and the administrator portal passes `9/9` plus its production
+bundle. Cloudflare Vitest and Vite require an ASCII-only temporary path on this
+Windows host; the locked source passes there. STORE-2 A is implemented across
+Email, Google and Apple first-use registration, profile and consent models,
+Firestore rules and tests. The full Firestore Emulator suite passes `37/37`.
+STORE-3 A is implemented: account-deletion preview requires an eligible
+co-teacher successor for each transferable owned class, the Worker revalidates
+the choice before changing both class ownership records, and archive fallback
+is allowed only when no eligible successor exists. Worker Node tests pass
+`33/33`, the final Firestore Emulator suite passes `38/38`, and the dedicated
+STORE-3 gate passes. The confirmed synchronization-status bug is also repaired:
+only an unsatisfied network path is described as offline, transient listener
+failures use bounded retry, permanent permission/auth/configuration failures do
+not loop, stale callbacks are ignored, and recovery uses a short stability
+window. Its dedicated gate, the full `97/97` validator sweep, Worker Node
+`33/33`, Functions build, Firestore Emulator `38/38`, and `git diff --check`
+all pass. Final Swift compilation and real-device behavior remain macOS/Xcode
+release-candidate gates. No release branch push, deployment or Xcode Cloud run
+has been performed.
 
 ## Maintenance rule
 

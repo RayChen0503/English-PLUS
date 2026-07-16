@@ -19,6 +19,7 @@ final class MockLearningRepository: ObservableObject {
     private let cachedQuestionBankItems: [QuestionBankItem]
     private let cachedQuestionBankItemById: [String: QuestionBankItem]
     private let cachedQuestionPracticeSets: [QuestionPracticeSet]
+    private var blockedSupportAuthorUids = Set<String>()
 
     init(
         seedSnapshot: SeedDataSnapshot = SeedData.current,
@@ -668,6 +669,40 @@ final class MockLearningRepository: ObservableObject {
         persistSnapshot()
     }
 
+    func reportSupportReply(
+        requestId: String,
+        reply: SupportReply,
+        reason: SupportSafetyReportReason
+    ) async throws {
+        guard let request = supportRequests.first(where: { $0.id == requestId }),
+              request.replies.contains(where: { $0.id == reply.id }),
+              reply.isStaffReply
+        else {
+            throw SupportMutationError.requestNotFound
+        }
+        _ = reason
+    }
+
+    func blockSupportAuthor(_ reply: SupportReply, requestId: String) async throws {
+        guard let requestIndex = supportRequests.firstIndex(where: { $0.id == requestId }),
+              reply.isStaffReply
+        else {
+            throw SupportMutationError.requestNotFound
+        }
+        blockedSupportAuthorUids.insert(reply.authorUid)
+        let date = now()
+        supportRequests[requestIndex].studentArchivedAt = date
+        supportRequests[requestIndex].studentLastReadAt = date
+        supportRequests[requestIndex].status = .readByStudent
+        supportRequests[requestIndex].updatedAt = date
+        supportRequests = supportRequests.map { request in
+            var updated = request
+            updated.replies.removeAll { blockedSupportAuthorUids.contains($0.authorUid) }
+            return updated.reconcilingLifecycle()
+        }
+        persistSnapshot()
+    }
+
     func markSupportThreadHandledWithoutReply(_ requestId: String, by staffUser: DemoUser?) async {
         guard let index = supportRequests.firstIndex(where: { $0.id == requestId }) else { return }
         let date = now()
@@ -1109,7 +1144,8 @@ final class MockLearningRepository: ObservableObject {
     private func questionGoal(for minutes: Int) -> Int {
         seedSnapshot.dailyMissionRules.goalRules
             .first { rule in
-                minutes >= rule.minMinutes && (rule.maxMinutes == nil || minutes <= rule.maxMinutes!)
+                guard minutes >= rule.minMinutes else { return false }
+                return rule.maxMinutes.map { minutes <= $0 } ?? true
             }?
             .questionGoal ?? 2
     }

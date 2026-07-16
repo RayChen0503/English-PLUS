@@ -83,5 +83,24 @@ export function createAdminApi({ baseURL, getToken, fetchImpl = fetch }) {
       const path = `/admin/evidence-ticket?objectKey=${encodeURIComponent(objectKey)}`;
       return (await request(path)).json();
     },
+    async supportReports({ status = "", query = "" } = {}) {
+      const url = new URL("/admin/support-reports", baseURL);
+      if (status) url.searchParams.set("status", status);
+      if (query) url.searchParams.set("query", query);
+      return (await request(`${url.pathname}${url.search}`)).json();
+    },
+    async reviewSupportReport(
+      classId,
+      reportId,
+      { action, note, expectedVersion }
+    ) {
+      const path = `/admin/support-report/${encodeURIComponent(classId)}/${encodeURIComponent(reportId)}`;
+      return (
+        await request(path, {
+          method: "POST",
+          body: JSON.stringify({ action, note, expectedVersion }),
+        })
+      ).json();
+    },
   });
 }

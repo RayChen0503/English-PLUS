@@ -12,7 +12,31 @@ struct ConsentView: View {
     private var canContinue: Bool {
         acceptsPrivacy
             && acceptsMoodAndAi
-            && (role != .student || confirmsGuardianContext)
+            && studentEligibilityConfirmed
+    }
+
+    private var studentAccessPath: StudentAccountAccessPath {
+        appState.currentProfile?.studentAccessPath
+            ?? (role == .student ? .legacyUnspecified : .notApplicable)
+    }
+
+    private var studentEligibilityConfirmed: Bool {
+        guard role == .student else { return true }
+        switch studentAccessPath {
+        case .age13OrOlder, .schoolOrGuardianManaged:
+            return true
+        case .legacyUnspecified, .notApplicable:
+            return confirmsGuardianContext
+        }
+    }
+
+    private var guardianConsentStatus: GuardianConsentStatus {
+        switch studentAccessPath {
+        case .schoolOrGuardianManaged:
+            return .schoolApproved
+        case .age13OrOlder, .legacyUnspecified, .notApplicable:
+            return .notRequired
+        }
     }
 
     var body: some View {
@@ -74,10 +98,20 @@ struct ConsentView: View {
                             isOn: $acceptsMoodAndAi
                         )
 
-                        if role == .student {
+                        if role == .student && studentAccessPath == .age13OrOlder {
+                            Divider()
+                            Label("此帳號已在註冊時確認使用者年滿 13 歲。", systemImage: "checkmark.shield")
+                                .font(.footnote)
+                                .foregroundStyle(EPTheme.secondaryInk)
+                        } else if role == .student && studentAccessPath == .schoolOrGuardianManaged {
+                            Divider()
+                            Label("此帳號由學校或監護人管理；目前的資料同意狀態會隨帳號保留。", systemImage: "person.badge.shield.checkmark")
+                                .font(.footnote)
+                                .foregroundStyle(EPTheme.secondaryInk)
+                        } else if role == .student {
                             Divider()
                             ConsentToggle(
-                                title: "未成年人使用確認",
+                                title: "既有帳號使用資格確認",
                                 text: PrivacyPolicyCopy.guardianAgreement,
                                 accessibilityIdentifier: "consent.guardian",
                                 isOn: $confirmsGuardianContext
@@ -124,7 +158,7 @@ struct ConsentView: View {
                         Task {
                             await appState.acceptPrivacyConsent(
                                 categories: PrivacyPolicyCopy.requiredCategories(for: role),
-                                guardianConsentStatus: role == .student ? .received : .notRequired
+                                guardianConsentStatus: guardianConsentStatus
                             )
                             if case .home = appState.route {
                                 AppDiagnostics.shared.setCollectionEnabled(sharesStabilityDiagnostics)

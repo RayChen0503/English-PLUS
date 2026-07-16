@@ -27,7 +27,7 @@ enum ConsentSource: String, Codable {
 }
 
 struct PrivacyConsentRecord: Identifiable, Codable, Equatable {
-    static let currentVersion = "privacy-v2-2026-07-13"
+    static let currentVersion = "privacy-v3-2026-07-16"
 
     let id: String
     let version: String
@@ -39,6 +39,7 @@ struct PrivacyConsentRecord: Identifiable, Codable, Equatable {
     let consentSource: ConsentSource
     let schoolApprovalRef: String
     let guardianConsentStatus: GuardianConsentStatus
+    let studentAccessPath: StudentAccountAccessPath
     let policyUrl: String
     let categoriesAccepted: [PrivacyConsentCategory]
 
@@ -48,6 +49,7 @@ struct PrivacyConsentRecord: Identifiable, Codable, Equatable {
         classId: String,
         categories: [PrivacyConsentCategory],
         guardianConsentStatus: GuardianConsentStatus,
+        studentAccessPath: StudentAccountAccessPath? = nil,
         acceptedAt: Date = Date()
     ) -> PrivacyConsentRecord {
         PrivacyConsentRecord(
@@ -61,6 +63,8 @@ struct PrivacyConsentRecord: Identifiable, Codable, Equatable {
             consentSource: .inAppCheckbox,
             schoolApprovalRef: "",
             guardianConsentStatus: guardianConsentStatus,
+            studentAccessPath: studentAccessPath
+                ?? (role == .student ? .legacyUnspecified : .notApplicable),
             policyUrl: LegalSupportConfiguration.privacyPolicyURL.absoluteString,
             categoriesAccepted: categories
         )
@@ -68,7 +72,7 @@ struct PrivacyConsentRecord: Identifiable, Codable, Equatable {
 }
 
 enum LegalSupportConfiguration {
-    static let policyEffectiveDate = "2026 年 7 月 13 日"
+    static let policyEffectiveDate = "2026 年 7 月 16 日"
     static let supportEmail = "englishplus.tw@gmail.com"
 
     static let privacyPolicyURL = publicPageURL(pathComponent: "隱私政策")
@@ -126,7 +130,7 @@ enum PrivacyPolicyCopy {
         }
     }
 
-    static let guardianAgreement = "我確認自己已達可自行同意的年齡，或已在家長、法定代理人、學校等有權同意者知情同意下使用。"
+    static let guardianAgreement = "我確認自己已滿 13 歲。未滿 13 歲者需要由學校或監護人協助建立受管理帳號，不能以公開註冊入口自行建立帳號。"
     static let aiAccuracyNotice = "AI 內容可能不完全正確；請先確認再採用。English+ 不會只因心情分數自動通知老師、志工或緊急單位。"
     static let refusalPath = "你可以先閱讀完整政策或離開此頁；未同意前，English+ 不會開始保存新的學習與支持資料。"
 }

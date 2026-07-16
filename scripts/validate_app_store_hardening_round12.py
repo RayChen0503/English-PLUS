@@ -48,7 +48,7 @@ def main() -> int:
     workflow = read(".github/workflows/ios-hardening-build.yml")
 
     markers(model, (
-        'currentVersion = "privacy-v2-2026-07-13"',
+        'currentVersion = "privacy-v3-2026-07-16"',
         SUPPORT_EMAIL,
         'privacyPolicyURL = publicPageURL(pathComponent: "隱私政策")',
         'supportURL = publicPageURL(pathComponent: "支援與聯絡")',
@@ -65,7 +65,10 @@ def main() -> int:
 
     markers(consent, (
         'title: "第三方 AI 處理"',
-        'title: "未成年人使用確認"',
+        'studentAccessPath == .age13OrOlder',
+        'studentAccessPath == .schoolOrGuardianManaged',
+        'Label("此帳號已在註冊時確認使用者年滿 13 歲。"',
+        'Label("此帳號由學校或監護人管理；目前的資料同意狀態會隨帳號保留。"',
         "PrivacyPolicyCopy.requiredCategories(for: role)",
         "PrivacySupportLinks(role: role)",
         "LegalSupportConfiguration.policyEffectiveDate",

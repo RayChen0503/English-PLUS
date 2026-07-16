@@ -3,7 +3,9 @@
 enum FirebaseBackendConfig {
     static let displayName = "English+"
     static let fallbackDisplayName = "Englishplus"
-    static let projectId = "englishplus-testflight"
+    static var projectId: String {
+        EnglishPlusDeploymentEnvironment.expectedFirebaseProjectID ?? ""
+    }
     static let bundleId = "com.englishplus"
     static let configFileName = "GoogleService-Info.plist"
     static let firstClassId = "YILAN-CHENGZHI-8A"
@@ -116,6 +118,7 @@ struct FirestoreUserDocument: Codable, Equatable {
     let accountStatus: AccountProvisioningStatus
     let emailVerificationRequired: Bool
     let provisioningSource: AccountProvisioningSource
+    let studentAccessPath: StudentAccountAccessPath
     let identityProviders: [AccountIdentityProvider]
 }
 

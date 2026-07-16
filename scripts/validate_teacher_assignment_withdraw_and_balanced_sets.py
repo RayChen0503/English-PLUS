@@ -36,7 +36,9 @@ for text, label in [
     require(text, "withdrawAssignedPracticeTask", f"{label} withdraw API")
 
 firebase_markers = [
-    ("listenPracticeAssignments(classId: classId, user: user", "practice assignment realtime listener registration"),
+    ("listenPracticeAssignments(", "practice assignment realtime listener registration"),
+    ("userUid: activeUserUid", "practice assignment listener user scope"),
+    ("role: activeUserRole", "practice assignment listener role scope"),
     ("whereField(\"studentUid\", isEqualTo:", "student-scoped practice assignment listener"),
     ("practiceAssignment(from:", "Firestore practice assignment parser"),
     ("PracticeAssignmentStatus.init(rawValue:", "Firestore assignment status decoding"),

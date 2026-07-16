@@ -3,6 +3,49 @@ import XCTest
 
 @MainActor
 final class AuthenticationFlowAcceptanceTests: XCTestCase {
+    func testPublicStudentRegistrationRequiresAge13OrOlderPath() {
+        let missingEligibility = RoleOnboardingProfile(
+            displayName: "學生",
+            role: .student,
+            teacherAffiliation: nil,
+            volunteerApplication: nil
+        )
+        let publicEligible = RoleOnboardingProfile(
+            displayName: "學生",
+            role: .student,
+            teacherAffiliation: nil,
+            volunteerApplication: nil,
+            studentAccessPath: .age13OrOlder
+        )
+        let forgedManagedAccount = RoleOnboardingProfile(
+            displayName: "學生",
+            role: .student,
+            teacherAffiliation: nil,
+            volunteerApplication: nil,
+            studentAccessPath: .schoolOrGuardianManaged
+        )
+
+        XCTAssertFalse(missingEligibility.hasRequiredRoleDetails)
+        XCTAssertTrue(publicEligible.hasRequiredRoleDetails)
+        XCTAssertFalse(forgedManagedAccount.hasRequiredRoleDetails)
+        XCTAssertNil(StudentRegistrationEligibility.under13NeedsManagedAccount.accessPath)
+    }
+
+    func testStudentConsentRecordsTheVerifiedAccountAccessPath() {
+        let record = PrivacyConsentRecord.accepted(
+            uid: "student-age-gate",
+            role: .student,
+            classId: FirebaseBackendConfig.personalScopeId(uid: "student-age-gate"),
+            categories: PrivacyPolicyCopy.requiredCategories(for: .student),
+            guardianConsentStatus: .notRequired,
+            studentAccessPath: .age13OrOlder
+        )
+
+        XCTAssertEqual(record.version, "privacy-v3-2026-07-16")
+        XCTAssertEqual(record.studentAccessPath, .age13OrOlder)
+        XCTAssertEqual(record.guardianConsentStatus, .notRequired)
+    }
+
     func testFirstGoogleIdentityWithoutProfileStartsStudentOnboarding() async {
         let auth = RecordingAuthService()
         auth.providerSignInResult = .failure(.profileUnavailable)
@@ -46,6 +89,28 @@ final class AuthenticationFlowAcceptanceTests: XCTestCase {
         XCTAssertNil(appState.federatedOnboardingProvider(for: .student))
         XCTAssertEqual(appState.route, .privacyConsent(.student))
         XCTAssertEqual(auth.providerCreationCallCount, 0)
+    }
+
+    func testAppleAccountDeletionRequiresFreshCredentialAndRevokesToken() async throws {
+        let auth = RecordingAuthService()
+        auth.providerSignInResult = .success(session(role: .student))
+        auth.usesAppleProvider = true
+        let appState = makeAppState(auth: auth)
+        await appState.signIn(
+            with: .apple(idToken: "initial-id", rawNonce: "initial-nonce"),
+            role: .student
+        )
+        let credential = AppleAccountDeletionCredential(
+            idToken: "fresh-id",
+            rawNonce: "fresh-nonce",
+            authorizationCode: "one-time-code"
+        )
+
+        XCTAssertTrue(appState.currentAccountUsesAppleSignIn)
+        try await appState.reauthenticateAndRevokeAppleForAccountDeletion(using: credential)
+
+        XCTAssertEqual(auth.revokedAppleCredential, credential)
+        XCTAssertFalse(appState.isManagingAccount)
     }
 
     func testWrongRoleDoesNotCreateAnotherProfile() async {
@@ -101,7 +166,8 @@ final class AuthenticationFlowAcceptanceTests: XCTestCase {
                 displayName: "新同學",
                 role: .student,
                 teacherAffiliation: nil,
-                volunteerApplication: nil
+                volunteerApplication: nil,
+                studentAccessPath: .age13OrOlder
             )
         )
 
@@ -231,7 +297,8 @@ final class AuthenticationFlowAcceptanceTests: XCTestCase {
                 displayName: "既有同學",
                 role: .student,
                 teacherAffiliation: nil,
-                volunteerApplication: nil
+                volunteerApplication: nil,
+                studentAccessPath: .age13OrOlder
             )
         )
 
@@ -412,7 +479,8 @@ final class AuthenticationFlowAcceptanceTests: XCTestCase {
             displayName: "新同學",
             role: .student,
             teacherAffiliation: nil,
-            volunteerApplication: nil
+            volunteerApplication: nil,
+            studentAccessPath: .age13OrOlder
         )
     }
 
@@ -548,17 +616,25 @@ final class LearningRepositoryReliabilityTests: XCTestCase {
 
     func testListenerFailureRetriesWithBackoffAndRecovers() async {
         let connectivity = ManualNetworkConnectivityMonitor(initialStatus: .connected)
-        let backend = ReliabilityTestLearningBackend(behaviors: [.failure, .snapshot])
+        let backend = ReliabilityTestLearningBackend(
+            behaviors: [
+                .failure(NSError(domain: NSURLErrorDomain, code: NSURLErrorTimedOut)),
+                .snapshot
+            ]
+        )
         let store = LearningRepositoryStore(
             backend: backend,
             connectivityMonitor: connectivity,
-            retryDelaysNanoseconds: [1_000_000]
+            retryDelaysNanoseconds: [1_000_000],
+            recoveryConfirmationDelayNanoseconds: 1_000_000
         )
 
         store.startRealtimeSync(classId: "class-b", user: nil, profile: nil)
-        guard case .offlineFallback = store.syncStatus else {
-            return XCTFail("Listener errors must preserve local data and expose recovery")
+        guard case .syncIssue(let reason, let retryAvailable) = store.syncStatus else {
+            return XCTFail("A listener error with an available path must not be labeled offline")
         }
+        XCTAssertTrue(retryAvailable)
+        XCTAssertFalse(reason.contains("離線"))
 
         try? await Task.sleep(nanoseconds: 25_000_000)
         XCTAssertEqual(backend.listenerStartCount, 2)
@@ -567,7 +643,12 @@ final class LearningRepositoryReliabilityTests: XCTestCase {
 
     func testStoppingSyncCancelsScheduledRetry() async {
         let connectivity = ManualNetworkConnectivityMonitor(initialStatus: .connected)
-        let backend = ReliabilityTestLearningBackend(behaviors: [.failure, .snapshot])
+        let backend = ReliabilityTestLearningBackend(
+            behaviors: [
+                .failure(NSError(domain: NSURLErrorDomain, code: NSURLErrorTimedOut)),
+                .snapshot
+            ]
+        )
         let store = LearningRepositoryStore(
             backend: backend,
             connectivityMonitor: connectivity,
@@ -580,6 +661,50 @@ final class LearningRepositoryReliabilityTests: XCTestCase {
 
         XCTAssertEqual(backend.listenerStartCount, 1)
         XCTAssertEqual(store.syncStatus, .idle)
+    }
+
+    func testPermissionFailureIsNotReportedAsOfflineOrRetried() async {
+        let connectivity = ManualNetworkConnectivityMonitor(initialStatus: .connected)
+        let permissionError = NSError(domain: "FIRFirestoreErrorDomain", code: 7)
+        let backend = ReliabilityTestLearningBackend(behaviors: [.failure(permissionError)])
+        let store = LearningRepositoryStore(
+            backend: backend,
+            connectivityMonitor: connectivity,
+            retryDelaysNanoseconds: [1_000_000]
+        )
+
+        store.startRealtimeSync(classId: "class-permission", user: nil, profile: nil)
+        guard case .syncIssue(let reason, let retryAvailable) = store.syncStatus else {
+            return XCTFail("Permission failures must use the scoped synchronization issue state")
+        }
+        XCTAssertFalse(retryAvailable)
+        XCTAssertTrue(reason.contains("權限"))
+        XCTAssertFalse(reason.contains("網路"))
+
+        try? await Task.sleep(nanoseconds: 25_000_000)
+        XCTAssertEqual(backend.listenerStartCount, 1)
+        store.retryRealtimeSync()
+        XCTAssertEqual(backend.listenerStartCount, 1)
+    }
+
+    func testRepeatedNonRetryableFailureDoesNotRestartOrChangeIssue() async {
+        let connectivity = ManualNetworkConnectivityMonitor(initialStatus: .connected)
+        let permissionError = NSError(domain: "FIRFirestoreErrorDomain", code: 7)
+        let backend = ReliabilityTestLearningBackend(behaviors: [.deferred])
+        let store = LearningRepositoryStore(
+            backend: backend,
+            connectivityMonitor: connectivity,
+            retryDelaysNanoseconds: [1_000_000]
+        )
+
+        store.startRealtimeSync(classId: "class-stable-error", user: nil, profile: nil)
+        backend.emitError(forListenerAt: 0, error: permissionError)
+        let firstStatus = store.syncStatus
+        backend.emitError(forListenerAt: 0, error: permissionError)
+
+        try? await Task.sleep(nanoseconds: 25_000_000)
+        XCTAssertEqual(store.syncStatus, firstStatus)
+        XCTAssertEqual(backend.listenerStartCount, 1)
     }
 
     func testRepeatedStartForSameScopeDoesNotRestartListener() {
@@ -661,6 +786,86 @@ final class LearningRepositoryReliabilityTests: XCTestCase {
         XCTAssertEqual(backend.listenerStartCount, 2)
         XCTAssertEqual(store.syncStatus, .listening(classId: "class-current"))
     }
+
+    func testErrorFromReplacedListenerInSameScopeIsIgnored() async {
+        let connectivity = ManualNetworkConnectivityMonitor(initialStatus: .connected)
+        let backend = ReliabilityTestLearningBackend(behaviors: [.deferred, .snapshot])
+        let store = LearningRepositoryStore(
+            backend: backend,
+            connectivityMonitor: connectivity,
+            retryDelaysNanoseconds: [1_000_000]
+        )
+
+        store.startRealtimeSync(classId: "class-same", user: nil, profile: nil)
+        store.retryRealtimeSync()
+        backend.emitError(
+            forListenerAt: 0,
+            error: NSError(domain: NSURLErrorDomain, code: NSURLErrorTimedOut)
+        )
+        try? await Task.sleep(nanoseconds: 10_000_000)
+
+        XCTAssertEqual(backend.listenerStartCount, 2)
+        XCTAssertEqual(store.syncStatus, .listening(classId: "class-same"))
+    }
+
+    func testComponentFailureDoesNotRestartWholeListenerBundleOrClearFromSiblingSnapshot() async {
+        let connectivity = ManualNetworkConnectivityMonitor(initialStatus: .connected)
+        let backend = ReliabilityTestLearningBackend(behaviors: [.snapshot])
+        let store = LearningRepositoryStore(
+            backend: backend,
+            connectivityMonitor: connectivity,
+            retryDelaysNanoseconds: [1_000_000],
+            recoveryConfirmationDelayNanoseconds: 1_000_000
+        )
+        let source = "support-messages:thread-a"
+
+        store.startRealtimeSync(classId: "class-isolated", user: nil, profile: nil)
+        backend.emitComponentFailure(
+            forListenerAt: 0,
+            source: source,
+            error: NSError(domain: NSURLErrorDomain, code: NSURLErrorTimedOut)
+        )
+        guard case .syncIssue(_, let retryAvailable) = store.syncStatus else {
+            return XCTFail("A component failure must surface without stopping healthy listeners")
+        }
+        XCTAssertTrue(retryAvailable)
+
+        backend.emitSnapshot(forListenerAt: 0)
+        backend.emitComponentRecovery(forListenerAt: 0, source: "practice-assignments:class-isolated")
+        try? await Task.sleep(nanoseconds: 25_000_000)
+
+        XCTAssertEqual(backend.listenerStartCount, 1)
+        guard case .syncIssue = store.syncStatus else {
+            return XCTFail("A healthy sibling listener must not clear another component's issue")
+        }
+
+        backend.emitComponentRecovery(forListenerAt: 0, source: source)
+        try? await Task.sleep(nanoseconds: 10_000_000)
+        XCTAssertEqual(backend.listenerStartCount, 1)
+        XCTAssertEqual(store.syncStatus, .listening(classId: "class-isolated"))
+    }
+
+    func testManualRetryRestartsComponentFailureOnlyWhenRetryIsAvailable() {
+        let connectivity = ManualNetworkConnectivityMonitor(initialStatus: .connected)
+        let backend = ReliabilityTestLearningBackend(behaviors: [.snapshot, .snapshot])
+        let store = LearningRepositoryStore(
+            backend: backend,
+            connectivityMonitor: connectivity,
+            retryDelaysNanoseconds: [1_000_000]
+        )
+
+        store.startRealtimeSync(classId: "class-manual", user: nil, profile: nil)
+        backend.emitComponentFailure(
+            forListenerAt: 0,
+            source: "support-messages:thread-b",
+            error: NSError(domain: NSURLErrorDomain, code: NSURLErrorNetworkConnectionLost)
+        )
+        XCTAssertEqual(backend.listenerStartCount, 1)
+
+        store.retryRealtimeSync()
+        XCTAssertEqual(backend.listenerStartCount, 2)
+        XCTAssertEqual(store.syncStatus, .listening(classId: "class-manual"))
+    }
 }
 
 private final class ManualNetworkConnectivityMonitor: NetworkConnectivityMonitoring, @unchecked Sendable {
@@ -689,12 +894,13 @@ private final class ManualNetworkConnectivityMonitor: NetworkConnectivityMonitor
 private final class ReliabilityTestLearningBackend: LearningRepositoryBackend {
     enum ListenerBehavior {
         case snapshot
-        case failure
+        case failure(Error)
         case deferred
     }
 
     private struct ListenerCallbacks {
         let onChange: @MainActor (LearningRepositorySnapshot) -> Void
+        let onComponentHealth: @MainActor (LearningRepositoryListenerHealthEvent) -> Void
         let onError: @MainActor (Error) -> Void
     }
 
@@ -720,16 +926,23 @@ private final class ReliabilityTestLearningBackend: LearningRepositoryBackend {
         user: DemoUser?,
         profile: AppUserProfile?,
         onChange: @escaping @MainActor (LearningRepositorySnapshot) -> Void,
+        onComponentHealth: @escaping @MainActor (LearningRepositoryListenerHealthEvent) -> Void,
         onError: @escaping @MainActor (Error) -> Void
     ) -> LearningRepositoryListenerToken {
         listenerStartCount += 1
-        listeners.append(ListenerCallbacks(onChange: onChange, onError: onError))
+        listeners.append(
+            ListenerCallbacks(
+                onChange: onChange,
+                onComponentHealth: onComponentHealth,
+                onError: onError
+            )
+        )
         let behavior = behaviors.isEmpty ? .snapshot : behaviors.removeFirst()
         switch behavior {
         case .snapshot:
             onChange(snapshot)
-        case .failure:
-            onError(ReliabilityTestError.offline)
+        case .failure(let error):
+            onError(error)
         case .deferred:
             break
         }
@@ -740,8 +953,23 @@ private final class ReliabilityTestLearningBackend: LearningRepositoryBackend {
         listeners[index].onChange(snapshot)
     }
 
-    func emitError(forListenerAt index: Int) {
-        listeners[index].onError(ReliabilityTestError.offline)
+    func emitError(
+        forListenerAt index: Int,
+        error: Error = ReliabilityTestError.offline
+    ) {
+        listeners[index].onError(error)
+    }
+
+    func emitComponentFailure(
+        forListenerAt index: Int,
+        source: String,
+        error: Error
+    ) {
+        listeners[index].onComponentHealth(.failed(source: source, error: error))
+    }
+
+    func emitComponentRecovery(forListenerAt index: Int, source: String) {
+        listeners[index].onComponentHealth(.recovered(source: source))
     }
 
     func generateMission(
@@ -832,6 +1060,16 @@ private final class ReliabilityTestLearningBackend: LearningRepositoryBackend {
     }
     func withdrawSupportRequest(_ requestId: String) async throws {
         await base.withdrawSupportRequest(requestId)
+    }
+    func reportSupportReply(
+        requestId: String,
+        reply: SupportReply,
+        reason: SupportSafetyReportReason
+    ) async throws {
+        try await base.reportSupportReply(requestId: requestId, reply: reply, reason: reason)
+    }
+    func blockSupportAuthor(_ reply: SupportReply, requestId: String) async throws {
+        try await base.blockSupportAuthor(reply, requestId: requestId)
     }
     func markSupportThreadHandledWithoutReply(_ requestId: String, by staffUser: DemoUser?) async throws {
         await base.markSupportThreadHandledWithoutReply(requestId, by: staffUser)
@@ -1000,6 +1238,75 @@ final class SupportLifecycleAcceptanceTests: XCTestCase {
             visibleToStudent: true,
             createdAt: date
         )
+    }
+}
+
+@MainActor
+final class SupportSafetyAcceptanceTests: XCTestCase {
+    func testBlockingAStaffReplyArchivesTheThreadAndRemovesBlockedReplies() async throws {
+        let repository = MockLearningRepository(localPersistence: MemoryLearningPersistence())
+        let reply = SupportReply(
+            id: "teacher-reply",
+            authorUid: "teacher-1",
+            authorName: "Teacher",
+            authorRole: .teacher,
+            body: "A staff reply",
+            visibleToStudent: true,
+            createdAt: Date(timeIntervalSince1970: 2_000)
+        )
+        let request = StudentSupportRequest(
+            id: "thread-1",
+            studentUid: "student-1",
+            studentName: "Student",
+            classCode: "class-1",
+            reason: .stuckOnQuestion,
+            route: .humanHandoff,
+            priority: .medium,
+            status: .replied,
+            studentMessage: "I need help.",
+            moodScore: 3,
+            latestQuestionId: "question-1",
+            questionSnapshot: SupportQuestionSnapshot(
+                questionId: "question-1",
+                prompt: "My parents ___ at home.",
+                options: ["be", "am", "is", "are"],
+                questionTypeTitle: "Grammar",
+                levelTitle: "Foundation",
+                skill: "be verbs",
+                selectedAnswer: "is",
+                correctAnswer: "are",
+                explanation: "A plural subject uses are.",
+                repairHint: "Find the subject first."
+            ),
+            createdAt: Date(timeIntervalSince1970: 1_900),
+            updatedAt: Date(timeIntervalSince1970: 2_000),
+            replies: [reply]
+        )
+        repository.replaceRuntimeSnapshot(LearningRepositorySnapshot(
+            currentCheckIn: nil,
+            currentMission: nil,
+            missionAttempts: [],
+            supportRequests: [request],
+            assignedPracticeTasks: [],
+            masteryRecords: [],
+            learningFlow: .initial(
+                dateKey: "2026-07-16",
+                updatedAt: Date(timeIntervalSince1970: 2_000)
+            )
+        ))
+
+        try await repository.reportSupportReply(
+            requestId: request.id,
+            reply: reply,
+            reason: .inappropriateContent
+        )
+        try await repository.blockSupportAuthor(reply, requestId: request.id)
+
+        let updated = try XCTUnwrap(repository.supportRequests.first)
+        XCTAssertNotNil(updated.studentArchivedAt)
+        XCTAssertEqual(updated.status, .readByStudent)
+        XCTAssertTrue(updated.visibleStaffRepliesToStudent.isEmpty)
+        XCTAssertFalse(updated.isVisibleToStudent)
     }
 }
 
@@ -1887,12 +2194,80 @@ final class MasteryAndSpacedReviewAcceptanceTests: XCTestCase {
     }
 }
 
+final class AccountDeletionTransferAcceptanceTests: XCTestCase {
+    func testOwnedClassRequiresSelectionOnlyWhenAnEligibleCoTeacherExists() {
+        let transferable = AccountDeletionOwnedClass(
+            classId: "class-a",
+            className: "八年級英文",
+            eligibleCoTeachers: [
+                AccountDeletionTeacherCandidate(uid: "teacher-2", displayName: "王老師")
+            ]
+        )
+        let archiveOnly = AccountDeletionOwnedClass(
+            classId: "class-b",
+            className: "課後輔導",
+            eligibleCoTeachers: []
+        )
+
+        XCTAssertTrue(transferable.requiresTransferSelection)
+        XCTAssertFalse(archiveOnly.requiresTransferSelection)
+        XCTAssertEqual(transferable.eligibleCoTeachers.first?.uid, "teacher-2")
+    }
+}
+
+final class SupportContentPolicyAcceptanceTests: XCTestCase {
+    func testEducationalAndEmotionalSupportMessagesRemainAllowed() throws {
+        XCTAssertEqual(
+            try SupportContentPolicy.validatedRequired("我今天很難過，可以再解釋一次嗎？"),
+            "我今天很難過，可以再解釋一次嗎？"
+        )
+        XCTAssertEqual(
+            try SupportContentPolicy.validatedOptional("  be famous for 要怎麼使用？  "),
+            "be famous for 要怎麼使用？"
+        )
+    }
+
+    func testAbuseAndPrivateContactInformationAreRejected() {
+        for message in [
+            "你真的很白癡",
+            "加我的 LINE ID: englishplus123",
+            "請寄到 student@example.com",
+            "我的手機是 0912-345-678",
+        ] {
+            XCTAssertThrowsError(try SupportContentPolicy.validatedRequired(message)) { error in
+                guard case SupportMutationError.unsafeContent = error else {
+                    return XCTFail("Expected unsafeContent, got \(error)")
+                }
+            }
+        }
+    }
+
+    func testOversizedAndEmptyRepliesAreRejected() {
+        XCTAssertThrowsError(
+            try SupportContentPolicy.validatedRequired(
+                String(repeating: "a", count: SupportContentPolicy.maximumCharacterCount + 1)
+            )
+        ) { error in
+            guard case SupportMutationError.contentTooLong = error else {
+                return XCTFail("Expected contentTooLong, got \(error)")
+            }
+        }
+        XCTAssertThrowsError(try SupportContentPolicy.validatedRequired("   ")) { error in
+            guard case SupportMutationError.emptyReply = error else {
+                return XCTFail("Expected emptyReply, got \(error)")
+            }
+        }
+    }
+}
+
 private final class RecordingAuthService: AuthService {
     var providerSignInResult: Result<AuthSession, AuthServiceError> = .failure(.profileUnavailable)
     var providerCreationResult: Result<AccountCreationOutcome, AuthServiceError> = .failure(.operationUnavailable)
     var emailCreationResult: Result<AccountCreationOutcome, AuthServiceError> = .failure(.operationUnavailable)
     var emailSignInResult: Result<AuthSession, AuthServiceError> = .failure(.invalidCredentials)
     var restoredSession: AuthSession?
+    var usesAppleProvider = false
+    var revokedAppleCredential: AppleAccountDeletionCredential?
 
     private(set) var providerSignInCallCount = 0
     private(set) var providerCreationCallCount = 0
@@ -1954,6 +2329,16 @@ private final class RecordingAuthService: AuthService {
     func restorePreviousSession() async throws -> AuthSession? {
         restoreCallCount += 1
         return restoredSession
+    }
+
+    func currentUserUses(_ provider: AccountIdentityProvider) -> Bool {
+        provider == .apple && usesAppleProvider
+    }
+
+    func reauthenticateAndRevokeAppleToken(
+        using credential: AppleAccountDeletionCredential
+    ) async throws {
+        revokedAppleCredential = credential
     }
 
     func signOut() {

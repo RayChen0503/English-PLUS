@@ -109,7 +109,13 @@ def main() -> int:
         errors,
     )
     require("ENGLISHPLUS_AI_PROXY_URL" in text["info"], "Info.plist must define AI proxy endpoint", errors)
-    require("https://englishplus-ai-proxy.englishplus-ray.workers.dev/ai" in text["info"], "Info.plist must point to the live Groq Cloudflare Worker endpoint", errors)
+    require(
+        "$(ENGLISHPLUS_AI_PROXY_URL)" in text["info"]
+        and "https://englishplus-ai-proxy.englishplus-ray.workers.dev/ai" in text["project"]
+        and "https://englishplus-ai-proxy-production.englishplus-ray.workers.dev/ai" in text["project"],
+        "Xcode configurations must isolate the live competition and production Worker endpoints",
+        errors,
+    )
     for forbidden in ["GROQ_API_KEY", "https://api.groq.com", "gsk_", "OPENROUTER_API_KEY", "https://openrouter.ai", "cloudfunctions.net", "englishPlusAiProxy"]:
         require(forbidden not in all_ios_text, f"iOS app must not expose or call forbidden AI token/endpoint {forbidden}", errors)
 

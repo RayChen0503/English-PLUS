@@ -16,6 +16,12 @@ enum LearningRepositorySyncStatus: Equatable {
     case listening(classId: String)
     case retrying(classId: String, attempt: Int)
     case offlineFallback(reason: String)
+    case syncIssue(reason: String, retryAvailable: Bool)
+}
+
+enum LearningRepositoryListenerHealthEvent {
+    case failed(source: String, error: Error)
+    case recovered(source: String)
 }
 
 struct PracticeLaunchRequest: Identifiable, Equatable {
@@ -33,6 +39,8 @@ enum SupportMutationError: LocalizedError {
     case requestAlreadyHandled
     case emptyReply
     case invalidSupportContext
+    case unsafeContent
+    case contentTooLong
 
     var errorDescription: String? {
         switch self {
@@ -52,7 +60,65 @@ enum SupportMutationError: LocalizedError {
             return "請先輸入回覆內容。"
         case .invalidSupportContext:
             return "題目資料不完整，這次沒有送出。請回到題目後重新求助。"
+        case .unsafeContent:
+            return "訊息含有不適合的辱罵、威脅或私人聯絡資料，請修改後再送出。"
+        case .contentTooLong:
+            return "訊息過長，請縮短為 1,200 字以內再送出。"
         }
+    }
+}
+
+enum SupportContentPolicy {
+    static let maximumCharacterCount = 1_200
+
+    private static let disallowedPhrases = [
+        "去死", "白癡", "智障", "廢物", "幹你", "殺了你", "揍你",
+        "kill yourself", "fuck you", "stupid idiot",
+    ]
+
+    private static let contactPatterns = [
+        #"[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}"#,
+        #"(?:\+?886[-\s]?)?0?9\d{2}[-\s]?\d{3}[-\s]?\d{3}"#,
+        #"(?:LINE|IG|Instagram|Discord)\s*(?:ID|帳號)?\s*[:：]?\s*[A-Z0-9_.-]{4,}"#,
+    ]
+
+    static func validatedOptional(_ rawValue: String?) throws -> String? {
+        guard let rawValue else { return nil }
+        let normalized = rawValue.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !normalized.isEmpty else { return nil }
+        return try validated(normalized)
+    }
+
+    static func validatedRequired(_ rawValue: String) throws -> String {
+        let normalized = rawValue.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !normalized.isEmpty else {
+            throw SupportMutationError.emptyReply
+        }
+        return try validated(normalized)
+    }
+
+    private static func validated(_ normalized: String) throws -> String {
+        guard normalized.count <= maximumCharacterCount else {
+            throw SupportMutationError.contentTooLong
+        }
+        let folded = normalized.folding(
+            options: [.caseInsensitive, .diacriticInsensitive, .widthInsensitive],
+            locale: Locale(identifier: "zh_Hant_TW")
+        )
+        if disallowedPhrases.contains(where: { folded.localizedCaseInsensitiveContains($0) }) {
+            throw SupportMutationError.unsafeContent
+        }
+        let fullRange = NSRange(normalized.startIndex..<normalized.endIndex, in: normalized)
+        for pattern in contactPatterns {
+            guard let expression = try? NSRegularExpression(
+                pattern: pattern,
+                options: [.caseInsensitive]
+            ) else { continue }
+            if expression.firstMatch(in: normalized, range: fullRange) != nil {
+                throw SupportMutationError.unsafeContent
+            }
+        }
+        return normalized
     }
 }
 
@@ -103,6 +169,7 @@ protocol LearningRepositoryBackend: AnyObject {
         user: DemoUser?,
         profile: AppUserProfile?,
         onChange: @escaping @MainActor (LearningRepositorySnapshot) -> Void,
+        onComponentHealth: @escaping @MainActor (LearningRepositoryListenerHealthEvent) -> Void,
         onError: @escaping @MainActor (Error) -> Void
     ) -> LearningRepositoryListenerToken
 
@@ -148,6 +215,12 @@ protocol LearningRepositoryBackend: AnyObject {
     func markSupportThreadReadByStudent(_ requestId: String) async throws
     func archiveSupportThreadForStudent(_ requestId: String) async throws
     func withdrawSupportRequest(_ requestId: String) async throws
+    func reportSupportReply(
+        requestId: String,
+        reply: SupportReply,
+        reason: SupportSafetyReportReason
+    ) async throws
+    func blockSupportAuthor(_ reply: SupportReply, requestId: String) async throws
     func markSupportThreadHandledWithoutReply(_ requestId: String, by staffUser: DemoUser?) async throws
     func archiveSupportThreadForStaff(_ requestId: String, by staffUser: DemoUser?) async throws
     func assignPracticeSet(_ set: QuestionPracticeSet, to student: StaffStudentSummary, by teacher: DemoUser?)
@@ -158,4 +231,50 @@ protocol LearningRepositoryBackend: AnyObject {
     ) async throws -> PracticeAssignmentQuestionResult?
     func withdrawAssignedPracticeTask(_ assignmentId: String) async throws
     func eraseLocalData(for uid: String)
+}
+
+extension MockLearningRepository: LearningRepositoryBackend {
+    var snapshot: LearningRepositorySnapshot {
+        LearningRepositorySnapshot(
+            currentCheckIn: currentCheckIn,
+            currentMission: currentMission,
+            missionAttempts: missionAttempts,
+            supportRequests: supportRequests,
+            assignedPracticeTasks: assignedPracticeTasks,
+            masteryRecords: masteryRecords,
+            learningFlow: learningFlow
+        )
+    }
+
+    func refresh() async throws {}
+
+    func startRealtimeListener(
+        classId: String,
+        user: DemoUser?,
+        profile: AppUserProfile?,
+        onChange: @escaping @MainActor (LearningRepositorySnapshot) -> Void,
+        onComponentHealth: @escaping @MainActor (LearningRepositoryListenerHealthEvent) -> Void,
+        onError: @escaping @MainActor (Error) -> Void
+    ) -> LearningRepositoryListenerToken {
+        onChange(snapshot)
+        return AnyLearningRepositoryListenerToken {}
+    }
+}
+
+extension Array {
+    func uniqued<ID: Hashable>(by keyPath: KeyPath<Element, ID>) -> [Element] {
+        var seen = Set<ID>()
+        return filter { element in
+            seen.insert(element[keyPath: keyPath]).inserted
+        }
+    }
+}
+
+extension Array where Element: Hashable {
+    func uniqued() -> [Element] {
+        var seen = Set<Element>()
+        return filter { element in
+            seen.insert(element).inserted
+        }
+    }
 }

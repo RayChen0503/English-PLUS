@@ -1,3 +1,4 @@
+import AuthenticationServices
 import SwiftUI
 
 struct AccountDataView: View {
@@ -6,12 +7,23 @@ struct AccountDataView: View {
     @EnvironmentObject private var learningRepository: LearningRepositoryStore
 
     @State private var preview: AccountDeletionPreview?
+    @State private var selectedClassSuccessors: [String: String] = [:]
     @State private var confirmationText = ""
     @State private var errorMessage: String?
     @State private var isLoading = false
     @State private var showsDeletionDetails = false
     @State private var showsFinalConfirmation = false
+    @State private var appleDeletionNonce: String?
+    @State private var hasRevokedAppleAuthorization = false
     @FocusState private var isConfirmationFieldFocused: Bool
+
+    private var hasCompleteClassTransferSelections: Bool {
+        guard let preview else { return false }
+        return preview.ownedClasses.allSatisfy { classroom in
+            !classroom.requiresTransferSelection
+                || selectedClassSuccessors[classroom.classId] != nil
+        }
+    }
 
     var body: some View {
         NavigationStack {
@@ -162,6 +174,8 @@ struct AccountDataView: View {
                     showsDeletionDetails = false
                     confirmationText = ""
                     errorMessage = nil
+                    appleDeletionNonce = nil
+                    hasRevokedAppleAuthorization = false
                 } label: {
                     Label("收起刪除內容", systemImage: "chevron.up")
                         .frame(maxWidth: .infinity, minHeight: 44)
@@ -216,6 +230,10 @@ struct AccountDataView: View {
 
     private func deletionImpact(_ preview: AccountDeletionPreview) -> some View {
         VStack(alignment: .leading, spacing: 10) {
+            ForEach(preview.ownedClasses) { classroom in
+                ownedClassDisposition(classroom)
+            }
+
             Text("這次會影響")
                 .font(.headline)
                 .foregroundStyle(EPTheme.ink)
@@ -254,6 +272,52 @@ struct AccountDataView: View {
         .clipShape(RoundedRectangle(cornerRadius: EPTheme.cardRadius))
     }
 
+    @ViewBuilder
+    private func ownedClassDisposition(
+        _ classroom: AccountDeletionOwnedClass
+    ) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Label(classroom.className, systemImage: "building.2")
+                .font(.subheadline.bold())
+                .foregroundStyle(EPTheme.ink)
+
+            if classroom.eligibleCoTeachers.isEmpty {
+                Label(
+                    "沒有其他可接手的老師；刪除帳號後，這個班級會封存並保留歷史紀錄。",
+                    systemImage: "archivebox"
+                )
+                .font(.caption)
+                .foregroundStyle(EPTheme.secondaryInk)
+            } else {
+                Picker(
+                    "接手老師",
+                    selection: Binding(
+                        get: {
+                            selectedClassSuccessors[classroom.classId]
+                                ?? classroom.eligibleCoTeachers[0].uid
+                        },
+                        set: { selectedClassSuccessors[classroom.classId] = $0 }
+                    )
+                ) {
+                    ForEach(classroom.eligibleCoTeachers) { teacher in
+                        Text(teacher.displayName).tag(teacher.uid)
+                    }
+                }
+                .pickerStyle(.menu)
+
+                Label(
+                    "刪除帳號前會把班級管理權移交；學生、任務與歷史紀錄會保留。",
+                    systemImage: "arrow.trianglehead.branch"
+                )
+                .font(.caption)
+                .foregroundStyle(EPTheme.secondaryInk)
+            }
+        }
+        .padding(12)
+        .background(EPTheme.secondarySurface)
+        .clipShape(RoundedRectangle(cornerRadius: 8))
+    }
+
     private var confirmationSection: some View {
         VStack(alignment: .leading, spacing: 12) {
             Text("確認永久刪除")
@@ -274,6 +338,10 @@ struct AccountDataView: View {
                     isConfirmationFieldFocused = false
                 }
 
+            if appState.currentAccountUsesAppleSignIn {
+                appleDeletionConfirmation
+            }
+
             Button(role: .destructive) {
                 showsFinalConfirmation = true
             } label: {
@@ -290,12 +358,54 @@ struct AccountDataView: View {
             }
             .buttonStyle(.borderedProminent)
             .tint(EPTheme.warning)
-            .disabled(confirmationText != "刪除" || appState.isManagingAccount)
+            .disabled(
+                confirmationText != "刪除"
+                    || !hasCompleteClassTransferSelections
+                    || (appState.currentAccountUsesAppleSignIn && !hasRevokedAppleAuthorization)
+                    || appState.isManagingAccount
+            )
         }
         .padding(16)
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(EPTheme.card)
         .clipShape(RoundedRectangle(cornerRadius: EPTheme.cardRadius))
+    }
+
+    @ViewBuilder
+    private var appleDeletionConfirmation: some View {
+        if hasRevokedAppleAuthorization {
+            Label("Apple 帳號已重新確認", systemImage: "checkmark.seal.fill")
+                .font(.subheadline.weight(.semibold))
+                .foregroundStyle(EPTheme.support)
+                .accessibilityIdentifier("account.apple-revocation-complete")
+        } else {
+            VStack(alignment: .leading, spacing: 8) {
+                Text("這個帳號已連結 Apple。依 Apple 規定，刪除前需再確認一次並撤銷 English+ 的登入授權。")
+                    .font(.caption)
+                    .foregroundStyle(EPTheme.secondaryInk)
+                    .fixedSize(horizontal: false, vertical: true)
+
+                SignInWithAppleButton(
+                    .continue,
+                    onRequest: { request in
+                        do {
+                            appleDeletionNonce = try FederatedSignInCoordinator.prepareAppleRequest(request)
+                            errorMessage = nil
+                        } catch {
+                            errorMessage = userMessage(for: error)
+                        }
+                    },
+                    onCompletion: { result in
+                        Task { await completeAppleDeletionAuthorization(result) }
+                    }
+                )
+                .signInWithAppleButtonStyle(.black)
+                .frame(height: 50)
+                .clipShape(RoundedRectangle(cornerRadius: 8))
+                .disabled(confirmationText != "刪除" || appState.isManagingAccount)
+                .accessibilityIdentifier("account.apple-revoke")
+            }
+        }
     }
 
     private func accountErrorCard(_ message: String) -> some View {
@@ -350,7 +460,14 @@ struct AccountDataView: View {
         isLoading = true
         errorMessage = nil
         do {
-            preview = try await appState.loadAccountDeletionPreview()
+            let loadedPreview = try await appState.loadAccountDeletionPreview()
+            preview = loadedPreview
+            selectedClassSuccessors = Dictionary(
+                uniqueKeysWithValues: loadedPreview.ownedClasses.compactMap { classroom in
+                    guard let first = classroom.eligibleCoTeachers.first else { return nil }
+                    return (classroom.classId, first.uid)
+                }
+            )
         } catch {
             preview = nil
             errorMessage = userMessage(for: error)
@@ -366,7 +483,9 @@ struct AccountDataView: View {
         isConfirmationFieldFocused = false
         errorMessage = nil
         do {
-            let receipt = try await appState.deleteCurrentAccount()
+            let receipt = try await appState.deleteCurrentAccount(
+                classTransfers: selectedClassSuccessors
+            )
             guard receipt.completed else {
                 throw AccountLifecycleError.cleanupFailed
             }
@@ -374,6 +493,30 @@ struct AccountDataView: View {
             appState.completeAccountDeletion()
             dismiss()
         } catch {
+            errorMessage = userMessage(for: error)
+            AppDiagnostics.shared.record(.accountLifecycle, underlying: error)
+        }
+    }
+
+    @MainActor
+    private func completeAppleDeletionAuthorization(
+        _ result: Result<ASAuthorization, Error>
+    ) async {
+        errorMessage = nil
+        do {
+            let credential = try FederatedSignInCoordinator.appleAccountDeletionCredential(
+                from: result,
+                rawNonce: appleDeletionNonce
+            )
+            try await appState.reauthenticateAndRevokeAppleForAccountDeletion(
+                using: credential
+            )
+            hasRevokedAppleAuthorization = true
+            appleDeletionNonce = nil
+        } catch FederatedSignInCoordinatorError.cancelled {
+            appleDeletionNonce = nil
+        } catch {
+            appleDeletionNonce = nil
             errorMessage = userMessage(for: error)
             AppDiagnostics.shared.record(.accountLifecycle, underlying: error)
         }

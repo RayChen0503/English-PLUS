@@ -57,6 +57,9 @@ def main() -> int:
         "deleteFirebaseAuthAccount",
         "FIREBASE_WEB_API_KEY",
         "retryPendingAccountDeletions",
+        "validateAccountDeletionClassTransfers",
+        "appendOwnedClassTransferPlan",
+        "transferredOwnedClasses",
         "retainedData: \"anonymousAggregateOnly\"",
         "staffEscalationNeeded: false",
         "Taiwan emergency service 119; 1925 and 113",
@@ -79,6 +82,7 @@ def main() -> int:
         "for _ in 0..<120",
         'value(forHTTPHeaderField: "Retry-After")',
         "AccountLifecycleError.recentSignInRequired",
+        "AccountLifecycleError.classTransferSelectionStale",
     ), "iOS account lifecycle", errors)
     markers(account_view, (
         'navigationTitle("帳號、隱私與支援")',
@@ -89,10 +93,12 @@ def main() -> int:
         "interactiveDismissDisabled(appState.isManagingAccount)",
         "ViewThatFits(in: .horizontal)",
         "learningRepository.eraseLocalData(for: uid)",
+        "selectedClassSuccessors",
+        "ownedClassDisposition(classroom)",
     ), "Account deletion UI", errors)
     markers(app_state, (
         "func loadAccountDeletionPreview()",
-        "func deleteCurrentAccount()",
+        "func deleteCurrentAccount(",
         "func completeAccountDeletion()",
     ), "App state account lifecycle", errors)
     markers(repository, ("func eraseLocalData(for uid: String)",), "Repository local deletion", errors)
@@ -145,7 +151,8 @@ def main() -> int:
     ), "Firestore server-only deletion state", errors)
     markers(rule_tests, ("account deletion jobs and anonymous metrics are backend-only",), "Firestore Rules tests", errors)
     markers(lifecycle_test, (
-        "staged account deletion removes identifiable data and preserves only safe class history",
+        "teacher deletion transfers an owned class to a confirmed active co-teacher",
+        "teacher deletion archives an owned class only when no eligible co-teacher exists",
         'assert.equal(result.retainedData, "anonymousAggregateOnly")',
         'assert.equal(JSON.stringify(metric).includes(UID), false)',
     ), "Staged deletion Emulator test", errors)

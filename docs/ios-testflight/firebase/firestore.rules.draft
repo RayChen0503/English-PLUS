@@ -14,6 +14,10 @@ service cloud.firestore {
       return /databases/$(database)/documents/users/$(uid);
     }
 
+    function blockedSupportAuthorPath(studentUid, staffUid) {
+      return /databases/$(database)/documents/users/$(studentUid)/blockedSupportAuthors/$(staffUid);
+    }
+
     function accountIsActive(uid) {
       let profile = get(userPath(uid)).data;
       return (
@@ -54,18 +58,57 @@ service cloud.firestore {
           && profile.active == true
           && profile.accountStatus == "active"
           && profile.provisioningSource == "selfServiceStudent"
+          && profile.studentAccessPath == "age13OrOlder"
         )
         || (
           profile.primaryRole == "teacher"
           && profile.active == true
           && profile.accountStatus == "active"
           && profile.provisioningSource == "selfServiceTeacher"
+          && profile.studentAccessPath == "notApplicable"
         )
         || (
           profile.primaryRole == "volunteer"
           && profile.active == false
           && profile.accountStatus in ["pendingApplication", "pendingApproval"]
           && profile.provisioningSource == "selfServiceVolunteer"
+          && profile.studentAccessPath == "notApplicable"
+        );
+    }
+
+    function validConsentRecord(uid, consent) {
+      let profile = get(userPath(uid)).data;
+      return consent.acceptedByUid == uid
+        && consent.accepted == true
+        && consent.actorRole == profile.primaryRole
+        && consent.studentAccessPath is string
+        && (
+          (
+            profile.primaryRole == "student"
+            && "studentAccessPath" in profile
+            && profile.studentAccessPath == "age13OrOlder"
+            && consent.studentAccessPath == "age13OrOlder"
+            && consent.guardianConsentStatus == "notRequired"
+          )
+          || (
+            profile.primaryRole == "student"
+            && "studentAccessPath" in profile
+            && profile.provisioningSource == "managedStudent"
+            && profile.studentAccessPath == "schoolOrGuardianManaged"
+            && consent.studentAccessPath == "schoolOrGuardianManaged"
+            && consent.guardianConsentStatus == "schoolApproved"
+          )
+          || (
+            profile.primaryRole == "student"
+            && !("studentAccessPath" in profile)
+            && consent.studentAccessPath == "legacyUnspecified"
+            && consent.guardianConsentStatus == "notRequired"
+          )
+          || (
+            profile.primaryRole in ["teacher", "volunteer"]
+            && consent.studentAccessPath == "notApplicable"
+            && consent.guardianConsentStatus == "notRequired"
+          )
         );
     }
 
@@ -273,6 +316,10 @@ service cloud.firestore {
       return /databases/$(database)/documents/classes/$(classId)/supportThreads/$(threadId);
     }
 
+    function supportMessagePath(classId, threadId, messageId) {
+      return /databases/$(database)/documents/classes/$(classId)/supportThreads/$(threadId)/messages/$(messageId);
+    }
+
     function canReadStudentRecord(classId, studentUid) {
       return (isOwnerStudent(studentUid) && isClassStudent(classId))
         || (
@@ -304,11 +351,12 @@ service cloud.firestore {
 
     function canWriteStaffReply(classId, threadId) {
       let thread = get(threadPath(classId, threadId)).data;
-      return classStaffCanWriteSupportTimeline(
-        classId,
-        thread.studentUid,
-        thread.createdAt
-      )
+      return !exists(blockedSupportAuthorPath(thread.studentUid, request.auth.uid))
+        && classStaffCanWriteSupportTimeline(
+          classId,
+          thread.studentUid,
+          thread.createdAt
+        )
         && thread.status != "closed"
         && thread.status != "archived"
         && (!("withdrawnAt" in thread) || thread.withdrawnAt == null);
@@ -516,6 +564,7 @@ service cloud.firestore {
           "accountStatus",
           "emailVerificationRequired",
           "provisioningSource",
+          "studentAccessPath",
           "identityProviders"
         ])
         && request.resource.data.displayName is string
@@ -558,6 +607,24 @@ service cloud.firestore {
         allow read, create, update, delete: if hasAccountAccess(uid);
       }
 
+      match /blockedSupportAuthors/{blockedUid} {
+        allow read: if hasAccountAccess(uid);
+        allow create: if hasAccountAccess(uid)
+          && blockedUid != uid
+          && request.resource.data.keys().hasOnly([
+            "blockedUid",
+            "blockedRole",
+            "sourceThreadId",
+            "createdAt"
+          ])
+          && request.resource.data.blockedUid == blockedUid
+          && request.resource.data.blockedRole in ["teacher", "volunteer"]
+          && request.resource.data.sourceThreadId is string
+          && request.resource.data.createdAt is timestamp;
+        allow delete: if hasAccountAccess(uid);
+        allow update: if false;
+      }
+
       match /personalCheckIns/{dateKey} {
         allow read, create, update: if hasAccountAccess(uid);
         allow delete: if false;
@@ -590,8 +657,7 @@ service cloud.firestore {
       match /consents/{consentVersion} {
         allow read: if hasAccountAccess(uid);
         allow create: if hasAccountAccess(uid)
-          && request.resource.data.acceptedByUid == request.auth.uid
-          && request.resource.data.accepted == true;
+          && validConsentRecord(uid, request.resource.data);
         allow update, delete: if false;
       }
     }
@@ -651,8 +717,7 @@ service cloud.firestore {
             || staffCanReadStudentTimeline(classId, studentUid, resource.data.acceptedAt);
           allow create: if isOwnerStudent(studentUid)
             && isClassStudent(classId)
-            && request.resource.data.acceptedByUid == request.auth.uid
-            && request.resource.data.accepted == true;
+            && validConsentRecord(studentUid, request.resource.data);
           allow update, delete: if false;
         }
 
@@ -891,7 +956,74 @@ service cloud.firestore {
       }
 
       match /reports/{reportId} {
-        allow read, create, update: if isClassTeacher(classId);
+        allow get: if isClassTeacher(classId)
+          || (isClassStudent(classId) && resource.data.reporterUid == request.auth.uid);
+        allow list: if isClassTeacher(classId);
+        allow create: if isClassStudent(classId)
+          && request.resource.data.keys().hasOnly([
+            "reportId",
+            "uid",
+            "studentUid",
+            "reporterUid",
+            "reportedUid",
+            "reportedRole",
+            "threadId",
+            "messageId",
+            "reason",
+            "status",
+            "createdAt"
+          ])
+          && request.resource.data.reportId == reportId
+          && request.resource.data.uid == request.auth.uid
+          && request.resource.data.studentUid == request.auth.uid
+          && request.resource.data.reporterUid == request.auth.uid
+          && request.resource.data.reportedUid is string
+          && request.resource.data.reportedRole in ["teacher", "volunteer"]
+          && request.resource.data.threadId is string
+          && request.resource.data.messageId is string
+          && request.resource.data.reason in [
+            "inappropriateContent",
+            "harassment",
+            "privacyConcern",
+            "other"
+          ]
+          && request.resource.data.status == "open"
+          && request.resource.data.createdAt is timestamp
+          && exists(threadPath(classId, request.resource.data.threadId))
+          && get(threadPath(classId, request.resource.data.threadId)).data.studentUid
+            == request.auth.uid
+          && exists(supportMessagePath(
+            classId,
+            request.resource.data.threadId,
+            request.resource.data.messageId
+          ))
+          && get(supportMessagePath(
+            classId,
+            request.resource.data.threadId,
+            request.resource.data.messageId
+          )).data.authorUid == request.resource.data.reportedUid
+          && get(supportMessagePath(
+            classId,
+            request.resource.data.threadId,
+            request.resource.data.messageId
+          )).data.authorRole == request.resource.data.reportedRole
+          && get(supportMessagePath(
+            classId,
+            request.resource.data.threadId,
+            request.resource.data.messageId
+          )).data.visibility == "studentVisible";
+        allow update: if isClassTeacher(classId)
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+            "status",
+            "moderatedAt",
+            "moderatedByUid",
+            "moderationNote"
+          ])
+          && request.resource.data.status in ["reviewing", "resolved", "dismissed"]
+          && request.resource.data.moderatedAt is timestamp
+          && request.resource.data.moderatedByUid == request.auth.uid
+          && request.resource.data.moderationNote is string
+          && request.resource.data.moderationNote.size() <= 1000;
         allow delete: if false;
       }
 

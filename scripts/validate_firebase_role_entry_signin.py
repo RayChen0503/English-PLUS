@@ -49,20 +49,13 @@ def main() -> int:
     gitignore = read(ROOT / ".gitignore")
     tracked = git_ls_files()
 
-    for token in [
-        "student.demo@englishplus.test",
-        "teacher.demo@englishplus.test",
-        "volunteer.demo@englishplus.test",
-        "EnglishPlusStudent2026!",
-        "EnglishPlusTeacher2026!",
-        "EnglishPlusVolunteer2026!",
-    ]:
-        require(token in auth_service, f"AuthService missing demo credential token: {token}", errors)
+    require("DemoAccountCredential" not in auth_service,
+            "Shipping AuthService must not embed reviewer or demo credentials", errors)
 
     demo_login = read(IOS_ROOT / "Features" / "RoleSelection" / "DemoLoginView.swift")
 
-    require("func signInDemoAccount(for role: UserRole) async throws -> AuthSession" in auth_service,
-            "AuthService must keep async demo credential helper for seeded accounts", errors)
+    require("func signInDemoAccount" not in auth_service and "func signInDemoAccount" not in firebase_auth,
+            "Shipping authentication must not include a credential-bearing demo-login helper", errors)
     require("appState.chooseRole(role)" in role_selection,
             "RoleSelection buttons must route to the credential login screen", errors)
     require("await appState.signIn(role: role)" not in role_selection,

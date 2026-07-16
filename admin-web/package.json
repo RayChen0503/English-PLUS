@@ -4,8 +4,12 @@
   "version": "1.0.0",
   "type": "module",
   "scripts": {
-    "dev": "vite",
-    "build": "vite build",
+    "dev": "vite --mode competition",
+    "validate:competition-env": "node scripts/validate-env.mjs competition",
+    "validate:production-env": "node scripts/validate-env.mjs production",
+    "build": "npm run validate:competition-env && vite build --mode competition",
+    "build:competition": "npm run validate:competition-env && vite build --mode competition",
+    "build:production": "npm run validate:production-env && vite build --mode production",
     "preview": "vite preview",
     "test": "vitest run",
     "check": "npm run test && npm run build"

@@ -7,6 +7,65 @@ import FirebaseCore
 enum EnglishPlusBackendMode: Equatable {
     case mock
     case firebase
+    case configurationError
+}
+
+enum EnglishPlusDeploymentEnvironment: String {
+    case competition
+    case production
+
+    static let infoPlistKey = "ENGLISHPLUS_DEPLOYMENT_ENVIRONMENT"
+    static let expectedFirebaseProjectIDKey = "ENGLISHPLUS_EXPECTED_FIREBASE_PROJECT_ID"
+
+    static var current: EnglishPlusDeploymentEnvironment? {
+        guard let value = Bundle.main.object(forInfoDictionaryKey: infoPlistKey) as? String else {
+            return nil
+        }
+        return EnglishPlusDeploymentEnvironment(rawValue: value)
+    }
+
+    static var expectedFirebaseProjectID: String? {
+        (Bundle.main.object(forInfoDictionaryKey: expectedFirebaseProjectIDKey) as? String)?
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    var expectedAIHost: String {
+        switch self {
+        case .competition:
+            return "englishplus-ai-proxy.englishplus-ray.workers.dev"
+        case .production:
+            return "englishplus-ai-proxy-production.englishplus-ray.workers.dev"
+        }
+    }
+}
+
+enum EnglishPlusEnvironmentBoundary {
+    static func isValid(
+        environment: EnglishPlusDeploymentEnvironment?,
+        expectedProjectID: String?,
+        aiEndpoint: URL?,
+        evidenceEndpoint: URL?,
+        bundledProjectID: String?
+    ) -> Bool {
+        guard let environment,
+              let expectedProjectID,
+              !expectedProjectID.isEmpty,
+              let aiEndpoint,
+              aiEndpoint.scheme == "https",
+              aiEndpoint.host == environment.expectedAIHost,
+              let evidenceEndpoint,
+              evidenceEndpoint.scheme == "https",
+              evidenceEndpoint.host == environment.expectedAIHost
+        else {
+            return false
+        }
+
+        if let bundledProjectID {
+            return bundledProjectID == expectedProjectID
+        }
+
+        return environment == .competition
+    }
 }
 
 struct EnglishPlusServiceBundle {
@@ -34,21 +93,53 @@ enum FirebaseAppConfigurator {
         bundledConfigPath != nil
     }
 
+    static var bundledProjectID: String? {
+        guard let bundledConfigPath,
+              let data = FileManager.default.contents(atPath: bundledConfigPath),
+              let object = try? PropertyListSerialization.propertyList(
+                from: data,
+                options: [],
+                format: nil
+              ),
+              let dictionary = object as? [String: Any]
+        else {
+            return nil
+        }
+        return dictionary["PROJECT_ID"] as? String
+    }
+
+    static var hasValidEnvironmentBoundary: Bool {
+        EnglishPlusEnvironmentBoundary.isValid(
+            environment: EnglishPlusDeploymentEnvironment.current,
+            expectedProjectID: EnglishPlusDeploymentEnvironment.expectedFirebaseProjectID,
+            aiEndpoint: EnglishPlusAIProxyConfig.workerEndpoint,
+            evidenceEndpoint: EvidenceUploadConfig.workerBaseURL,
+            bundledProjectID: bundledProjectID
+        )
+    }
+
     static func configureIfPossible() -> EnglishPlusBackendMode {
+        guard hasValidEnvironmentBoundary else {
+            return .configurationError
+        }
+
+        // Mock services are selected explicitly by EnglishPlusLaunchConfiguration
+        // before this method is called. A real app build must never silently fall
+        // back to seed data when its Firebase configuration is missing.
         guard let configPath = bundledConfigPath else {
-            return .mock
+            return .configurationError
         }
 
         #if canImport(FirebaseCore)
         if FirebaseApp.app() == nil {
             guard let options = FirebaseOptions(contentsOfFile: configPath) else {
-                return .mock
+                return .configurationError
             }
             FirebaseApp.configure(options: options)
         }
-        return FirebaseApp.app() == nil ? .mock : .firebase
+        return FirebaseApp.app() == nil ? .configurationError : .firebase
         #else
-        return .mock
+        return .configurationError
         #endif
     }
 }
@@ -114,13 +205,17 @@ enum EnglishPlusServiceFactory {
             )
         case .mock:
             return makeMockServices()
+        case .configurationError:
+            return makeMockServices(mode: .configurationError)
         }
     }
 
     @MainActor
-    private static func makeMockServices() -> EnglishPlusServiceBundle {
+    private static func makeMockServices(
+        mode: EnglishPlusBackendMode = .mock
+    ) -> EnglishPlusServiceBundle {
         EnglishPlusServiceBundle(
-            mode: .mock,
+            mode: mode,
             authService: MockAuthService(),
             firestoreService: MockFirestoreService(),
             aiService: MockAIService(),
@@ -130,7 +225,7 @@ enum EnglishPlusServiceFactory {
             classroomService: MockClassroomService(),
             accountLifecycleService: MockAccountLifecycleService(),
             runtimeDiagnostics: RuntimeDiagnosticsSnapshot(
-                backendMode: .mock,
+                backendMode: mode,
                 hasFirebaseConfig: FirebaseAppConfigurator.hasBundledConfig,
                 authProvider: "MockAuthService",
                 firestoreProvider: "MockFirestoreService",

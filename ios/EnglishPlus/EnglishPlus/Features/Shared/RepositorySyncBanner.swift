@@ -85,7 +85,19 @@ struct RepositorySyncBanner: View {
                 detail: "\(reason) \(lastSyncText)",
                 systemImage: "wifi.slash",
                 tint: EPTheme.warning,
-                showsRetry: true,
+                showsRetry: false,
+                showsProgress: false
+            )
+        case .syncIssue(let reason, let retryAvailable):
+            let lastSyncText = lastSuccessfulSyncAt.map {
+                "上次同步：\($0.formatted(date: .omitted, time: .shortened))"
+            } ?? "已保留裝置上的資料"
+            return SyncBannerPresentation(
+                title: "部分資料暫時無法同步",
+                detail: "\(reason) \(lastSyncText)",
+                systemImage: "exclamationmark.arrow.triangle.2.circlepath",
+                tint: EPTheme.warning,
+                showsRetry: retryAvailable,
                 showsProgress: false
             )
         }

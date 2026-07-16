@@ -24,6 +24,7 @@ const HOST = "127.0.0.1";
 const PORT = 8080;
 const CLASS_ID = "FIX-A-CLASS";
 const STUDENT_UID = "fixAStudent";
+const OTHER_STUDENT_UID = "fixAOtherStudent";
 const TEACHER_UID = "fixATeacher";
 const VOLUNTEER_UID = "fixAVolunteer";
 const createdAt = Timestamp.fromDate(new Date("2026-07-14T01:00:00.000Z"));
@@ -65,6 +66,7 @@ function profile(role) {
       : role === "volunteer"
         ? "administratorApprovedVolunteer"
         : "selfServiceStudent",
+    studentAccessPath: role === "student" ? "age13OrOlder" : "notApplicable",
     identityProviders: ["emailPassword"],
     createdAt,
     updatedAt: createdAt,
@@ -173,6 +175,7 @@ async function seedClassIdentity() {
     });
     for (const [uid, role] of [
       [STUDENT_UID, "student"],
+      [OTHER_STUDENT_UID, "student"],
       [TEACHER_UID, "teacher"],
       [VOLUNTEER_UID, "volunteer"],
     ]) {
@@ -281,4 +284,139 @@ test("teacher and volunteer archive independently without changing student visib
   assert.equal(studentThread.data().studentVisible, true);
   assert.ok(studentThread.data().teacherArchivedAt);
   assert.ok(studentThread.data().volunteerArchivedAt);
+});
+
+test("student can report a visible staff reply while unrelated roles cannot inspect the report", async () => {
+  await createSupportThread("thread-report");
+
+  const teacher = dbFor(TEACHER_UID);
+  const teacherThread = doc(teacher, "classes", CLASS_ID, "supportThreads", "thread-report");
+  await assertSucceeds(setDoc(
+    doc(teacherThread, "messages", "teacher-report-reply"),
+    {
+      ...staffReply("teacher-report-reply", TEACHER_UID, "teacher"),
+      threadId: "thread-report",
+    }
+  ));
+
+  const student = dbFor(STUDENT_UID);
+  const reportRef = doc(student, "classes", CLASS_ID, "reports", "report-1");
+  await assertSucceeds(setDoc(reportRef, {
+    reportId: "report-1",
+    uid: STUDENT_UID,
+    studentUid: STUDENT_UID,
+    reporterUid: STUDENT_UID,
+    reportedUid: TEACHER_UID,
+    reportedRole: "teacher",
+    threadId: "thread-report",
+    messageId: "teacher-report-reply",
+    reason: "inappropriateContent",
+    status: "open",
+    createdAt: repliedAt,
+  }));
+
+  assert.equal((await assertSucceeds(getDoc(reportRef))).data().status, "open");
+
+  const otherStudent = dbFor(OTHER_STUDENT_UID);
+  await assertFails(getDoc(doc(otherStudent, "classes", CLASS_ID, "reports", "report-1")));
+  await assertFails(getDocs(collection(
+    dbFor(VOLUNTEER_UID),
+    "classes",
+    CLASS_ID,
+    "reports"
+  )));
+
+  const teacherReportRef = doc(teacher, "classes", CLASS_ID, "reports", "report-1");
+  const reports = await assertSucceeds(getDocs(collection(
+    teacher,
+    "classes",
+    CLASS_ID,
+    "reports"
+  )));
+  assert.equal(reports.size, 1);
+  await assertSucceeds(updateDoc(teacherReportRef, {
+    status: "resolved",
+    moderatedAt: readAt,
+    moderatedByUid: TEACHER_UID,
+    moderationNote: "Reviewed and resolved.",
+  }));
+  await assertFails(updateDoc(teacherReportRef, {
+    reportedUid: VOLUNTEER_UID,
+  }));
+
+  await assertFails(setDoc(
+    doc(student, "classes", CLASS_ID, "reports", "report-forged"),
+    {
+      reportId: "report-forged",
+      uid: STUDENT_UID,
+      studentUid: STUDENT_UID,
+      reporterUid: STUDENT_UID,
+      reportedUid: VOLUNTEER_UID,
+      reportedRole: "volunteer",
+      threadId: "thread-report",
+      messageId: "teacher-report-reply",
+      reason: "other",
+      status: "open",
+      createdAt: repliedAt,
+    }
+  ));
+});
+
+test("student blocking a staff author prevents future replies without blocking other staff", async () => {
+  await createSupportThread("thread-block");
+
+  const teacher = dbFor(TEACHER_UID);
+  const teacherThread = doc(teacher, "classes", CLASS_ID, "supportThreads", "thread-block");
+  await assertSucceeds(setDoc(
+    doc(teacherThread, "messages", "teacher-before-block"),
+    {
+      ...staffReply("teacher-before-block", TEACHER_UID, "teacher"),
+      threadId: "thread-block",
+    }
+  ));
+
+  const student = dbFor(STUDENT_UID);
+  await assertSucceeds(setDoc(
+    doc(student, "users", STUDENT_UID, "blockedSupportAuthors", TEACHER_UID),
+    {
+      blockedUid: TEACHER_UID,
+      blockedRole: "teacher",
+      sourceThreadId: "thread-block",
+      createdAt: readAt,
+    }
+  ));
+  await assertSucceeds(updateDoc(
+    doc(student, "classes", CLASS_ID, "supportThreads", "thread-block"),
+    {
+      status: "readByStudent",
+      studentArchivedAt: readAt,
+      studentLastReadAt: readAt,
+      updatedAt: readAt,
+    }
+  ));
+
+  await assertFails(setDoc(
+    doc(teacherThread, "messages", "teacher-after-block"),
+    {
+      ...staffReply("teacher-after-block", TEACHER_UID, "teacher"),
+      threadId: "thread-block",
+    }
+  ));
+  await assertFails(getDoc(doc(
+    teacher,
+    "users",
+    STUDENT_UID,
+    "blockedSupportAuthors",
+    TEACHER_UID
+  )));
+
+  const volunteer = dbFor(VOLUNTEER_UID);
+  const volunteerThread = doc(volunteer, "classes", CLASS_ID, "supportThreads", "thread-block");
+  await assertSucceeds(setDoc(
+    doc(volunteerThread, "messages", "volunteer-after-block"),
+    {
+      ...staffReply("volunteer-after-block", VOLUNTEER_UID, "volunteer"),
+      threadId: "thread-block",
+    }
+  ));
 });

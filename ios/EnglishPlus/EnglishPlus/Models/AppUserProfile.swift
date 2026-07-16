@@ -49,6 +49,7 @@ struct AppUserProfile: Identifiable, Codable, Equatable {
     let id: String
     let displayName: String
     let role: UserRole
+    let studentAccessPath: StudentAccountAccessPath
     let groupId: String?
     let consentStatus: ConsentStatus
     let isDemo: Bool
@@ -86,6 +87,7 @@ struct AppUserProfile: Identifiable, Codable, Equatable {
         id: String,
         displayName: String,
         role: UserRole,
+        studentAccessPath: StudentAccountAccessPath? = nil,
         classId: String,
         groupId: String?,
         consentStatus: ConsentStatus,
@@ -127,6 +129,8 @@ struct AppUserProfile: Identifiable, Codable, Equatable {
         self.id = id
         self.displayName = displayName
         self.role = role
+        self.studentAccessPath = studentAccessPath
+            ?? (role == .student ? .legacyUnspecified : .notApplicable)
         self.groupId = groupId
         self.consentStatus = consentStatus
         self.isDemo = isDemo
@@ -145,6 +149,7 @@ struct AppUserProfile: Identifiable, Codable, Equatable {
                 id: id,
                 displayName: displayName,
                 role: role,
+                studentAccessPath: studentAccessPath,
                 classId: FirebaseBackendConfig.personalScopeId(uid: id),
                 groupId: nil,
                 consentStatus: consentStatus,
@@ -167,6 +172,7 @@ struct AppUserProfile: Identifiable, Codable, Equatable {
             id: id,
             displayName: displayName,
             role: membership.role,
+            studentAccessPath: studentAccessPath,
             classId: membership.classId,
             groupId: membership.groupId,
             consentStatus: consentStatus,
@@ -189,6 +195,7 @@ struct AppUserProfile: Identifiable, Codable, Equatable {
             id: id,
             displayName: displayName,
             role: makeActive ? membership.role : role,
+            studentAccessPath: studentAccessPath,
             classId: makeActive ? membership.classId : classId,
             groupId: makeActive ? membership.groupId : groupId,
             consentStatus: consentStatus,
@@ -220,6 +227,7 @@ struct AppUserProfile: Identifiable, Codable, Equatable {
             id: id,
             displayName: displayName,
             role: role,
+            studentAccessPath: studentAccessPath,
             classId: nextActiveClassId ?? FirebaseBackendConfig.personalScopeId(uid: id),
             groupId: nextActiveClassId == nil ? nil : groupId,
             consentStatus: consentStatus,
@@ -236,6 +244,7 @@ struct AppUserProfile: Identifiable, Codable, Equatable {
         case id
         case displayName
         case role
+        case studentAccessPath
         case classId
         case groupId
         case consentStatus
@@ -259,6 +268,10 @@ struct AppUserProfile: Identifiable, Codable, Equatable {
             id: id,
             displayName: try container.decode(String.self, forKey: .displayName),
             role: role,
+            studentAccessPath: try container.decodeIfPresent(
+                StudentAccountAccessPath.self,
+                forKey: .studentAccessPath
+            ),
             classId: legacyClassId,
             groupId: try container.decodeIfPresent(String.self, forKey: .groupId),
             consentStatus: try container.decode(ConsentStatus.self, forKey: .consentStatus),
@@ -279,6 +292,7 @@ struct AppUserProfile: Identifiable, Codable, Equatable {
         try container.encode(id, forKey: .id)
         try container.encode(displayName, forKey: .displayName)
         try container.encode(role, forKey: .role)
+        try container.encode(studentAccessPath, forKey: .studentAccessPath)
         try container.encode(classId, forKey: .classId)
         try container.encodeIfPresent(groupId, forKey: .groupId)
         try container.encode(consentStatus, forKey: .consentStatus)

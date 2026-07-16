@@ -1,16 +1,5 @@
 import Foundation
 
-private struct LearningRepositorySyncContext {
-    let classId: String
-    let user: DemoUser?
-    let profile: AppUserProfile?
-
-    var scopeKey: String {
-        [classId, profile?.id ?? user?.id ?? "anonymous", profile?.role.rawValue ?? user?.role.rawValue ?? "unknown"]
-            .joined(separator: "|")
-    }
-}
-
 @MainActor
 final class LearningRepositoryStore: ObservableObject {
     @Published private(set) var currentCheckIn: MoodCheckIn?
@@ -29,13 +18,17 @@ final class LearningRepositoryStore: ObservableObject {
     @Published private(set) var pendingAssignmentActionIds = Set<String>()
     @Published private(set) var assignmentActionErrorMessage: String?
 
-    private let backend: any LearningRepositoryBackend
+    let backend: any LearningRepositoryBackend
     private let connectivityMonitor: any NetworkConnectivityMonitoring
     private let retryDelaysNanoseconds: [UInt64]
+    private let recoveryConfirmationDelayNanoseconds: UInt64
     private var listener: LearningRepositoryListenerToken?
     private var retryTask: Task<Void, Never>?
+    private var recoveryTask: Task<Void, Never>?
     private var syncContext: LearningRepositorySyncContext?
     private var consecutiveSyncFailures = 0
+    private var listenerGeneration = 0
+    private var componentIssues = LearningRepositoryComponentIssueRegistry()
 
     convenience init() {
         self.init(backend: MockLearningRepository())
@@ -44,13 +37,15 @@ final class LearningRepositoryStore: ObservableObject {
     init(
         backend: any LearningRepositoryBackend,
         connectivityMonitor: any NetworkConnectivityMonitoring = NetworkConnectivityMonitor(),
-        retryDelaysNanoseconds: [UInt64] = [1_000_000_000, 2_000_000_000, 5_000_000_000, 10_000_000_000]
+        retryDelaysNanoseconds: [UInt64] = [1_000_000_000, 2_000_000_000, 5_000_000_000, 10_000_000_000],
+        recoveryConfirmationDelayNanoseconds: UInt64 = 750_000_000
     ) {
         self.backend = backend
         self.connectivityMonitor = connectivityMonitor
         self.retryDelaysNanoseconds = retryDelaysNanoseconds.isEmpty
             ? [1_000_000_000]
             : retryDelaysNanoseconds
+        self.recoveryConfirmationDelayNanoseconds = recoveryConfirmationDelayNanoseconds
         apply(backend.snapshot)
         connectivityStatus = connectivityMonitor.currentStatus
         connectivityMonitor.start { [weak self] status in
@@ -62,53 +57,13 @@ final class LearningRepositoryStore: ObservableObject {
 
     deinit {
         retryTask?.cancel()
+        recoveryTask?.cancel()
         listener?.cancel()
         connectivityMonitor.stop()
     }
 
-    var supportedQuestionTypes: [QuestionType] {
-        backend.supportedQuestionTypes
-    }
-
-    var defaultPreferredQuestionTypes: [QuestionType] {
-        backend.defaultPreferredQuestionTypes
-    }
-
-    var questionBankItems: [QuestionBankItem] {
-        backend.questionBankItems
-    }
-
     var questionPracticeSets: [QuestionPracticeSet] {
         backend.questionPracticeSets
-    }
-
-    var latestMissionAttempt: MissionAttempt? {
-        missionAttempts.last
-    }
-
-    var canContinuePreviousProgress: Bool {
-        learningFlow.canContinuePreviousProgress
-    }
-
-    var isDailyMissionComplete: Bool {
-        learningFlow.stage == .missionCompleted
-    }
-
-    var hasCompletedFreePracticeSession: Bool {
-        learningFlow.hasCompletedFreePracticeSession
-    }
-
-    var masterySummary: MasterySummary {
-        SpacedRepetitionEngine.summary(records: masteryRecords)
-    }
-
-    func dueReviewQuestions(limit: Int = 8) -> [QuestionBankItem] {
-        SpacedRepetitionEngine.reviewQuestions(
-            records: masteryRecords,
-            questionBank: questionBankItems,
-            limit: limit,
-            rotationSeed: "review-\(UUID().uuidString)"
-        )
     }
 
     func startRealtimeSync(classId: String, user: DemoUser?, profile: AppUserProfile?) {
@@ -124,48 +79,87 @@ final class LearningRepositoryStore: ObservableObject {
 
         retryTask?.cancel()
         retryTask = nil
+        recoveryTask?.cancel()
+        recoveryTask = nil
         consecutiveSyncFailures = 0
         syncContext = context
         beginRealtimeListening(context: context, isRetry: false)
     }
 
     func retryRealtimeSync() {
-        guard let context = syncContext else { return }
+        guard connectivityStatus != .disconnected,
+              let context = syncContext
+        else { return }
+        if case .syncIssue(_, let retryAvailable) = syncStatus,
+           !retryAvailable {
+            return
+        }
         retryTask?.cancel()
         retryTask = nil
-        beginRealtimeListening(context: context, isRetry: true)
+        recoveryTask?.cancel()
+        recoveryTask = nil
+        beginRealtimeListening(context: context, isRetry: true, presentsProgress: true)
     }
 
     private func beginRealtimeListening(
         context: LearningRepositorySyncContext,
-        isRetry: Bool
+        isRetry: Bool,
+        presentsProgress: Bool = true
     ) {
         listener?.cancel()
+        componentIssues.reset()
+        listenerGeneration &+= 1
+        let generation = listenerGeneration
         let attempt = max(consecutiveSyncFailures + (isRetry ? 1 : 0), 1)
-        updateSyncStatus(
-            isRetry
-                ? .retrying(classId: context.classId, attempt: attempt)
-                : .connecting(classId: context.classId)
-        )
+        if presentsProgress {
+            updateSyncStatus(
+                isRetry
+                    ? .retrying(classId: context.classId, attempt: attempt)
+                    : .connecting(classId: context.classId)
+            )
+        }
         listener = backend.startRealtimeListener(
             classId: context.classId,
             user: context.user,
             profile: context.profile
         ) { [weak self] snapshot in
             guard let self else { return }
-            guard syncContext?.scopeKey == context.scopeKey else { return }
-            retryTask?.cancel()
-            retryTask = nil
-            consecutiveSyncFailures = 0
-            lastSuccessfulSyncAt = Date()
+            guard syncContext?.scopeKey == context.scopeKey,
+                  listenerGeneration == generation
+            else { return }
             apply(snapshot)
             if connectivityStatus == .disconnected {
                 updateSyncStatus(.offlineFallback(reason: Self.disconnectedMessage))
+            } else if let unresolvedIssue = componentIssues.presentation {
+                // A healthy sibling snapshot must not hide another listener's failure.
+                updateSyncStatus(
+                    .syncIssue(
+                        reason: unresolvedIssue.message,
+                        retryAvailable: unresolvedIssue.shouldRetry
+                    )
+                )
+            } else if componentIssues.isEmpty, case .syncIssue = syncStatus {
+                scheduleRecoveryConfirmation(for: context)
             } else {
+                retryTask?.cancel()
+                retryTask = nil
+                recoveryTask?.cancel()
+                recoveryTask = nil
+                consecutiveSyncFailures = 0
+                lastSuccessfulSyncAt = Date()
                 updateSyncStatus(.listening(classId: context.classId))
             }
+        } onComponentHealth: { [weak self] event in
+            guard let self,
+                  syncContext?.scopeKey == context.scopeKey,
+                  listenerGeneration == generation
+            else { return }
+            handleComponentHealth(event, context: context)
         } onError: { [weak self] error in
-            guard let self, syncContext?.scopeKey == context.scopeKey else { return }
+            guard let self,
+                  syncContext?.scopeKey == context.scopeKey,
+                  listenerGeneration == generation
+            else { return }
             handleRealtimeSyncFailure(error)
         }
     }
@@ -173,20 +167,28 @@ final class LearningRepositoryStore: ObservableObject {
     func stopRealtimeSync() {
         retryTask?.cancel()
         retryTask = nil
+        recoveryTask?.cancel()
+        recoveryTask = nil
         listener?.cancel()
         listener = nil
+        listenerGeneration &+= 1
         syncContext = nil
         consecutiveSyncFailures = 0
+        componentIssues.reset()
         updateSyncStatus(.idle)
     }
 
     func eraseLocalData(for uid: String) {
         retryTask?.cancel()
         retryTask = nil
+        recoveryTask?.cancel()
+        recoveryTask = nil
         listener?.cancel()
         listener = nil
+        listenerGeneration &+= 1
         syncContext = nil
         consecutiveSyncFailures = 0
+        componentIssues.reset()
         backend.eraseLocalData(for: uid)
         pendingPracticeLaunch = nil
         lastSuccessfulSyncAt = nil
@@ -195,6 +197,8 @@ final class LearningRepositoryStore: ObservableObject {
     }
 
     func refresh() async {
+        recoveryTask?.cancel()
+        recoveryTask = nil
         let context = syncContext
         if let context {
             updateSyncStatus(
@@ -302,15 +306,6 @@ final class LearningRepositoryStore: ObservableObject {
         apply(backend.snapshot)
     }
 
-    func supportRequests(forStudentUid studentUid: String?) -> [StudentSupportRequest] {
-        guard let studentUid else { return [] }
-        return supportRequests
-            .filter { $0.studentUid == studentUid }
-            .filter(\.isVisibleToStudent)
-            .filter(\.hasActionableSupportContent)
-            .sorted { $0.updatedAt > $1.updatedAt }
-    }
-
     func sendSupportRequest(
         from user: DemoUser?,
         profile: AppUserProfile?,
@@ -318,11 +313,12 @@ final class LearningRepositoryStore: ObservableObject {
         message: String? = nil
     ) async -> Bool {
         let succeeded = await performSupportAction(key: "create-general") {
+            let safeMessage = try SupportContentPolicy.validatedOptional(message)
             try await backend.sendSupportRequest(
                 from: user,
                 profile: profile,
                 option: option,
-                message: message
+                message: safeMessage
             )
         }
         if succeeded {
@@ -340,13 +336,14 @@ final class LearningRepositoryStore: ObservableObject {
         message: String
     ) async -> Bool {
         let succeeded = await performSupportAction(key: "create-question-\(questionItem.id)") {
+            let safeMessage = try SupportContentPolicy.validatedRequired(message)
             try await backend.sendQuestionSupportRequest(
                 from: user,
                 profile: profile,
                 option: option,
                 questionItem: questionItem,
                 selectedAnswer: selectedAnswer,
-                message: message
+                message: safeMessage
             )
         }
         if succeeded {
@@ -357,13 +354,15 @@ final class LearningRepositoryStore: ObservableObject {
 
     func addTeacherReply(to requestId: String, body: String) async -> Bool {
         await performSupportAction(key: "\(requestId):teacher-reply") {
-            try await backend.addTeacherReply(to: requestId, body: body)
+            let safeBody = try SupportContentPolicy.validatedRequired(body)
+            try await backend.addTeacherReply(to: requestId, body: safeBody)
         }
     }
 
     func addVolunteerReply(to requestId: String, body: String) async -> Bool {
         await performSupportAction(key: "\(requestId):volunteer-reply") {
-            try await backend.addVolunteerReply(to: requestId, body: body)
+            let safeBody = try SupportContentPolicy.validatedRequired(body)
+            try await backend.addVolunteerReply(to: requestId, body: safeBody)
         }
     }
 
@@ -397,30 +396,8 @@ final class LearningRepositoryStore: ObservableObject {
         }
     }
 
-    func isSupportActionPending(for requestId: String) -> Bool {
-        pendingSupportActionKeys.contains { $0.hasPrefix("\(requestId):") }
-    }
-
-    var isCreatingSupportRequest: Bool {
-        pendingSupportActionKeys.contains { $0.hasPrefix("create-") }
-    }
-
     func dismissSupportActionError() {
         supportActionErrorMessage = nil
-    }
-
-    func pendingAssignments(forStudentUid studentUid: String?) -> [TeacherAssignedPracticeTask] {
-        guard let studentUid else { return [] }
-        return assignedPracticeTasks
-            .filter { $0.studentUid == studentUid && $0.status == .pending }
-            .sorted { $0.createdAt > $1.createdAt }
-    }
-
-    func assignments(forStudentUid studentUid: String?) -> [TeacherAssignedPracticeTask] {
-        guard let studentUid else { return [] }
-        return assignedPracticeTasks
-            .filter { $0.studentUid == studentUid }
-            .sorted { $0.createdAt > $1.createdAt }
     }
 
     func assignPracticeSet(_ set: QuestionPracticeSet, to student: StaffStudentSummary, by teacher: DemoUser?) {
@@ -439,7 +416,7 @@ final class LearningRepositoryStore: ObservableObject {
         } catch {
             apply(backend.snapshot)
             assignmentActionErrorMessage = (error as? LocalizedError)?.errorDescription
-                ?? "無法開始這組班級任務，請稍後再試。"
+                ?? LearningRepositorySyncFailureClassifier.classify(error).message
             return false
         }
     }
@@ -461,7 +438,7 @@ final class LearningRepositoryStore: ObservableObject {
         } catch {
             apply(backend.snapshot)
             assignmentActionErrorMessage = (error as? LocalizedError)?.errorDescription
-                ?? "答案沒有同步完成，請確認網路後再試一次。"
+                ?? LearningRepositorySyncFailureClassifier.classify(error).message
             return nil
         }
     }
@@ -477,7 +454,7 @@ final class LearningRepositoryStore: ObservableObject {
         } catch {
             apply(backend.snapshot)
             assignmentActionErrorMessage = (error as? LocalizedError)?.errorDescription
-                ?? "任務沒有成功收回，請確認網路後再試一次。"
+                ?? LearningRepositorySyncFailureClassifier.classify(error).message
             return false
         }
     }
@@ -498,7 +475,7 @@ final class LearningRepositoryStore: ObservableObject {
         learningFlow = snapshot.learningFlow
     }
 
-    private func performSupportAction(
+    func performSupportAction(
         key: String,
         reportsFailure: Bool = true,
         operation: () async throws -> Void
@@ -515,7 +492,7 @@ final class LearningRepositoryStore: ObservableObject {
             apply(backend.snapshot)
             if reportsFailure {
                 supportActionErrorMessage = (error as? LocalizedError)?.errorDescription
-                    ?? "同步沒有完成，請確認網路後再試一次。"
+                    ?? LearningRepositorySyncFailureClassifier.classify(error).message
             }
             return false
         }
@@ -525,16 +502,62 @@ final class LearningRepositoryStore: ObservableObject {
         guard let context = syncContext else { return }
         retryTask?.cancel()
         retryTask = nil
+        recoveryTask?.cancel()
+        recoveryTask = nil
         consecutiveSyncFailures = 0
         beginRealtimeListening(context: context, isRetry: false)
     }
 
     private func handleRealtimeSyncFailure(_ error: Error) {
+        recoveryTask?.cancel()
+        recoveryTask = nil
+        if connectivityStatus == .disconnected {
+            retryTask?.cancel()
+            retryTask = nil
+            updateSyncStatus(.offlineFallback(reason: Self.disconnectedMessage))
+            return
+        }
+
+        let disposition = LearningRepositorySyncFailureClassifier.classify(error)
         consecutiveSyncFailures += 1
         updateSyncStatus(
-            .offlineFallback(reason: Self.syncFailureMessage(for: error))
+            .syncIssue(
+                reason: disposition.message,
+                retryAvailable: disposition.shouldRetry
+            )
         )
-        scheduleAutomaticRetryIfPossible()
+        if disposition.shouldRetry {
+            scheduleAutomaticRetryIfPossible()
+        } else {
+            retryTask?.cancel()
+            retryTask = nil
+        }
+    }
+
+    private func handleComponentHealth(
+        _ event: LearningRepositoryListenerHealthEvent,
+        context: LearningRepositorySyncContext
+    ) {
+        switch componentIssues.apply(event) {
+        case .unchanged:
+            return
+        case .issue(let disposition):
+            recoveryTask?.cancel()
+            recoveryTask = nil
+            retryTask?.cancel()
+            retryTask = nil
+            guard connectivityStatus != .disconnected else {
+                updateSyncStatus(.offlineFallback(reason: Self.disconnectedMessage))
+                return
+            }
+            updateSyncStatus(
+                .syncIssue(reason: disposition.message, retryAvailable: disposition.shouldRetry)
+            )
+        case .healthy:
+            if connectivityStatus != .disconnected {
+                scheduleRecoveryConfirmation(for: context)
+            }
+        }
     }
 
     private func scheduleAutomaticRetryIfPossible() {
@@ -556,10 +579,36 @@ final class LearningRepositoryStore: ObservableObject {
             }
             guard let self,
                   self.syncContext?.scopeKey == context.scopeKey,
-                  self.connectivityStatus != .disconnected
+                  self.connectivityStatus != .disconnected,
+                  self.componentIssues.isEmpty
             else { return }
             self.retryTask = nil
-            self.beginRealtimeListening(context: context, isRetry: true)
+            self.beginRealtimeListening(
+                context: context,
+                isRetry: true,
+                presentsProgress: false
+            )
+        }
+    }
+
+    private func scheduleRecoveryConfirmation(for context: LearningRepositorySyncContext) {
+        guard recoveryTask == nil else { return }
+        recoveryTask = Task { @MainActor [weak self] in
+            do {
+                try await Task.sleep(nanoseconds: self?.recoveryConfirmationDelayNanoseconds ?? 0)
+            } catch {
+                return
+            }
+            guard let self,
+                  self.syncContext?.scopeKey == context.scopeKey,
+                  self.connectivityStatus != .disconnected
+            else { return }
+            self.recoveryTask = nil
+            self.retryTask?.cancel()
+            self.retryTask = nil
+            self.consecutiveSyncFailures = 0
+            self.lastSuccessfulSyncAt = Date()
+            self.updateSyncStatus(.listening(classId: context.classId))
         }
     }
 
@@ -573,6 +622,8 @@ final class LearningRepositoryStore: ObservableObject {
         case .disconnected:
             retryTask?.cancel()
             retryTask = nil
+            recoveryTask?.cancel()
+            recoveryTask = nil
             guard syncContext != nil else { return }
             updateSyncStatus(.offlineFallback(reason: Self.disconnectedMessage))
         case .connected:
@@ -581,59 +632,10 @@ final class LearningRepositoryStore: ObservableObject {
         }
     }
 
-    private static func syncFailureMessage(for _: Error) -> String {
-        "同步暫時中斷；你仍可查看目前資料，連線恢復後會自動重試。"
-    }
-
     private static let disconnectedMessage = "網路連線中斷，已切換為裝置上的資料。"
 
     private func updateSyncStatus(_ status: LearningRepositorySyncStatus) {
+        guard syncStatus != status else { return }
         syncStatus = status
-    }
-
-}
-
-extension MockLearningRepository: LearningRepositoryBackend {
-    var snapshot: LearningRepositorySnapshot {
-        LearningRepositorySnapshot(
-            currentCheckIn: currentCheckIn,
-            currentMission: currentMission,
-            missionAttempts: missionAttempts,
-            supportRequests: supportRequests,
-            assignedPracticeTasks: assignedPracticeTasks,
-            masteryRecords: masteryRecords,
-            learningFlow: learningFlow
-        )
-    }
-
-    func refresh() async throws {}
-
-    func startRealtimeListener(
-        classId: String,
-        user: DemoUser?,
-        profile: AppUserProfile?,
-        onChange: @escaping @MainActor (LearningRepositorySnapshot) -> Void,
-        onError: @escaping @MainActor (Error) -> Void
-    ) -> LearningRepositoryListenerToken {
-        onChange(snapshot)
-        return AnyLearningRepositoryListenerToken {}
-    }
-}
-
-private extension Array {
-    func uniqued<ID: Hashable>(by keyPath: KeyPath<Element, ID>) -> [Element] {
-        var seen = Set<ID>()
-        return filter { element in
-            seen.insert(element[keyPath: keyPath]).inserted
-        }
-    }
-}
-
-private extension Array where Element: Hashable {
-    func uniqued() -> [Element] {
-        var seen = Set<Element>()
-        return filter { element in
-            seen.insert(element).inserted
-        }
     }
 }

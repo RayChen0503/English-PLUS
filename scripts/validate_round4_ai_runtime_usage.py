@@ -31,6 +31,7 @@ def main():
         "factory": SERVICES / "FirebaseAppConfigurator.swift",
         "remote_ai": SERVICES / "RemoteAIService.swift",
         "info": IOS_ROOT / "Info.plist",
+        "project": ROOT / "ios" / "EnglishPlus" / "EnglishPlus.xcodeproj" / "project.pbxproj",
     }
 
     for name, path in files.items():
@@ -115,9 +116,10 @@ def main():
         errors,
     )
     require(
-        "ENGLISHPLUS_AI_PROXY_URL" in texts["info"]
-        and "englishplus-ai-proxy.englishplus-ray.workers.dev/ai" in texts["info"],
-        "Info.plist must point the app at the live Cloudflare Worker AI proxy endpoint",
+        "$(ENGLISHPLUS_AI_PROXY_URL)" in texts["info"]
+        and "englishplus-ai-proxy.englishplus-ray.workers.dev/ai" in texts["project"]
+        and "englishplus-ai-proxy-production.englishplus-ray.workers.dev/ai" in texts["project"],
+        "Xcode configurations must isolate live competition and production AI proxy endpoints",
         errors,
     )
     for forbidden in ["GROQ_API_KEY", "https://api.groq.com", "gsk_", "https://openrouter.ai", "OPENROUTER_API_KEY"]:

@@ -12,6 +12,7 @@ WORKER = ROOT / "workers/englishplus-ai-proxy/src/index.js"
 PORTAL = ROOT / "admin-web/src/main.js"
 API = ROOT / "admin-web/src/admin-api.js"
 CONFIG = ROOT / "admin-web/src/config.js"
+COMPETITION_ENV = ROOT / "admin-web/.env.competition"
 FIREBASE = ROOT / "firebase.json"
 
 
@@ -41,6 +42,7 @@ def main() -> None:
     portal = PORTAL.read_text(encoding="utf-8")
     api = API.read_text(encoding="utf-8")
     config = CONFIG.read_text(encoding="utf-8")
+    competition_env = COMPETITION_ENV.read_text(encoding="utf-8")
     firebase = json.loads(FIREBASE.read_text(encoding="utf-8"))
 
     for route in [
@@ -81,14 +83,16 @@ def main() -> None:
     )
     require("createUserWithEmailAndPassword" not in portal, "Admin portal must not offer public registration")
     require(
-        'authDomain: "englishplus-testflight.firebaseapp.com"' in config,
-        "Firebase Hosting auth must use the registered OAuth handler domain",
+        'authDomain: requiredValue("VITE_FIREBASE_AUTH_DOMAIN")' in config
+        and "VITE_FIREBASE_AUTH_DOMAIN=englishplus-testflight.firebaseapp.com" in competition_env,
+        "Firebase Hosting auth must come from the isolated environment config",
     )
     require(
-        'canonicalAdminOrigin = "https://englishplus-testflight.firebaseapp.com"' in portal
-        and 'location.hostname === "englishplus-testflight.web.app"' in portal
+        'canonicalAdminOrigin = `https://${firebaseConfig.authDomain}`' in config
+        and 'canonicalWebAppHost = firebaseConfig.authDomain.replace(' in config
+        and "location.hostname === canonicalWebAppHost" in portal
         and "location.replace(canonicalURL.toString())" in portal,
-        "The web.app alias must canonicalize to the same-origin Firebase Auth host",
+        "Each environment web.app alias must canonicalize to its own Firebase Auth host",
     )
     require("Bearer ${token}" in api, "Admin API must send Firebase ID tokens")
     require("OPENROUTER" not in config and "GROQ_API_KEY" not in config, "AI secrets must not enter the portal")

@@ -124,7 +124,13 @@ def validate_ios_service_contract(errors: list[str]) -> None:
         errors,
     )
     require("ENGLISHPLUS_AI_PROXY_URL" in info, "Info.plist must define ENGLISHPLUS_AI_PROXY_URL", errors)
-    require("https://englishplus-ai-proxy.englishplus-ray.workers.dev/ai" in info, "Info.plist must point to the live Cloudflare Worker endpoint", errors)
+    require(
+        "$(ENGLISHPLUS_AI_PROXY_URL)" in info
+        and "https://englishplus-ai-proxy.englishplus-ray.workers.dev/ai" in project
+        and "https://englishplus-ai-proxy-production.englishplus-ray.workers.dev/ai" in project,
+        "Xcode configurations must isolate live competition and production Worker endpoints",
+        errors,
+    )
 
     for token in ["AIService.swift", "MockAIService.swift", "RemoteAIService.swift"]:
         require(token in project, f"Xcode project missing {token}", errors)

@@ -84,7 +84,8 @@ def validate_ios_contract(errors):
     for builder in REQUIRED_PATH_BUILDERS:
         require(builder in path_swift, f"FirestorePath missing {builder}", errors)
     for token in [
-        "projectId = \"englishplus-testflight\"",
+        "static var projectId: String",
+        "EnglishPlusDeploymentEnvironment.expectedFirebaseProjectID",
         "bundleId = \"com.englishplus\"",
         "configFileName = \"GoogleService-Info.plist\"",
         "FirestoreUserDocument",

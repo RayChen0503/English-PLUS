@@ -29,10 +29,16 @@
 	<key>CFBundleVersion</key>
 	<string>$(CURRENT_PROJECT_VERSION)</string>
 	<key>ENGLISHPLUS_AI_PROXY_URL</key>
-	<string>https://englishplus-ai-proxy.englishplus-ray.workers.dev/ai</string>
+	<string>$(ENGLISHPLUS_AI_PROXY_URL)</string>
+	<key>ENGLISHPLUS_DEPLOYMENT_ENVIRONMENT</key>
+	<string>$(ENGLISHPLUS_DEPLOYMENT_ENVIRONMENT)</string>
 	<key>ENGLISHPLUS_EVIDENCE_UPLOAD_URL</key>
-	<string>https://englishplus-ai-proxy.englishplus-ray.workers.dev</string>
+	<string>$(ENGLISHPLUS_EVIDENCE_UPLOAD_URL)</string>
+	<key>ENGLISHPLUS_EXPECTED_FIREBASE_PROJECT_ID</key>
+	<string>$(ENGLISHPLUS_EXPECTED_FIREBASE_PROJECT_ID)</string>
 	<key>FirebaseCrashlyticsCollectionEnabled</key>
+	<false/>
+	<key>ITSAppUsesNonExemptEncryption</key>
 	<false/>
 	<key>LSRequiresIPhoneOS</key>
 	<true/>

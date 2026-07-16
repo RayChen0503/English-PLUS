@@ -30,6 +30,7 @@ const USER_OWNED_COLLECTIONS = Object.freeze([
   "personalLearningEvents",
   "skillMastery",
   "consents",
+  "blockedSupportAuthors",
 ]);
 const CLASS_STUDENT_COLLECTIONS = Object.freeze([
   "checkIns",
@@ -70,6 +71,17 @@ const VOLUNTEER_QUALIFICATIONS = new Set([
   "educatorCredential",
   "nonprofitOrVolunteerService",
   "other",
+]);
+const SUPPORT_REPORT_STATUSES = new Set([
+  "open",
+  "reviewing",
+  "resolved",
+  "dismissed",
+]);
+const SUPPORT_REPORT_ACTIONS = new Set([
+  "reviewing",
+  "resolved",
+  "dismissed",
 ]);
 
 const TASKS = new Set([
@@ -178,6 +190,22 @@ export default {
 
     if (url.pathname === "/admin/volunteer-audit" && request.method === "GET") {
       return handleVolunteerAudit(request, env, url);
+    }
+
+    if (url.pathname === "/admin/support-reports" && request.method === "GET") {
+      return handleAdminSupportReportList(request, env, url);
+    }
+
+    const adminSupportReport = url.pathname.match(
+      /^\/admin\/support-report\/([A-Za-z0-9_-]{3,64})\/([^/]{1,160})$/
+    );
+    if (adminSupportReport && request.method === "POST") {
+      return handleAdminSupportReportReview(
+        request,
+        env,
+        adminSupportReport[1],
+        decodeURIComponent(adminSupportReport[2])
+      );
     }
 
     if (url.pathname === "/admin/evidence" && request.method === "GET") {
@@ -514,14 +542,19 @@ async function handleAccountDeletion(request, env) {
   try {
     const user = await requireFirebaseUser(request, env);
     const body = await request.json();
-    normalizeAccountDeletionRequest(body);
+    const deletionRequest = normalizeAccountDeletionRequest(body);
     const context = await accountDeletionContext(env, user.sub, user.firebaseIdToken);
     const existingPhase = firestoreString(context.job?.fields?.phase);
 
     if (!existingPhase) {
       requireRecentAuthentication(user);
       const summary = await discoverAccountDeletionSummary(context);
-      await stageAccountDeletionSummary(context, summary, false);
+      const classTransfers = validateAccountDeletionClassTransfers(
+        summary,
+        deletionRequest.classTransfers,
+        true
+      );
+      await stageAccountDeletionSummary(context, summary, false, classTransfers);
       return accountDeletionPendingResponse(requestId, accountDeletionJobProgress(context.job));
     }
 
@@ -531,6 +564,20 @@ async function handleAccountDeletion(request, env) {
     }
 
     if (existingPhase === "ownedClasses") {
+      const currentSummary = await discoverAccountDeletionSummary(context);
+      const classTransfers = validateAccountDeletionClassTransfers(
+        currentSummary,
+        deletionRequest.classTransfers,
+        false
+      );
+      await writeAccountDeletionJob(context, {
+        phase: existingPhase,
+        metricRecorded: context.job?.fields?.metricRecorded?.booleanValue === true,
+        classTransferSelections: {
+          ...firestoreStringMap(context.job?.fields?.classTransferSelections),
+          ...classTransfers,
+        },
+      });
       const progress = await processOwnedClassBatch(context);
       return accountDeletionPendingResponse(requestId, progress);
     }
@@ -543,7 +590,12 @@ async function handleAccountDeletion(request, env) {
     if (existingPhase === "ready") {
       const lateData = await discoverAccountDeletionSummary(context);
       if (accountDeletionPhase(lateData) !== "ready") {
-        await stageAccountDeletionSummary(context, lateData, true);
+        const classTransfers = validateAccountDeletionClassTransfers(
+          lateData,
+          deletionRequest.classTransfers,
+          false
+        );
+        await stageAccountDeletionSummary(context, lateData, true, classTransfers);
         return accountDeletionPendingResponse(requestId, accountDeletionJobProgress(context.job));
       }
     }
@@ -588,7 +640,12 @@ function accountDeletionPhase(summary) {
   return "ready";
 }
 
-async function stageAccountDeletionSummary(context, summary, appendToExisting) {
+async function stageAccountDeletionSummary(
+  context,
+  summary,
+  appendToExisting,
+  classTransferSelections = {}
+) {
   const existingLegacyTotal = appendToExisting
     ? firestoreInteger(context.job?.fields?.legacyThreadTotal)
     : 0;
@@ -607,6 +664,10 @@ async function stageAccountDeletionSummary(context, summary, appendToExisting) {
     ownedClassTotal: existingOwnedClassTotal + summary.ownedClassPaths.length,
     classStudentPaths: summary.classStudentPaths,
     classStudentTotal: existingClassStudentTotal + summary.classStudentPaths.length,
+    classTransferSelections: {
+      ...firestoreStringMap(context.job?.fields?.classTransferSelections),
+      ...classTransferSelections,
+    },
   });
 }
 
@@ -636,7 +697,52 @@ function normalizeAccountDeletionRequest(raw) {
   if (policyVersion !== ACCOUNT_DELETION_POLICY_VERSION) {
     throw httpError(409, "ACCOUNT_DELETION_POLICY_CHANGED");
   }
-  return { confirmation, policyVersion };
+  const classTransfers = {};
+  if (raw?.classTransfers != null) {
+    if (
+      typeof raw.classTransfers !== "object"
+      || Array.isArray(raw.classTransfers)
+    ) {
+      throw httpError(400, "ACCOUNT_CLASS_TRANSFER_SELECTION_REQUIRED");
+    }
+    for (const [classId, successorUid] of Object.entries(raw.classTransfers)) {
+      const normalizedClassId = safeString(classId);
+      const normalizedSuccessorUid = safeString(successorUid);
+      if (!normalizedClassId || !normalizedSuccessorUid) {
+        throw httpError(400, "ACCOUNT_CLASS_TRANSFER_SELECTION_REQUIRED");
+      }
+      classTransfers[normalizedClassId] = normalizedSuccessorUid;
+    }
+  }
+  return { confirmation, policyVersion, classTransfers };
+}
+
+function validateAccountDeletionClassTransfers(summary, selections, strict) {
+  const ownedClasses = Array.isArray(summary?.ownedClasses) ? summary.ownedClasses : [];
+  const ownedClassIds = new Set(ownedClasses.map((classroom) => classroom.classId));
+  if (strict) {
+    for (const classId of Object.keys(selections || {})) {
+      if (!ownedClassIds.has(classId)) {
+        throw httpError(409, "ACCOUNT_CLASS_TRANSFER_SELECTION_STALE");
+      }
+    }
+  }
+  const validated = {};
+  for (const classroom of ownedClasses) {
+    const eligibleUids = new Set(
+      classroom.eligibleCoTeachers.map((teacher) => teacher.uid)
+    );
+    if (eligibleUids.size === 0) continue;
+    const successorUid = safeString(selections?.[classroom.classId]);
+    if (!successorUid) {
+      throw httpError(409, "ACCOUNT_CLASS_TRANSFER_SELECTION_REQUIRED");
+    }
+    if (!eligibleUids.has(successorUid)) {
+      throw httpError(409, "ACCOUNT_CLASS_TRANSFER_SELECTION_STALE");
+    }
+    validated[classroom.classId] = successorUid;
+  }
+  return validated;
 }
 
 function requireRecentAuthentication(user, nowSeconds = Math.floor(Date.now() / 1000)) {
@@ -707,6 +813,9 @@ async function discoverAccountDeletionSummary(context) {
     .filter((thread) => firestoreInteger(thread.fields?.messageContextVersion) < SUPPORT_MESSAGE_CONTEXT_VERSION)
     .map((thread) => relativeFirestorePath(thread.name))
     .sort();
+  const ownedClassSummaries = await Promise.all(
+    ownedClasses.map((classroom) => accountDeletionOwnedClassSummary(context, classroom))
+  );
   return {
     role: context.role,
     membershipCount: memberDocuments.length,
@@ -715,6 +824,9 @@ async function discoverAccountDeletionSummary(context) {
     ownedClassPaths: ownedClasses
       .map((classroom) => relativeFirestorePath(classroom.name))
       .sort(),
+    ownedClasses: ownedClassSummaries.sort((left, right) =>
+      left.className.localeCompare(right.className, "zh-Hant")
+    ),
     classStudentPaths: studentDocuments
       .map((student) => relativeFirestorePath(student.name))
       .sort(),
@@ -791,6 +903,7 @@ async function discoverAccountDeletionPlan(context) {
     ["syncQueue", "studentUid"],
     ["reports", "uid"],
     ["reports", "studentUid"],
+    ["reports", "reportedUid"],
   ];
   const deleteQueryResults = await Promise.all(
     deleteQueryPairs.map(([collectionId, fieldPath]) =>
@@ -833,8 +946,26 @@ async function discoverAccountDeletionPlan(context) {
     }
   ));
 
+  const classTransferSelections = firestoreStringMap(
+    context.job?.fields?.classTransferSelections
+  );
+  let transferredOwnedClassCount = firestoreInteger(
+    context.job?.fields?.transferredOwnedClassCount
+  );
+  let archivedOwnedClassCount = firestoreInteger(
+    context.job?.fields?.archivedOwnedClassCount
+  );
   for (const classroom of ownedClasses) {
-    await appendOwnedClassArchivePlan(context, classroom, deletePaths, updates);
+    const classId = documentId(classroom.name);
+    const disposition = await appendOwnedClassDispositionPlan(
+      context,
+      classroom,
+      classTransferSelections[classId],
+      deletePaths,
+      updates
+    );
+    if (disposition === "transferred") transferredOwnedClassCount += 1;
+    if (disposition === "archived") archivedOwnedClassCount += 1;
   }
 
   for (const path of deletePaths) {
@@ -851,6 +982,8 @@ async function discoverAccountDeletionPlan(context) {
       ownedClasses.length,
       firestoreInteger(context.job?.fields?.ownedClassTotal)
     ),
+    transferredOwnedClassCount,
+    archivedOwnedClassCount,
     hadVolunteerEvidence: Boolean(context.env.VOLUNTEER_EVIDENCE),
   };
 }
@@ -994,11 +1127,18 @@ function compareFirestoreDeletionPaths(left, right) {
 }
 
 function accountDeletionPreview(plan) {
+  const ownedClasses = Array.isArray(plan.ownedClasses) ? plan.ownedClasses : [];
   return {
     role: plan.role,
     classMembershipCount: plan.membershipCount,
     ownedClassCount: plan.ownedClassCount,
-    archivesOwnedClasses: plan.ownedClassCount > 0,
+    archivesOwnedClasses: ownedClasses.some(
+      (classroom) => classroom.eligibleCoTeachers.length === 0
+    ),
+    transfersOwnedClasses: ownedClasses.some(
+      (classroom) => classroom.eligibleCoTeachers.length > 0
+    ),
+    ownedClasses,
     removesIdentifiableData: true,
     retainsAnonymousAggregateOnly: true,
     requiresRecentSignIn: true,
@@ -1058,6 +1198,15 @@ async function processOwnedClassBatch(context) {
   const remainingPaths = storedPaths.slice(batch.length);
   const updates = new Map();
   const deletePaths = new Set();
+  const classTransferSelections = firestoreStringMap(
+    context.job?.fields?.classTransferSelections
+  );
+  let transferredOwnedClassCount = firestoreInteger(
+    context.job?.fields?.transferredOwnedClassCount
+  );
+  let archivedOwnedClassCount = firestoreInteger(
+    context.job?.fields?.archivedOwnedClassCount
+  );
 
   for (const classPath of batch) {
     const classroom = await getFirestoreDocument(
@@ -1067,7 +1216,16 @@ async function processOwnedClassBatch(context) {
       context.firestoreBaseURL
     );
     if (classroom) {
-      await appendOwnedClassArchivePlan(context, classroom, deletePaths, updates);
+      const classId = documentId(classroom.name);
+      const disposition = await appendOwnedClassDispositionPlan(
+        context,
+        classroom,
+        classTransferSelections[classId],
+        deletePaths,
+        updates
+      );
+      if (disposition === "transferred") transferredOwnedClassCount += 1;
+      if (disposition === "archived") archivedOwnedClassCount += 1;
     }
   }
   await commitAccountDeletionUpdates(context, [...updates.values()], [...deletePaths]);
@@ -1082,6 +1240,8 @@ async function processOwnedClassBatch(context) {
         : "ready",
     metricRecorded: false,
     ownedClassPaths: remainingPaths,
+    transferredOwnedClassCount,
+    archivedOwnedClassCount,
   });
   return accountDeletionJobProgress(context.job);
 }
@@ -1159,13 +1319,15 @@ async function executeAccountDeletion(env, uid, existingContext = null) {
     role: plan.role,
     deletedDocuments: plan.deletePaths.length,
     redactedDocuments: plan.updates.length,
-    archivedOwnedClasses: plan.ownedClassCount,
+    transferredOwnedClasses: plan.transferredOwnedClassCount,
+    archivedOwnedClasses: plan.archivedOwnedClassCount,
   }));
   return {
     completed: true,
     deletedDocuments: plan.deletePaths.length,
     redactedDocuments: plan.updates.length,
-    archivedOwnedClasses: plan.ownedClassCount,
+    transferredOwnedClasses: plan.transferredOwnedClassCount,
+    archivedOwnedClasses: plan.archivedOwnedClassCount,
     retainedData: "anonymousAggregateOnly",
   };
 }
@@ -1225,6 +1387,30 @@ function accountDeletionJobWrite(context, state) {
     },
   };
   fields.ownedClassTotal = { integerValue: String(ownedClassTotal) };
+  const classTransferSelections = state.classTransferSelections
+    ?? firestoreStringMap(existing?.fields?.classTransferSelections);
+  fields.classTransferSelections = {
+    mapValue: {
+      fields: Object.fromEntries(
+        Object.entries(classTransferSelections).map(([classId, successorUid]) => [
+          classId,
+          { stringValue: successorUid },
+        ])
+      ),
+    },
+  };
+  const transferredOwnedClassCount = Number.isInteger(state.transferredOwnedClassCount)
+    ? state.transferredOwnedClassCount
+    : firestoreInteger(existing?.fields?.transferredOwnedClassCount);
+  const archivedOwnedClassCount = Number.isInteger(state.archivedOwnedClassCount)
+    ? state.archivedOwnedClassCount
+    : firestoreInteger(existing?.fields?.archivedOwnedClassCount);
+  fields.transferredOwnedClassCount = {
+    integerValue: String(transferredOwnedClassCount),
+  };
+  fields.archivedOwnedClassCount = {
+    integerValue: String(archivedOwnedClassCount),
+  };
   const classStudentPaths = state.classStudentPaths
     ?? firestoreStringArray(existing?.fields?.classStudentPaths);
   const classStudentTotal = Number.isInteger(state.classStudentTotal)
@@ -4510,6 +4696,76 @@ function normalizeAdminApplicationQuery(searchParams) {
   return { scope, status, query };
 }
 
+async function runFirestoreCollectionGroupQuery(
+  context,
+  collectionId,
+  { orderByField = "", limit = 200 } = {}
+) {
+  const endpoint = context.firestoreBaseURL
+    ? `${context.firestoreBaseURL}/v1/projects/${context.projectId}/databases/(default)/documents:runQuery`
+    : `https://firestore.googleapis.com/v1/projects/${context.projectId}/databases/(default)/documents:runQuery`;
+  const headers = { "Content-Type": "application/json" };
+  if (context.accessToken) headers.Authorization = `Bearer ${context.accessToken}`;
+  const structuredQuery = {
+    from: [{ collectionId, allDescendants: true }],
+    limit: Math.min(Math.max(Number(limit) || 1, 1), 500),
+  };
+  if (orderByField) {
+    structuredQuery.orderBy = [{
+      field: { fieldPath: orderByField },
+      direction: "DESCENDING",
+    }];
+  }
+  const response = await fetch(endpoint, {
+    method: "POST",
+    headers,
+    body: JSON.stringify({ structuredQuery }),
+  });
+  const payload = await response.json();
+  if (!response.ok) {
+    const firestoreError = Array.isArray(payload) ? payload[0]?.error : payload?.error;
+    console.error(JSON.stringify({
+      event: "firestore_collection_group_query_failed",
+      collectionId,
+      status: response.status,
+      firestoreStatus: safeString(firestoreError?.status) || "unknown",
+      firestoreMessage: (safeString(firestoreError?.message) || "unknown").slice(0, 400),
+    }));
+    throw httpError(502, "FIRESTORE_QUERY_FAILED");
+  }
+  return (Array.isArray(payload) ? payload : [])
+    .map((item) => item.document)
+    .filter(Boolean);
+}
+
+function normalizeAdminSupportReportQuery(searchParams) {
+  const rawStatus = safeString(searchParams.get("status")) || "";
+  const status = SUPPORT_REPORT_STATUSES.has(rawStatus) ? rawStatus : "";
+  const query = (safeString(searchParams.get("query")) || "")
+    .toLocaleLowerCase("zh-TW")
+    .slice(0, 120);
+  return { status, query };
+}
+
+function normalizeAdminSupportReportReviewRequest(raw) {
+  if (!raw || typeof raw !== "object") {
+    throw httpError(400, "INVALID_JSON");
+  }
+  const action = safeString(raw.action);
+  if (!action || !SUPPORT_REPORT_ACTIONS.has(action)) {
+    throw httpError(400, "INVALID_SUPPORT_REPORT_ACTION");
+  }
+  const note = safeString(raw.note)?.slice(0, 1000) || "";
+  if (note.length < 3) {
+    throw httpError(400, "SUPPORT_REPORT_NOTE_REQUIRED");
+  }
+  const expectedVersion = safeString(raw.expectedVersion) || "";
+  if (expectedVersion && !Number.isFinite(Date.parse(expectedVersion))) {
+    throw httpError(400, "INVALID_SUPPORT_REPORT_VERSION");
+  }
+  return { action, note, expectedVersion };
+}
+
 async function requireVolunteerApplicant(
   user,
   env,
@@ -4889,6 +5145,194 @@ function summarizeVolunteerApplications(applications) {
   return summary;
 }
 
+async function adminFirestoreContext(env) {
+  const projectId = env.FIREBASE_PROJECT_ID || "englishplus-testflight";
+  const firestoreBaseURL = firestoreEmulatorBaseURL(env);
+  const accessToken = firestoreBaseURL ? "owner" : await serviceAccountAccessToken(env);
+  return { projectId, firestoreBaseURL, accessToken };
+}
+
+async function listAdminSupportReports(env, query = { status: "", query: "" }) {
+  const context = await adminFirestoreContext(env);
+  const documents = await runFirestoreCollectionGroupQuery(
+    context,
+    "reports",
+    { orderByField: "createdAt", limit: 200 }
+  );
+  const allReports = documents
+    .map(normalizeAdminSupportReportDocument)
+    .filter((report) => report.classId && report.reportId);
+  const statusFiltered = allReports
+    .filter((report) => !query.status || report.status === query.status)
+    .slice(0, 100);
+  const enriched = await Promise.all(
+    statusFiltered.map((report) => enrichAdminSupportReport(context, report))
+  );
+  const reports = query.query
+    ? enriched.filter((report) => supportReportSearchText(report).includes(query.query))
+    : enriched;
+  return {
+    reports,
+    total: reports.length,
+    summary: summarizeAdminSupportReports(allReports),
+  };
+}
+
+function normalizeAdminSupportReportDocument(document) {
+  const fields = document?.fields || {};
+  return {
+    reportId: firestoreString(fields.reportId) || documentId(document?.name),
+    classId: nestedCollectionParentId(document?.name, "reports"),
+    reporterUid: firestoreString(fields.reporterUid),
+    studentUid: firestoreString(fields.studentUid),
+    reportedUid: firestoreString(fields.reportedUid),
+    reportedRole: firestoreString(fields.reportedRole),
+    threadId: firestoreString(fields.threadId),
+    messageId: firestoreString(fields.messageId),
+    reason: firestoreString(fields.reason),
+    status: firestoreString(fields.status) || "open",
+    createdAt: fields.createdAt?.timestampValue || document?.createTime || "",
+    moderatedAt: fields.moderatedAt?.timestampValue || "",
+    moderatedByUid: firestoreString(fields.moderatedByUid),
+    moderatedByEmail: firestoreString(fields.moderatedByEmail),
+    moderationNote: firestoreString(fields.moderationNote),
+    version: document?.updateTime || "",
+  };
+}
+
+function nestedCollectionParentId(name, collectionId) {
+  const parts = relativeFirestorePath(name).split("/");
+  const index = parts.lastIndexOf(collectionId);
+  return index > 0 ? parts[index - 1] : "";
+}
+
+async function enrichAdminSupportReport(context, report) {
+  const threadPath = `classes/${report.classId}/supportThreads/${report.threadId}`;
+  const messagePath = `${threadPath}/messages/${report.messageId}`;
+  const [thread, message] = await Promise.all([
+    getFirestoreDocument(
+      context.projectId,
+      context.accessToken,
+      threadPath,
+      context.firestoreBaseURL
+    ).catch(() => null),
+    getFirestoreDocument(
+      context.projectId,
+      context.accessToken,
+      messagePath,
+      context.firestoreBaseURL
+    ).catch(() => null),
+  ]);
+  const threadFields = thread?.fields || {};
+  const messageFields = message?.fields || {};
+  const questionFields = threadFields.questionSnapshot?.mapValue?.fields || {};
+  return {
+    ...report,
+    studentName: firestoreString(threadFields.studentName) || "學生",
+    studentMessage: firestoreString(threadFields.studentMessage),
+    questionPrompt: firestoreString(questionFields.prompt),
+    studentAnswer: firestoreString(questionFields.selectedAnswer),
+    correctAnswer: firestoreString(questionFields.correctAnswer),
+    replyAuthorName: firestoreString(messageFields.authorName),
+    replyBody: firestoreString(messageFields.body),
+    contentUnavailable: !thread || !message,
+  };
+}
+
+function supportReportSearchText(report) {
+  return [
+    report.reportId,
+    report.classId,
+    report.reporterUid,
+    report.studentUid,
+    report.reportedUid,
+    report.studentName,
+    report.replyAuthorName,
+    report.replyBody,
+    report.questionPrompt,
+  ]
+    .join(" ")
+    .toLocaleLowerCase("zh-TW");
+}
+
+function summarizeAdminSupportReports(reports) {
+  const summary = { total: reports.length, open: 0, reviewing: 0, resolved: 0, dismissed: 0 };
+  for (const report of reports) {
+    if (Object.hasOwn(summary, report.status)) summary[report.status] += 1;
+  }
+  return summary;
+}
+
+function supportReportTransitionAllowed(currentStatus, action) {
+  if (currentStatus === "open") {
+    return ["reviewing", "resolved", "dismissed"].includes(action);
+  }
+  if (currentStatus === "reviewing") {
+    return ["resolved", "dismissed"].includes(action);
+  }
+  return false;
+}
+
+async function commitAdminSupportReportReview(env, review) {
+  const context = await adminFirestoreContext(env);
+  const path = `classes/${review.classId}/reports/${review.reportId}`;
+  const report = await getFirestoreDocument(
+    context.projectId,
+    context.accessToken,
+    path,
+    context.firestoreBaseURL
+  );
+  if (!report) throw httpError(404, "SUPPORT_REPORT_NOT_FOUND");
+  if (review.expectedVersion && review.expectedVersion !== report.updateTime) {
+    throw httpError(409, "STALE_SUPPORT_REPORT_VERSION");
+  }
+  const previousStatus = firestoreString(report.fields?.status) || "open";
+  if (!supportReportTransitionAllowed(previousStatus, review.action)) {
+    throw httpError(409, "SUPPORT_REPORT_TRANSITION_NOT_ALLOWED");
+  }
+  const now = new Date().toISOString();
+  const auditId = crypto.randomUUID();
+  const root = firestoreRoot(context.projectId);
+  const fields = {
+    status: { stringValue: review.action },
+    moderatedAt: { timestampValue: now },
+    moderatedByUid: { stringValue: review.moderatorUid },
+    moderatedByEmail: { stringValue: review.moderatorEmail },
+    moderationNote: { stringValue: review.note },
+  };
+  const result = await commitFirestoreWrites(context, [
+    maskedUpdateWrite(
+      `${root}/${path}`,
+      fields,
+      Object.keys(fields),
+      report.updateTime
+    ),
+    {
+      update: {
+        name: `${root}/${path}/moderationEvents/${auditId}`,
+        fields: {
+          id: { stringValue: auditId },
+          reportId: { stringValue: review.reportId },
+          classId: { stringValue: review.classId },
+          previousStatus: { stringValue: previousStatus },
+          resultingStatus: { stringValue: review.action },
+          moderatorUid: { stringValue: review.moderatorUid },
+          moderatorEmail: { stringValue: review.moderatorEmail },
+          note: { stringValue: review.note },
+          requestId: { stringValue: review.requestId },
+          createdAt: { timestampValue: now },
+        },
+      },
+      currentDocument: { exists: false },
+    },
+  ]);
+  return {
+    previousStatus,
+    version: result.writeResults?.[0]?.updateTime || now,
+    auditId,
+  };
+}
+
 async function listVolunteerApplicationDocuments(env, accessToken) {
   const projectId = env.FIREBASE_PROJECT_ID || "englishplus-testflight";
   const documents = [];
@@ -5082,6 +5526,92 @@ function firestoreStringArray(value) {
   return (value?.arrayValue?.values || [])
     .map(firestoreString)
     .filter(Boolean);
+}
+
+async function handleAdminSupportReportList(request, env, url) {
+  const requestId = requestIdentifier(request);
+  try {
+    await requireAdministrator(request, env);
+    const query = normalizeAdminSupportReportQuery(url.searchParams);
+    const result = await listAdminSupportReports(env, query);
+    return jsonResponse(
+      { ok: true, ...result, requestId },
+      200,
+      { "X-EnglishPlus-Request-ID": requestId }
+    );
+  } catch (error) {
+    if (error?.status) return authOrValidationError(error, requestId);
+    console.error(JSON.stringify({
+      event: "admin_support_report_list_failed",
+      requestId,
+      errorCode: safeString(error?.code) || "SUPPORT_REPORT_LIST_FAILED",
+    }));
+    return authOrValidationError(
+      httpError(502, "SUPPORT_REPORT_LIST_FAILED"),
+      requestId
+    );
+  }
+}
+
+async function handleAdminSupportReportReview(
+  request,
+  env,
+  classId,
+  reportId
+) {
+  const requestId = requestIdentifier(request);
+  try {
+    const admin = await requireAdministrator(request, env);
+    if (!/^[A-Za-z0-9_-]{1,160}$/.test(reportId)) {
+      throw httpError(400, "INVALID_SUPPORT_REPORT_ID");
+    }
+    const body = normalizeAdminSupportReportReviewRequest(await request.json());
+    const result = await commitAdminSupportReportReview(env, {
+      classId,
+      reportId,
+      action: body.action,
+      note: body.note,
+      expectedVersion: body.expectedVersion,
+      moderatorUid: admin.sub,
+      moderatorEmail: safeString(admin.email)?.slice(0, 320) || "",
+      requestId,
+    });
+    console.log(JSON.stringify({
+      event: "admin_support_report_reviewed",
+      requestId,
+      classId,
+      reportId,
+      moderatorUid: admin.sub,
+      fromStatus: result.previousStatus,
+      toStatus: body.action,
+    }));
+    return jsonResponse(
+      { ok: true, classId, reportId, status: body.action, ...result, requestId },
+      200,
+      { "X-EnglishPlus-Request-ID": requestId }
+    );
+  } catch (error) {
+    if (error?.status) return authOrValidationError(error, requestId);
+    console.error(JSON.stringify({
+      event: "admin_support_report_review_failed",
+      requestId,
+      classId,
+      reportId,
+      errorCode: safeString(error?.code) || "SUPPORT_REPORT_REVIEW_FAILED",
+    }));
+    return authOrValidationError(
+      httpError(502, "SUPPORT_REPORT_REVIEW_FAILED"),
+      requestId
+    );
+  }
+}
+
+function firestoreStringMap(value) {
+  return Object.fromEntries(
+    Object.entries(value?.mapValue?.fields || {})
+      .map(([key, field]) => [key, firestoreString(field)])
+      .filter(([, fieldValue]) => Boolean(fieldValue))
+  );
 }
 
 async function serviceAccountAccessToken(env) {
@@ -5479,6 +6009,109 @@ function normalizeMission(raw, context = {}) {
   };
 }
 
+async function appendOwnedClassDispositionPlan(
+  context,
+  classroom,
+  selectedSuccessorUid,
+  deletePaths,
+  updates
+) {
+  const summary = await accountDeletionOwnedClassSummary(context, classroom);
+  if (summary.eligibleCoTeachers.length === 0) {
+    await appendOwnedClassArchivePlan(context, classroom, deletePaths, updates);
+    return "archived";
+  }
+  if (!summary.eligibleCoTeachers.some((teacher) => teacher.uid === selectedSuccessorUid)) {
+    throw httpError(409, "ACCOUNT_CLASS_TRANSFER_SELECTION_STALE");
+  }
+  await appendOwnedClassTransferPlan(
+    context,
+    classroom,
+    selectedSuccessorUid,
+    updates
+  );
+  return "transferred";
+}
+
+async function appendOwnedClassTransferPlan(
+  context,
+  classroom,
+  successorUid,
+  updates
+) {
+  const classId = documentId(classroom.name);
+  if (!classId) throw httpError(409, "ACCOUNT_CLASS_TRANSFER_SELECTION_STALE");
+  const now = new Date().toISOString();
+  const admin = await getFirestoreDocument(
+    context.projectId,
+    context.accessToken,
+    `classAdmins/${classId}`,
+    context.firestoreBaseURL
+  );
+  addAccountDeletionUpdate(updates, `classes/${classId}`, {
+    ownerTeacherUid: { stringValue: successorUid },
+    active: { booleanValue: true },
+    lifecycleStatus: { stringValue: "active" },
+    archivedReason: { nullValue: null },
+    archivedAt: { nullValue: null },
+    ownershipTransferredAt: { timestampValue: now },
+    updatedAt: { timestampValue: now },
+  });
+  addAccountDeletionUpdate(updates, `classAdmins/${classId}`, {
+    classId: admin?.fields?.classId || { stringValue: classId },
+    ownerTeacherUid: { stringValue: successorUid },
+    ownershipTransferredAt: { timestampValue: now },
+    updatedAt: { timestampValue: now },
+  });
+}
+
+async function accountDeletionOwnedClassSummary(context, classroom) {
+  const classId = documentId(classroom.name);
+  const memberships = await listFirestoreCollection(
+    context.projectId,
+    context.accessToken,
+    `classes/${classId}/members`,
+    context.firestoreBaseURL
+  );
+  const activeTeacherMemberships = memberships.filter((membership) => {
+    const uid = firestoreString(membership.fields?.uid) || documentId(membership.name);
+    return uid
+      && uid !== context.uid
+      && firestoreString(membership.fields?.role) === "teacher"
+      && membershipIsActiveDocument(membership);
+  });
+  const eligibleCoTeachers = (
+    await Promise.all(activeTeacherMemberships.map(async (membership) => {
+      const uid = firestoreString(membership.fields?.uid) || documentId(membership.name);
+      const profile = await getFirestoreDocument(
+        context.projectId,
+        context.accessToken,
+        `users/${uid}`,
+        context.firestoreBaseURL
+      );
+      const isEligible = profile
+        && firestoreString(profile.fields?.primaryRole) === "teacher"
+        && firestoreString(profile.fields?.accountStatus) === "active"
+        && profile.fields?.active?.booleanValue !== false;
+      if (!isEligible) return null;
+      return {
+        uid,
+        displayName: firestoreString(membership.fields?.displayName)
+          || firestoreString(profile.fields?.displayName)
+          || "共同教師",
+      };
+    }))
+  ).filter(Boolean);
+  eligibleCoTeachers.sort((left, right) =>
+    left.displayName.localeCompare(right.displayName, "zh-Hant")
+  );
+  return {
+    classId,
+    className: firestoreString(classroom.fields?.name) || "English+ 班級",
+    eligibleCoTeachers,
+  };
+}
+
 function dailyMissionPolicy(context = {}) {
   const timeLevel = clampInteger(context?.availableTimeLevel, 1, 5, 3);
   const minuteByTimeLevel = [3, 3, 5, 8, 12];
@@ -5715,6 +6348,7 @@ export {
   accountDeletionMetricWrite,
   accountDeletionPhase,
   accountDeletionPreview,
+  accountDeletionOwnedClassSummary,
   aiQuotaPolicy,
   aiTaskCost,
   assertAiTaskRole,
@@ -5738,6 +6372,9 @@ export {
   normalizeEvidenceTicketRequest,
   normalizeAdminApplicationQuery,
   normalizeAdminReviewRequest,
+  normalizeAdminSupportReportDocument,
+  normalizeAdminSupportReportQuery,
+  normalizeAdminSupportReportReviewRequest,
   normalizeAccountDeletionRequest,
   normalizeAiQuotaCommand,
   normalizeClassroomCode,
@@ -5747,6 +6384,7 @@ export {
   normalizeOutput,
   normalizeRequest,
   validateAiTaskContext,
+  validateAccountDeletionClassTransfers,
   personalScopeIdForUid,
   processClassStudentDataBatch,
   processLegacySupportMessageBatch,
@@ -5766,6 +6404,8 @@ export {
   signAdminEvidenceTicket,
   stageAccountDeletionSummary,
   summarizeVolunteerApplications,
+  summarizeAdminSupportReports,
+  supportReportTransitionAllowed,
   verifyUploadTicket,
   verifyAdminEvidenceTicket,
   updateClassroom,

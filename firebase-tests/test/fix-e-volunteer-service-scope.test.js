@@ -85,6 +85,7 @@ function profile(role, provisioningSource) {
     active: true,
     accountStatus: "active",
     provisioningSource,
+    studentAccessPath: role === "student" ? "age13OrOlder" : "notApplicable",
     identityProviders: ["emailPassword"],
     createdAt: now,
     updatedAt: now,

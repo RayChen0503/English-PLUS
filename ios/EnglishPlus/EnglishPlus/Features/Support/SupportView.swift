@@ -202,6 +202,11 @@ private struct SupportOriginalStudentMessageCard: View {
 private struct SupportRequestInboxCard: View {
     @EnvironmentObject private var learningRepository: LearningRepositoryStore
 
+    @State private var replyPendingReport: SupportReply?
+    @State private var replyPendingBlock: SupportReply?
+    @State private var safetyNotice: String?
+    @State private var showsSafetyNotice = false
+
     let request: StudentSupportRequest
     let isProcessing: Bool
     let onArchive: () -> Void
@@ -289,7 +294,11 @@ private struct SupportRequestInboxCard: View {
                     )
                 }
             } else {
-                SupportReplyTimeline(replies: visibleReplies)
+                SupportReplyTimeline(
+                    replies: visibleReplies,
+                    onReport: { replyPendingReport = $0 },
+                    onBlock: { replyPendingBlock = $0 }
+                )
                 SupportThreadActionRow(
                     isProcessing: isProcessing,
                     onArchive: onArchive
@@ -306,6 +315,81 @@ private struct SupportRequestInboxCard: View {
                     _ = await learningRepository.markSupportThreadReadByStudent(request.id)
                 }
             }
+        }
+        .confirmationDialog(
+            "為什麼要檢舉這則回覆？",
+            isPresented: reportDialogBinding,
+            titleVisibility: .visible,
+            presenting: replyPendingReport
+        ) { reply in
+            ForEach(SupportSafetyReportReason.allCases) { reason in
+                Button(reason.title) {
+                    submitReport(reply: reply, reason: reason)
+                }
+            }
+            Button("取消", role: .cancel) {}
+        } message: { _ in
+            Text("檢舉會交由 English+ 管理者檢視，不會通知回覆者。")
+        }
+        .confirmationDialog(
+            "封鎖這位回覆者？",
+            isPresented: blockDialogBinding,
+            titleVisibility: .visible,
+            presenting: replyPendingBlock
+        ) { reply in
+            Button("封鎖並收起這筆", role: .destructive) {
+                block(reply: reply)
+            }
+            Button("取消", role: .cancel) {}
+        } message: { reply in
+            Text("封鎖 \(reply.authorName) 後，對方將不能再回覆你的求助，這筆對話也會從回覆中心收起。")
+        }
+        .alert("處理結果", isPresented: $showsSafetyNotice) {
+            Button("好", role: .cancel) {}
+        } message: {
+            Text(safetyNotice ?? "操作已完成。")
+        }
+    }
+
+    private var reportDialogBinding: Binding<Bool> {
+        Binding(
+            get: { replyPendingReport != nil },
+            set: { isPresented in
+                if !isPresented { replyPendingReport = nil }
+            }
+        )
+    }
+
+    private var blockDialogBinding: Binding<Bool> {
+        Binding(
+            get: { replyPendingBlock != nil },
+            set: { isPresented in
+                if !isPresented { replyPendingBlock = nil }
+            }
+        )
+    }
+
+    private func submitReport(reply: SupportReply, reason: SupportSafetyReportReason) {
+        Task {
+            let didReport = await learningRepository.reportSupportReply(
+                requestId: request.id,
+                reply: reply,
+                reason: reason
+            )
+            safetyNotice = didReport
+                ? "已送出檢舉，管理者會依回覆內容與原因進行檢視。"
+                : "目前無法送出檢舉，請稍後再試。"
+            showsSafetyNotice = true
+        }
+    }
+
+    private func block(reply: SupportReply) {
+        Task {
+            let didBlock = await learningRepository.blockSupportAuthor(reply, requestId: request.id)
+            safetyNotice = didBlock
+                ? "已封鎖這位回覆者，並收起目前對話。"
+                : "目前無法完成封鎖，請稍後再試。"
+            showsSafetyNotice = true
         }
     }
 
@@ -451,6 +535,8 @@ private struct SupportWaitingReplyCard: View {
 
 private struct SupportReplyTimeline: View {
     let replies: [SupportReply]
+    let onReport: (SupportReply) -> Void
+    let onBlock: (SupportReply) -> Void
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
@@ -460,7 +546,7 @@ private struct SupportReplyTimeline: View {
 
             ForEach(replies) { reply in
                 VStack(alignment: .leading, spacing: 5) {
-                    HStack {
+                    HStack(spacing: 8) {
                         Text(reply.authorName)
                             .font(.caption.bold())
                             .foregroundStyle(EPTheme.support)
@@ -468,6 +554,27 @@ private struct SupportReplyTimeline: View {
                         Text(reply.createdAt.formatted(date: .omitted, time: .shortened))
                             .font(.caption2)
                             .foregroundStyle(EPTheme.secondaryInk)
+
+                        Menu {
+                            Button {
+                                onReport(reply)
+                            } label: {
+                                Label("檢舉這則回覆", systemImage: "exclamationmark.bubble")
+                            }
+
+                            Button(role: .destructive) {
+                                onBlock(reply)
+                            } label: {
+                                Label("封鎖這位回覆者", systemImage: "person.crop.circle.badge.xmark")
+                            }
+                        } label: {
+                            Image(systemName: "ellipsis.circle")
+                                .font(.body)
+                                .foregroundStyle(EPTheme.secondaryInk)
+                                .frame(width: 36, height: 36)
+                                .contentShape(Rectangle())
+                        }
+                        .accessibilityLabel("回覆選項")
                     }
 
                     Text(reply.body)

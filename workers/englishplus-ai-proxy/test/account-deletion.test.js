@@ -10,6 +10,7 @@ import {
   normalizeAccountDeletionRequest,
   normalizeOutput,
   requireRecentAuthentication,
+  validateAccountDeletionClassTransfers,
 } from "../src/index.js";
 
 test("account deletion requires the current policy and an explicit destructive confirmation", () => {
@@ -18,7 +19,7 @@ test("account deletion requires the current policy and an explicit destructive c
       confirmation: "DELETE",
       policyVersion: "2026-07-13",
     }),
-    { confirmation: "DELETE", policyVersion: "2026-07-13" }
+    { confirmation: "DELETE", policyVersion: "2026-07-13", classTransfers: {} }
   );
   assert.throws(
     () => normalizeAccountDeletionRequest({ confirmation: "delete", policyVersion: "2026-07-13" }),
@@ -56,16 +57,73 @@ test("deletion preview explains class impact without exposing storage paths", ()
       role: "teacher",
       membershipCount: 3,
       ownedClassCount: 2,
+      ownedClasses: [
+        {
+          classId: "class-a",
+          className: "Class A",
+          eligibleCoTeachers: [{ uid: "teacher-2", displayName: "Teacher 2" }],
+        },
+        {
+          classId: "class-b",
+          className: "Class B",
+          eligibleCoTeachers: [],
+        },
+      ],
     }),
     {
       role: "teacher",
       classMembershipCount: 3,
       ownedClassCount: 2,
       archivesOwnedClasses: true,
+      transfersOwnedClasses: true,
+      ownedClasses: [
+        {
+          classId: "class-a",
+          className: "Class A",
+          eligibleCoTeachers: [{ uid: "teacher-2", displayName: "Teacher 2" }],
+        },
+        {
+          classId: "class-b",
+          className: "Class B",
+          eligibleCoTeachers: [],
+        },
+      ],
       removesIdentifiableData: true,
       retainsAnonymousAggregateOnly: true,
       requiresRecentSignIn: true,
     }
+  );
+});
+
+test("owned classes require a confirmed eligible co-teacher and archive only without one", () => {
+  const summary = {
+    ownedClasses: [
+      {
+        classId: "class-a",
+        eligibleCoTeachers: [{ uid: "teacher-2", displayName: "Teacher 2" }],
+      },
+      { classId: "class-b", eligibleCoTeachers: [] },
+    ],
+  };
+  assert.deepEqual(
+    validateAccountDeletionClassTransfers(
+      summary,
+      { "class-a": "teacher-2" },
+      true
+    ),
+    { "class-a": "teacher-2" }
+  );
+  assert.throws(
+    () => validateAccountDeletionClassTransfers(summary, {}, true),
+    (error) => error.code === "ACCOUNT_CLASS_TRANSFER_SELECTION_REQUIRED"
+  );
+  assert.throws(
+    () => validateAccountDeletionClassTransfers(
+      summary,
+      { "class-a": "former-teacher" },
+      true
+    ),
+    (error) => error.code === "ACCOUNT_CLASS_TRANSFER_SELECTION_STALE"
   );
 });
 

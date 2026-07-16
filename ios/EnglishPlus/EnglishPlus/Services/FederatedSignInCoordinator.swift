@@ -100,6 +100,36 @@ enum FederatedSignInCoordinator {
         }
     }
 
+    static func appleAccountDeletionCredential(
+        from result: Result<ASAuthorization, Error>,
+        rawNonce: String?
+    ) throws -> AppleAccountDeletionCredential {
+        switch result {
+        case .failure(let error as ASAuthorizationError) where error.code == .canceled:
+            throw FederatedSignInCoordinatorError.cancelled
+        case .failure(let error):
+            throw error
+        case .success(let authorization):
+            guard
+                let appleCredential = authorization.credential as? ASAuthorizationAppleIDCredential,
+                let tokenData = appleCredential.identityToken,
+                let idToken = String(data: tokenData, encoding: .utf8),
+                let authorizationCodeData = appleCredential.authorizationCode,
+                let authorizationCode = String(data: authorizationCodeData, encoding: .utf8),
+                let rawNonce,
+                !rawNonce.isEmpty,
+                !authorizationCode.isEmpty
+            else {
+                throw FederatedSignInCoordinatorError.invalidCredential
+            }
+            return AppleAccountDeletionCredential(
+                idToken: idToken,
+                rawNonce: rawNonce,
+                authorizationCode: authorizationCode
+            )
+        }
+    }
+
     static func handleOpenURL(_ url: URL) {
         #if canImport(GoogleSignIn)
         _ = GIDSignIn.sharedInstance.handle(url)

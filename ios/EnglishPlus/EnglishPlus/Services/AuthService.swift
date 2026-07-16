@@ -11,7 +11,7 @@ enum AccountCreationOutcome: Equatable {
     case approvalPending(email: String, role: UserRole)
 }
 
-enum AuthServiceError: Error, Equatable {
+enum AuthServiceError: Error, Equatable, LocalizedError {
     case invalidEmail
     case invalidCredentials
     case weakPassword
@@ -74,11 +74,12 @@ enum AuthServiceError: Error, Equatable {
             return "目前無法完成這個操作，請稍後再試。"
         }
     }
+
+    var errorDescription: String? { userMessage }
 }
 
 protocol AuthService {
     func demoSession(for role: UserRole) -> AuthSession
-    func signInDemoAccount(for role: UserRole) async throws -> AuthSession
     func signIn(email: String, password: String, expectedRole: UserRole) async throws -> AuthSession
     func createAccount(_ registration: AccountRegistration) async throws -> AccountCreationOutcome
     func signIn(
@@ -104,6 +105,10 @@ protocol AuthService {
         in session: AuthSession
     ) async throws -> VolunteerApplicationReviewState?
     func currentUserIsAdministrator() async -> Bool
+    func currentUserUses(_ provider: AccountIdentityProvider) -> Bool
+    func reauthenticateAndRevokeAppleToken(
+        using credential: AppleAccountDeletionCredential
+    ) async throws
     func sendPasswordReset(email: String) async throws
     func resendVerification(email: String, password: String) async throws
     func restorePreviousSession() async throws -> AuthSession?
@@ -112,26 +117,6 @@ protocol AuthService {
 }
 
 extension AuthService {
-    func signInDemoAccount(for role: UserRole) async throws -> AuthSession {
-        let credential = DemoAccountCredential.credential(for: role)
-        return try await signIn(
-            email: credential.email,
-            password: credential.password,
-            expectedRole: role
-        )
-    }
-
-    func signIn(email: String, password: String, expectedRole: UserRole) async throws -> AuthSession {
-        let credential = DemoAccountCredential.credential(for: expectedRole)
-        guard
-            email.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() == credential.email,
-            password == credential.password
-        else {
-            throw AuthServiceError.invalidCredentials
-        }
-        return demoSession(for: expectedRole)
-    }
-
     func createAccount(
         email: String,
         password: String,
@@ -192,6 +177,14 @@ extension AuthService {
 
     func currentUserIsAdministrator() async -> Bool { false }
 
+    func currentUserUses(_ provider: AccountIdentityProvider) -> Bool { false }
+
+    func reauthenticateAndRevokeAppleToken(
+        using credential: AppleAccountDeletionCredential
+    ) async throws {
+        throw AuthServiceError.identityProviderUnavailable
+    }
+
     func sendPasswordReset(email: String) async throws {}
 
     func resendVerification(email: String, password: String) async throws {}
@@ -221,33 +214,4 @@ enum DemoAuthError: Error, Equatable {
     case invalidCredential
     case accountCreationUnavailable
     case invalidClassSelection
-}
-
-struct DemoAccountCredential: Equatable {
-    let role: UserRole
-    let email: String
-    let password: String
-
-    static func credential(for role: UserRole) -> DemoAccountCredential {
-        switch role {
-        case .student:
-            return DemoAccountCredential(
-                role: .student,
-                email: "student.demo@englishplus.test",
-                password: "EnglishPlusStudent2026!"
-            )
-        case .teacher:
-            return DemoAccountCredential(
-                role: .teacher,
-                email: "teacher.demo@englishplus.test",
-                password: "EnglishPlusTeacher2026!"
-            )
-        case .volunteer:
-            return DemoAccountCredential(
-                role: .volunteer,
-                email: "volunteer.demo@englishplus.test",
-                password: "EnglishPlusVolunteer2026!"
-            )
-        }
-    }
 }

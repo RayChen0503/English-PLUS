@@ -9,6 +9,7 @@ TEACHER_SHELL = IOS_ROOT / "Features" / "Teacher" / "TeacherShellView.swift"
 TEACHER_HOME = IOS_ROOT / "Features" / "Teacher" / "TeacherHomeView.swift"
 QUESTION_MODEL = IOS_ROOT / "Models" / "Question.swift"
 STORE = IOS_ROOT / "Services" / "LearningRepositoryStore.swift"
+STORE_REPORTING = IOS_ROOT / "Services" / "LearningRepositoryStore+Reporting.swift"
 
 
 def read(path: Path) -> str:
@@ -32,7 +33,7 @@ def reject_tokens(label: str, text: str, tokens: list[str], errors: list[str]) -
 
 def main() -> int:
     errors: list[str] = []
-    for path in [TEACHER_SHELL, TEACHER_HOME, QUESTION_MODEL, STORE]:
+    for path in [TEACHER_SHELL, TEACHER_HOME, QUESTION_MODEL, STORE, STORE_REPORTING]:
         require(path.exists(), f"missing file: {path.relative_to(ROOT)}", errors)
 
     if errors:
@@ -43,7 +44,7 @@ def main() -> int:
     shell = read(TEACHER_SHELL)
     home = read(TEACHER_HOME)
     question_model = read(QUESTION_MODEL)
-    store = read(STORE)
+    store = read(STORE) + read(STORE_REPORTING)
 
     require_tokens(
         "TeacherShellView",

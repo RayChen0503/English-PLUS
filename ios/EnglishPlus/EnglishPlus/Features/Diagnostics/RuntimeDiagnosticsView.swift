@@ -87,6 +87,8 @@ struct RuntimeDiagnosticsView: View {
             return "retrying \(classId) attempt \(attempt)"
         case .offlineFallback(let reason):
             return "fallback \(reason)"
+        case .syncIssue(let reason, let retryAvailable):
+            return "sync issue retry=\(retryAvailable) \(reason)"
         }
     }
 
@@ -128,6 +130,8 @@ private extension EnglishPlusBackendMode {
             return "mock"
         case .firebase:
             return "firebase"
+        case .configurationError:
+            return "configuration-error"
         }
     }
 }

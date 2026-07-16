@@ -57,6 +57,7 @@ beforeEach(async () => {
         active: true,
         accountStatus: "active",
         provisioningSource,
+        studentAccessPath: role === "student" ? "age13OrOlder" : "notApplicable",
         identityProviders: ["emailPassword"],
         createdAt: joinedAt,
         updatedAt: joinedAt,

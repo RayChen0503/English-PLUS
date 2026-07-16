@@ -6,7 +6,13 @@ struct RootView: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
-        diagnosticsContent
+        Group {
+            if appState.runtimeDiagnostics.backendMode == .configurationError {
+                ServiceConfigurationUnavailableView()
+            } else {
+                diagnosticsContent
+            }
+        }
             .alert("同步未完成", isPresented: supportErrorIsPresented) {
                 Button("好") {
                     learningRepository.dismissSupportActionError()
@@ -74,12 +80,15 @@ struct RootView: View {
             .onChange(of: appState.currentProfile?.id) { _, _ in
                 startRealtimeSyncIfNeeded()
             }
-            .safeAreaInset(edge: .top, spacing: 0) {
+            .overlay(alignment: .top) {
                 RepositorySyncBanner(
                     status: learningRepository.syncStatus,
                     lastSuccessfulSyncAt: learningRepository.lastSuccessfulSyncAt,
                     onRetry: learningRepository.retryRealtimeSync
                 )
+                .padding(.horizontal, 12)
+                .padding(.top, 8)
+                .zIndex(20)
             }
     }
 
@@ -149,6 +158,8 @@ struct RootView: View {
             AppDiagnostics.shared.log(.realtimeSyncConnected)
         case .offlineFallback:
             AppDiagnostics.shared.log(.realtimeSyncOffline)
+        case .syncIssue:
+            AppDiagnostics.shared.log(.realtimeSyncIssue)
         default:
             break
         }
@@ -167,5 +178,29 @@ struct RootView: View {
             user: appState.currentUser,
             profile: currentProfile
         )
+    }
+}
+
+private struct ServiceConfigurationUnavailableView: View {
+    var body: some View {
+        ZStack {
+            EPTheme.background.ignoresSafeArea()
+            VStack(spacing: 16) {
+                Image(systemName: "wrench.and.screwdriver")
+                    .font(.system(size: 34, weight: .semibold))
+                    .foregroundStyle(EPTheme.primary)
+
+                Text("服務設定尚未完成")
+                    .font(.title2.bold())
+                    .foregroundStyle(EPTheme.ink)
+
+                Text("這個版本目前無法安全連線。請更新 App，或聯絡 englishplus.tw@gmail.com。")
+                    .font(.body)
+                    .foregroundStyle(EPTheme.secondaryInk)
+                    .multilineTextAlignment(.center)
+            }
+            .padding(28)
+            .frame(maxWidth: 420)
+        }
     }
 }

@@ -23,8 +23,32 @@ enum AccountProvisioningSource: String, Codable {
     case selfServiceStudent
     case selfServiceTeacher
     case selfServiceVolunteer
+    case managedStudent
     case internalSeed
     case legacyMigration
+}
+
+enum StudentAccountAccessPath: String, Codable, Equatable {
+    case age13OrOlder
+    case schoolOrGuardianManaged
+    case legacyUnspecified
+    case notApplicable
+}
+
+enum StudentRegistrationEligibility: String, CaseIterable, Identifiable {
+    case age13OrOlder
+    case under13NeedsManagedAccount
+
+    var id: String { rawValue }
+
+    var accessPath: StudentAccountAccessPath? {
+        switch self {
+        case .age13OrOlder:
+            return .age13OrOlder
+        case .under13NeedsManagedAccount:
+            return nil
+        }
+    }
 }
 
 enum EducationInstitutionKind: String, Codable, CaseIterable, Hashable {
@@ -216,6 +240,22 @@ struct RoleOnboardingProfile: Equatable {
     let role: UserRole
     let teacherAffiliation: TeacherAffiliation?
     let volunteerApplication: VolunteerApplicationInput?
+    let studentAccessPath: StudentAccountAccessPath
+
+    init(
+        displayName: String,
+        role: UserRole,
+        teacherAffiliation: TeacherAffiliation?,
+        volunteerApplication: VolunteerApplicationInput?,
+        studentAccessPath: StudentAccountAccessPath? = nil
+    ) {
+        self.displayName = displayName
+        self.role = role
+        self.teacherAffiliation = teacherAffiliation
+        self.volunteerApplication = volunteerApplication
+        self.studentAccessPath = studentAccessPath
+            ?? (role == .student ? .legacyUnspecified : .notApplicable)
+    }
 
     var normalizedDisplayName: String {
         displayName.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -224,13 +264,17 @@ struct RoleOnboardingProfile: Equatable {
     var hasRequiredRoleDetails: Bool {
         switch role {
         case .student:
-            return teacherAffiliation == nil && volunteerApplication == nil
+            return teacherAffiliation == nil
+                && volunteerApplication == nil
+                && studentAccessPath == .age13OrOlder
         case .teacher:
             return teacherAffiliation?.isValidSelfDeclaration == true
                 && volunteerApplication == nil
+                && studentAccessPath == .notApplicable
         case .volunteer:
             return teacherAffiliation == nil
                 && volunteerApplication?.hasRequiredIdentityDetails == true
+                && studentAccessPath == .notApplicable
         }
     }
 }
@@ -242,6 +286,26 @@ struct AccountRegistration: Equatable {
     let role: UserRole
     let teacherAffiliation: TeacherAffiliation?
     let volunteerApplication: VolunteerApplicationInput?
+    let studentAccessPath: StudentAccountAccessPath
+
+    init(
+        email: String,
+        password: String,
+        displayName: String,
+        role: UserRole,
+        teacherAffiliation: TeacherAffiliation?,
+        volunteerApplication: VolunteerApplicationInput?,
+        studentAccessPath: StudentAccountAccessPath? = nil
+    ) {
+        self.email = email
+        self.password = password
+        self.displayName = displayName
+        self.role = role
+        self.teacherAffiliation = teacherAffiliation
+        self.volunteerApplication = volunteerApplication
+        self.studentAccessPath = studentAccessPath
+            ?? (role == .student ? .legacyUnspecified : .notApplicable)
+    }
 
     var normalizedEmail: String {
         email.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
@@ -260,7 +324,8 @@ struct AccountRegistration: Equatable {
             displayName: displayName,
             role: role,
             teacherAffiliation: teacherAffiliation,
-            volunteerApplication: volunteerApplication
+            volunteerApplication: volunteerApplication,
+            studentAccessPath: studentAccessPath
         )
     }
 }
@@ -277,6 +342,12 @@ enum FederatedIdentityCredential: Equatable {
             return .apple
         }
     }
+}
+
+struct AppleAccountDeletionCredential: Equatable {
+    let idToken: String
+    let rawNonce: String
+    let authorizationCode: String
 }
 
 struct EducationInstitutionCatalogSeed: SeedLoadable, Equatable {

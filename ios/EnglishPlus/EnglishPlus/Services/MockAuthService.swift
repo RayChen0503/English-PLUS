@@ -25,6 +25,14 @@ struct MockAuthService: AuthService, Sendable {
         )
     }
 
+    func signIn(email: String, password: String, expectedRole: UserRole) async throws -> AuthSession {
+        let cleanedEmail = email.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        guard cleanedEmail.hasSuffix("@ui-test.invalid"), password.count >= 8 else {
+            throw AuthServiceError.invalidCredentials
+        }
+        return demoSession(for: expectedRole)
+    }
+
     func createAccount(_ registration: AccountRegistration) async throws -> AccountCreationOutcome {
         let cleanedEmail = registration.normalizedEmail
         let cleanedName = registration.normalizedDisplayName
@@ -51,6 +59,7 @@ struct MockAuthService: AuthService, Sendable {
             id: profileId,
             displayName: cleanedName,
             role: registration.role,
+            studentAccessPath: registration.studentAccessPath,
             classId: FirebaseBackendConfig.personalScopeId(uid: profileId),
             groupId: nil,
             consentStatus: .pending,

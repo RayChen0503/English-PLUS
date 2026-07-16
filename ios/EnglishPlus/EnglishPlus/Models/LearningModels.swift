@@ -639,6 +639,9 @@ struct StudentSupportRequest: Identifiable, Codable, Equatable {
         if isWithdrawn {
             return .closed
         }
+        if studentArchivedAt != nil {
+            return .readByStudent
+        }
         if !visibleStaffRepliesToStudent.isEmpty {
             return hasStudentUnreadReply ? .replied : .readByStudent
         }
@@ -848,6 +851,28 @@ struct SupportReply: Identifiable, Codable, Equatable {
 
     var isStaffReply: Bool {
         authorRole == .teacher || authorRole == .volunteer
+    }
+}
+
+enum SupportSafetyReportReason: String, CaseIterable, Identifiable, Codable {
+    case inappropriateContent
+    case harassment
+    case privacyConcern
+    case other
+
+    var id: String { rawValue }
+
+    var title: String {
+        switch self {
+        case .inappropriateContent:
+            return "內容不適當"
+        case .harassment:
+            return "讓我感到不舒服"
+        case .privacyConcern:
+            return "涉及個人資料"
+        case .other:
+            return "其他原因"
+        }
     }
 }
 

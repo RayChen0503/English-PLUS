@@ -10,8 +10,10 @@ IOS_ROOT = ROOT / "ios" / "EnglishPlus" / "EnglishPlus"
 REMOTE_AI = IOS_ROOT / "Services" / "RemoteAIService.swift"
 FACTORY = IOS_ROOT / "Services" / "FirebaseAppConfigurator.swift"
 INFO_PLIST = IOS_ROOT / "Info.plist"
+PROJECT = ROOT / "ios" / "EnglishPlus" / "EnglishPlus.xcodeproj" / "project.pbxproj"
 GITIGNORE = ROOT / ".gitignore"
-EXPECTED_AI_PROXY_URL = "https://englishplus-ai-proxy.englishplus-ray.workers.dev/ai"
+COMPETITION_AI_PROXY_URL = "https://englishplus-ai-proxy.englishplus-ray.workers.dev/ai"
+PRODUCTION_AI_PROXY_URL = "https://englishplus-ai-proxy-production.englishplus-ray.workers.dev/ai"
 
 TASKS = [
     "dailyMission",
@@ -95,6 +97,7 @@ def validate_ios(errors):
     remote = read(REMOTE_AI)
     factory = read(FACTORY)
     info = read(INFO_PLIST)
+    project = read(PROJECT)
     all_swift = "\n".join(path.read_text(encoding="utf-8") for path in IOS_ROOT.rglob("*.swift"))
 
     for token in [
@@ -120,8 +123,10 @@ def validate_ios(errors):
     )
     require("ENGLISHPLUS_AI_PROXY_URL" in info, "Info.plist must define ENGLISHPLUS_AI_PROXY_URL", errors)
     require(
-        EXPECTED_AI_PROXY_URL in info,
-        f"Info.plist must point ENGLISHPLUS_AI_PROXY_URL to {EXPECTED_AI_PROXY_URL}",
+        "$(ENGLISHPLUS_AI_PROXY_URL)" in info
+        and COMPETITION_AI_PROXY_URL in project
+        and PRODUCTION_AI_PROXY_URL in project,
+        "Xcode configurations must isolate competition and production AI proxy URLs",
         errors,
     )
 

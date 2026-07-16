@@ -139,6 +139,40 @@ describe("administrator API client", () => {
     expect(fetchImpl.mock.calls[0][1].headers.Accept).toBe("application/json");
   });
 
+  test("lists and reviews support reports through administrator-only endpoints", async () => {
+    const fetchImpl = vi.fn(async () =>
+      new Response(JSON.stringify({ ok: true, reports: [] }), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      })
+    );
+    const api = createAdminApi({
+      baseURL: "https://worker.example/",
+      getToken: async () => "token",
+      fetchImpl,
+    });
+
+    await api.supportReports({ status: "open", query: "teacher-1" });
+    expect(fetchImpl.mock.calls[0][0].toString()).toBe(
+      "https://worker.example/admin/support-reports?status=open&query=teacher-1"
+    );
+
+    await api.reviewSupportReport("CLASS-8A", "report-1", {
+      action: "resolved",
+      note: "已完成查核與處理。",
+      expectedVersion: "2026-07-16T00:00:00.000Z",
+    });
+    const [url, options] = fetchImpl.mock.calls[1];
+    expect(url.toString()).toBe(
+      "https://worker.example/admin/support-report/CLASS-8A/report-1"
+    );
+    expect(options.method).toBe("POST");
+    expect(JSON.parse(options.body)).toMatchObject({
+      action: "resolved",
+      note: "已完成查核與處理。",
+    });
+  });
+
   test("AdminApiError keeps the original backend status", () => {
     expect(new AdminApiError("ADMIN_REQUIRED", 403, "r1")).toMatchObject({
       code: "ADMIN_REQUIRED",

@@ -1,10 +1,28 @@
 import Foundation
 
+struct AccountDeletionTeacherCandidate: Decodable, Equatable, Identifiable {
+    let uid: String
+    let displayName: String
+
+    var id: String { uid }
+}
+
+struct AccountDeletionOwnedClass: Decodable, Equatable, Identifiable {
+    let classId: String
+    let className: String
+    let eligibleCoTeachers: [AccountDeletionTeacherCandidate]
+
+    var id: String { classId }
+    var requiresTransferSelection: Bool { !eligibleCoTeachers.isEmpty }
+}
+
 struct AccountDeletionPreview: Decodable, Equatable {
     let role: String
     let classMembershipCount: Int
     let ownedClassCount: Int
     let archivesOwnedClasses: Bool
+    let transfersOwnedClasses: Bool
+    let ownedClasses: [AccountDeletionOwnedClass]
     let removesIdentifiableData: Bool
     let retainsAnonymousAggregateOnly: Bool
     let requiresRecentSignIn: Bool
@@ -15,6 +33,7 @@ struct AccountDeletionReceipt: Decodable, Equatable {
     let deletedDocuments: Int
     let redactedDocuments: Int
     let archivedOwnedClasses: Int
+    let transferredOwnedClasses: Int
     let retainedData: String
 }
 
@@ -23,6 +42,8 @@ enum AccountLifecycleError: LocalizedError, Equatable {
     case unauthenticated
     case recentSignInRequired
     case policyChanged
+    case classTransferSelectionRequired
+    case classTransferSelectionStale
     case cleanupFailed
     case invalidResponse
 
@@ -36,6 +57,10 @@ enum AccountLifecycleError: LocalizedError, Equatable {
             return "為了保護帳號，請先登出並重新登入，再回來刪除帳號。"
         case .policyChanged:
             return "資料刪除說明已更新，請重新閱讀後再確認。"
+        case .classTransferSelectionRequired:
+            return "請先為仍有共同教師的班級選擇接手老師，再繼續刪除帳號。"
+        case .classTransferSelectionStale:
+            return "班級接手資格剛剛有變動。請重新載入刪除影響並再次確認。"
         case .cleanupFailed:
             return "資料尚未完整刪除，系統沒有把操作標示成完成。請稍後重試。"
         case .invalidResponse:
@@ -46,7 +71,7 @@ enum AccountLifecycleError: LocalizedError, Equatable {
 
 protocol AccountLifecycleService {
     func deletionPreview() async throws -> AccountDeletionPreview
-    func deleteAccount() async throws -> AccountDeletionReceipt
+    func deleteAccount(classTransfers: [String: String]) async throws -> AccountDeletionReceipt
 }
 
 struct UnavailableAccountLifecycleService: AccountLifecycleService {
@@ -54,7 +79,7 @@ struct UnavailableAccountLifecycleService: AccountLifecycleService {
         throw AccountLifecycleError.unavailable
     }
 
-    func deleteAccount() async throws -> AccountDeletionReceipt {
+    func deleteAccount(classTransfers: [String: String]) async throws -> AccountDeletionReceipt {
         throw AccountLifecycleError.unavailable
     }
 }
@@ -66,18 +91,21 @@ struct MockAccountLifecycleService: AccountLifecycleService {
             classMembershipCount: 0,
             ownedClassCount: 0,
             archivesOwnedClasses: false,
+            transfersOwnedClasses: false,
+            ownedClasses: [],
             removesIdentifiableData: true,
             retainsAnonymousAggregateOnly: true,
             requiresRecentSignIn: true
         )
     }
 
-    func deleteAccount() async throws -> AccountDeletionReceipt {
+    func deleteAccount(classTransfers: [String: String]) async throws -> AccountDeletionReceipt {
         AccountDeletionReceipt(
             completed: true,
             deletedDocuments: 0,
             redactedDocuments: 0,
             archivedOwnedClasses: 0,
+            transferredOwnedClasses: 0,
             retainedData: "anonymousAggregateOnly"
         )
     }
@@ -117,10 +145,14 @@ struct RemoteAccountLifecycleService: AccountLifecycleService {
         return preview
     }
 
-    func deleteAccount() async throws -> AccountDeletionReceipt {
+    func deleteAccount(classTransfers: [String: String]) async throws -> AccountDeletionReceipt {
         let token = try await currentToken()
         let body = try JSONEncoder().encode(
-            DeletionRequest(confirmation: "DELETE", policyVersion: "2026-07-13")
+            DeletionRequest(
+                confirmation: "DELETE",
+                policyVersion: "2026-07-13",
+                classTransfers: classTransfers
+            )
         )
 
         // Legacy support threads are cleaned in bounded Worker batches so a
@@ -141,6 +173,7 @@ struct RemoteAccountLifecycleService: AccountLifecycleService {
                     let deletedDocuments = progress.deletedDocuments,
                     let redactedDocuments = progress.redactedDocuments,
                     let archivedOwnedClasses = progress.archivedOwnedClasses,
+                    let transferredOwnedClasses = progress.transferredOwnedClasses,
                     let retainedData = progress.retainedData
                 else {
                     throw AccountLifecycleError.invalidResponse
@@ -150,6 +183,7 @@ struct RemoteAccountLifecycleService: AccountLifecycleService {
                     deletedDocuments: deletedDocuments,
                     redactedDocuments: redactedDocuments,
                     archivedOwnedClasses: archivedOwnedClasses,
+                    transferredOwnedClasses: transferredOwnedClasses,
                     retainedData: retainedData
                 )
             }
@@ -193,6 +227,10 @@ struct RemoteAccountLifecycleService: AccountLifecycleService {
                 throw AccountLifecycleError.recentSignInRequired
             case "ACCOUNT_DELETION_POLICY_CHANGED":
                 throw AccountLifecycleError.policyChanged
+            case "ACCOUNT_CLASS_TRANSFER_SELECTION_REQUIRED":
+                throw AccountLifecycleError.classTransferSelectionRequired
+            case "ACCOUNT_CLASS_TRANSFER_SELECTION_STALE":
+                throw AccountLifecycleError.classTransferSelectionStale
             case "ACCOUNT_AUTH_DELETION_FAILED", "FIRESTORE_COMMIT_FAILED", "ACCOUNT_EVIDENCE_STORAGE_UNAVAILABLE":
                 throw AccountLifecycleError.cleanupFailed
             default:
@@ -215,12 +253,14 @@ private struct AccountDeletionProgress: Decodable {
     let deletedDocuments: Int?
     let redactedDocuments: Int?
     let archivedOwnedClasses: Int?
+    let transferredOwnedClasses: Int?
     let retainedData: String?
 }
 
 private struct DeletionRequest: Encodable {
     let confirmation: String
     let policyVersion: String
+    let classTransfers: [String: String]
 }
 
 private struct ErrorEnvelope: Decodable {

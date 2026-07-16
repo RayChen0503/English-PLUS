@@ -2,6 +2,7 @@ import XCTest
 
 final class EnglishPlusCriticalFlowsUITests: XCTestCase {
     private var app: XCUIApplication!
+    private let uiTestPassword = "not-a-real-secret"
 
     override func setUpWithError() throws {
         continueAfterFailure = false
@@ -25,8 +26,8 @@ final class EnglishPlusCriticalFlowsUITests: XCTestCase {
     func testStudentCanSignInAcceptConsentAndReachStudentNavigation() {
         launchAndEnterHome(
             roleIdentifier: "role.student",
-            email: "student.demo@englishplus.test",
-            password: "EnglishPlusStudent2026!",
+            email: "student@ui-test.invalid",
+            password: uiTestPassword,
             requiresGuardianConsent: true
         )
 
@@ -36,8 +37,8 @@ final class EnglishPlusCriticalFlowsUITests: XCTestCase {
     func testTeacherCanSignInAcceptConsentAndReachTeacherNavigation() {
         launchAndEnterHome(
             roleIdentifier: "role.teacher",
-            email: "teacher.demo@englishplus.test",
-            password: "EnglishPlusTeacher2026!"
+            email: "teacher@ui-test.invalid",
+            password: uiTestPassword
         )
 
         assertTabBarContains(["首頁", "班級", "接力", "報告"])
@@ -46,8 +47,8 @@ final class EnglishPlusCriticalFlowsUITests: XCTestCase {
     func testVolunteerCanSignInAcceptConsentAndReachVolunteerNavigation() {
         launchAndEnterHome(
             roleIdentifier: "role.volunteer",
-            email: "volunteer.demo@englishplus.test",
-            password: "EnglishPlusVolunteer2026!"
+            email: "volunteer@ui-test.invalid",
+            password: uiTestPassword
         )
 
         assertTabBarContains(["首頁", "班級", "接力", "紀錄"])
@@ -71,8 +72,8 @@ final class EnglishPlusCriticalFlowsUITests: XCTestCase {
     func testTeacherWorkspaceKeepsDailyActionsSeparateFromSettingsAndReportDetail() {
         launchAndEnterHome(
             roleIdentifier: "role.teacher",
-            email: "teacher.demo@englishplus.test",
-            password: "EnglishPlusTeacher2026!"
+            email: "teacher@ui-test.invalid",
+            password: uiTestPassword
         )
 
         app.tabBars.buttons["班級"].tap()
@@ -86,8 +87,8 @@ final class EnglishPlusCriticalFlowsUITests: XCTestCase {
         app.launchArguments.append("-EnglishPlusStartOffline")
         launchAndEnterHome(
             roleIdentifier: "role.student",
-            email: "student.demo@englishplus.test",
-            password: "EnglishPlusStudent2026!",
+            email: "student@ui-test.invalid",
+            password: uiTestPassword,
             requiresGuardianConsent: true
         )
 
@@ -103,8 +104,8 @@ final class EnglishPlusCriticalFlowsUITests: XCTestCase {
         ])
         launchAndEnterHome(
             roleIdentifier: "role.student",
-            email: "student.demo@englishplus.test",
-            password: "EnglishPlusStudent2026!",
+            email: "student@ui-test.invalid",
+            password: uiTestPassword,
             requiresGuardianConsent: true
         )
 
@@ -117,8 +118,8 @@ final class EnglishPlusCriticalFlowsUITests: XCTestCase {
     func testStudentNewJourneyKeepsOnePrimaryActionAndOptionalPractice() {
         launchAndEnterHome(
             roleIdentifier: "role.student",
-            email: "student.demo@englishplus.test",
-            password: "EnglishPlusStudent2026!",
+            email: "student@ui-test.invalid",
+            password: uiTestPassword,
             requiresGuardianConsent: true
         )
 
@@ -139,8 +140,8 @@ final class EnglishPlusCriticalFlowsUITests: XCTestCase {
     func testStudentEveryPrimaryWorkspaceHasAReachablePurpose() {
         launchAndEnterHome(
             roleIdentifier: "role.student",
-            email: "student.demo@englishplus.test",
-            password: "EnglishPlusStudent2026!",
+            email: "student@ui-test.invalid",
+            password: uiTestPassword,
             requiresGuardianConsent: true
         )
 
@@ -171,8 +172,8 @@ final class EnglishPlusCriticalFlowsUITests: XCTestCase {
     func testTeacherEveryPrimaryWorkspaceHasAReachablePurpose() {
         launchAndEnterHome(
             roleIdentifier: "role.teacher",
-            email: "teacher.demo@englishplus.test",
-            password: "EnglishPlusTeacher2026!"
+            email: "teacher@ui-test.invalid",
+            password: uiTestPassword
         )
 
         XCTAssertTrue(app.descendants(matching: .any)["teacher.home.workspace"].waitForExistence(timeout: 5))
@@ -196,8 +197,8 @@ final class EnglishPlusCriticalFlowsUITests: XCTestCase {
     func testVolunteerEveryPrimaryWorkspaceHasAReachablePurpose() {
         launchAndEnterHome(
             roleIdentifier: "role.volunteer",
-            email: "volunteer.demo@englishplus.test",
-            password: "EnglishPlusVolunteer2026!"
+            email: "volunteer@ui-test.invalid",
+            password: uiTestPassword
         )
 
         XCTAssertTrue(app.descendants(matching: .any)["volunteer.home.workspace"].waitForExistence(timeout: 5))

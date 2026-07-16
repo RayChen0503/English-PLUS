@@ -6,8 +6,13 @@ import worker, {
   filterVolunteerApplications,
   normalizeAdminApplicationQuery,
   normalizeAdminReviewRequest,
+  normalizeAdminSupportReportDocument,
+  normalizeAdminSupportReportQuery,
+  normalizeAdminSupportReportReviewRequest,
   signAdminEvidenceTicket,
+  summarizeAdminSupportReports,
   summarizeVolunteerApplications,
+  supportReportTransitionAllowed,
   verifyAdminEvidenceTicket,
 } from "../src/index.js";
 
@@ -60,7 +65,10 @@ test("short-lived admin evidence tickets are purpose-bound and stream private R2
   assert.equal(response.status, 200);
   assert.equal(response.headers.get("Content-Type"), "application/pdf");
   assert.equal(response.headers.get("Content-Length"), String(bytes.byteLength));
-  assert.equal(await response.text(), "%PDF evidence preview");
+  assert.equal(
+    new TextDecoder().decode(await response.arrayBuffer()),
+    "%PDF evidence preview",
+  );
 
   const [encodedPayload, signature] = ticket.split(".");
   const replacement = encodedPayload.endsWith("A") ? "B" : "A";
@@ -170,11 +178,92 @@ test("admin application filters and summary keep completed history separate", ()
   });
 });
 
+test("support report moderation input and summaries enforce a finite workflow", () => {
+  assert.deepEqual(
+    normalizeAdminSupportReportQuery(
+      new URLSearchParams("status=open&query=%20Teacher-1%20")
+    ),
+    { status: "open", query: "teacher-1" }
+  );
+  assert.deepEqual(
+    normalizeAdminSupportReportReviewRequest({
+      action: "resolved",
+      note: "已完成查核與處理。",
+      expectedVersion: "2026-07-16T00:00:00.000Z",
+    }),
+    {
+      action: "resolved",
+      note: "已完成查核與處理。",
+      expectedVersion: "2026-07-16T00:00:00.000Z",
+    }
+  );
+  assert.throws(
+    () => normalizeAdminSupportReportReviewRequest({ action: "delete", note: "刪除" }),
+    (error) => error.code === "INVALID_SUPPORT_REPORT_ACTION"
+  );
+  assert.throws(
+    () => normalizeAdminSupportReportReviewRequest({ action: "resolved", note: "" }),
+    (error) => error.code === "SUPPORT_REPORT_NOTE_REQUIRED"
+  );
+  assert.equal(supportReportTransitionAllowed("open", "reviewing"), true);
+  assert.equal(supportReportTransitionAllowed("reviewing", "resolved"), true);
+  assert.equal(supportReportTransitionAllowed("resolved", "open"), false);
+  assert.deepEqual(
+    summarizeAdminSupportReports([
+      { status: "open" },
+      { status: "reviewing" },
+      { status: "resolved" },
+      { status: "dismissed" },
+    ]),
+    { total: 4, open: 1, reviewing: 1, resolved: 1, dismissed: 1 }
+  );
+});
+
+test("support report documents retain class scope and immutable moderation context", () => {
+  assert.deepEqual(
+    normalizeAdminSupportReportDocument({
+      name: "projects/p/databases/(default)/documents/classes/CLASS-8A/reports/report-1",
+      updateTime: "2026-07-16T01:00:00.000Z",
+      fields: {
+        reportId: { stringValue: "report-1" },
+        reporterUid: { stringValue: "student-1" },
+        studentUid: { stringValue: "student-1" },
+        reportedUid: { stringValue: "teacher-1" },
+        reportedRole: { stringValue: "teacher" },
+        threadId: { stringValue: "thread-1" },
+        messageId: { stringValue: "message-1" },
+        reason: { stringValue: "privacyConcern" },
+        status: { stringValue: "open" },
+        createdAt: { timestampValue: "2026-07-16T00:00:00.000Z" },
+      },
+    }),
+    {
+      reportId: "report-1",
+      classId: "CLASS-8A",
+      reporterUid: "student-1",
+      studentUid: "student-1",
+      reportedUid: "teacher-1",
+      reportedRole: "teacher",
+      threadId: "thread-1",
+      messageId: "message-1",
+      reason: "privacyConcern",
+      status: "open",
+      createdAt: "2026-07-16T00:00:00.000Z",
+      moderatedAt: "",
+      moderatedByUid: "",
+      moderatedByEmail: "",
+      moderationNote: "",
+      version: "2026-07-16T01:00:00.000Z",
+    }
+  );
+});
+
 test("admin endpoints reject unauthenticated requests", async () => {
   for (const path of [
     "/admin/session",
     "/admin/volunteer-applications?scope=all",
     "/admin/volunteer-audit?uid=applicant-123",
+    "/admin/support-reports?status=open",
     "/admin/evidence?objectKey=volunteer-evidence%2Fapplicant-123%2Ffile.pdf",
     "/admin/evidence-ticket?objectKey=volunteer-evidence%2Fapplicant-123%2Ffile.pdf",
   ]) {
@@ -185,4 +274,14 @@ test("admin endpoints reject unauthenticated requests", async () => {
     assert.equal(payload.error, "AUTH_REQUIRED");
     assert.ok(payload.requestId);
   }
+
+  const reviewResponse = await worker.fetch(
+    new Request("https://example.test/admin/support-report/CLASS-8A/report-1", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ action: "resolved", note: "已處理完成" }),
+    }),
+    {}
+  );
+  assert.equal(reviewResponse.status, 401);
 });

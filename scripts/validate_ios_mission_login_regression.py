@@ -105,8 +105,8 @@ def main() -> int:
         errors,
     )
     require(
-        "let sameTypeCandidates = (exactMatches + typeMatches).uniqued(by: \\.id)" in mock_text
-        and "let levelMatches = cachedQuestionBankItems.filter" not in mock_text,
+        "let fallbackPool = typeMatches" in mock_text
+        and "from: fallbackPool" in mock_text,
         "Daily mission fallback must preserve selected question types before considering broad fallback.",
         errors,
     )

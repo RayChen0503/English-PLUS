@@ -21,6 +21,7 @@ def require_absent(label: str, text: str, markers: list[str]) -> None:
 question_model = read("ios/EnglishPlus/EnglishPlus/Models/Question.swift")
 learning_model = read("ios/EnglishPlus/EnglishPlus/Models/LearningModels.swift")
 store = read("ios/EnglishPlus/EnglishPlus/Services/LearningRepositoryStore.swift")
+store_reporting = read("ios/EnglishPlus/EnglishPlus/Services/LearningRepositoryStore+Reporting.swift")
 mock_repo = read("ios/EnglishPlus/EnglishPlus/Services/MockLearningRepository.swift")
 firebase_repo = read("ios/EnglishPlus/EnglishPlus/Services/FirebaseLearningRepository.swift")
 student_home = read("ios/EnglishPlus/EnglishPlus/Features/Student/StudentHomeView.swift")
@@ -54,7 +55,7 @@ require_markers(
 
 require_markers(
     "repository assignment contract",
-    store,
+    store + store_reporting,
     [
         "var questionPracticeSets: [QuestionPracticeSet]",
         "@Published private(set) var assignedPracticeTasks",

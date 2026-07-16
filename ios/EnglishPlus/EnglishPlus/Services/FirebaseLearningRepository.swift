@@ -13,12 +13,14 @@ final class FirebaseLearningRepository: LearningRepositoryBackend {
     private var activeUserDisplayName: String?
     private var activeUserRole: UserRole?
     private var activeProfileIsDemo = false
+    private var blockedSupportAuthorUids = Set<String>()
 
     #if canImport(FirebaseFirestore)
     private let db: Firestore?
     private var registrations: [ListenerRegistration] = []
     private var supportMessageRegistrations: [String: ListenerRegistration] = [:]
     private var studentAttemptRegistration: ListenerRegistration?
+    private var studentAttemptHealthSource: String?
     #endif
 
     convenience init() {
@@ -62,6 +64,7 @@ final class FirebaseLearningRepository: LearningRepositoryBackend {
         activeUserDisplayName = nil
         activeUserRole = nil
         activeProfileIsDemo = false
+        blockedSupportAuthorUids.removeAll()
     }
 
     func refresh() async throws {
@@ -74,12 +77,17 @@ final class FirebaseLearningRepository: LearningRepositoryBackend {
         user: DemoUser?,
         profile: AppUserProfile?,
         onChange: @escaping @MainActor (LearningRepositorySnapshot) -> Void,
+        onComponentHealth: @escaping @MainActor (LearningRepositoryListenerHealthEvent) -> Void,
         onError: @escaping @MainActor (Error) -> Void
     ) -> LearningRepositoryListenerToken {
         let isPersonalMode = profile?.isPersonalMode == true
             || FirebaseBackendConfig.isPersonalScopeId(classId)
         activeClassId = isPersonalMode ? nil : classId
-        activeUserUid = profile?.id ?? user?.id
+        let resolvedUserUid = profile?.id ?? user?.id
+        if activeUserUid != resolvedUserUid {
+            blockedSupportAuthorUids.removeAll()
+        }
+        activeUserUid = resolvedUserUid
         activeUserDisplayName = profile?.displayName ?? user?.displayName
         activeUserRole = profile?.role ?? user?.role
         activeProfileIsDemo = profile?.isDemo ?? false
@@ -112,14 +120,14 @@ final class FirebaseLearningRepository: LearningRepositoryBackend {
             guard let uid = activeUserUid else {
                 return AnyLearningRepositoryListenerToken {}
             }
-            listenPersonalCheckIn(uid: uid, onChange: onChange, onError: onError)
-            listenPersonalMission(uid: uid, onChange: onChange, onError: onError)
-            listenPersonalLearningFlow(uid: uid, onChange: onChange, onError: onError)
+            listenPersonalCheckIn(uid: uid, onChange: onChange, onHealth: onComponentHealth)
+            listenPersonalMission(uid: uid, onChange: onChange, onHealth: onComponentHealth)
+            listenPersonalLearningFlow(uid: uid, onChange: onChange, onHealth: onComponentHealth)
             listenSkillMastery(
                 path: "\(FirestorePath.user(uid: uid))/skillMastery",
                 studentUid: uid,
                 onChange: onChange,
-                onError: onError
+                onHealth: onComponentHealth
             )
 
             return AnyLearningRepositoryListenerToken { [weak self] in
@@ -137,15 +145,22 @@ final class FirebaseLearningRepository: LearningRepositoryBackend {
             userUid: activeUserUid,
             role: activeUserRole,
             onChange: onChange,
-            onError: onError
+            onHealth: onComponentHealth
         )
+        if let activeUserUid, activeUserRole == .student {
+            listenBlockedSupportAuthors(
+                uid: activeUserUid,
+                onChange: onChange,
+                onHealth: onComponentHealth
+            )
+        }
         if activeUserRole != .volunteer {
             listenPracticeAssignments(
                 classId: classId,
                 userUid: activeUserUid,
                 role: activeUserRole,
                 onChange: onChange,
-                onError: onError
+                onHealth: onComponentHealth
             )
         }
         listenStudentMissions(
@@ -153,14 +168,14 @@ final class FirebaseLearningRepository: LearningRepositoryBackend {
             userUid: activeUserUid,
             role: activeUserRole,
             onChange: onChange,
-            onError: onError
+            onHealth: onComponentHealth
         )
         if let activeUserUid, activeUserRole == .student {
             listenSkillMastery(
                 path: "\(FirestorePath.student(classId: classId, studentUid: activeUserUid))/skillMastery",
                 studentUid: activeUserUid,
                 onChange: onChange,
-                onError: onError
+                onHealth: onComponentHealth
             )
         }
 
@@ -358,13 +373,14 @@ final class FirebaseLearningRepository: LearningRepositoryBackend {
         message: String? = nil
     ) async throws {
         try validateStudentSupportContext()
+        let safeMessage = try SupportContentPolicy.validatedOptional(message)
         let existingIds = Set(currentSnapshot.supportRequests.map(\.id))
         fallback.replaceRuntimeSnapshot(currentSnapshot)
         await fallback.sendSupportRequest(
             from: user,
             profile: profile,
             option: option,
-            message: message
+            message: safeMessage
         )
         guard var request = fallback.supportRequests.first(where: { !existingIds.contains($0.id) }) else {
             fallback.replaceRuntimeSnapshot(currentSnapshot)
@@ -386,6 +402,7 @@ final class FirebaseLearningRepository: LearningRepositoryBackend {
         message: String
     ) async throws {
         try validateStudentSupportContext()
+        let safeMessage = try SupportContentPolicy.validatedRequired(message)
         let existingIds = Set(currentSnapshot.supportRequests.map(\.id))
         fallback.replaceRuntimeSnapshot(currentSnapshot)
         await fallback.sendQuestionSupportRequest(
@@ -394,7 +411,7 @@ final class FirebaseLearningRepository: LearningRepositoryBackend {
             option: option,
             questionItem: questionItem,
             selectedAnswer: selectedAnswer,
-            message: message
+            message: safeMessage
         )
         guard let request = fallback.supportRequests.first(where: { !existingIds.contains($0.id) }) else {
             fallback.replaceRuntimeSnapshot(currentSnapshot)
@@ -410,12 +427,13 @@ final class FirebaseLearningRepository: LearningRepositoryBackend {
         guard activeUserRole == .teacher, let activeUserUid else {
             throw SupportMutationError.roleNotAllowed
         }
+        let safeBody = try SupportContentPolicy.validatedRequired(body)
         try await appendSupportReply(
             to: requestId,
             authorUid: activeUserUid,
             authorName: activeUserDisplayName ?? "老師",
             authorRole: .teacher,
-            body: body
+            body: safeBody
         )
     }
 
@@ -423,12 +441,13 @@ final class FirebaseLearningRepository: LearningRepositoryBackend {
         guard activeUserRole == .volunteer, let activeUserUid else {
             throw SupportMutationError.roleNotAllowed
         }
+        let safeBody = try SupportContentPolicy.validatedRequired(body)
         try await appendSupportReply(
             to: requestId,
             authorUid: activeUserUid,
             authorName: activeUserDisplayName ?? "志工",
             authorRole: .volunteer,
-            body: body
+            body: safeBody
         )
     }
 
@@ -482,6 +501,97 @@ final class FirebaseLearningRepository: LearningRepositoryBackend {
         request.status = .closed
         request.updatedAt = date
         upsertSupportRequest(request)
+    }
+
+    func reportSupportReply(
+        requestId: String,
+        reply: SupportReply,
+        reason: SupportSafetyReportReason
+    ) async throws {
+        if activeProfileIsDemo {
+            try await fallback.reportSupportReply(requestId: requestId, reply: reply, reason: reason)
+            currentSnapshot = fallback.snapshot
+            return
+        }
+
+        let request = try studentOwnedSupportRequest(requestId)
+        guard reply.isStaffReply,
+              request.visibleStaffRepliesToStudent.contains(where: { $0.id == reply.id })
+        else {
+            throw SupportMutationError.requestNotFound
+        }
+
+        #if canImport(FirebaseFirestore)
+        guard let db, let reporterUid = activeUserUid else {
+            throw SupportMutationError.remoteSyncUnavailable
+        }
+        let reportId = UUID().uuidString
+        try await db.collection("\(FirestorePath.classDocument(classId: request.classCode))/reports")
+            .document(reportId)
+            .setData([
+                "reportId": reportId,
+                "uid": reporterUid,
+                "studentUid": reporterUid,
+                "reporterUid": reporterUid,
+                "reportedUid": reply.authorUid,
+                "reportedRole": reply.authorRole.rawValue,
+                "threadId": request.id,
+                "messageId": reply.id,
+                "reason": reason.rawValue,
+                "status": "open",
+                "createdAt": Date(),
+            ])
+        #else
+        throw SupportMutationError.remoteSyncUnavailable
+        #endif
+    }
+
+    func blockSupportAuthor(_ reply: SupportReply, requestId: String) async throws {
+        if activeProfileIsDemo {
+            try await fallback.blockSupportAuthor(reply, requestId: requestId)
+            currentSnapshot = fallback.snapshot
+            return
+        }
+
+        var request = try studentOwnedSupportRequest(requestId)
+        guard reply.isStaffReply, let studentUid = activeUserUid else {
+            throw SupportMutationError.roleNotAllowed
+        }
+        let date = Date()
+
+        #if canImport(FirebaseFirestore)
+        guard let db else {
+            throw SupportMutationError.remoteSyncUnavailable
+        }
+        try await db.collection("\(FirestorePath.user(uid: studentUid))/blockedSupportAuthors")
+            .document(reply.authorUid)
+            .setData([
+                "blockedUid": reply.authorUid,
+                "blockedRole": reply.authorRole.rawValue,
+                "sourceThreadId": requestId,
+                "createdAt": date,
+            ])
+
+        try await updateSupportThread(
+            request,
+            fields: [
+                "status": SupportThreadStatus.readByStudent.rawValue,
+                "studentArchivedAt": date,
+                "studentLastReadAt": date,
+                "updatedAt": date,
+            ]
+        )
+        #else
+        throw SupportMutationError.remoteSyncUnavailable
+        #endif
+
+        blockedSupportAuthorUids.insert(reply.authorUid)
+        request.studentArchivedAt = date
+        request.studentLastReadAt = date
+        request.status = .readByStudent
+        request.updatedAt = date
+        upsertSupportRequest(request)
+        removeBlockedSupportReplies()
     }
 
     func markSupportThreadHandledWithoutReply(_ requestId: String, by staffUser: DemoUser?) async throws {
@@ -990,6 +1100,16 @@ final class FirebaseLearningRepository: LearningRepositoryBackend {
             .sorted { $0.updatedAt > $1.updatedAt }
     }
 
+    private func removeBlockedSupportReplies() {
+        guard !blockedSupportAuthorUids.isEmpty else { return }
+        currentSnapshot.supportRequests = currentSnapshot.supportRequests.map { request in
+            var updated = request
+            updated.replies.removeAll { blockedSupportAuthorUids.contains($0.authorUid) }
+            return updated.reconcilingLifecycle()
+        }
+        synchronizeFallbackWithCurrentSnapshot()
+    }
+
     private func persistNewSupportRequest(_ request: StudentSupportRequest) async throws {
         #if canImport(FirebaseFirestore)
         guard let db else { throw SupportMutationError.remoteSyncUnavailable }
@@ -1210,25 +1330,28 @@ final class FirebaseLearningRepository: LearningRepositoryBackend {
         supportMessageRegistrations = [:]
         studentAttemptRegistration?.remove()
         studentAttemptRegistration = nil
+        studentAttemptHealthSource = nil
     }
 
     private func listenPersonalCheckIn(
         uid: String,
         onChange: @escaping @MainActor (LearningRepositorySnapshot) -> Void,
-        onError: @escaping @MainActor (Error) -> Void
+        onHealth: @escaping @MainActor (LearningRepositoryListenerHealthEvent) -> Void
     ) {
         guard let db else { return }
+        let source = "personal-check-in"
         let todayKey = Self.dateKeyFormatter.string(from: Date())
         let path = "\(FirestorePath.user(uid: uid))/personalCheckIns"
         let registration = db.collection(path)
             .whereField("dateKey", isEqualTo: todayKey)
             .addSnapshotListener { [weak self] snapshot, error in
                 if let error {
-                    Task { @MainActor in onError(error) }
+                    Task { @MainActor in onHealth(.failed(source: source, error: error)) }
                     return
                 }
                 let documents = snapshot?.documents ?? []
                 Task { @MainActor in
+                    onHealth(.recovered(source: source))
                     guard let self else { return }
                     let checkIn = documents
                         .compactMap { self.checkIn(from: $0, studentUid: uid) }
@@ -1245,20 +1368,22 @@ final class FirebaseLearningRepository: LearningRepositoryBackend {
     private func listenPersonalMission(
         uid: String,
         onChange: @escaping @MainActor (LearningRepositorySnapshot) -> Void,
-        onError: @escaping @MainActor (Error) -> Void
+        onHealth: @escaping @MainActor (LearningRepositoryListenerHealthEvent) -> Void
     ) {
         guard let db else { return }
+        let source = "personal-mission"
         let todayKey = Self.dateKeyFormatter.string(from: Date())
         let path = "\(FirestorePath.user(uid: uid))/personalDailyMissions"
         let registration = db.collection(path)
             .whereField("dateKey", isEqualTo: todayKey)
             .addSnapshotListener { [weak self] snapshot, error in
                 if let error {
-                    Task { @MainActor in onError(error) }
+                    Task { @MainActor in onHealth(.failed(source: source, error: error)) }
                     return
                 }
                 let documents = snapshot?.documents ?? []
                 Task { @MainActor in
+                    onHealth(.recovered(source: source))
                     guard let self else { return }
                     let mission = documents
                         .compactMap { self.mission(from: $0, studentUid: uid) }
@@ -1268,7 +1393,7 @@ final class FirebaseLearningRepository: LearningRepositoryBackend {
                         uid: uid,
                         missionId: mission?.id,
                         onChange: onChange,
-                        onError: onError
+                        onHealth: onHealth
                     )
                     onChange(self.currentSnapshot)
                 }
@@ -1279,17 +1404,19 @@ final class FirebaseLearningRepository: LearningRepositoryBackend {
     private func listenPersonalLearningFlow(
         uid: String,
         onChange: @escaping @MainActor (LearningRepositorySnapshot) -> Void,
-        onError: @escaping @MainActor (Error) -> Void
+        onHealth: @escaping @MainActor (LearningRepositoryListenerHealthEvent) -> Void
     ) {
         guard let db else { return }
+        let source = "personal-learning-flow"
         let registration = db.document(FirestorePath.userLearningSettings(uid: uid))
             .addSnapshotListener { [weak self] snapshot, error in
                 if let error {
-                    Task { @MainActor in onError(error) }
+                    Task { @MainActor in onHealth(.failed(source: source, error: error)) }
                     return
                 }
                 guard let data = snapshot?.data() else { return }
                 Task { @MainActor in
+                    onHealth(.recovered(source: source))
                     guard let self, let flow = self.learningFlow(from: data) else { return }
                     self.currentSnapshot.learningFlow = flow
                     self.normalizeCurrentSnapshotForToday()
@@ -1304,24 +1431,31 @@ final class FirebaseLearningRepository: LearningRepositoryBackend {
         uid: String,
         missionId: String?,
         onChange: @escaping @MainActor (LearningRepositorySnapshot) -> Void,
-        onError: @escaping @MainActor (Error) -> Void
+        onHealth: @escaping @MainActor (LearningRepositoryListenerHealthEvent) -> Void
     ) {
         studentAttemptRegistration?.remove()
+        if let studentAttemptHealthSource {
+            onHealth(.recovered(source: studentAttemptHealthSource))
+        }
+        studentAttemptHealthSource = nil
         guard let db, let missionId else {
             replaceAttempts([])
             return
         }
 
+        let source = "personal-attempts:\(missionId)"
+        studentAttemptHealthSource = source
         let path = "\(FirestorePath.user(uid: uid))/personalAnswerEvents"
         studentAttemptRegistration = db.collection(path)
             .whereField("missionId", isEqualTo: missionId)
             .addSnapshotListener { [weak self] snapshot, error in
                 if let error {
-                    Task { @MainActor in onError(error) }
+                    Task { @MainActor in onHealth(.failed(source: source, error: error)) }
                     return
                 }
                 let documents = snapshot?.documents ?? []
                 Task { @MainActor in
+                    onHealth(.recovered(source: source))
                     guard let self else { return }
                     let attempts = documents
                         .compactMap { self.attempt(from: $0, missionId: missionId) }
@@ -1336,16 +1470,18 @@ final class FirebaseLearningRepository: LearningRepositoryBackend {
         path: String,
         studentUid: String,
         onChange: @escaping @MainActor (LearningRepositorySnapshot) -> Void,
-        onError: @escaping @MainActor (Error) -> Void
+        onHealth: @escaping @MainActor (LearningRepositoryListenerHealthEvent) -> Void
     ) {
         guard let db else { return }
+        let source = "skill-mastery:\(path)"
         let registration = db.collection(path).addSnapshotListener { [weak self] snapshot, error in
             if let error {
-                Task { @MainActor in onError(error) }
+                Task { @MainActor in onHealth(.failed(source: source, error: error)) }
                 return
             }
             let documents = snapshot?.documents ?? []
             Task { @MainActor in
+                onHealth(.recovered(source: source))
                 guard let self else { return }
                 let remoteRecords = documents
                     .compactMap { self.masteryRecord(from: $0, studentUid: studentUid) }
@@ -1360,14 +1496,40 @@ final class FirebaseLearningRepository: LearningRepositoryBackend {
         registrations.append(registration)
     }
 
+    private func listenBlockedSupportAuthors(
+        uid: String,
+        onChange: @escaping @MainActor (LearningRepositorySnapshot) -> Void,
+        onHealth: @escaping @MainActor (LearningRepositoryListenerHealthEvent) -> Void
+    ) {
+        guard let db else { return }
+        let source = "blocked-support-authors"
+        let registration = db.collection("\(FirestorePath.user(uid: uid))/blockedSupportAuthors")
+            .addSnapshotListener { [weak self] snapshot, error in
+                if let error {
+                    Task { @MainActor in onHealth(.failed(source: source, error: error)) }
+                    return
+                }
+                guard let documents = snapshot?.documents else { return }
+                Task { @MainActor in
+                    onHealth(.recovered(source: source))
+                    guard let self else { return }
+                    self.blockedSupportAuthorUids = Set(documents.map(\.documentID))
+                    self.removeBlockedSupportReplies()
+                    onChange(self.currentSnapshot)
+                }
+            }
+        registrations.append(registration)
+    }
+
     private func listenSupportThreads(
         classId: String,
         userUid: String?,
         role: UserRole?,
         onChange: @escaping @MainActor (LearningRepositorySnapshot) -> Void,
-        onError: @escaping @MainActor (Error) -> Void
+        onHealth: @escaping @MainActor (LearningRepositoryListenerHealthEvent) -> Void
     ) {
         guard let db else { return }
+        let source = "support-threads:\(classId)"
 
         let supportQuery: Query
         switch role {
@@ -1383,12 +1545,13 @@ final class FirebaseLearningRepository: LearningRepositoryBackend {
 
         let registration = supportQuery.addSnapshotListener { [weak self] snapshot, error in
             if let error {
-                Task { @MainActor in onError(error) }
+                Task { @MainActor in onHealth(.failed(source: source, error: error)) }
                 return
             }
             guard let documents = snapshot?.documents else { return }
 
             Task { @MainActor in
+                onHealth(.recovered(source: source))
                 guard let self else { return }
                 let syncedRequests = self.sanitizedSupportRequests(
                     documents.compactMap { self.supportRequest(from: $0) }
@@ -1398,7 +1561,7 @@ final class FirebaseLearningRepository: LearningRepositoryBackend {
                     classId: classId,
                     requests: syncedRequests,
                     onChange: onChange,
-                    onError: onError
+                    onHealth: onHealth
                 )
                 onChange(self.currentSnapshot)
             }
@@ -1410,7 +1573,7 @@ final class FirebaseLearningRepository: LearningRepositoryBackend {
         classId: String,
         requests: [StudentSupportRequest],
         onChange: @escaping @MainActor (LearningRepositorySnapshot) -> Void,
-        onError: @escaping @MainActor (Error) -> Void
+        onHealth: @escaping @MainActor (LearningRepositoryListenerHealthEvent) -> Void
     ) {
         guard let db else { return }
 
@@ -1420,9 +1583,11 @@ final class FirebaseLearningRepository: LearningRepositoryBackend {
             .forEach { entry in
                 entry.value.remove()
                 supportMessageRegistrations[entry.key] = nil
+                onHealth(.recovered(source: "support-messages:\(entry.key)"))
         }
 
         for request in requests where supportMessageRegistrations[request.id] == nil {
+            let source = "support-messages:\(request.id)"
             let path = "\(FirestorePath.supportThread(classId: classId, threadId: request.id))/messages"
             let messagesCollection = db.collection(path)
             let messagesQuery: Query = activeUserRole == .student
@@ -1433,12 +1598,13 @@ final class FirebaseLearningRepository: LearningRepositoryBackend {
                 : messagesCollection
             let registration = messagesQuery.addSnapshotListener { [weak self] snapshot, error in
                 if let error {
-                    Task { @MainActor in onError(error) }
+                    Task { @MainActor in onHealth(.failed(source: source, error: error)) }
                     return
                 }
                 guard let documents = snapshot?.documents else { return }
 
                 Task { @MainActor in
+                    onHealth(.recovered(source: source))
                     guard let self,
                           let index = self.currentSnapshot.supportRequests.firstIndex(where: { $0.id == request.id })
                     else { return }
@@ -1446,6 +1612,7 @@ final class FirebaseLearningRepository: LearningRepositoryBackend {
                         .compactMap { self.supportReply(from: $0) }
                         .filter(\.isStaffReply)
                         .filter(\.visibleToStudent)
+                        .filter { !self.blockedSupportAuthorUids.contains($0.authorUid) }
                         .sorted { $0.createdAt < $1.createdAt }
                     self.currentSnapshot.supportRequests[index].replies = replies
                     if let latestReplyDate = replies.last?.createdAt {
@@ -1470,9 +1637,10 @@ final class FirebaseLearningRepository: LearningRepositoryBackend {
         userUid: String?,
         role: UserRole?,
         onChange: @escaping @MainActor (LearningRepositorySnapshot) -> Void,
-        onError: @escaping @MainActor (Error) -> Void
+        onHealth: @escaping @MainActor (LearningRepositoryListenerHealthEvent) -> Void
     ) {
         guard let db else { return }
+        let source = "practice-assignments:\(classId)"
 
         let assignmentsCollection = db.collection("\(FirestorePath.classDocument(classId: classId))/practiceAssignments")
         let assignmentsQuery: Query
@@ -1484,12 +1652,13 @@ final class FirebaseLearningRepository: LearningRepositoryBackend {
 
         let registration = assignmentsQuery.addSnapshotListener { [weak self] snapshot, error in
             if let error {
-                Task { @MainActor in onError(error) }
+                Task { @MainActor in onHealth(.failed(source: source, error: error)) }
                 return
             }
             guard let documents = snapshot?.documents else { return }
 
             Task { @MainActor in
+                onHealth(.recovered(source: source))
                 guard let self else { return }
                 let assignments = documents.compactMap { self.practiceAssignment(from: $0) }
                 self.mergePracticeAssignments(assignments)
@@ -1504,19 +1673,21 @@ final class FirebaseLearningRepository: LearningRepositoryBackend {
         userUid: String?,
         role: UserRole?,
         onChange: @escaping @MainActor (LearningRepositorySnapshot) -> Void,
-        onError: @escaping @MainActor (Error) -> Void
+        onHealth: @escaping @MainActor (LearningRepositoryListenerHealthEvent) -> Void
     ) {
         guard let db, let userUid, role == .student else { return }
 
+        let source = "student-missions:\(userUid)"
         let path = "\(FirestorePath.student(classId: classId, studentUid: userUid))/dailyMissions"
         let registration = db.collection(path).addSnapshotListener { [weak self] snapshot, error in
             if let error {
-                Task { @MainActor in onError(error) }
+                Task { @MainActor in onHealth(.failed(source: source, error: error)) }
                 return
             }
             guard let documents = snapshot?.documents else { return }
 
             Task { @MainActor in
+                onHealth(.recovered(source: source))
                 guard let self else { return }
                 let missions = documents.compactMap { self.mission(from: $0, studentUid: userUid) }
                     .sorted { $0.createdAt > $1.createdAt }
@@ -1526,7 +1697,7 @@ final class FirebaseLearningRepository: LearningRepositoryBackend {
                     studentUid: userUid,
                     missionId: missions.first?.id,
                     onChange: onChange,
-                    onError: onError
+                    onHealth: onHealth
                 )
                 onChange(self.currentSnapshot)
             }
@@ -1539,25 +1710,32 @@ final class FirebaseLearningRepository: LearningRepositoryBackend {
         studentUid: String,
         missionId: String?,
         onChange: @escaping @MainActor (LearningRepositorySnapshot) -> Void,
-        onError: @escaping @MainActor (Error) -> Void
+        onHealth: @escaping @MainActor (LearningRepositoryListenerHealthEvent) -> Void
     ) {
+        studentAttemptRegistration?.remove()
+        if let studentAttemptHealthSource {
+            onHealth(.recovered(source: studentAttemptHealthSource))
+        }
+        studentAttemptHealthSource = nil
         guard let db, let missionId else {
             replaceAttempts([])
             return
         }
 
-        studentAttemptRegistration?.remove()
+        let source = "student-attempts:\(missionId)"
+        studentAttemptHealthSource = source
         let path = "\(FirestorePath.student(classId: classId, studentUid: studentUid))/answerEvents"
         studentAttemptRegistration = db.collection(path)
             .whereField("missionId", isEqualTo: missionId)
             .addSnapshotListener { [weak self] snapshot, error in
                 if let error {
-                    Task { @MainActor in onError(error) }
+                    Task { @MainActor in onHealth(.failed(source: source, error: error)) }
                     return
                 }
                 guard let documents = snapshot?.documents else { return }
 
                 Task { @MainActor in
+                    onHealth(.recovered(source: source))
                     guard let self else { return }
                     let attempts = documents
                         .compactMap { self.attempt(from: $0, missionId: missionId) }

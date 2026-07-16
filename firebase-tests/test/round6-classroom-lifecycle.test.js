@@ -70,6 +70,7 @@ function activeProfile(role, activeClassId = CLASS_ID) {
     active: true,
     accountStatus: "active",
     provisioningSource: role === "teacher" ? "selfServiceTeacher" : "selfServiceStudent",
+    studentAccessPath: role === "student" ? "age13OrOlder" : "notApplicable",
     identityProviders: ["emailPassword"],
     createdAt: joinedAt,
     updatedAt: joinedAt,

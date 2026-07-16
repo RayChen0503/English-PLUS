@@ -61,6 +61,7 @@ function profile(role, activeClassId = CLASS_ID) {
       : role === "volunteer"
         ? "administratorApprovedVolunteer"
         : "selfServiceStudent",
+    studentAccessPath: role === "student" ? "age13OrOlder" : "notApplicable",
     identityProviders: ["emailPassword"],
     createdAt: joinedAt,
     updatedAt: joinedAt,
@@ -204,6 +205,85 @@ async function seedIdentityAndClass() {
 function dbFor(uid) {
   return testEnv.authenticatedContext(uid).firestore();
 }
+
+function selfServiceUserProfile(role, overrides = {}) {
+  return {
+    displayName: "New user",
+    preferredName: "New user",
+    primaryRole: role,
+    activeClassId: null,
+    active: role !== "volunteer",
+    accountStatus: role === "volunteer" ? "pendingApplication" : "active",
+    emailVerificationRequired: false,
+    provisioningSource: role === "student"
+      ? "selfServiceStudent"
+      : role === "teacher"
+        ? "selfServiceTeacher"
+        : "selfServiceVolunteer",
+    studentAccessPath: role === "student" ? "age13OrOlder" : "notApplicable",
+    identityProviders: ["google"],
+    createdAt: joinedAt,
+    updatedAt: joinedAt,
+    lastLoginAt: joinedAt,
+    ...overrides,
+  };
+}
+
+test("public student registration enforces the 13+ path and rejects managed forgery", async () => {
+  const validUid = "newStudent13";
+  const missingUid = "newStudentMissingAge";
+  const managedUid = "newStudentManagedForgery";
+
+  await assertSucceeds(setDoc(
+    doc(testEnv.authenticatedContext(validUid, { email_verified: true }).firestore(), "users", validUid),
+    selfServiceUserProfile("student")
+  ));
+  const missingPath = selfServiceUserProfile("student");
+  delete missingPath.studentAccessPath;
+  await assertFails(setDoc(
+    doc(testEnv.authenticatedContext(missingUid, { email_verified: true }).firestore(), "users", missingUid),
+    missingPath
+  ));
+  await assertFails(setDoc(
+    doc(testEnv.authenticatedContext(managedUid, { email_verified: true }).firestore(), "users", managedUid),
+    selfServiceUserProfile("student", {
+      provisioningSource: "managedStudent",
+      studentAccessPath: "schoolOrGuardianManaged",
+    })
+  ));
+});
+
+test("consent access path must match the authenticated profile", async () => {
+  const student = dbFor("studentA");
+  const baseConsent = {
+    version: "privacy-v3-2026-07-16",
+    accepted: true,
+    acceptedAt: activityAt,
+    acceptedByUid: "studentA",
+    actorRole: "student",
+    classId: CLASS_ID,
+    consentSource: "inAppCheckbox",
+    schoolApprovalRef: "",
+    guardianConsentStatus: "notRequired",
+    studentAccessPath: "age13OrOlder",
+    policyUrl: "https://sites.google.com/view/englishplus-privacy/",
+    categoriesAccepted: ["identity", "learningRecords", "aiAssistance"],
+  };
+
+  await assertSucceeds(setDoc(
+    doc(student, "users", "studentA", "consents", "privacy-v3-2026-07-16"),
+    baseConsent
+  ));
+  await assertFails(setDoc(
+    doc(student, "users", "studentA", "consents", "forged-managed-consent"),
+    {
+      ...baseConsent,
+      version: "forged-managed-consent",
+      guardianConsentStatus: "schoolApproved",
+      studentAccessPath: "schoolOrGuardianManaged",
+    }
+  ));
+});
 
 test("personal learning remains private and usable without class access", async () => {
   const student = dbFor("studentA");

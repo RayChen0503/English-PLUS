@@ -30,6 +30,7 @@ struct DemoLoginView: View {
     @State private var email = ""
     @State private var password = ""
     @State private var displayName = ""
+    @State private var studentRegistrationEligibility: StudentRegistrationEligibility?
     @State private var showsPassword = false
     @State private var selectedInstitution: EducationInstitution?
     @State private var volunteerIsAdult = false
@@ -82,6 +83,9 @@ struct DemoLoginView: View {
         }
         .onChange(of: mode) { _, _ in
             password = ""
+            appState.clearAuthFeedback()
+        }
+        .onChange(of: studentRegistrationEligibility) { _, _ in
             appState.clearAuthFeedback()
         }
         .onChange(of: appState.verificationEmailAddress) { _, address in
@@ -264,6 +268,38 @@ struct DemoLoginView: View {
 
         switch role {
         case .student:
+            VStack(alignment: .leading, spacing: 10) {
+                Text("學生帳號使用資格")
+                    .font(.caption.bold())
+                    .foregroundStyle(EPTheme.secondaryInk)
+                Picker("學生帳號使用資格", selection: $studentRegistrationEligibility) {
+                    Text("已滿 13 歲")
+                        .tag(StudentRegistrationEligibility.age13OrOlder as StudentRegistrationEligibility?)
+                    Text("未滿 13 歲")
+                        .tag(StudentRegistrationEligibility.under13NeedsManagedAccount as StudentRegistrationEligibility?)
+                }
+                .pickerStyle(.segmented)
+                .accessibilityIdentifier("auth.student.ageEligibility")
+            }
+
+            if studentRegistrationEligibility == .under13NeedsManagedAccount {
+                VStack(alignment: .leading, spacing: 8) {
+                    Label("未滿 13 歲不可自行建立公開帳號", systemImage: "person.badge.shield.checkmark")
+                        .font(.subheadline.weight(.semibold))
+                        .foregroundStyle(EPTheme.ink)
+                    Text("請由學校或監護人協助建立受管理帳號。English+ 不會在這裡要求你輸入生日。")
+                        .font(.footnote)
+                        .foregroundStyle(EPTheme.secondaryInk)
+                        .fixedSize(horizontal: false, vertical: true)
+                    Link("聯絡 English+ 支援", destination: LegalSupportConfiguration.supportURL)
+                        .font(.footnote.weight(.semibold))
+                        .foregroundStyle(EPTheme.primary)
+                }
+                .padding(12)
+                .background(EPTheme.secondarySurface)
+                .clipShape(RoundedRectangle(cornerRadius: EPTheme.cardRadius))
+                .accessibilityIdentifier("auth.student.managedAccountHelp")
+            }
             Label("不加入班級也能使用完整的個人學習功能。", systemImage: "person.crop.circle")
                 .registrationHintStyle()
         case .teacher:
@@ -449,11 +485,15 @@ struct DemoLoginView: View {
 
         switch role {
         case .student:
+            guard let studentAccessPath = studentRegistrationEligibility?.accessPath else {
+                return nil
+            }
             return RoleOnboardingProfile(
                 displayName: cleanedName,
                 role: .student,
                 teacherAffiliation: nil,
-                volunteerApplication: nil
+                volunteerApplication: nil,
+                studentAccessPath: studentAccessPath
             )
         case .teacher:
             guard let institution = selectedInstitution else { return nil }
@@ -467,7 +507,8 @@ struct DemoLoginView: View {
                     institutionSource: institution.source,
                     claimStatus: .selfDeclared
                 ),
-                volunteerApplication: nil
+                volunteerApplication: nil,
+                studentAccessPath: .notApplicable
             )
         case .volunteer:
             let motivation = volunteerMotivation.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -481,7 +522,8 @@ struct DemoLoginView: View {
                     acceptedConductVersion: "volunteer-conduct-v1",
                     motivation: motivation,
                     evidence: []
-                )
+                ),
+                studentAccessPath: .notApplicable
             )
         }
     }
@@ -518,6 +560,11 @@ struct DemoLoginView: View {
         if appState.signingInRole == role {
             return mode == .register ? "建立中..." : "登入中..."
         }
+        if role == .student,
+           mode == .register,
+           studentRegistrationEligibility == .under13NeedsManagedAccount {
+            return "請由學校或監護人協助"
+        }
         return mode == .register ? "建立\(role.title)帳號" : "登入"
     }
 
@@ -534,7 +581,8 @@ struct DemoLoginView: View {
                     displayName: profile.displayName,
                     role: profile.role,
                     teacherAffiliation: profile.teacherAffiliation,
-                    volunteerApplication: profile.volunteerApplication
+                    volunteerApplication: profile.volunteerApplication,
+                    studentAccessPath: profile.studentAccessPath
                 )
             )
         }
