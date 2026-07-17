@@ -305,13 +305,15 @@ learning must remain usable without joining a class.
 
 ## Next gate
 
-RELEASE-0 is complete locally on `codex/app-store-production-release`. The
-competition source remains frozen at `1207a35`; the public judging lane is
-build 53 in `English+公測`, while production candidates begin at build 54. The
-iOS, Firebase CLI, Worker and administrator website configuration have
-separate competition and production targets. A machine-readable environment
-lock and repeatable competition guard now protect that boundary. No RELEASE-0
-commit has been pushed and no cloud resource or TestFlight group was changed.
+RELEASE-1 has created the isolated Firebase project `englishplus-production`,
+registered the production iOS and Web apps, installed an ignored local
+production plist, and enabled Email/password, Google and Apple providers. The
+native iOS Apple path is ready, and the existing Apple Services ID contains
+both competition and production domains and return URLs. No production
+Firestore, Hosting, Worker or R2 deployment has occurred, and no release commit
+has been pushed or sent to Xcode Cloud. The competition source remains frozen
+at `1207a35`; build 53 in `English+公測` and its public link remain untouched.
+RELEASE-2 may begin only after RELEASE-1 validation remains green.
 
 STORE-4 automated submission preparation is complete on Windows: the
 prompt-free provenance manifest contains all 1,080 questions, the App Store

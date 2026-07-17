@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "recordedAt": "2026-07-17T05:10:00+08:00",
+  "recordedAt": "2026-07-17T12:40:00+08:00",
   "competition": {
     "frozenSourceCommit": "1207a359708b8d83bec867bfdec5a8bdd5d229ac",
     "sourceTag": "maic-competition-build-52",
@@ -21,6 +21,24 @@
     "releaseBranch": "codex/app-store-production-release",
     "minimumCandidateBuild": 54,
     "firebaseProject": "englishplus-production",
+    "firebaseProjectNumber": "410725934322",
+    "firebaseIosAppId": "1:410725934322:ios:4eada3d210b1b4c923dc6b",
+    "firebaseWebAppId": "1:410725934322:web:f558ce818c91e0b123dc6b",
+    "iosBundleId": "com.englishplus",
+    "appStoreId": "6785041320",
+    "authProviders": {
+      "emailPassword": "enabled",
+      "emailLink": "disabled",
+      "google": "enabled",
+      "apple": "enabled"
+    },
+    "appleAuth": {
+      "servicesId": "com.englishplus.firebaseauth",
+      "teamId": "X7Y2V4D87G",
+      "keyId": "WAU6QVCTR6",
+      "nativeIosReady": true,
+      "productionWebCallback": "configured-and-verified"
+    },
     "workerName": "englishplus-ai-proxy-production",
     "workerHost": "englishplus-ai-proxy-production.englishplus-ray.workers.dev",
     "r2Bucket": "englishplus-volunteer-evidence-production",
