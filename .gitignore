@@ -21,6 +21,7 @@ admin-web/.env.*.local
 firebase-debug.log
 firestore-debug.log
 ui-debug.log
+.firebase/
 workers/**/.dev.vars
 workers/**/.wrangler/
 workers/**/node_modules/

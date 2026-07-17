@@ -41,8 +41,11 @@
     },
     "workerName": "englishplus-ai-proxy-production",
     "workerHost": "englishplus-ai-proxy-production.englishplus-ray.workers.dev",
+    "workerVersion": "83577444-d957-4514-ade7-2964350f4600",
     "r2Bucket": "englishplus-volunteer-evidence-production",
-    "adminHost": "englishplus-production.firebaseapp.com"
+    "adminHost": "englishplus-production.firebaseapp.com",
+    "firestoreRegion": "asia-east1",
+    "administratorEmail": "englishplus.tw@gmail.com"
   },
   "releaseRules": {
     "neverAssignProductionBuildToCompetitionGroup": true,
