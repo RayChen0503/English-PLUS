@@ -24,6 +24,11 @@ this document. Every external action still requires the product owner's explicit
 - [ ] Archive a Production release candidate with no mock/debug route.
 - [x] Confirm no API key, service-account key, review password or evidence file is bundled.
 
+The first Xcode Cloud run for STORE commit `5ec3f9f` failed closed before a
+candidate archive because `GOOGLE_SERVICE_INFO_PLIST_BASE64_PRODUCTION` was
+not configured and `englishplus-production` did not yet exist. This is an
+expected environment-isolation result, not a successful release build.
+
 Windows note: the current Cloudflare Vitest pool and Vite/Rollup process exit
 without a useful diagnostic when run under the repository's non-ASCII parent
 path. The same locked source and dependencies pass in an isolated ASCII-only
@@ -65,21 +70,22 @@ failure; macOS/Xcode Cloud remains the release-authoritative build environment.
 - [x] `maic-competition-build-52` still resolves to `1207a35`.
 - [x] The public TestFlight link resolves to the English+ beta invitation.
 - [ ] Confirm on an enrolled device that the public group `English+公測` still
-      installs build 52.
-- [ ] Candidate build number is 53 or higher and belongs only to `AppStore RC`.
+      installs build 53.
+- [ ] Candidate build number is 54 or higher and belongs only to `AppStore RC`.
 - [ ] Candidate points to production services; competition build points only to
       `englishplus-testflight` and the competition Worker.
 - [ ] No deployment modifies competition Firestore, Worker, R2 or admin hosting.
 
 ## Submission sequence
 
-1. Owner approves one final branch push and one Xcode Cloud candidate build.
-2. Verify the uploaded build in `AppStore RC`; do not add it to `English+公測`.
-3. Enter privacy, metadata, age rating, content rights and export-compliance answers.
-4. Enter review credentials securely and paste the finalized Review Notes.
-5. Select the candidate build and choose manual release.
-6. Add for Review, inspect the draft, then Submit for Review.
-7. If accepted, owner makes the separate final release decision.
+1. Run `validate_release0_competition_guard.py` and preserve build 53.
+2. Owner approves one final branch push and one Xcode Cloud candidate build.
+3. Verify the uploaded build in `AppStore RC`; do not add it to `English+公測`.
+4. Enter privacy, metadata, age rating, content rights and export-compliance answers.
+5. Enter review credentials securely and paste the finalized Review Notes.
+6. Select the candidate build and choose manual release.
+7. Add for Review, inspect the draft, then Submit for Review.
+8. If accepted, owner makes the separate final release decision.
 
 ## Current blockers
 
@@ -101,3 +107,6 @@ failure; macOS/Xcode Cloud remains the release-authoritative build environment.
 - Production review accounts cannot be provisioned until the isolated production
   backend is deployed.
 - Final screenshots and real-device release-candidate testing are pending.
+- RELEASE-0 verified that the public competition build is 53, production
+  candidates begin at 54, and the authenticated Firebase/Cloudflare account
+  currently contains no production project, Worker or R2 bucket.

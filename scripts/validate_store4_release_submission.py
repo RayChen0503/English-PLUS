@@ -219,8 +219,18 @@ def main() -> int:
     require("Fully original wording" in attestation, "Question-rights option A is missing")
     require("External material exists" in attestation, "Question-rights option B is missing")
 
+    release_gate = read("docs/app-store-release/store-4/release-gate.md")
+    require(
+        "public group `English+公測` still\n      installs build 53" in release_gate,
+        "Release gate does not protect the judging build 53",
+    )
+    require(
+        "Candidate build number is 54 or higher" in release_gate,
+        "Release gate does not reserve build 54+ for production",
+    )
+
     tag_commit = git("rev-parse", "maic-competition-build-52^{commit}")
-    require(tag_commit.startswith(COMPETITION_COMMIT), "Competition build tag moved from build 52")
+    require(tag_commit.startswith(COMPETITION_COMMIT), "Competition frozen-source tag moved")
     require(
         git("show", "maic-competition-build-52:ios/EnglishPlus/EnglishPlus/Info.plist"),
         "Competition snapshot is not readable",
@@ -228,7 +238,7 @@ def main() -> int:
 
     print(
         "STORE-4 release submission gate passed: 1080 provenance records, "
-        "privacy/age/metadata/review artifacts present, competition build 52 preserved"
+        "privacy/age/metadata/review artifacts present, public build 53 protected"
     )
     return 0
 

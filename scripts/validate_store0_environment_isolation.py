@@ -10,6 +10,8 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 BASELINE = "1207a359708b8d83bec867bfdec5a8bdd5d229ac"
+PUBLIC_COMPETITION_BUILD = 53
+MINIMUM_PRODUCTION_BUILD = 54
 
 
 def read(path: str) -> str:
@@ -39,12 +41,12 @@ def main() -> int:
         )
         require(
             git("rev-parse", "maic-competition-build-52^{}") == BASELINE,
-            "Competition tag does not resolve to build 52 baseline.",
+            "Competition tag does not resolve to the frozen source baseline.",
             errors,
         )
         require(
             git("rev-parse", "release/maic-2026-build-52") == BASELINE,
-            "Competition protection branch does not resolve to build 52 baseline.",
+            "Competition protection branch does not resolve to the frozen source baseline.",
             errors,
         )
     except (OSError, subprocess.CalledProcessError):
@@ -154,6 +156,25 @@ def main() -> int:
     require("englishplus-production.firebaseapp.com" in production_hosting, "Production Hosting auth domain is wrong.", errors)
     require("englishplus-ai-proxy-production.englishplus-ray.workers.dev" in production_hosting, "Production Hosting Worker is wrong.", errors)
 
+    release_lock = json.loads(read("docs/app-store-release/release-environment-lock.json"))
+    competition_lock = release_lock["competition"]
+    production_lock = release_lock["production"]
+    require(
+        competition_lock.get("publicTestFlightBuild") == PUBLIC_COMPETITION_BUILD,
+        "Public competition build is not locked to 53.",
+        errors,
+    )
+    require(
+        production_lock.get("minimumCandidateBuild") >= MINIMUM_PRODUCTION_BUILD,
+        "Production candidate floor is below build 54.",
+        errors,
+    )
+    require(
+        competition_lock.get("publicTestFlightGroup") == "English+公測",
+        "Public competition group changed.",
+        errors,
+    )
+
     if git_checks_available:
         tracked_files = git("ls-files").splitlines()
         require(
@@ -172,6 +193,9 @@ def main() -> int:
         return 1
 
     print("STORE-0 environment isolation validation passed")
+    print("- frozen source tag: maic-competition-build-52")
+    print(f"- public competition build: {PUBLIC_COMPETITION_BUILD}")
+    print(f"- minimum production build: {MINIMUM_PRODUCTION_BUILD}")
     return 0
 
 

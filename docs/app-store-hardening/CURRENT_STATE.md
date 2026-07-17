@@ -4,7 +4,7 @@
 > concise. It is the working source of truth, not a replacement for the
 > round reports.
 
-Last verified: 2026-07-16
+Last verified: 2026-07-17
 
 ## Product in one paragraph
 
@@ -17,11 +17,13 @@ learning must remain usable without joining a class.
 ## Repository and release safety
 
 - Repository: `RayChen0503/English-PLUS`
-- Stable release baseline before the final merge: `main` at `51e2beb`,
-  containing the completed Round 13 through Round 16 Block D release gate.
-- Block E release candidate: `codex/app-store-hardening-e`. Rounds 17 through
-  20 and the combined macOS release gate are signed off; the deliberate merge
-  to `main` is the remaining release action.
+- Competition source is frozen at `1207a35` by tag
+  `maic-competition-build-52` and branch `release/maic-2026-build-52`.
+  Judges install the public TestFlight rebuild `1.0 (53)` through
+  `English+公測`; build 53 and its public link are immutable release inputs.
+- Completed STORE source is on `main` at `5ec3f9f`. Production work continues
+  locally on `codex/app-store-production-release`. Production candidates
+  start at build 54 and must never be assigned to `English+公測`.
 - Completed hardening rounds:
   - Round 1 - baseline audit (`round-01-baseline-audit.md`)
   - Round 2 - personal and multi-class domain (`round-02-personal-and-class-domain.md`)
@@ -56,8 +58,8 @@ learning must remain usable without joining a class.
 - Hardening progress: **20/20 fully signed off**. The combined macOS gate run
   `29351922007` passed backend, Firestore, all hardening contracts, iOS build,
   Swift integration, all-role UI and the small/large appearance matrix.
-- Do not merge to `main` or trigger Xcode Cloud until the end of a four-round
-  block: 4, 8, 12, 16, and 20.
+- Do not push the production release branch or trigger Xcode Cloud until the
+  isolated production backend exists and the RELEASE-3 macOS gate passes.
 - Never reset, overwrite, or silently discard user work.
 
 ## Non-negotiable product behavior
@@ -303,13 +305,13 @@ learning must remain usable without joining a class.
 
 ## Next gate
 
-STORE-0 is active on `codex/app-store-release-1.0`. The competition baseline is
-frozen locally at `1207a35` by tag `maic-competition-build-52` and branch
-`release/maic-2026-build-52`. The iOS, Firebase CLI, Worker and administrator
-website configuration now have separate competition and production paths.
-No snapshot ref, App Store branch or production deployment has been pushed.
-See `docs/app-store-release/store-0-competition-freeze.md` for the deployment
-fingerprint and the remaining manual boundary.
+RELEASE-0 is complete locally on `codex/app-store-production-release`. The
+competition source remains frozen at `1207a35`; the public judging lane is
+build 53 in `English+公測`, while production candidates begin at build 54. The
+iOS, Firebase CLI, Worker and administrator website configuration have
+separate competition and production targets. A machine-readable environment
+lock and repeatable competition guard now protect that boundary. No RELEASE-0
+commit has been pushed and no cloud resource or TestFlight group was changed.
 
 STORE-4 automated submission preparation is complete on Windows: the
 prompt-free provenance manifest contains all 1,080 questions, the App Store
@@ -332,8 +334,9 @@ not loop, stale callbacks are ignored, and recovery uses a short stability
 window. Its dedicated gate, the full `97/97` validator sweep, Worker Node
 `33/33`, Functions build, Firestore Emulator `38/38`, and `git diff --check`
 all pass. Final Swift compilation and real-device behavior remain macOS/Xcode
-release-candidate gates. No release branch push, deployment or Xcode Cloud run
-has been performed.
+release-candidate gates. STORE commit `5ec3f9f` is already on `origin/main`;
+its Xcode Cloud run failed closed before compilation because the production
+Firebase plist secret was absent. No production candidate was uploaded.
 
 ## Maintenance rule
 

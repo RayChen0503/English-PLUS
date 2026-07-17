@@ -1,0 +1,36 @@
+{
+  "schemaVersion": 1,
+  "recordedAt": "2026-07-17T05:10:00+08:00",
+  "competition": {
+    "frozenSourceCommit": "1207a359708b8d83bec867bfdec5a8bdd5d229ac",
+    "sourceTag": "maic-competition-build-52",
+    "protectionBranch": "release/maic-2026-build-52",
+    "internalBaselineBuild": 52,
+    "publicTestFlightBuild": 53,
+    "publicTestFlightGroup": "English+公測",
+    "publicTestFlightLink": "https://testflight.apple.com/join/xTWGUg3f",
+    "firebaseProject": "englishplus-testflight",
+    "workerName": "englishplus-ai-proxy",
+    "workerHost": "englishplus-ai-proxy.englishplus-ray.workers.dev",
+    "workerVersion": "5aa866c5-743e-4349-85ae-26d179c36e06",
+    "r2Bucket": "englishplus-volunteer-evidence",
+    "adminHost": "englishplus-testflight.firebaseapp.com"
+  },
+  "production": {
+    "sourceBaselineCommit": "5ec3f9f981ab615697c52fcb2e9924ad7e678c93",
+    "releaseBranch": "codex/app-store-production-release",
+    "minimumCandidateBuild": 54,
+    "firebaseProject": "englishplus-production",
+    "workerName": "englishplus-ai-proxy-production",
+    "workerHost": "englishplus-ai-proxy-production.englishplus-ray.workers.dev",
+    "r2Bucket": "englishplus-volunteer-evidence-production",
+    "adminHost": "englishplus-production.firebaseapp.com"
+  },
+  "releaseRules": {
+    "neverAssignProductionBuildToCompetitionGroup": true,
+    "neverDeployReleaseChangesToCompetitionResources": true,
+    "requireExplicitFirebaseProductionAlias": true,
+    "requireExplicitCloudflareProductionEnvironment": true,
+    "requireManualAppStoreRelease": true
+  }
+}
