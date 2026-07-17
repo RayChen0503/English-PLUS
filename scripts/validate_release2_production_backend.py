@@ -18,6 +18,7 @@ GIT_EXECUTABLE = os.environ.get("ENGLISHPLUS_GIT_EXECUTABLE", "git")
 LOCK_PATH = ROOT / "docs/app-store-release/release-environment-lock.json"
 REPORT_PATH = ROOT / "docs/app-store-release/release-2-production-backend.md"
 FIREBASE_CONFIG = ROOT / "firebase.production.json"
+FIRESTORE_INDEXES = ROOT / "docs/ios-testflight/firebase/firestore.indexes.draft.json"
 WRANGLER_CONFIG = ROOT / "workers/englishplus-ai-proxy/wrangler.toml"
 ADMIN_ENV = ROOT / "admin-web/.env.production"
 
@@ -95,6 +96,26 @@ def main() -> int:
     firebase_config = json.loads(FIREBASE_CONFIG.read_text(encoding="utf-8"))
     require(firebase_config["firestore"]["rules"].endswith("firestore.rules.draft"), "Wrong Rules path.", errors)
     require(firebase_config["firestore"]["indexes"].endswith("firestore.indexes.draft.json"), "Wrong indexes path.", errors)
+    firestore_indexes = json.loads(FIRESTORE_INDEXES.read_text(encoding="utf-8"))
+    report_created_at = next(
+        (
+            item
+            for item in firestore_indexes.get("fieldOverrides", [])
+            if item.get("collectionGroup") == "reports" and item.get("fieldPath") == "createdAt"
+        ),
+        None,
+    )
+    require(report_created_at is not None, "Content-report createdAt index is missing.", errors)
+    if report_created_at is not None:
+        require(
+            any(
+                index.get("order") == "DESCENDING"
+                and index.get("queryScope") == "COLLECTION_GROUP"
+                for index in report_created_at.get("indexes", [])
+            ),
+            "Content-report collection-group sorting index is missing.",
+            errors,
+        )
     hosting = firebase_config["hosting"]
     require(hosting.get("public") == "admin-web/dist", "Wrong administrator Hosting output.", errors)
     headers = json.dumps(hosting.get("headers", []), ensure_ascii=False)
