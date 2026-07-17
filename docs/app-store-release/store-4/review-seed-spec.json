@@ -7,7 +7,8 @@
   "scope": {
     "classId": "APP-REVIEW-CLASS",
     "className": "English+ App Review Demo",
-    "joinCode": "APPREVIEW"
+    "joinCode": "APPREVW1",
+    "volunteerJoinCode": "APPVOL01"
   },
   "actors": [
     {

@@ -26,5 +26,6 @@ workers/**/.dev.vars
 workers/**/.wrangler/
 workers/**/node_modules/
 workers/**/wrangler-*.log
+scripts/release3_review_credentials.local.json
 **/__pycache__/
 *.pyc
