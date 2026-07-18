@@ -116,6 +116,25 @@ def main() -> int:
             "Content-report collection-group sorting index is missing.",
             errors,
         )
+    report_reported_uid = next(
+        (
+            item
+            for item in firestore_indexes.get("fieldOverrides", [])
+            if item.get("collectionGroup") == "reports" and item.get("fieldPath") == "reportedUid"
+        ),
+        None,
+    )
+    require(report_reported_uid is not None, "Account-deletion reportedUid index is missing.", errors)
+    if report_reported_uid is not None:
+        require(
+            any(
+                index.get("order") == "ASCENDING"
+                and index.get("queryScope") == "COLLECTION_GROUP"
+                for index in report_reported_uid.get("indexes", [])
+            ),
+            "Account-deletion reportedUid collection-group index is missing.",
+            errors,
+        )
     hosting = firebase_config["hosting"]
     require(hosting.get("public") == "admin-web/dist", "Wrong administrator Hosting output.", errors)
     headers = json.dumps(hosting.get("headers", []), ensure_ascii=False)

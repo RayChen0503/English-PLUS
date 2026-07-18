@@ -22,12 +22,12 @@ def main() -> int:
     audit = read("docs/app-store-release/network-sync-status-hardening.md")
 
     checks = {
-        "scoped status": (
+        "network-only global banner": (
             contracts + banner,
             (
                 "syncIssue(reason: String, retryAvailable: Bool)",
-                "部分資料暫時無法同步",
-                "showsRetry: retryAvailable",
+                "case .idle, .connecting, .retrying, .listening, .syncIssue:",
+                "return nil",
                 "case .offlineFallback",
                 "showsRetry: false",
             ),
@@ -112,6 +112,15 @@ def main() -> int:
     for text in forbidden:
         if text in app_state:
             failures.append(f"obsolete unconditional network diagnosis remains: {text}")
+
+    forbidden_banner_markers = (
+        "部分資料暫時無法同步",
+        "showsRetry: retryAvailable",
+        "case .syncIssue(let reason, let retryAvailable)",
+    )
+    for text in forbidden_banner_markers:
+        if text in banner:
+            failures.append(f"non-network issue still reaches the global banner: {text}")
 
     if failures:
         print("Network synchronization status gate failed:")

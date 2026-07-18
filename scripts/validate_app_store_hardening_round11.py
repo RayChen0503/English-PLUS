@@ -163,6 +163,7 @@ def main() -> int:
         ("supportThreads", "studentUid"),
         ("messages", "studentUid"),
         ("messages", "authorUid"),
+        ("reports", "reportedUid"),
     }
     actual_indexes = {
         (item.get("collectionGroup"), item.get("fieldPath"))
