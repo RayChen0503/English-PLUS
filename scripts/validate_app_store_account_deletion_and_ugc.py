@@ -54,6 +54,22 @@ def main() -> int:
         "Apple-linked deletion must be gated by in-app reauthentication",
         errors,
     )
+    require(
+        "reauthenticateAndRevokeGoogleToken" in auth_contract,
+        "AuthService must expose Google deletion reauthentication/revocation",
+        errors,
+    )
+    require(
+        "GIDSignIn.sharedInstance.disconnect()" in coordinator,
+        "Google-linked deletion must revoke OAuth grants through Google Sign-In",
+        errors,
+    )
+    require(
+        "hasRevokedGoogleAuthorization" in account_view
+        and "account.google-revoke" in account_view,
+        "Google-linked deletion must be gated by in-app reauthentication",
+        errors,
+    )
 
     require(
         "enum SupportContentPolicy" in repository_contracts

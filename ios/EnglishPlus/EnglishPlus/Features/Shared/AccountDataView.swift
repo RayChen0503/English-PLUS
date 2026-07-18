@@ -15,6 +15,7 @@ struct AccountDataView: View {
     @State private var showsFinalConfirmation = false
     @State private var appleDeletionNonce: String?
     @State private var hasRevokedAppleAuthorization = false
+    @State private var hasRevokedGoogleAuthorization = false
     @FocusState private var isConfirmationFieldFocused: Bool
 
     private var hasCompleteClassTransferSelections: Bool {
@@ -176,6 +177,7 @@ struct AccountDataView: View {
                     errorMessage = nil
                     appleDeletionNonce = nil
                     hasRevokedAppleAuthorization = false
+                    hasRevokedGoogleAuthorization = false
                 } label: {
                     Label("收起刪除內容", systemImage: "chevron.up")
                         .frame(maxWidth: .infinity, minHeight: 44)
@@ -342,6 +344,10 @@ struct AccountDataView: View {
                 appleDeletionConfirmation
             }
 
+            if appState.currentAccountUsesGoogleSignIn {
+                googleDeletionConfirmation
+            }
+
             Button(role: .destructive) {
                 showsFinalConfirmation = true
             } label: {
@@ -362,6 +368,7 @@ struct AccountDataView: View {
                 confirmationText != "刪除"
                     || !hasCompleteClassTransferSelections
                     || (appState.currentAccountUsesAppleSignIn && !hasRevokedAppleAuthorization)
+                    || (appState.currentAccountUsesGoogleSignIn && !hasRevokedGoogleAuthorization)
                     || appState.isManagingAccount
             )
         }
@@ -369,6 +376,41 @@ struct AccountDataView: View {
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(EPTheme.card)
         .clipShape(RoundedRectangle(cornerRadius: EPTheme.cardRadius))
+    }
+
+    @ViewBuilder
+    private var googleDeletionConfirmation: some View {
+        if hasRevokedGoogleAuthorization {
+            Label("Google 帳號已重新確認", systemImage: "checkmark.seal.fill")
+                .font(.subheadline.weight(.semibold))
+                .foregroundStyle(EPTheme.support)
+                .accessibilityIdentifier("account.google-revocation-complete")
+        } else {
+            VStack(alignment: .leading, spacing: 8) {
+                Text("這個帳號已連結 Google。刪除前需再確認一次，並撤銷 English+ 已取得的 Google 登入授權。")
+                    .font(.caption)
+                    .foregroundStyle(EPTheme.secondaryInk)
+                    .fixedSize(horizontal: false, vertical: true)
+
+                Button {
+                    Task { await completeGoogleDeletionAuthorization() }
+                } label: {
+                    if appState.isManagingAccount {
+                        HStack(spacing: 8) {
+                            ProgressView()
+                            Text("正在確認 Google 帳號...")
+                        }
+                        .frame(maxWidth: .infinity, minHeight: 44)
+                    } else {
+                        Label("使用 Google 重新確認", systemImage: "person.badge.key.fill")
+                            .frame(maxWidth: .infinity, minHeight: 44)
+                    }
+                }
+                .buttonStyle(SecondaryActionButtonStyle())
+                .disabled(confirmationText != "刪除" || appState.isManagingAccount)
+                .accessibilityIdentifier("account.google-revoke")
+            }
+        }
     }
 
     @ViewBuilder
@@ -517,6 +559,23 @@ struct AccountDataView: View {
             appleDeletionNonce = nil
         } catch {
             appleDeletionNonce = nil
+            errorMessage = userMessage(for: error)
+            AppDiagnostics.shared.record(.accountLifecycle, underlying: error)
+        }
+    }
+
+    @MainActor
+    private func completeGoogleDeletionAuthorization() async {
+        errorMessage = nil
+        do {
+            let credential = try await FederatedSignInCoordinator.googleAccountDeletionCredential()
+            try await appState.reauthenticateAndRevokeGoogleForAccountDeletion(
+                using: credential
+            )
+            hasRevokedGoogleAuthorization = true
+        } catch FederatedSignInCoordinatorError.cancelled {
+            return
+        } catch {
             errorMessage = userMessage(for: error)
             AppDiagnostics.shared.record(.accountLifecycle, underlying: error)
         }

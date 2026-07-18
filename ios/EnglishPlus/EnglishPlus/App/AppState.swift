@@ -136,6 +136,10 @@ final class AppState: ObservableObject {
         authService.currentUserUses(.apple)
     }
 
+    var currentAccountUsesGoogleSignIn: Bool {
+        authService.currentUserUses(.google)
+    }
+
     func signIn(
         with credential: FederatedIdentityCredential,
         role: UserRole
@@ -428,6 +432,17 @@ final class AppState: ObservableObject {
         isManagingAccount = true
         defer { isManagingAccount = false }
         try await authService.reauthenticateAndRevokeAppleToken(using: credential)
+    }
+
+    func reauthenticateAndRevokeGoogleForAccountDeletion(
+        using credential: GoogleAccountDeletionCredential
+    ) async throws {
+        guard currentUser != nil, !isManagingAccount else {
+            throw AccountLifecycleError.unauthenticated
+        }
+        isManagingAccount = true
+        defer { isManagingAccount = false }
+        try await authService.reauthenticateAndRevokeGoogleToken(using: credential)
     }
 
     func completeAccountDeletion() {

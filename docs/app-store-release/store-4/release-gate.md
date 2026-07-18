@@ -9,7 +9,7 @@ this document. Every external action still requires the product owner's explicit
 - [x] Validate App Store metadata character and UTF-8 byte limits.
 - [x] Validate age-rating answers against the shipping communication and
       wellbeing features.
-- [x] Run the complete existing validator sweep (`99/99`).
+- [x] Run the complete existing validator sweep (`104/104`).
 - [x] Run Firebase Emulator rules and indexes tests (`40/40`, JDK 21),
       including STORE-2 managed-account and STORE-3 class-transfer paths.
 - [x] Run Worker native tests (`41/41`), Worker Node tests (`35/35`) and
@@ -21,13 +21,16 @@ this document. Every external action still requires the product owner's explicit
       account deletion, minor/managed-account consent, AI subprocessors,
       volunteer evidence retention and the public support address.
 - [ ] Run Swift unit, integration and UI tests on macOS/Xcode Cloud.
-- [ ] Archive a Production release candidate with no mock/debug route.
+- [x] Archive and install Production candidate build 56 with no mock/debug route.
 - [x] Confirm no API key, service-account key, review password or evidence file is bundled.
 
 The first Xcode Cloud run for STORE commit `5ec3f9f` failed closed before a
 candidate archive because `GOOGLE_SERVICE_INFO_PLIST_BASE64_PRODUCTION` was
-not configured and `englishplus-production` did not yet exist. This is an
-expected environment-isolation result, not a successful release build.
+not configured and `englishplus-production` did not yet exist. Production was
+then isolated and deployed in RELEASE-1 through RELEASE-3. RELEASE-4 produced
+installable candidate build 56. The current local final-audit patch still needs
+one macOS compile/test run before it can replace build 56 as the submission
+candidate.
 
 Windows note: the current Cloudflare Vitest pool and Vite/Rollup process exit
 without a useful diagnostic when run under the repository's non-ASCII parent
@@ -55,9 +58,14 @@ failure; macOS/Xcode Cloud remains the release-authoritative build environment.
       private contact details before it reaches Firestore.
 - [x] Apple-linked accounts must reauthenticate in the deletion flow; English+
       revokes the Apple authorization code before the backend removes the account.
-- [ ] Production Firebase/Worker/R2/admin portal are isolated and online.
-- [ ] Student, teacher and volunteer review accounts work on clean devices without approval.
-- [ ] Historical demo passwords are rotated and no production review account reuses them.
+- [x] Google-linked accounts must reauthenticate in the deletion flow; English+
+      disconnects Google Sign-In and revokes OAuth grants before backend deletion.
+- [x] Production Firebase/Worker/R2/admin portal are isolated and online.
+- [x] Student, teacher and volunteer review accounts are provisioned and pass
+      repeated authenticated backend verification without creating duplicates.
+- [x] Production review passwords are unique, private, untracked and do not reuse
+      historical demo passwords.
+- [ ] All three review accounts complete their full role flow on a clean production device.
 - [ ] New user, returning user, offline/retry, cross-device sync, AI consent/refusal,
       report, block, account deletion, dark mode and Dynamic Type are tested.
 - [ ] App Privacy answers match policy, Xcode privacy report, SDK manifests and packet capture.
@@ -71,10 +79,10 @@ failure; macOS/Xcode Cloud remains the release-authoritative build environment.
 - [x] The public TestFlight link resolves to the English+ beta invitation.
 - [ ] Confirm on an enrolled device that the public group `English+公測` still
       installs build 53.
-- [ ] Candidate build number is 54 or higher and belongs only to `AppStore RC`.
-- [ ] Candidate points to production services; competition build points only to
+- [x] Candidate build number is 54 or higher; build 56 belongs only to `AppStore RC`.
+- [x] Candidate points to production services; competition build points only to
       `englishplus-testflight` and the competition Worker.
-- [ ] No deployment modifies competition Firestore, Worker, R2 or admin hosting.
+- [x] RELEASE deployments did not modify competition Firestore, Worker, R2 or admin hosting.
 
 ## Submission sequence
 
@@ -90,23 +98,16 @@ failure; macOS/Xcode Cloud remains the release-authoritative build environment.
 ## Current blockers
 
 - The public privacy and support pages are online with the finalized minor and
-  managed-account wording. STORE-2 still needs macOS UI/build and real-device
-  verification before submission; its implementation and local rules tests are complete.
-- STORE-3 class-transfer/archive implementation and local verification are
-  complete (`35/35` Worker Node tests and `40/40` Firestore Emulator tests);
-  macOS UI/build verification remains part of the final release-candidate gate.
-- Network-status hardening is complete locally; macOS Swift compilation and a
-  real-device reconnect/listener-failure scenario remain release-candidate gates.
-- UGC safety moderation is complete locally; production administrator access,
-  a real report-to-resolution smoke test and App Review disclosure remain
-  release-candidate gates.
-- Apple account deletion and authorization revocation are complete locally;
-  a real-device Apple reauthentication/deletion test remains a release-candidate gate.
+  managed-account wording. Managed-account onboarding and class transfer still
+  need final clean-device verification on the next candidate.
+- Network-status hardening is complete locally; true offline/reconnect and
+  listener-failure recovery still need final real-device verification.
+- UGC safety moderation and production administrator access are online; one
+  report-to-resolution device smoke test and App Review disclosure remain.
+- Apple and Google account deletion authorization revocation are complete in the
+  final-audit patch; both require real-provider deletion tests on the next candidate.
 - Recommended launch settings have not yet been confirmed by the owner.
 - No external-source attestation has yet been signed.
-- Production review accounts cannot be provisioned until the isolated production
-  backend is deployed.
 - Final screenshots and real-device release-candidate testing are pending.
-- RELEASE-0 verified that the public competition build is 53, production
-  candidates begin at 54, and the authenticated Firebase/Cloudflare account
-  currently contains no production project, Worker or R2 bucket.
+- The current final-audit patch has not been pushed or compiled by Xcode Cloud;
+  build 56 remains the latest installed production candidate until that approval.

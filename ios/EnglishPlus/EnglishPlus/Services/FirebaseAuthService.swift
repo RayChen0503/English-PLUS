@@ -424,6 +424,36 @@ struct FirebaseAuthService: AuthService, Sendable {
         #endif
     }
 
+    func reauthenticateAndRevokeGoogleToken(
+        using credential: GoogleAccountDeletionCredential
+    ) async throws {
+        #if canImport(FirebaseAuth)
+        guard FirebaseAppConfigurator.hasBundledConfig,
+              let user = Auth.auth().currentUser,
+              Self.firebaseUser(user, uses: .google) else {
+            throw AuthServiceError.invalidCredentials
+        }
+
+        do {
+            let firebaseCredential = GoogleAuthProvider.credential(
+                withIDToken: credential.idToken,
+                accessToken: credential.accessToken
+            )
+            _ = try await reauthenticateFirebaseUser(
+                user,
+                credential: firebaseCredential
+            )
+            try await FederatedSignInCoordinator.disconnectGoogle()
+        } catch let error as AuthServiceError {
+            throw error
+        } catch {
+            throw Self.normalizedFirebaseError(error)
+        }
+        #else
+        throw AuthServiceError.identityProviderUnavailable
+        #endif
+    }
+
     func reauthenticateAndRevokeAppleToken(
         using credential: AppleAccountDeletionCredential
     ) async throws {

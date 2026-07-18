@@ -11,6 +11,7 @@ on:
       - codex/fix-g-stabilization-audit
       - codex/app-store-hardening-d
       - codex/app-store-hardening-e
+      - codex/app-store-production-release
     paths:
       - .github/workflows/ios-hardening-build.yml
       - .github/ci-triggers/round10-ios-build
@@ -127,6 +128,7 @@ jobs:
           python3 scripts/validate_app_store_hardening_round9.py
           python3 scripts/validate_app_store_hardening_round10.py
           python3 scripts/validate_app_store_hardening_round11.py
+          python3 scripts/validate_app_store_account_deletion_and_ugc.py
           python3 scripts/validate_app_store_hardening_round12.py
           python3 scripts/validate_testflight_onboarding_hotfix.py
           python3 scripts/validate_ios_xcode_project_sources.py

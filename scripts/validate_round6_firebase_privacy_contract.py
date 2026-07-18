@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 import sys
+import subprocess
 from pathlib import Path
 
 
@@ -130,7 +131,17 @@ def validate_firestore_contract(errors):
 def validate_config_safety(errors):
     gitignore = text("gitignore")
     require("ios/**/GoogleService-Info.plist" in gitignore, ".gitignore must protect GoogleService-Info.plist", errors)
-    require(not list(ROOT.glob("**/GoogleService-Info.plist")), "GoogleService-Info.plist must not be committed yet", errors)
+    tracked_files = subprocess.run(
+        ["git", "ls-files"],
+        cwd=ROOT,
+        check=True,
+        capture_output=True,
+        text=True,
+    ).stdout.splitlines()
+    tracked_configs = [
+        path for path in tracked_files if Path(path).name == "GoogleService-Info.plist"
+    ]
+    require(not tracked_configs, "GoogleService-Info.plist must not be committed", errors)
 
 
 def main():

@@ -113,6 +113,27 @@ final class AuthenticationFlowAcceptanceTests: XCTestCase {
         XCTAssertFalse(appState.isManagingAccount)
     }
 
+    func testGoogleAccountDeletionRequiresFreshCredentialAndRevokesAuthorization() async throws {
+        let auth = RecordingAuthService()
+        auth.providerSignInResult = .success(session(role: .student))
+        auth.usesGoogleProvider = true
+        let appState = makeAppState(auth: auth)
+        await appState.signIn(
+            with: .google(idToken: "initial-id", accessToken: "initial-access"),
+            role: .student
+        )
+        let credential = GoogleAccountDeletionCredential(
+            idToken: "fresh-id",
+            accessToken: "fresh-access"
+        )
+
+        XCTAssertTrue(appState.currentAccountUsesGoogleSignIn)
+        try await appState.reauthenticateAndRevokeGoogleForAccountDeletion(using: credential)
+
+        XCTAssertEqual(auth.revokedGoogleCredential, credential)
+        XCTAssertFalse(appState.isManagingAccount)
+    }
+
     func testWrongRoleDoesNotCreateAnotherProfile() async {
         let auth = RecordingAuthService()
         auth.providerSignInResult = .failure(.roleMismatch(expected: .teacher, actual: .student))
@@ -2267,7 +2288,9 @@ private final class RecordingAuthService: AuthService {
     var emailSignInResult: Result<AuthSession, AuthServiceError> = .failure(.invalidCredentials)
     var restoredSession: AuthSession?
     var usesAppleProvider = false
+    var usesGoogleProvider = false
     var revokedAppleCredential: AppleAccountDeletionCredential?
+    var revokedGoogleCredential: GoogleAccountDeletionCredential?
 
     private(set) var providerSignInCallCount = 0
     private(set) var providerCreationCallCount = 0
@@ -2332,7 +2355,20 @@ private final class RecordingAuthService: AuthService {
     }
 
     func currentUserUses(_ provider: AccountIdentityProvider) -> Bool {
-        provider == .apple && usesAppleProvider
+        switch provider {
+        case .apple:
+            return usesAppleProvider
+        case .google:
+            return usesGoogleProvider
+        case .emailPassword:
+            return false
+        }
+    }
+
+    func reauthenticateAndRevokeGoogleToken(
+        using credential: GoogleAccountDeletionCredential
+    ) async throws {
+        revokedGoogleCredential = credential
     }
 
     func reauthenticateAndRevokeAppleToken(

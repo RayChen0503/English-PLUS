@@ -1,5 +1,6 @@
 ﻿#!/usr/bin/env python3
 import json
+import subprocess
 import sys
 from pathlib import Path
 
@@ -96,8 +97,17 @@ def validate_ios_contract(errors):
 
 
 def validate_config_not_committed(errors):
-    committed_like_files = list(ROOT.glob("**/GoogleService-Info.plist"))
-    require(not committed_like_files, "GoogleService-Info.plist should not exist in the repository yet", errors)
+    tracked_files = subprocess.run(
+        ["git", "ls-files"],
+        cwd=ROOT,
+        check=True,
+        capture_output=True,
+        text=True,
+    ).stdout.splitlines()
+    tracked_configs = [
+        path for path in tracked_files if Path(path).name == "GoogleService-Info.plist"
+    ]
+    require(not tracked_configs, "GoogleService-Info.plist must not be committed", errors)
     gitignore = (ROOT / ".gitignore").read_text(encoding="utf-8")
     require("GoogleService-Info.plist" in gitignore, ".gitignore should protect GoogleService-Info.plist", errors)
 

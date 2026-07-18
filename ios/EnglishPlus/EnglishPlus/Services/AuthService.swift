@@ -106,6 +106,9 @@ protocol AuthService {
     ) async throws -> VolunteerApplicationReviewState?
     func currentUserIsAdministrator() async -> Bool
     func currentUserUses(_ provider: AccountIdentityProvider) -> Bool
+    func reauthenticateAndRevokeGoogleToken(
+        using credential: GoogleAccountDeletionCredential
+    ) async throws
     func reauthenticateAndRevokeAppleToken(
         using credential: AppleAccountDeletionCredential
     ) async throws
@@ -178,6 +181,12 @@ extension AuthService {
     func currentUserIsAdministrator() async -> Bool { false }
 
     func currentUserUses(_ provider: AccountIdentityProvider) -> Bool { false }
+
+    func reauthenticateAndRevokeGoogleToken(
+        using credential: GoogleAccountDeletionCredential
+    ) async throws {
+        throw AuthServiceError.identityProviderUnavailable
+    }
 
     func reauthenticateAndRevokeAppleToken(
         using credential: AppleAccountDeletionCredential
