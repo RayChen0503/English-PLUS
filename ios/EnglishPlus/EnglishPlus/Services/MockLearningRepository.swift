@@ -1491,12 +1491,3 @@ struct UserDefaultsLearningPersistence: LocalLearningPersistence {
         )
     }
 }
-
-private extension Array {
-    func uniqued<ID: Hashable>(by keyPath: KeyPath<Element, ID>) -> [Element] {
-        var seen = Set<ID>()
-        return filter { element in
-            seen.insert(element[keyPath: keyPath]).inserted
-        }
-    }
-}

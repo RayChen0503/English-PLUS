@@ -2145,15 +2145,6 @@ private struct PracticeInlineSupportPanel: View {
     }
 }
 
-private extension Array {
-    func uniqued<ID: Hashable>(by keyPath: KeyPath<Element, ID>) -> [Element] {
-        var seen = Set<ID>()
-        return filter { element in
-            seen.insert(element[keyPath: keyPath]).inserted
-        }
-    }
-}
-
 private extension Array where Element: Equatable {
     func uniqued() -> [Element] {
         var result: [Element] = []
