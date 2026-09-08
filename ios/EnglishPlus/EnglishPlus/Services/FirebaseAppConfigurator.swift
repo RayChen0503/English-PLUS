@@ -93,6 +93,14 @@ enum FirebaseAppConfigurator {
         bundledConfigPath != nil
     }
 
+    static var hasConfiguredApp: Bool {
+        #if canImport(FirebaseCore)
+        FirebaseApp.app() != nil
+        #else
+        false
+        #endif
+    }
+
     static var bundledProjectID: String? {
         guard let bundledConfigPath,
               let data = FileManager.default.contents(atPath: bundledConfigPath),
@@ -131,13 +139,13 @@ enum FirebaseAppConfigurator {
         }
 
         #if canImport(FirebaseCore)
-        if FirebaseApp.app() == nil {
+        if !hasConfiguredApp {
             guard let options = FirebaseOptions(contentsOfFile: configPath) else {
                 return .configurationError
             }
             FirebaseApp.configure(options: options)
         }
-        return FirebaseApp.app() == nil ? .configurationError : .firebase
+        return hasConfiguredApp ? .firebase : .configurationError
         #else
         return .configurationError
         #endif

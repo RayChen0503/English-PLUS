@@ -125,10 +125,38 @@ final class LearningRepositoryRepairTests: XCTestCase {
 
     func testAssignmentAcceptsNoncanonicalApprovedAnswer() throws {
         try withDefaults { defaults in
-            let repository = MockLearningRepository(localPersistence: UserDefaultsLearningPersistence(defaults: defaults))
-            let item = try XCTUnwrap(repository.questionBankItems.first { item in
-                item.question.acceptedAnswers.contains { $0.lowercased() != item.question.answer.lowercased() }
-            })
+            let source = SeedData.current
+            let item = QuestionBankItem(
+                id: "repair-noncanonical-answer",
+                level: .a1,
+                unit: "字彙與語意",
+                skill: "英美拼字",
+                source: "English+ test fixture",
+                reviewState: .approved,
+                importBatchId: "learning-repository-repair-tests",
+                updatedAt: Date(timeIntervalSince1970: 1_800_000_000),
+                question: Question(
+                    prompt: "Complete the word for a hue: ___.",
+                    type: .fillBlank,
+                    options: [],
+                    answer: "color",
+                    acceptedAnswers: ["color", "colour"],
+                    explanation: "American and British spellings are both accepted.",
+                    concept: "Equivalent regional spelling",
+                    repairHint: "Either standard spelling is valid."
+                )
+            )
+            let seed = SeedDataSnapshot(
+                manifest: source.manifest,
+                accounts: [],
+                questionBankItems: [item],
+                supportOptions: [],
+                dailyMissionRules: source.dailyMissionRules
+            )
+            let repository = MockLearningRepository(
+                seedSnapshot: seed,
+                localPersistence: UserDefaultsLearningPersistence(defaults: defaults)
+            )
             let alternative = try XCTUnwrap(item.question.acceptedAnswers.first { $0.lowercased() != item.question.answer.lowercased() })
             let date = Date(timeIntervalSince1970: 1_800_000_000)
             let assignment = TeacherAssignedPracticeTask(

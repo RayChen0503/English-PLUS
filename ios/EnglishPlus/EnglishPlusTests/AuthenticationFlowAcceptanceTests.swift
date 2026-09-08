@@ -194,7 +194,7 @@ final class AuthenticationFlowAcceptanceTests: XCTestCase {
 
         XCTAssertNil(appState.currentUser)
         XCTAssertEqual(appState.verificationEmailAddress, "new@englishplus.test")
-        XCTAssertEqual(appState.route, .roleSelection)
+        XCTAssertEqual(appState.route, .demoLogin(.student))
         XCTAssertTrue(appState.authNoticeMessage?.contains("驗證信") == true)
     }
 

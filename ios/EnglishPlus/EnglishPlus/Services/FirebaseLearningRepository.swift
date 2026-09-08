@@ -38,7 +38,7 @@ final class FirebaseLearningRepository: LearningRepositoryBackend {
         self.fallback = fallback
         currentSnapshot = Self.normalizedSnapshotForToday(fallback.snapshot)
         #if canImport(FirebaseFirestore)
-        db = FirebaseAppConfigurator.hasBundledConfig ? Firestore.firestore() : nil
+        db = FirebaseAppConfigurator.hasConfiguredApp ? Firestore.firestore() : nil
         #endif
     }
 
