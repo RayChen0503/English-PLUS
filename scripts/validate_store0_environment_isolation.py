@@ -29,9 +29,7 @@ def git(*args: str) -> str:
     ).strip()
 
 
-def main() -> int:
-    errors: list[str] = []
-
+def verify_git_refs(errors):
     git_checks_available = True
     try:
         require(
@@ -51,6 +49,15 @@ def main() -> int:
         )
     except (OSError, subprocess.CalledProcessError):
         git_checks_available = False
+        errors.append("Git baseline/ref checks could not run; STORE-0 verification is incomplete.")
+
+    return git_checks_available
+
+
+def main() -> int:
+    errors: list[str] = []
+
+    git_checks_available = verify_git_refs(errors)
 
     project = read("ios/EnglishPlus/EnglishPlus.xcodeproj/project.pbxproj")
     info_plist = read("ios/EnglishPlus/EnglishPlus/Info.plist")
@@ -184,7 +191,7 @@ def main() -> int:
         )
         require("admin-web/.env.production" not in tracked_files, "Production admin configuration is tracked.", errors)
     else:
-        print("warning: Git subprocess checks skipped; run the documented shell ref check.")
+        print("ERROR: Git checks unavailable; restore Git and required refs before rerunning.")
 
     if errors:
         print("STORE-0 environment isolation validation failed:")

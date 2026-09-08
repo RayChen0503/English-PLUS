@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 import json
-from collections import Counter
+import re
+import unicodedata
 from pathlib import Path
 
 
@@ -19,6 +20,43 @@ def require(condition: bool, message: str, errors: list[str]) -> None:
 def markers(content: str, expected: tuple[str, ...], label: str, errors: list[str]) -> None:
     for marker in expected:
         require(marker in content, f"{label} missing marker: {marker}", errors)
+
+
+def folded(value):
+    return "".join(char for char in unicodedata.normalize("NFD", value.strip())
+                   if not unicodedata.combining(char)).lower()
+
+
+def semantic_key(item):
+    prompt = re.sub(r"^(vocabulary|grammar|fill\s*blank|cloze|reading|translation|dialogue)\s+\d+-\d+:\s*",
+                    "", item["question"]["prompt"], flags=re.I)
+    return " ".join(folded(prompt).split())
+
+
+def normalized_skill(item):
+    return folded(item.get("skill", "").strip() or item["question"].get("concept", ""))
+
+
+def repair_capacity(items):
+    """Mirror repairSelection eligibility, including its same-type fallback.
+
+    Counts semantic prompts, not IDs. This checks the seed with no prior
+    exclusions; a partially exhausted session can correctly offer fewer items.
+    """
+    approved = [item for item in items if item.get("reviewState") == "approved"]
+    keys = {item["id"]: semantic_key(item) for item in approved}
+    skills = {item["id"]: normalized_skill(item) for item in approved}
+    rows = []
+    for source in approved:
+        candidates = [item for item in approved
+                      if item["question"]["type"] == source["question"]["type"]
+                      and item["id"] != source["id"] and keys[item["id"]] != keys[source["id"]]
+                      and (skills[item["id"]] == skills[source["id"]] or item["level"] == source["level"])]
+        exact = {keys[item["id"]] for item in candidates
+                 if item["level"] == source["level"] and skills[item["id"]] == skills[source["id"]]}
+        rows.append({"id": source["id"], "exact": len(exact),
+                     "with_fallback": len({keys[item["id"]] for item in candidates})})
+    return rows
 
 
 def main() -> int:
@@ -135,20 +173,22 @@ def main() -> int:
 
     question_bank = json.loads(read("ios/EnglishPlus/EnglishPlus/Resources/SeedData/question_bank_seed.json"))
     approved = [item for item in question_bank["items"] if item.get("reviewState") == "approved"]
-    group_counts = Counter(
-        (
-            item["question"]["type"],
-            item["level"],
-            (item.get("skill") or item["question"].get("concept") or "").strip().lower(),
-        )
-        for item in approved
-    )
+    capacities = repair_capacity(approved)
     require(len(approved) >= 1000, "Approved question bank dropped below the product baseline", errors)
-    require(
-        bool(group_counts) and min(group_counts.values()) >= 4,
-        "At least one question type/level/skill group cannot provide a source plus three repair questions",
-        errors,
-    )
+    require(bool(capacities), "No approved repair sources were analyzed", errors)
+    markers(questions, ("!excludedSemanticKeys.contains(item.semanticKey)",
+                        "fallbackCandidates: sameSkillOrType", "limit: min(max(1, limit), 5)"),
+            "Bounded semantic repair selector", errors)
+    require("repairQuestionCount: practicePhase == .primary ? wrongAnswerRepairItems.count : 0" in practice,
+            "Repair action must display the actual available count", errors)
+    require("if !result.isCorrect, repairQuestionCount > 0" in practice,
+            "Unavailable repair actions must be hidden", errors)
+    require("三題加練完成" not in practice, "Repair completion must not claim three questions when fewer were available", errors)
+    print(f"Repair seed capacity: {len(capacities)} sources; "
+          f"{sum(row['exact'] >= 3 for row in capacities)} have three exact matches; "
+          f"{sum(row['with_fallback'] >= 3 for row in capacities)} have three including fallback; "
+          f"{sum(row['with_fallback'] == 0 for row in capacities)} have none and hide the repair action. "
+          "Prior session exclusions may reduce the available count.")
 
     markers(smoke, (
         "authenticated_ai_returns_executable_practice_plan",

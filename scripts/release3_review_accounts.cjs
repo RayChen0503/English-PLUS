@@ -4,7 +4,7 @@
 const crypto = require("node:crypto");
 const fs = require("node:fs");
 const path = require("node:path");
-const admin = require("../functions/node_modules/firebase-admin");
+let admin; // Loaded only by the operational CLI, never by offline fixture tests.
 
 const ROOT = path.resolve(__dirname, "..");
 const SPEC_PATH = path.join(ROOT, "docs", "app-store-release", "store-4", "review-seed-spec.json");
@@ -336,12 +336,12 @@ function supportThreadDocument(input) {
   };
 }
 
-async function writeSeed(db, users, spec, questions) {
-  const now = admin.firestore.Timestamp.now();
-  const earlier = admin.firestore.Timestamp.fromMillis(now.toMillis() - 15 * 60 * 1000);
+function buildSeedDocuments(users, spec, questions, Timestamp) {
+  const now = Timestamp.now();
+  const earlier = Timestamp.fromMillis(now.toMillis() - 15 * 60 * 1000);
   const classId = spec.scope.classId;
-  const batch = db.batch();
-  const set = (documentPath, data) => batch.set(db.doc(documentPath), data);
+  const documents = new Map();
+  const set = (documentPath, data) => documents.set(documentPath, data);
 
   for (const [key, user] of Object.entries(users)) {
     set(`users/${user.uid}`, profileDocument(key, user, now, classId));
@@ -507,7 +507,7 @@ async function writeSeed(db, users, spec, questions) {
     lastResultCorrect: true,
     lastAttemptSource: "reviewSeed",
     lastAnsweredAt: earlier,
-    nextReviewAt: admin.firestore.Timestamp.fromMillis(now.toMillis() + 24 * 60 * 60 * 1000),
+    nextReviewAt: Timestamp.fromMillis(now.toMillis() + 24 * 60 * 60 * 1000),
     updatedAt: now,
   });
 
@@ -586,34 +586,43 @@ async function writeSeed(db, users, spec, questions) {
     createdAt: now,
   });
 
+  return documents;
+}
+
+async function writeSeed(db, users, spec, questions) {
+  const batch = db.batch();
+  for (const [documentPath, data] of buildSeedDocuments(users, spec, questions, admin.firestore.Timestamp)) {
+    batch.set(db.doc(documentPath), data);
+  }
   await batch.commit();
 }
 
-async function verifyFirestore(db, users, spec) {
-  const requiredPaths = [
-    `classes/${spec.scope.classId}`,
-    `classAdmins/${spec.scope.classId}`,
-    `classJoinCodes/${spec.scope.joinCode}`,
-    `volunteerJoinCodes/${spec.scope.volunteerJoinCode}`,
-    `classes/${spec.scope.classId}/practiceAssignments/${spec.assignment.id}`,
-    `classes/${spec.scope.classId}/supportThreads/${spec.supportThreads[0].id}`,
-    `classes/${spec.scope.classId}/supportThreads/${spec.supportThreads[1].id}`,
-  ];
-  for (const [key, user] of Object.entries(users)) {
-    requiredPaths.push(`users/${user.uid}`);
-    requiredPaths.push(`users/${user.uid}/consents/${CONSENT_VERSION}`);
-    requiredPaths.push(`users/${user.uid}/classMemberships/${spec.scope.classId}`);
-    requiredPaths.push(`classes/${spec.scope.classId}/members/${user.uid}`);
-    if (key === "volunteer") requiredPaths.push(`volunteerApplications/${user.uid}`);
-  }
-  const snapshots = await db.getAll(...requiredPaths.map((item) => db.doc(item)));
-  const missing = snapshots.filter((snapshot) => !snapshot.exists).map((snapshot) => snapshot.ref.path);
-  if (missing.length) fail(`Missing review seed documents: ${missing.join(", ")}`);
+function verifySeedValue(actual, expected, field) {
+  if (expected && typeof expected.toMillis === "function") {
+    if (!actual || typeof actual.toMillis !== "function" || !Number.isFinite(actual.toMillis())) fail(`Missing or invalid seed timestamp: ${field}`);
+  } else if (Array.isArray(expected)) {
+    if (!Array.isArray(actual) || actual.length !== expected.length) fail(`Seed array mismatch: ${field}`);
+    expected.forEach((value, index) => verifySeedValue(actual[index], value, `${field}[${index}]`));
+  } else if (expected !== null && typeof expected === "object") {
+    if (!actual || typeof actual !== "object") fail(`Missing seed object: ${field}`);
+    for (const [key, value] of Object.entries(expected)) verifySeedValue(actual[key], value, `${field}.${key}`);
+  } else if (actual !== expected) fail(`Seed field mismatch: ${field}`);
+}
 
-  const volunteerProfile = (await db.doc(`users/${users.volunteer.uid}`).get()).data();
-  const volunteerApplication = (await db.doc(`volunteerApplications/${users.volunteer.uid}`).get()).data();
-  if (volunteerProfile.accountStatus !== "active" || volunteerApplication.status !== "approved") {
-    fail("Volunteer review account is not approved and active.");
+async function verifyFirestore(db, users, spec, questions, Timestamp = admin.firestore.Timestamp) {
+  for (const [role, account] of Object.entries(REVIEW_ACCOUNTS)) {
+    const user = users[role];
+    if (!user || user.disabled !== false || user.emailVerified !== true || user.email !== account.email) {
+      fail(`${role} review Auth account must be enabled, email verified, and match the dedicated account.`);
+    }
+  }
+  const expected = buildSeedDocuments(users, spec, questions, Timestamp);
+  const snapshots = await db.getAll(...[...expected.keys()].map((item) => db.doc(item)));
+  const byPath = new Map(snapshots.map((snapshot) => [snapshot.ref.path, snapshot]));
+  for (const [documentPath, data] of expected) {
+    const snapshot = byPath.get(documentPath);
+    if (!snapshot?.exists) fail(`Missing review seed document: ${documentPath}`);
+    verifySeedValue(snapshot.data(), data, documentPath);
   }
 }
 
@@ -757,6 +766,7 @@ async function main() {
   const credentials = loadOrCreateCredentials(credentialsPath, args.apply);
   const serviceAccount = loadServiceAccount();
 
+  admin = require("../functions/node_modules/firebase-admin");
   admin.initializeApp({ credential: admin.credential.cert(serviceAccount), projectId: PROJECT_ID });
   const auth = admin.auth();
   const db = admin.firestore();
@@ -773,7 +783,7 @@ async function main() {
     );
   }
 
-  await verifyFirestore(db, users, spec);
+  await verifyFirestore(db, users, spec, questions);
   if (args.live) await verifyLive(credentials);
   console.log("RELEASE-3 review account verification passed");
   console.log("- three dedicated Email/password accounts are active");
@@ -783,7 +793,11 @@ async function main() {
   console.log("- no credential value was printed or written inside the repository");
 }
 
-main().catch((error) => {
-  console.error(`RELEASE-3 failed: ${error.message}`);
-  process.exitCode = 1;
-});
+module.exports = { buildSeedDocuments, verifyFirestore, verifySeedValue, REVIEW_ACCOUNTS, questionMap };
+
+if (require.main === module) {
+  main().catch((error) => {
+    console.error(`RELEASE-3 failed: ${error.message}`);
+    process.exitCode = 1;
+  });
+}

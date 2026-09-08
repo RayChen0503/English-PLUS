@@ -7,6 +7,10 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		400000000000000000000101 /* LearningMirrorWriteQueue.swift in Sources */ = {isa = PBXBuildFile; fileRef = 400000000000000000000001 /* LearningMirrorWriteQueue.swift */; };
+		200000000000000000000105 /* LearningRepositoryRepairTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 200000000000000000000006 /* LearningRepositoryRepairTests.swift */; };
+		200000000000000000000103 /* UIModelsRepairTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 200000000000000000000004 /* UIModelsRepairTests.swift */; };
+		200000000000000000000104 /* SessionIsolationRepairTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 200000000000000000000005 /* SessionIsolationRepairTests.swift */; };
 		200000000000000000000101 /* AuthenticationFlowAcceptanceTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 200000000000000000000001 /* AuthenticationFlowAcceptanceTests.swift */; };
 		200000000000000000000102 /* Store0EnvironmentIsolationTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 200000000000000000000003 /* Store0EnvironmentIsolationTests.swift */; };
 		300000000000000000000101 /* EnglishPlusCriticalFlowsUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 300000000000000000000001 /* EnglishPlusCriticalFlowsUITests.swift */; };
@@ -107,6 +111,10 @@
 /* End PBXContainerItemProxy section */
 
 /* Begin PBXFileReference section */
+		400000000000000000000001 /* LearningMirrorWriteQueue.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LearningMirrorWriteQueue.swift; sourceTree = "<group>"; };
+		200000000000000000000006 /* LearningRepositoryRepairTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LearningRepositoryRepairTests.swift; sourceTree = "<group>"; };
+		200000000000000000000004 /* UIModelsRepairTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UIModelsRepairTests.swift; sourceTree = "<group>"; };
+		200000000000000000000005 /* SessionIsolationRepairTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SessionIsolationRepairTests.swift; sourceTree = "<group>"; };
 		200000000000000000000001 /* AuthenticationFlowAcceptanceTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AuthenticationFlowAcceptanceTests.swift; sourceTree = "<group>"; };
 		200000000000000000000002 /* EnglishPlusTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = EnglishPlusTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		200000000000000000000003 /* Store0EnvironmentIsolationTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Store0EnvironmentIsolationTests.swift; sourceTree = "<group>"; };
@@ -263,6 +271,9 @@
 			children = (
 				200000000000000000000001 /* AuthenticationFlowAcceptanceTests.swift */,
 				200000000000000000000003 /* Store0EnvironmentIsolationTests.swift */,
+				200000000000000000000004 /* UIModelsRepairTests.swift */,
+				200000000000000000000005 /* SessionIsolationRepairTests.swift */,
+				200000000000000000000006 /* LearningRepositoryRepairTests.swift */,
 			);
 			path = EnglishPlusTests;
 			sourceTree = "<group>";
@@ -337,6 +348,7 @@
 				100000000000000000000047 /* FirebaseFirestoreService.swift */,
 				100000000000000000000069 /* LearningRepositoryConnectivity.swift */,
 				100000000000000000000072 /* LearningRepositoryContracts.swift */,
+				400000000000000000000001 /* LearningMirrorWriteQueue.swift */,
 				100000000000000000000048 /* LearningRepositoryStore.swift */,
 				100000000000000000000070 /* LearningRepositoryStore+Reporting.swift */,
 				100000000000000000000041 /* MockLearningRepository.swift */,
@@ -636,6 +648,9 @@
 			files = (
 				200000000000000000000101 /* AuthenticationFlowAcceptanceTests.swift in Sources */,
 				200000000000000000000102 /* Store0EnvironmentIsolationTests.swift in Sources */,
+				200000000000000000000103 /* UIModelsRepairTests.swift in Sources */,
+				200000000000000000000104 /* SessionIsolationRepairTests.swift in Sources */,
+				200000000000000000000105 /* LearningRepositoryRepairTests.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -688,6 +703,7 @@
 				100000000000000000000145 /* FirebaseFirestoreService.swift in Sources */,
 				100000000000000000000171 /* LearningRepositoryConnectivity.swift in Sources */,
 				100000000000000000000174 /* LearningRepositoryContracts.swift in Sources */,
+				400000000000000000000101 /* LearningMirrorWriteQueue.swift in Sources */,
 				100000000000000000000146 /* LearningRepositoryStore.swift in Sources */,
 				100000000000000000000172 /* LearningRepositoryStore+Reporting.swift in Sources */,
 				100000000000000000000139 /* MockLearningRepository.swift in Sources */,

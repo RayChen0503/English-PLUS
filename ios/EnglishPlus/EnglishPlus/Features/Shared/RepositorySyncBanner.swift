@@ -56,8 +56,26 @@ struct RepositorySyncBanner: View {
 
     private var presentation: SyncBannerPresentation? {
         switch status {
-        case .idle, .connecting, .retrying, .listening, .syncIssue:
+        case .idle, .connecting, .listening:
             return nil
+        case .pendingWrites(let count):
+            return SyncBannerPresentation(
+                title: "正在儲存學習紀錄", detail: "還有 \(count) 筆操作等待雲端確認，裝置上的進度已保留。",
+                systemImage: "icloud.and.arrow.up", tint: EPTheme.primary,
+                showsRetry: false, showsProgress: true
+            )
+        case .retrying:
+            return SyncBannerPresentation(
+                title: "正在重新同步", detail: "目前顯示已載入的資料，連線恢復後會更新。",
+                systemImage: "arrow.triangle.2.circlepath", tint: EPTheme.primary,
+                showsRetry: false, showsProgress: true
+            )
+        case .syncIssue(let reason, let retryAvailable):
+            return SyncBannerPresentation(
+                title: "資料同步暫時中斷", detail: reason,
+                systemImage: "exclamationmark.arrow.triangle.2.circlepath", tint: EPTheme.warning,
+                showsRetry: retryAvailable, showsProgress: false
+            )
         case .offlineFallback(let reason):
             let lastSyncText = lastSuccessfulSyncAt.map {
                 "上次同步：\($0.formatted(date: .omitted, time: .shortened))"

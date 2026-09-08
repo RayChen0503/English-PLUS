@@ -3,6 +3,9 @@
 
 from __future__ import annotations
 
+import plistlib
+from xml.parsers.expat import ExpatError
+
 import importlib.util
 import json
 import re
@@ -16,6 +19,14 @@ MANIFEST_PATH = ROOT / "docs/app-store-release/store-4/question-provenance-manif
 REVIEW_SEED_PATH = ROOT / "docs/app-store-release/store-4/review-seed-spec.json"
 STORE4_DIR = ROOT / "docs/app-store-release/store-4"
 COMPETITION_COMMIT = "1207a35"
+
+
+def exempt_encryption_declared(info: str) -> bool:
+    try:
+        payload = plistlib.loads(info.encode("utf-8"))
+        return isinstance(payload, dict) and payload.get("ITSAppUsesNonExemptEncryption") is False
+    except (ValueError, TypeError, plistlib.InvalidFileException, ExpatError):
+        return False
 
 
 def require(condition: bool, message: str) -> None:
@@ -200,8 +211,7 @@ def main() -> int:
         require(forbidden not in review_notes, f"Review Notes contain a secret marker: {forbidden}")
 
     info = read("ios/EnglishPlus/EnglishPlus/Info.plist")
-    require("ITSAppUsesNonExemptEncryption" in info, "Export-compliance declaration is missing")
-    require("<false/>" in info, "Only exempt system encryption is expected")
+    require(exempt_encryption_declared(info), "ITSAppUsesNonExemptEncryption must be the boolean false in a valid plist")
 
     age_rating = read("docs/app-store-release/store-4/age-rating-questionnaire.md")
     for marker in [

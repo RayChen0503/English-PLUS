@@ -88,8 +88,8 @@ must also have a verified Firebase custom claim `admin: true`.
 ## Model Defaults
 
 ```text
-GROQ_DEFAULT_MODEL = llama-3.1-8b-instant
-GROQ_QUALITY_MODEL = llama-3.3-70b-versatile
+GROQ_DEFAULT_MODEL = openai/gpt-oss-20b
+GROQ_QUALITY_MODEL = openai/gpt-oss-120b
 ```
 
-The default route is optimized for fast short replies: daily missions, wrong-answer explanations, emotional support, and teacher/volunteer draft suggestions.
+The default route is optimized for fast short replies: daily missions, wrong-answer explanations, emotional support, and progress summaries. Teacher and volunteer drafts use the quality route. GPT-OSS requests use low reasoning effort and `max_completion_tokens` so short structured replies stay within the existing task budgets.

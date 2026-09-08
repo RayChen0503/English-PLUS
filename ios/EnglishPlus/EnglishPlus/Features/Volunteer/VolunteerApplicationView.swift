@@ -11,6 +11,7 @@ struct VolunteerApplicationView: View {
     @State private var selectedKind: VolunteerQualificationKind = .universityEnrollment
     @State private var showsFileImporter = false
     @State private var isUploading = false
+    @State private var isSavingDraft = false
     @State private var deletingEvidenceID: String?
     @State private var localError: String?
 
@@ -33,7 +34,24 @@ struct VolunteerApplicationView: View {
             }
             .toolbar {
                 ToolbarItem(placement: .topBarTrailing) {
-                    Button(canEditApplication ? "稍後完成" : "登出") { appState.signOut() }
+                    Button(canEditApplication ? "稍後完成" : "登出") {
+                        Task {
+                            guard !isSavingDraft else { return }
+                            isSavingDraft = true
+                            defer { isSavingDraft = false }
+                            let scope = appState.learningScopeIdentity
+                            do {
+                                if canEditApplication {
+                                    try await appState.saveVolunteerApplicationDraft(application)
+                                }
+                                guard scope == appState.learningScopeIdentity else { return }
+                                appState.signOut()
+                            } catch {
+                                localError = "草稿尚未儲存，請稍後再試。"
+                            }
+                        }
+                    }
+                    .disabled(isSavingDraft || isUploading || deletingEvidenceID != nil)
                 }
             }
         }
@@ -128,7 +146,7 @@ struct VolunteerApplicationView: View {
         .padding(16)
         .background(EPTheme.card)
         .clipShape(RoundedRectangle(cornerRadius: EPTheme.cardRadius))
-        .disabled(!canEditApplication)
+        .disabled(!canEditApplication || isSavingDraft || isUploading || deletingEvidenceID != nil)
         .opacity(canEditApplication ? 1 : 0.72)
     }
 
@@ -180,7 +198,7 @@ struct VolunteerApplicationView: View {
                 }
             }
         }
-        .disabled(!canEditApplication)
+        .disabled(!canEditApplication || isSavingDraft)
         .opacity(canEditApplication ? 1 : 0.72)
     }
 
@@ -241,6 +259,7 @@ struct VolunteerApplicationView: View {
             }
             .disabled(
                 !application.isReadyToSubmit
+                    || isSavingDraft
                     || isUploading
                     || deletingEvidenceID != nil
                     || appState.signingInRole != nil
@@ -265,36 +284,49 @@ struct VolunteerApplicationView: View {
             }
             return
         }
-        guard canAddEvidence else {
+        guard !isSavingDraft, !isUploading, deletingEvidenceID == nil, canAddEvidence else {
             localError = "最多可上傳 5 份證明，合計不得超過 25 MB。"
             return
         }
         Task {
+            let scope = appState.learningScopeIdentity
+            let kind = selectedKind
             isUploading = true
+            defer { isUploading = false }
             localError = nil
             do {
+                try await appState.saveVolunteerApplicationDraft(application)
+                guard scope == appState.learningScopeIdentity else { return }
                 let uploaded = try await appState.uploadVolunteerEvidence(
                     from: url,
-                    kind: selectedKind
+                    kind: kind
                 )
-                evidence.append(uploaded)
+                guard scope == appState.learningScopeIdentity else { return }
+                if !evidence.contains(where: { $0.id == uploaded.id }) {
+                    evidence.append(uploaded)
+                }
             } catch {
+                guard scope == appState.learningScopeIdentity else { return }
                 localError = (error as? LocalizedError)?.errorDescription
                     ?? "文件沒有上傳完成，請再試一次。"
             }
-            isUploading = false
         }
     }
 
     private func removeEvidence(_ item: VolunteerEvidenceReference) async {
         guard deletingEvidenceID == nil else { return }
+        let scope = appState.learningScopeIdentity
         localError = nil
         deletingEvidenceID = item.id
         defer { deletingEvidenceID = nil }
         do {
+            try await appState.saveVolunteerApplicationDraft(application)
+            guard scope == appState.learningScopeIdentity else { return }
             try await appState.deleteVolunteerEvidence(item)
+            guard scope == appState.learningScopeIdentity else { return }
             evidence.removeAll { $0.id == item.id }
         } catch {
+            guard scope == appState.learningScopeIdentity else { return }
             localError = "無法移除文件，請稍後再試。"
         }
     }

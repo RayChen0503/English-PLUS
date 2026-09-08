@@ -1,6 +1,8 @@
 import { DurableObject } from "cloudflare:workers";
 
 const GROQ_CHAT_COMPLETIONS_URL = "https://api.groq.com/openai/v1/chat/completions";
+const DEFAULT_GROQ_MODEL = "openai/gpt-oss-20b";
+const QUALITY_GROQ_MODEL = "openai/gpt-oss-120b";
 const FIREBASE_JWKS_URL =
   "https://www.googleapis.com/service_accounts/v1/jwk/securetoken@system.gserviceaccount.com";
 const MAX_EVIDENCE_BYTES = 10 * 1024 * 1024;
@@ -9,6 +11,7 @@ const MAX_EVIDENCE_TOTAL_BYTES = 25 * 1024 * 1024;
 const EVIDENCE_RESERVATION_SECONDS = 10 * 60;
 const ADMIN_EVIDENCE_PREVIEW_SECONDS = 2 * 60;
 const REVIEW_EVIDENCE_RETENTION_DAYS = 30;
+const UNREFERENCED_EVIDENCE_RETENTION_DAYS = 30;
 const CLASS_JOIN_WINDOW_SECONDS = 15 * 60;
 const CLASS_JOIN_MAX_ATTEMPTS = 12;
 const TAIPEI_TIMEZONE_OFFSET_MS = 8 * 60 * 60 * 1000;
@@ -31,6 +34,8 @@ const USER_OWNED_COLLECTIONS = Object.freeze([
   "skillMastery",
   "consents",
   "blockedSupportAuthors",
+  "volunteerServices",
+  "learningWriteReceipts",
 ]);
 const CLASS_STUDENT_COLLECTIONS = Object.freeze([
   "checkIns",
@@ -339,7 +344,7 @@ function handleHealth(env) {
     ok: true,
     service: "englishplus-ai-proxy",
     provider: "groq",
-    defaultModel: env.GROQ_DEFAULT_MODEL || "llama-3.1-8b-instant",
+    defaultModel: env.GROQ_DEFAULT_MODEL || DEFAULT_GROQ_MODEL,
     quotaMode: aiQuotaMode(env),
     aiGatewayReady: Boolean(
       env.AI_QUOTA
@@ -842,6 +847,12 @@ async function discoverAccountDeletionPlan(context) {
   ]);
   const updates = new Map();
 
+  const reviewEvents = await listFirestoreCollection(
+    context.projectId, context.accessToken,
+    `volunteerApplications/${context.uid}/reviewEvents`, context.firestoreBaseURL
+  );
+  reviewEvents.forEach((document) => deletePaths.add(relativeFirestorePath(document.name)));
+
   for (const collectionId of USER_OWNED_COLLECTIONS) {
     const documents = await listFirestoreCollection(
       context.projectId,
@@ -890,6 +901,7 @@ async function discoverAccountDeletionPlan(context) {
   studentThreads.forEach((thread) => deletePaths.add(relativeFirestorePath(thread.name)));
 
   const deleteQueryPairs = [
+    ["volunteerRequests", "volunteerUid"],
     ["messages", "studentUid"],
     ["practiceAssignments", "studentUid"],
     ["staffAssignments", "studentUid"],
@@ -1113,9 +1125,11 @@ async function appendOwnedClassArchivePlan(
   });
 }
 
-function addAccountDeletionUpdate(updates, path, fields) {
+function addAccountDeletionUpdate(updates, path, fields, options = {}) {
   const existing = updates.get(path);
   updates.set(path, {
+    ...existing,
+    ...options,
     path,
     fields: { ...(existing?.fields || {}), ...fields },
   });
@@ -1276,12 +1290,12 @@ async function processClassStudentDataBatch(context) {
 
 async function executeAccountDeletion(env, uid, existingContext = null) {
   const context = existingContext || await accountDeletionContext(env, uid);
-  const plan = await discoverAccountDeletionPlan(context);
   const existingMetricRecorded = context.job?.fields?.metricRecorded?.booleanValue === true;
   await writeAccountDeletionJob(context, {
     phase: "cleaning",
     metricRecorded: existingMetricRecorded,
   });
+  const plan = await discoverAccountDeletionPlan(context);
 
   await deleteVolunteerEvidenceForAccount(env, uid);
   await commitAccountDeletionUpdates(context, plan.updates, plan.deletePaths);
@@ -1333,7 +1347,23 @@ async function executeAccountDeletion(env, uid, existingContext = null) {
 }
 
 async function writeAccountDeletionJob(context, state) {
-  await commitFirestoreWrites(context, [accountDeletionJobWrite(context, state)]);
+  const writes = [accountDeletionJobWrite(context, state)];
+  // Publish deletion intent before planning. Ownership transfers guard this
+  // profile version in their atomic commit, so neither operation can overlook
+  // a concurrent transfer/deletion of the selected successor.
+  if (context.profile && context.profile.fields?.accountDeletionPending?.booleanValue !== true) {
+    writes.push(maskedUpdateWrite(
+      `${firestoreRoot(context.projectId)}/users/${context.uid}`,
+      { accountDeletionPending: { booleanValue: true } },
+      ["accountDeletionPending"], context.profile.updateTime
+    ));
+  }
+  await commitFirestoreWrites(context, writes);
+  if (context.profile) {
+    context.profile = await getFirestoreDocument(
+      context.projectId, context.accessToken, `users/${context.uid}`, context.firestoreBaseURL
+    );
+  }
   context.job = await getFirestoreDocument(
     context.projectId,
     context.accessToken,
@@ -1460,14 +1490,18 @@ function accountDeletionMetricWrite(projectId, plan) {
 
 async function commitAccountDeletionUpdates(context, updates, deletePaths) {
   const deleting = new Set(deletePaths);
-  const writes = updates
-    .filter((update) => !deleting.has(update.path))
-    .map((update) => maskedUpdateWrite(
+  const groups = new Map();
+  for (const update of updates.filter((update) => !deleting.has(update.path))) {
+    const key = update.atomicGroup || update.path;
+    if (!groups.has(key)) groups.set(key, []);
+    groups.get(key).push(maskedUpdateWrite(
       `${firestoreRoot(context.projectId)}/${update.path}`,
       update.fields,
-      Object.keys(update.fields)
+      Object.keys(update.fields),
+      update.updateTime
     ));
-  await commitFirestoreWriteChunks(context, writes);
+  }
+  await commitFirestoreWriteGroups(context, [...groups.values()]);
 }
 
 async function commitAccountDeletionDeletes(context, deletePaths) {
@@ -1484,6 +1518,21 @@ async function commitFirestoreWriteChunks(context, writes) {
       writes.slice(index, index + FIRESTORE_COMMIT_WRITE_LIMIT)
     );
   }
+}
+
+async function commitFirestoreWriteGroups(context, groups) {
+  let batch = [];
+  for (const group of groups) {
+    if (group.length > FIRESTORE_COMMIT_WRITE_LIMIT) {
+      throw new Error("An atomic write group exceeds the commit limit.");
+    }
+    if (batch.length + group.length > FIRESTORE_COMMIT_WRITE_LIMIT) {
+      await commitFirestoreWrites(context, batch);
+      batch = [];
+    }
+    batch.push(...group);
+  }
+  if (batch.length) await commitFirestoreWrites(context, batch);
 }
 
 async function deleteVolunteerEvidenceForAccount(env, uid) {
@@ -2381,13 +2430,23 @@ async function authorizedEvidenceDescriptor(
   );
   const application = normalizeVolunteerApplicationDocument(applicationDocument);
   const evidence = application.evidence.find((item) => item.objectKey === objectKey);
-  if (!evidence || application.evidenceDeletedAt) {
+  if (!evidence || firestoreStringArray(applicationDocument.fields?.retiredEvidenceKeys).includes(objectKey)) {
     throw httpError(404, "EVIDENCE_NOT_FOUND");
   }
-  if (!includeObjectMetadata) return { uid, evidence };
+  if (!includeObjectMetadata && !application.evidenceDeletedAt) return { uid, evidence };
   const object = await env.VOLUNTEER_EVIDENCE.head(objectKey);
-  if (!object) throw httpError(404, "EVIDENCE_NOT_FOUND");
+  if (!evidenceObjectIsCurrent(object, application.evidenceDeletedAt)) {
+    throw httpError(404, "EVIDENCE_NOT_FOUND");
+  }
   return { uid, evidence, object };
+}
+
+function evidenceObjectIsCurrent(object, deletedAt) {
+  if (!object) return false;
+  if (!deletedAt) return true;
+  // Client supplied timestamps cannot revive a previously deleted batch.
+  const uploadedAt = Date.parse(object.customMetadata?.uploadedAt || object.uploaded);
+  return Number.isFinite(uploadedAt) && uploadedAt > Date.parse(deletedAt);
 }
 
 function adminEvidenceHeaders({ filename, contentType, contentLength, requestId }) {
@@ -2694,6 +2753,10 @@ async function joinClassroom(env, user, joinCode) {
     context.firestoreBaseURL
   );
   const firstJoinedAt = existingMembership?.fields?.joinedAt?.timestampValue || now;
+  const studentPath = `classes/${classId}/students/${studentUid}`;
+  const existingStudent = await getFirestoreDocument(
+    context.projectId, context.accessToken, studentPath, context.firestoreBaseURL
+  );
   // Rejoining the same class must not erase the historical reporting window.
   // The class-scoped records were already visible to this teacher before the
   // student left, while personal-scope records live on a separate path.
@@ -2733,16 +2796,16 @@ async function joinClassroom(env, user, joinCode) {
     },
     {
       update: {
-        name: `${root}/classes/${classId}/students/${studentUid}`,
+        name: `${root}/${studentPath}`,
         fields: {
           uid: { stringValue: studentUid },
           displayName: { stringValue: displayName },
-          gradeBand: { stringValue: "" },
+          gradeBand: existingStudent?.fields?.gradeBand || { stringValue: "" },
           classCode: { stringValue: classId },
-          currentLevel: { stringValue: "基礎" },
-          recommendedTrack: { stringValue: "steady" },
-          lastMissionStatus: { stringValue: "active" },
-          riskLevel: { stringValue: "low" },
+          currentLevel: existingStudent?.fields?.currentLevel || { stringValue: "基礎" },
+          recommendedTrack: existingStudent?.fields?.recommendedTrack || { stringValue: "steady" },
+          lastMissionStatus: existingStudent?.fields?.lastMissionStatus || { stringValue: "active" },
+          riskLevel: existingStudent?.fields?.riskLevel || { stringValue: "low" },
           membershipStatus: { stringValue: "active" },
           joinedAt: { timestampValue: firstJoinedAt },
           visibilityStartsAt: { timestampValue: visibilityStartsAt },
@@ -2750,6 +2813,14 @@ async function joinClassroom(env, user, joinCode) {
           updatedAt: { timestampValue: now },
         },
       },
+      updateMask: { fieldPaths: [
+        "uid", "displayName", "gradeBand", "classCode", "currentLevel",
+        "recommendedTrack", "lastMissionStatus", "riskLevel", "membershipStatus",
+        "joinedAt", "visibilityStartsAt", "leftAt", "updatedAt",
+      ] },
+      currentDocument: existingStudent
+        ? { updateTime: existingStudent.updateTime }
+        : { exists: false },
     },
     userActiveClassWrite(root, studentUid, classId, now, context),
   ];
@@ -3507,8 +3578,9 @@ async function deleteClassroom(env, user, classId) {
       context.firestoreBaseURL
     ),
   ]);
-  const activeMembers = members.filter(membershipIsActiveDocument);
-  const preparedMembers = await Promise.all(activeMembers.map(async (member) => {
+  // Reconcile every member on retries: an earlier batch may have marked a
+  // member left before its profile/mirrors were updated by an older release.
+  const preparedMembers = await Promise.all(members.map(async (member) => {
     const uid = documentId(member.name);
     const role = firestoreString(member.fields?.role);
     if (!uid) return null;
@@ -3579,10 +3651,10 @@ async function deleteClassroom(env, user, classId) {
       ),
     ]);
   }
-  const nonOwnerWrites = validMembers
+  const nonOwnerWriteGroups = validMembers
     .filter((item) => item.uid !== ownerTeacherUid)
-    .flatMap((item) => classroomMemberExitWrites(root, classId, item, now));
-  await commitFirestoreWriteChunks(context, nonOwnerWrites);
+    .map((item) => classroomMemberExitWrites(root, classId, item, now));
+  await commitFirestoreWriteGroups(context, nonOwnerWriteGroups);
 
   const activeVolunteerUids = new Set(
     validMembers
@@ -3950,6 +4022,13 @@ async function classroomUserContext(env, user) {
     firestoreBaseURL
   );
   if (profile) {
+    if (profile.fields?.accountDeletionPending?.booleanValue === true) {
+      throw httpError(409, "ACCOUNT_DELETION_PENDING");
+    }
+    if (profile.fields?.emailVerificationRequired?.booleanValue === true
+        && user.email_verified !== true) {
+      throw httpError(403, "EMAIL_VERIFICATION_REQUIRED");
+    }
     return {
       env,
       projectId,
@@ -4547,6 +4626,8 @@ function extensionForMimeType(mimeType) {
 
 async function reserveEvidenceUpload(env, reservation) {
   let objects = await listEvidenceObjectsForUid(env, reservation.uid);
+  const removed = await cleanupUnreferencedEvidence(env, objects, new Date(reservation.nowSeconds * 1000));
+  if (removed > 0) objects = await listEvidenceObjectsForUid(env, reservation.uid);
   let quota = evidenceQuotaSnapshot(objects, reservation.nowSeconds);
   if (quota.expiredReservationKeys.length > 0) {
     await Promise.all(
@@ -4783,6 +4864,7 @@ async function requireVolunteerApplicant(
   const role = document.fields?.primaryRole?.stringValue;
   const status = document.fields?.accountStatus?.stringValue;
   if (
+    document.fields?.accountDeletionPending?.booleanValue === true ||
     role !== "volunteer" ||
     !allowedStatuses.includes(status)
   ) {
@@ -5434,20 +5516,44 @@ async function cleanupExpiredReviewedEvidence(env, now = new Date()) {
   if (!env.VOLUNTEER_EVIDENCE) {
     throw new Error("Volunteer evidence storage is not configured.");
   }
-  const accessToken = await serviceAccountAccessToken(env);
-  const documents = await listVolunteerApplicationDocuments(env, accessToken);
+  const firestoreBaseURL = firestoreEmulatorBaseURL(env);
+  const accessToken = firestoreBaseURL ? "owner" : await serviceAccountAccessToken(env);
+  const documents = await listFirestoreCollection(
+    env.FIREBASE_PROJECT_ID || "englishplus-testflight", accessToken,
+    "volunteerApplications", firestoreBaseURL
+  );
   const applications = documents.map(normalizeVolunteerApplicationDocument);
   const expired = selectExpiredReviewedApplications(applications, now);
   const expiredReservations = await cleanupExpiredUploadReservations(env, now);
+  const expiredUnreferenced = await cleanupUnreferencedEvidence(
+    env, await listEvidenceObjects(env), now, accessToken
+  );
   let deletedObjects = 0;
 
   for (const application of expired) {
     const prefix = `volunteer-evidence/${application.uid}/`;
-    const keys = application.evidence
+    const referencedKeys = application.evidence
       .map((item) => item.objectKey)
       .filter((key) => key.startsWith(prefix));
+    const reviewedAt = Date.parse(application.reviewedAt);
+    const objects = await Promise.all(referencedKeys.map((key) => env.VOLUNTEER_EVIDENCE.head(key)));
+    const keys = referencedKeys.filter((key, index) => {
+      const object = objects[index];
+      const uploadedAt = Date.parse(object?.customMetadata?.uploadedAt || object?.uploaded);
+      // A rejected applicant can save another draft before submitting it.
+      // Its new uploads belong to the next review, not the expired review.
+      return !object || (Number.isFinite(reviewedAt) && Number.isFinite(uploadedAt) && uploadedAt <= reviewedAt);
+    });
+    if (!keys.length) continue;
+    const retiring = new Set(keys);
+    const source = documents.find((document) => documentId(document.name) === application.uid);
+    const remaining = (source.fields?.evidence?.arrayValue?.values || []).filter((value) =>
+      !retiring.has(firestoreString(value.mapValue?.fields?.storageObjectKey))
+    );
+    // Claim exactly the reviewed version before touching objects. A newly
+    // saved draft/review makes the precondition fail and preserves its files.
+    await commitEvidenceDeletion(env, accessToken, application.uid, now, application.version, remaining, keys);
     await Promise.all(keys.map((key) => env.VOLUNTEER_EVIDENCE.delete(key)));
-    await commitEvidenceDeletion(env, accessToken, application.uid, now);
     deletedObjects += keys.length;
   }
 
@@ -5456,8 +5562,54 @@ async function cleanupExpiredReviewedEvidence(env, now = new Date()) {
     expiredApplications: expired.length,
     deletedObjects,
     deletedExpiredReservations: expiredReservations,
+    deletedUnreferencedObjects: expiredUnreferenced,
     completedAt: now.toISOString(),
   };
+}
+
+async function cleanupUnreferencedEvidence(env, objects, now = new Date(), accessToken = null) {
+  const cutoff = now.getTime() - UNREFERENCED_EVIDENCE_RETENTION_DAYS * 86400000;
+  const candidates = objects.filter((object) =>
+    object.customMetadata?.uploadState === "complete"
+    && Date.parse(object.customMetadata?.uploadedAt || object.uploaded) < cutoff
+  );
+  if (!candidates.length) return 0;
+  const projectId = env.FIREBASE_PROJECT_ID || "englishplus-testflight";
+  const baseURL = firestoreEmulatorBaseURL(env);
+  const token = accessToken || (baseURL ? "owner" : await serviceAccountAccessToken(env));
+  const byUid = new Map();
+  for (const object of candidates) {
+    const uid = object.customMetadata?.ownerUid;
+    if (!uid || !object.key.startsWith(`volunteer-evidence/${uid}/`)) continue;
+    if (!byUid.has(uid)) byUid.set(uid, []);
+    byUid.get(uid).push(object.key);
+  }
+  let removed = 0;
+  for (const [uid, ownedKeys] of byUid) {
+    const document = await getFirestoreDocument(projectId, token, `volunteerApplications/${uid}`, baseURL);
+    const references = new Set(document
+      ? normalizeVolunteerApplicationDocument(document).evidence.map((item) => item.objectKey)
+      : []);
+    const keys = ownedKeys.filter((key) => !references.has(key));
+    if (!keys.length) continue;
+    if (document) {
+      // The rules reject references to retired keys. Either a concurrent draft
+      // wins this version check, or it sees the retirement and cannot claim a
+      // successfully saved reference to an object about to be deleted.
+      await commitFirestoreWrites({ projectId, accessToken: token, firestoreBaseURL: baseURL }, [{
+        ...maskedUpdateWrite(document.name, {}, [], document.updateTime),
+        updateTransforms: [{ fieldPath: "retiredEvidenceKeys", appendMissingElements: {
+          values: keys.map((key) => ({ stringValue: key })),
+        } }],
+      }]);
+    } else {
+      const profile = await getFirestoreDocument(projectId, token, `users/${uid}`, baseURL);
+      if (profile) continue; // An incomplete registration has no draft version to claim.
+    }
+    await Promise.all(keys.map((key) => env.VOLUNTEER_EVIDENCE.delete(key)));
+    removed += keys.length;
+  }
+  return removed;
 }
 
 async function cleanupExpiredUploadReservations(env, now = new Date()) {
@@ -5486,31 +5638,22 @@ function selectExpiredReviewedApplications(applications, now = new Date()) {
   });
 }
 
-async function commitEvidenceDeletion(env, accessToken, uid, now) {
+async function commitEvidenceDeletion(env, accessToken, uid, now, version, remaining = [], keys = []) {
   const projectId = env.FIREBASE_PROJECT_ID || "englishplus-testflight";
   const name = `projects/${projectId}/databases/(default)/documents/volunteerApplications/${uid}`;
   const timestamp = now.toISOString();
-  const response = await fetch(
-    `https://firestore.googleapis.com/v1/${name}?updateMask.fieldPaths=evidence&updateMask.fieldPaths=evidenceDeletedAt&updateMask.fieldPaths=updatedAt&currentDocument.exists=true`,
-    {
-      method: "PATCH",
-      headers: {
-        Authorization: `Bearer ${accessToken}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        name,
-        fields: {
-          evidence: { arrayValue: { values: [] } },
-          evidenceDeletedAt: { timestampValue: timestamp },
-          updatedAt: { timestampValue: timestamp },
-        },
-      }),
-    }
-  );
-  if (!response.ok) {
-    throw new Error("Unable to record volunteer evidence deletion.");
-  }
+  if (!version) throw new Error("Evidence cleanup requires the reviewed document version.");
+  await commitFirestoreWrites({ projectId, accessToken, firestoreBaseURL: firestoreEmulatorBaseURL(env) }, [
+    { ...maskedUpdateWrite(name, {
+      evidence: { arrayValue: { values: remaining } },
+      evidenceDeletedAt: remaining.length ? { nullValue: null } : { timestampValue: timestamp },
+      updatedAt: { timestampValue: timestamp },
+    }, ["evidence", "evidenceDeletedAt", "updatedAt"], version),
+    updateTransforms: [{ fieldPath: "retiredEvidenceKeys", appendMissingElements: {
+      values: keys.map((key) => ({ stringValue: key })),
+    } }],
+    },
+  ]);
 }
 
 function firestoreString(value) {
@@ -5767,16 +5910,22 @@ function validateAiTaskContext(taskType, context) {
 function buildGroqRequest(request, env) {
   const model =
     request.qualityMode === "quality"
-      ? env.GROQ_QUALITY_MODEL || "llama-3.3-70b-versatile"
-      : env.GROQ_DEFAULT_MODEL || "llama-3.1-8b-instant";
+      ? env.GROQ_QUALITY_MODEL || QUALITY_GROQ_MODEL
+      : env.GROQ_DEFAULT_MODEL || DEFAULT_GROQ_MODEL;
 
-  return {
+  const body = {
     model,
     messages: buildMessages(request),
     temperature: request.taskType === "dailyMission" ? 0.3 : 0.5,
-    max_tokens: maxTokensForTask(request.taskType),
+    max_completion_tokens: maxTokensForTask(request.taskType),
     response_format: { type: "json_object" },
   };
+
+  if (model.startsWith("openai/gpt-oss-")) {
+    body.reasoning_effort = "low";
+  }
+
+  return body;
 }
 
 function buildMessages(request) {
@@ -6016,6 +6165,9 @@ async function appendOwnedClassDispositionPlan(
   deletePaths,
   updates
 ) {
+  if (firestoreString(classroom.fields?.ownerTeacherUid) !== context.uid) {
+    return "alreadyTransferred";
+  }
   const summary = await accountDeletionOwnedClassSummary(context, classroom);
   if (summary.eligibleCoTeachers.length === 0) {
     await appendOwnedClassArchivePlan(context, classroom, deletePaths, updates);
@@ -6048,6 +6200,26 @@ async function appendOwnedClassTransferPlan(
     `classAdmins/${classId}`,
     context.firestoreBaseURL
   );
+  const [successorProfile, successorMember] = await Promise.all([
+    getFirestoreDocument(context.projectId, context.accessToken, `users/${successorUid}`, context.firestoreBaseURL),
+    getFirestoreDocument(context.projectId, context.accessToken, `classes/${classId}/members/${successorUid}`, context.firestoreBaseURL),
+  ]);
+  if (!admin || !successorProfile || !successorMember
+      || firestoreString(successorProfile.fields?.primaryRole) !== "teacher"
+      || firestoreString(successorProfile.fields?.accountStatus) !== "active"
+      || successorProfile.fields?.active?.booleanValue === false
+      || successorProfile.fields?.accountDeletionPending?.booleanValue === true
+      || firestoreString(successorMember.fields?.role) !== "teacher"
+      || !membershipIsActiveDocument(successorMember)) {
+    throw httpError(409, "ACCOUNT_CLASS_TRANSFER_SELECTION_STALE");
+  }
+  const atomicGroup = `ownership-transfer:${successorUid}`;
+  addAccountDeletionUpdate(updates, `users/${successorUid}`, {
+    accountStatus: successorProfile.fields.accountStatus,
+  }, { atomicGroup, updateTime: successorProfile.updateTime });
+  addAccountDeletionUpdate(updates, `classes/${classId}/members/${successorUid}`, {
+    role: successorMember.fields.role,
+  }, { atomicGroup, updateTime: successorMember.updateTime });
   addAccountDeletionUpdate(updates, `classes/${classId}`, {
     ownerTeacherUid: { stringValue: successorUid },
     active: { booleanValue: true },
@@ -6056,13 +6228,13 @@ async function appendOwnedClassTransferPlan(
     archivedAt: { nullValue: null },
     ownershipTransferredAt: { timestampValue: now },
     updatedAt: { timestampValue: now },
-  });
+  }, { atomicGroup, updateTime: classroom.updateTime });
   addAccountDeletionUpdate(updates, `classAdmins/${classId}`, {
     classId: admin?.fields?.classId || { stringValue: classId },
     ownerTeacherUid: { stringValue: successorUid },
     ownershipTransferredAt: { timestampValue: now },
     updatedAt: { timestampValue: now },
-  });
+  }, { atomicGroup, updateTime: admin.updateTime });
 }
 
 async function accountDeletionOwnedClassSummary(context, classroom) {
@@ -6092,7 +6264,8 @@ async function accountDeletionOwnedClassSummary(context, classroom) {
       const isEligible = profile
         && firestoreString(profile.fields?.primaryRole) === "teacher"
         && firestoreString(profile.fields?.accountStatus) === "active"
-        && profile.fields?.active?.booleanValue !== false;
+        && profile.fields?.active?.booleanValue !== false
+        && profile.fields?.accountDeletionPending?.booleanValue !== true;
       if (!isEligible) return null;
       return {
         uid,
@@ -6310,8 +6483,8 @@ function maxTokensForTask(taskType) {
 
 function modelNameFromRequest(request) {
   return request.qualityMode === "quality"
-    ? "llama-3.3-70b-versatile"
-    : "llama-3.1-8b-instant";
+    ? QUALITY_GROQ_MODEL
+    : DEFAULT_GROQ_MODEL;
 }
 
 function clampInteger(value, min, max, fallback) {
@@ -6352,6 +6525,10 @@ export {
   aiQuotaPolicy,
   aiTaskCost,
   assertAiTaskRole,
+  buildGroqRequest,
+  cleanupUnreferencedEvidence,
+  cleanupExpiredReviewedEvidence,
+  evidenceObjectIsCurrent,
   evidenceQuotaSnapshot,
   createClassroom,
   deleteClassroom,

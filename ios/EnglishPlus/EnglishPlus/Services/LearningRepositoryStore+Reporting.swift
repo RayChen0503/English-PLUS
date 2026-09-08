@@ -212,9 +212,12 @@ extension LearningRepositoryStore {
         activeClassId: String? = nil
     ) -> ClassroomReportExport {
         let metrics = staffDashboardMetrics
-        let priorityRows = teacherQueue.prefix(5).map { request in
+        var seenStudentIds = Set<String>()
+        let uniquePriorityStudents = teacherQueue.filter { seenStudentIds.insert($0.studentUid).inserted }
+        let priorityStudentCount = Set(teacherQueue.filter { $0.priority == .high }.map(\.studentUid)).count
+        let priorityRows = uniquePriorityStudents.prefix(5).map { request in
             ClassroomReportStudentRow(
-                id: request.id,
+                id: request.studentUid,
                 studentName: request.studentName,
                 classCode: request.classCode,
                 priorityText: request.priority.uiTitle,
@@ -245,7 +248,7 @@ extension LearningRepositoryStore {
                 ClassroomReportMetric(
                     id: "priority-help",
                     label: "優先關懷",
-                    value: "\(metrics.priorityHelpCount)",
+                    value: "\(priorityStudentCount)",
                     detail: "位"
                 ),
                 ClassroomReportMetric(

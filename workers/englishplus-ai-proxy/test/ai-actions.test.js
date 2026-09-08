@@ -1,7 +1,41 @@
 import assert from "node:assert/strict";
 import { test } from "vitest";
 
-import { normalizeOutput, normalizeRequest } from "../src/index.js";
+import { buildGroqRequest, normalizeOutput, normalizeRequest } from "../src/index.js";
+
+test("Groq request defaults use supported GPT-OSS models and current token parameter", () => {
+  const freeRequest = buildGroqRequest({
+    taskType: "wrongAnswerExplanation",
+    qualityMode: "free",
+    locale: "zh-TW",
+    context: {},
+  }, {});
+  const qualityRequest = buildGroqRequest({
+    taskType: "teacherFeedbackDraft",
+    qualityMode: "quality",
+    locale: "zh-TW",
+    context: {},
+  }, {});
+
+  assert.equal(freeRequest.model, "openai/gpt-oss-20b");
+  assert.equal(qualityRequest.model, "openai/gpt-oss-120b");
+  assert.equal(freeRequest.max_completion_tokens, 350);
+  assert.equal("max_tokens" in freeRequest, false);
+  assert.equal(freeRequest.reasoning_effort, "low");
+  assert.deepEqual(freeRequest.response_format, { type: "json_object" });
+});
+
+test("Groq request keeps model overrides and only applies GPT-OSS reasoning options", () => {
+  const request = buildGroqRequest({
+    taskType: "dailyMission",
+    qualityMode: "free",
+    locale: "zh-TW",
+    context: {},
+  }, { GROQ_DEFAULT_MODEL: "custom/provider-model" });
+
+  assert.equal(request.model, "custom/provider-model");
+  assert.equal("reasoning_effort" in request, false);
+});
 
 test("wrong-answer AI rejects requests without a submitted answer", () => {
   const base = {

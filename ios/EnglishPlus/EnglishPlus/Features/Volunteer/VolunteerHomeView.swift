@@ -174,6 +174,10 @@ struct VolunteerReviewNoticeStore {
         defaults.set(noticeID, forKey: storageKey(for: userUID))
     }
 
+    func clear(for userUID: String) {
+        defaults.removeObject(forKey: storageKey(for: userUID))
+    }
+
     private func storageKey(for userUID: String) -> String {
         "\(Self.keyPrefix).\(userUID)"
     }

@@ -13,6 +13,7 @@ struct StudentHomeView: View {
     @State private var selectedTypes = Set<QuestionType>()
     @State private var selectedAnswer = ""
     @State private var isGeneratingMissionWithAI = false
+    @State private var generationRequestId: UUID?
     @State private var isExplainingWrongAnswer = false
     @State private var latestWrongAnswerAIResponse: AiProxyResponse?
     @State private var missionAIRequestId: UUID?
@@ -65,6 +66,23 @@ struct StudentHomeView: View {
                 AccountDataView()
             }
             .onAppear(perform: initializePreferredTypes)
+            .onDisappear {
+                generationRequestId = nil
+                isGeneratingMissionWithAI = false
+                resetQuestionInput()
+            }
+            .onChange(of: learningRepository.nextMissionQuestion?.id) { _, _ in
+                resetQuestionInput()
+            }
+            .onChange(of: learningRepository.currentMission?.id) { _, _ in
+                generationRequestId = nil
+                isGeneratingMissionWithAI = false
+                missionSupportSentQuestionIds = []
+                resetQuestionInput()
+            }
+            .onChange(of: learningRepository.latestMissionAttempt?.id) { _, _ in
+                resetQuestionInput()
+            }
             .onChange(of: learningRepository.learningFlow.stage) { _, stage in
                 if stage != .needsCheckIn {
                     showsFreshCheckIn = false
@@ -483,9 +501,20 @@ struct StudentHomeView: View {
 
     @MainActor
     private func generateMissionAfterAI() async {
-        guard !preferredTypesInDisplayOrder.isEmpty else { return }
+        guard !isGeneratingMissionWithAI, !preferredTypesInDisplayOrder.isEmpty else { return }
+        let requestId = UUID()
+        generationRequestId = requestId
+        let scope = appState.learningScopeIdentity
+        let user = appState.currentUser
+        let profile = appState.currentProfile
+        let previousMissionId = learningRepository.currentMission?.id
         isGeneratingMissionWithAI = true
-        defer { isGeneratingMissionWithAI = false }
+        defer {
+            if generationRequestId == requestId {
+                generationRequestId = nil
+                isGeneratingMissionWithAI = false
+            }
+        }
 
         let aiContext = DailyMissionAIContext(
             classId: currentClassId,
@@ -498,19 +527,30 @@ struct StudentHomeView: View {
             recentWeakSkills: learningRepository.recentWeakSkills
         )
         let aiResponse = await appState.generateDailyMissionWithAI(context: aiContext)
+        guard !Task.isCancelled, generationRequestId == requestId,
+              appState.learningScopeIdentity == scope,
+              learningRepository.currentMission?.id == previousMissionId else { return }
         learningRepository.generateMission(
-            for: appState.currentUser,
-            profile: appState.currentProfile,
-            moodScore: moodScore,
-            availableTimeLevel: timeLevel,
-            wantsChallenge: wantsChallenge,
-            preferredQuestionTypes: preferredTypesInDisplayOrder,
+            for: user,
+            profile: profile,
+            moodScore: aiContext.moodScore,
+            availableTimeLevel: aiContext.availableTimeLevel,
+            wantsChallenge: aiContext.wantsChallenge,
+            preferredQuestionTypes: aiContext.preferredQuestionTypes,
             aiMission: aiResponse.output.mission
         )
         selectedAnswer = ""
         latestWrongAnswerAIResponse = nil
         missionAIRequestId = nil
         isExplainingWrongAnswer = false
+    }
+
+    private func resetQuestionInput() {
+        selectedAnswer = ""
+        latestWrongAnswerAIResponse = nil
+        missionAIRequestId = nil
+        isExplainingWrongAnswer = false
+        missionSupportConfirmation = nil
     }
 
     private func submitMissionAnswer(for item: QuestionBankItem) {
@@ -534,6 +574,7 @@ struct StudentHomeView: View {
 
     @MainActor
     private func askMissionAI(for item: QuestionBankItem, attempt: MissionAttempt) async {
+        let scope = appState.learningScopeIdentity
         guard learningRepository.latestMissionAttempt?.id == attempt.id else { return }
         let requestId = UUID()
         missionAIRequestId = requestId
@@ -552,6 +593,7 @@ struct StudentHomeView: View {
         )
         guard let response = await appState.explainWrongAnswerWithAI(context: aiContext) else { return }
         guard missionAIRequestId == requestId,
+              !Task.isCancelled, scope == appState.learningScopeIdentity,
               learningRepository.latestMissionAttempt?.id == attempt.id
         else { return }
         latestWrongAnswerAIResponse = response
@@ -593,6 +635,7 @@ struct StudentHomeView: View {
         attempt: MissionAttempt
     ) async {
         guard appState.currentProfile?.activeClassId != nil else { return }
+        let scope = appState.learningScopeIdentity
         let didSend = await learningRepository.sendQuestionSupportRequest(
             from: appState.currentUser,
             profile: appState.currentProfile,
@@ -601,7 +644,7 @@ struct StudentHomeView: View {
             selectedAnswer: attempt.selectedAnswer,
             message: missionSupportMessage(for: item, attempt: attempt)
         )
-        guard didSend else { return }
+        guard didSend, scope == appState.learningScopeIdentity else { return }
         missionSupportSentQuestionIds.insert(missionSupportSentKey(for: item))
         missionSupportConfirmation = "已送給老師與志工，兩邊都會看到這一題與你的答案。"
     }

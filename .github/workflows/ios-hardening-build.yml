@@ -27,6 +27,9 @@ on:
       - .github/ci-triggers/round17-student-experience
       - admin-web/**
       - firebase-tests/**
+      - firebase*.json
+      - .firebaserc
+      - ci_scripts/**
       - ios/EnglishPlus/**
       - scripts/**
       - docs/ios-testflight/firebase/**
@@ -55,6 +58,11 @@ jobs:
       - name: Show Xcode toolchain
         run: xcodebuild -version
 
+      - name: Use Python 3.12 for validators
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
       - name: Use Node.js 22
         uses: actions/setup-node@v6
         with:
@@ -82,6 +90,11 @@ jobs:
         run: |
           npm ci
           npm run check
+
+      - name: Test offline validation and seed tools
+        run: |
+          python3 -B -m unittest discover -s scripts/tests -p 'test_*.py' -v
+          node --test scripts/tests/review_seed.test.cjs
 
       - name: Validate Firestore rules and classroom lifecycle
         run: |

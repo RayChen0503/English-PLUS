@@ -101,6 +101,7 @@ protocol AuthService {
     func loadVolunteerApplication(
         in session: AuthSession
     ) async throws -> VolunteerApplicationInput?
+    func saveVolunteerApplicationDraft(_ application: VolunteerApplicationInput, in session: AuthSession) async throws
     func loadVolunteerApplicationReviewState(
         in session: AuthSession
     ) async throws -> VolunteerApplicationReviewState?
@@ -120,6 +121,9 @@ protocol AuthService {
 }
 
 extension AuthService {
+    func saveVolunteerApplicationDraft(_ application: VolunteerApplicationInput, in session: AuthSession) async throws {
+        throw AuthServiceError.operationUnavailable
+    }
     func createAccount(
         email: String,
         password: String,

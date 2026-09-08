@@ -10,6 +10,8 @@ import FirebaseFirestore
 
 struct FirebaseAuthService: AuthService, Sendable {
     private let fallback: MockAuthService
+    private let sessionState = FirebaseAuthSessionGeneration()
+    private let authenticationGate = FirebaseAuthenticationGate()
 
     init(fallback: MockAuthService = MockAuthService()) {
         self.fallback = fallback
@@ -20,11 +22,71 @@ struct FirebaseAuthService: AuthService, Sendable {
         return parts.count == 2 && !parts[0].isEmpty && parts[1].contains(".")
     }
 
+    private func requireCurrentSession(_ generation: UUID, uid: String? = nil) throws {
+        guard !Task.isCancelled, sessionState.current == generation else { throw CancellationError() }
+        #if canImport(FirebaseAuth)
+        if let uid, Auth.auth().currentUser?.uid != uid { throw CancellationError() }
+        #endif
+    }
+
+    private func cleanUpSupersededAuthentication(_ generation: UUID) {
+        // The authentication gate still belongs to this operation here; the next
+        // login has not entered Firebase yet, so cleanup cannot log it out.
+        guard sessionState.current != generation || Task.isCancelled else { return }
+        #if canImport(FirebaseAuth)
+        try? Auth.auth().signOut()
+        #endif
+    }
+
+    private func draftCacheKey(uid: String) -> String { "englishplus.volunteer.pending-draft.\(uid)" }
+
+    func saveVolunteerApplicationDraft(_ application: VolunteerApplicationInput, in session: AuthSession) async throws {
+        #if canImport(FirebaseAuth) && canImport(FirebaseFirestore)
+        let generation = sessionState.current
+        try requireCurrentSession(generation, uid: session.user.id)
+        guard session.user.role == .volunteer,
+              session.profile.accountStatus == .pendingApplication,
+              application.evidence.count <= 5,
+              application.evidence.allSatisfy(\.hasUsableReference) else {
+            throw AuthServiceError.invalidVolunteerApplication
+        }
+        // Journal before awaiting the remote acknowledgement, including during
+        // offline operation or app termination. Keep failed writes recoverable.
+        let encoded = try JSONEncoder().encode(application)
+        UserDefaults.standard.set(encoded, forKey: draftCacheKey(uid: session.user.id))
+        try await setDocument(path: FirestorePath.volunteerApplication(uid: session.user.id), data: [
+            "confirmsAge18OrOlder": application.confirmsAge18OrOlder,
+            "acceptedConductVersion": application.acceptedConductVersion,
+            "motivation": application.motivation,
+            "evidence": application.evidence.map { evidence in
+                ["id": evidence.id, "kind": evidence.kind.rawValue,
+                 "storageObjectKey": evidence.storageObjectKey, "originalFilename": evidence.originalFilename,
+                 "mimeType": evidence.mimeType, "sizeBytes": evidence.sizeBytes,
+                 "uploadedAt": evidence.uploadedAt] as [String: Any]
+            },
+            "updatedAt": Date(),
+        ], merge: true)
+        try requireCurrentSession(generation, uid: session.user.id)
+        if UserDefaults.standard.data(forKey: draftCacheKey(uid: session.user.id)) == encoded {
+            UserDefaults.standard.removeObject(forKey: draftCacheKey(uid: session.user.id))
+        }
+        #else
+        try await fallback.saveVolunteerApplicationDraft(application, in: session)
+        #endif
+    }
+
     func demoSession(for role: UserRole) -> AuthSession {
         fallback.demoSession(for: role)
     }
 
     func signIn(email: String, password: String, expectedRole: UserRole) async throws -> AuthSession {
+        let generation = sessionState.invalidate()
+        await authenticationGate.acquire()
+        defer {
+            cleanUpSupersededAuthentication(generation)
+            Task { await authenticationGate.release() }
+        }
+        try requireCurrentSession(generation)
         #if canImport(FirebaseAuth) && canImport(FirebaseFirestore)
         guard FirebaseAppConfigurator.hasBundledConfig else {
             throw AuthServiceError.operationUnavailable
@@ -37,6 +99,7 @@ struct FirebaseAuthService: AuthService, Sendable {
 
         do {
             let result = try await signInWithFirebase(email: cleanedEmail, password: password)
+            try requireCurrentSession(generation)
             do {
                 return try await accountSession(
                     uid: result.user.uid,
@@ -59,6 +122,13 @@ struct FirebaseAuthService: AuthService, Sendable {
     }
 
     func createAccount(_ registration: AccountRegistration) async throws -> AccountCreationOutcome {
+        let generation = sessionState.invalidate()
+        await authenticationGate.acquire()
+        defer {
+            cleanUpSupersededAuthentication(generation)
+            Task { await authenticationGate.release() }
+        }
+        try requireCurrentSession(generation)
         #if canImport(FirebaseAuth) && canImport(FirebaseFirestore)
         guard FirebaseAppConfigurator.hasBundledConfig else {
             throw AuthServiceError.operationUnavailable
@@ -91,12 +161,15 @@ struct FirebaseAuthService: AuthService, Sendable {
                 email: cleanedEmail,
                 password: registration.password
             )
+            try requireCurrentSession(generation)
             do {
                 try await updateFirebaseDisplayName(cleanedName, for: result.user)
+                try requireCurrentSession(generation)
                 try await createInitialRegistrationDocuments(
                     uid: result.user.uid,
                     registration: registration
                 )
+                try requireCurrentSession(generation)
             } catch {
                 try? await deleteFirebaseUser(result.user)
                 throw error
@@ -104,6 +177,7 @@ struct FirebaseAuthService: AuthService, Sendable {
 
             do {
                 try await sendVerificationEmail(to: result.user)
+                try requireCurrentSession(generation)
             } catch {
                 try? Auth.auth().signOut()
                 throw error
@@ -124,6 +198,13 @@ struct FirebaseAuthService: AuthService, Sendable {
         with credential: FederatedIdentityCredential,
         expectedRole: UserRole
     ) async throws -> AuthSession {
+        let generation = sessionState.invalidate()
+        await authenticationGate.acquire()
+        defer {
+            cleanUpSupersededAuthentication(generation)
+            Task { await authenticationGate.release() }
+        }
+        try requireCurrentSession(generation)
         #if canImport(FirebaseAuth) && canImport(FirebaseFirestore)
         guard FirebaseAppConfigurator.hasBundledConfig else {
             throw AuthServiceError.operationUnavailable
@@ -133,6 +214,7 @@ struct FirebaseAuthService: AuthService, Sendable {
             let result = try await signInWithFirebase(
                 credential: firebaseCredential(from: credential)
             )
+            try requireCurrentSession(generation)
             do {
                 return try await accountSession(
                     uid: result.user.uid,
@@ -162,6 +244,13 @@ struct FirebaseAuthService: AuthService, Sendable {
         with credential: FederatedIdentityCredential,
         profile: RoleOnboardingProfile
     ) async throws -> AccountCreationOutcome {
+        let generation = sessionState.invalidate()
+        await authenticationGate.acquire()
+        defer {
+            cleanUpSupersededAuthentication(generation)
+            Task { await authenticationGate.release() }
+        }
+        try requireCurrentSession(generation)
         #if canImport(FirebaseAuth) && canImport(FirebaseFirestore)
         guard FirebaseAppConfigurator.hasBundledConfig else {
             throw AuthServiceError.operationUnavailable
@@ -194,12 +283,14 @@ struct FirebaseAuthService: AuthService, Sendable {
                 let result = try await signInWithFirebase(
                     credential: firebaseCredential(from: credential)
                 )
+                try requireCurrentSession(generation)
                 signInResult = result
                 firebaseUser = result.user
             }
             let snapshot = try await documentSnapshot(
                 path: FirestorePath.user(uid: firebaseUser.uid)
             )
+            try requireCurrentSession(generation)
             if snapshot.exists {
                 return .authenticated(
                     try await accountSession(
@@ -213,6 +304,7 @@ struct FirebaseAuthService: AuthService, Sendable {
 
             do {
                 try await updateFirebaseDisplayName(profile.normalizedDisplayName, for: firebaseUser)
+                try requireCurrentSession(generation)
                 try await createInitialRegistrationDocuments(
                     uid: firebaseUser.uid,
                     profile: profile,
@@ -220,6 +312,7 @@ struct FirebaseAuthService: AuthService, Sendable {
                     emailVerificationRequired: false,
                     identityProviders: [credential.provider]
                 )
+                try requireCurrentSession(generation)
             } catch {
                 if signInResult?.additionalUserInfo?.isNewUser == true {
                     try? await deleteFirebaseUser(firebaseUser)
@@ -260,6 +353,13 @@ struct FirebaseAuthService: AuthService, Sendable {
         _ credential: FederatedIdentityCredential,
         to session: AuthSession
     ) async throws -> AuthSession {
+        let generation = sessionState.current
+        await authenticationGate.acquire()
+        defer {
+            cleanUpSupersededAuthentication(generation)
+            Task { await authenticationGate.release() }
+        }
+        try requireCurrentSession(generation)
         #if canImport(FirebaseAuth) && canImport(FirebaseFirestore)
         guard let user = Auth.auth().currentUser, user.uid == session.user.id else {
             throw AuthServiceError.invalidCredentials
@@ -270,6 +370,7 @@ struct FirebaseAuthService: AuthService, Sendable {
                 user,
                 credential: firebaseCredential(from: credential)
             )
+            try requireCurrentSession(generation)
             try await setDocument(
                 path: FirestorePath.user(uid: user.uid),
                 data: [
@@ -278,6 +379,7 @@ struct FirebaseAuthService: AuthService, Sendable {
                 ],
                 merge: true
             )
+            try requireCurrentSession(generation)
             return try await accountSession(
                 uid: user.uid,
                 fallbackDisplayName: user.displayName ?? session.user.displayName,
@@ -298,6 +400,13 @@ struct FirebaseAuthService: AuthService, Sendable {
         _ application: VolunteerApplicationInput,
         in session: AuthSession
     ) async throws -> AccountCreationOutcome {
+        let generation = sessionState.current
+        await authenticationGate.acquire()
+        defer {
+            cleanUpSupersededAuthentication(generation)
+            Task { await authenticationGate.release() }
+        }
+        try requireCurrentSession(generation)
         #if canImport(FirebaseAuth) && canImport(FirebaseFirestore)
         guard application.isReadyToSubmit,
               session.user.role == .volunteer,
@@ -343,6 +452,8 @@ struct FirebaseAuthService: AuthService, Sendable {
             merge: true
         )
         try await commit(batch)
+        try requireCurrentSession(generation)
+        UserDefaults.standard.removeObject(forKey: draftCacheKey(uid: user.uid))
         try? Auth.auth().signOut()
         return .approvalPending(email: user.email ?? "", role: .volunteer)
         #else
@@ -358,9 +469,15 @@ struct FirebaseAuthService: AuthService, Sendable {
               Auth.auth().currentUser?.uid == session.user.id else {
             return nil
         }
+        let generation = sessionState.current
+        if let cached = UserDefaults.standard.data(forKey: draftCacheKey(uid: session.user.id)),
+           let draft = try? JSONDecoder().decode(VolunteerApplicationInput.self, from: cached) {
+            return draft
+        }
         let snapshot = try await documentSnapshot(
             path: FirestorePath.volunteerApplication(uid: session.user.id)
         )
+        try requireCurrentSession(generation, uid: session.user.id)
         guard let data = snapshot.data() else { return nil }
         let evidence = (data["evidence"] as? [[String: Any]] ?? []).compactMap {
             evidenceReference(data: $0)
@@ -427,6 +544,13 @@ struct FirebaseAuthService: AuthService, Sendable {
     func reauthenticateAndRevokeGoogleToken(
         using credential: GoogleAccountDeletionCredential
     ) async throws {
+        let generation = sessionState.current
+        await authenticationGate.acquire()
+        defer {
+            cleanUpSupersededAuthentication(generation)
+            Task { await authenticationGate.release() }
+        }
+        try requireCurrentSession(generation)
         #if canImport(FirebaseAuth)
         guard FirebaseAppConfigurator.hasBundledConfig,
               let user = Auth.auth().currentUser,
@@ -443,7 +567,9 @@ struct FirebaseAuthService: AuthService, Sendable {
                 user,
                 credential: firebaseCredential
             )
+            try requireCurrentSession(generation, uid: user.uid)
             try await FederatedSignInCoordinator.disconnectGoogle()
+            try requireCurrentSession(generation, uid: user.uid)
         } catch let error as AuthServiceError {
             throw error
         } catch {
@@ -457,6 +583,13 @@ struct FirebaseAuthService: AuthService, Sendable {
     func reauthenticateAndRevokeAppleToken(
         using credential: AppleAccountDeletionCredential
     ) async throws {
+        let generation = sessionState.current
+        await authenticationGate.acquire()
+        defer {
+            cleanUpSupersededAuthentication(generation)
+            Task { await authenticationGate.release() }
+        }
+        try requireCurrentSession(generation)
         #if canImport(FirebaseAuth)
         guard FirebaseAppConfigurator.hasBundledConfig,
               let user = Auth.auth().currentUser,
@@ -474,9 +607,11 @@ struct FirebaseAuthService: AuthService, Sendable {
                 user,
                 credential: firebaseCredential
             )
+            try requireCurrentSession(generation, uid: user.uid)
             try await Auth.auth().revokeToken(
                 withAuthorizationCode: credential.authorizationCode
             )
+            try requireCurrentSession(generation, uid: user.uid)
         } catch let error as AuthServiceError {
             throw error
         } catch {
@@ -516,6 +651,13 @@ struct FirebaseAuthService: AuthService, Sendable {
     }
 
     func resendVerification(email: String, password: String) async throws {
+        let generation = sessionState.current
+        await authenticationGate.acquire()
+        defer {
+            cleanUpSupersededAuthentication(generation)
+            Task { await authenticationGate.release() }
+        }
+        try requireCurrentSession(generation)
         #if canImport(FirebaseAuth)
         guard FirebaseAppConfigurator.hasBundledConfig else {
             throw AuthServiceError.operationUnavailable
@@ -527,9 +669,11 @@ struct FirebaseAuthService: AuthService, Sendable {
 
         do {
             let result = try await signInWithFirebase(email: cleanedEmail, password: password)
+            try requireCurrentSession(generation)
             defer { try? Auth.auth().signOut() }
             guard !result.user.isEmailVerified else { return }
             try await sendVerificationEmail(to: result.user)
+            try requireCurrentSession(generation)
         } catch let error as AuthServiceError {
             throw error
         } catch {
@@ -546,6 +690,7 @@ struct FirebaseAuthService: AuthService, Sendable {
 
     func selectActiveClass(_ classId: String?, in session: AuthSession) async throws -> AuthSession {
         #if canImport(FirebaseAuth) && canImport(FirebaseFirestore)
+        let generation = sessionState.current
         guard FirebaseAppConfigurator.hasBundledConfig else {
             throw AuthServiceError.operationUnavailable
         }
@@ -564,6 +709,7 @@ struct FirebaseAuthService: AuthService, Sendable {
             ],
             merge: true
         )
+        try requireCurrentSession(generation, uid: session.user.id)
         return AuthSession(
             user: DemoUser(
                 id: session.user.id,
@@ -578,6 +724,7 @@ struct FirebaseAuthService: AuthService, Sendable {
     }
 
     func signOut() {
+        sessionState.invalidate()
         #if canImport(FirebaseAuth)
         try? Auth.auth().signOut()
         #endif
@@ -588,7 +735,10 @@ struct FirebaseAuthService: AuthService, Sendable {
         guard let user = Auth.auth().currentUser else {
             throw AuthServiceError.invalidCredentials
         }
-        return try await user.getIDToken()
+        let generation = sessionState.current
+        let token = try await user.getIDToken()
+        try requireCurrentSession(generation, uid: user.uid)
+        return token
         #else
         throw AuthServiceError.operationUnavailable
         #endif
@@ -937,8 +1087,9 @@ struct FirebaseAuthService: AuthService, Sendable {
         expectedRole: UserRole?,
         emailVerified: Bool
     ) async throws -> AuthSession {
+        let generation = sessionState.current
         let userSnapshot = try await documentSnapshot(path: FirestorePath.user(uid: uid))
-        var userData = userSnapshot.data() ?? [:]
+        let userData = userSnapshot.data() ?? [:]
         var memberships = try await userMemberships(uid: uid)
 
         if memberships.isEmpty,
@@ -1013,13 +1164,15 @@ struct FirebaseAuthService: AuthService, Sendable {
             ?? firestoreDate(userData["lastLoginAt"])
             ?? createdAt
 
+        try requireCurrentSession(generation, uid: uid)
         if userSnapshot.exists {
-            userData["lastLoginAt"] = now
-            try? await setDocument(
-                path: FirestorePath.user(uid: uid),
-                data: ["lastLoginAt": now],
-                merge: true
-            )
+            // Firestore queues this bookkeeping write offline. Session restoration
+            // must not wait for its server acknowledgement.
+            Firestore.firestore().document(FirestorePath.user(uid: uid))
+                .setData(["lastLoginAt": now], merge: true) { error in
+                    guard error != nil else { return }
+                    Task { @MainActor in AppDiagnostics.shared.record(.authentication) }
+                }
         }
 
         let profile = AppUserProfile(
@@ -1155,4 +1308,35 @@ struct FirebaseAuthService: AuthService, Sendable {
         )
     }
     #endif
+}
+
+
+/// Shared by copies of the service; UUIDs also distinguish logout/login of the same uid.
+private final class FirebaseAuthSessionGeneration: @unchecked Sendable {
+    private let lock = NSLock()
+    private var value = UUID()
+    var current: UUID {
+        lock.lock()
+        defer { lock.unlock() }
+        return value
+    }
+    @discardableResult
+    func invalidate() -> UUID {
+        lock.lock()
+        defer { lock.unlock() }
+        value = UUID()
+        return value
+    }
+}
+
+private actor FirebaseAuthenticationGate {
+    private var busy = false
+    private var waiters: [CheckedContinuation<Void, Never>] = []
+    func acquire() async {
+        if !busy { busy = true; return }
+        await withCheckedContinuation { waiters.append($0) }
+    }
+    func release() {
+        if waiters.isEmpty { busy = false } else { waiters.removeFirst().resume() }
+    }
 }

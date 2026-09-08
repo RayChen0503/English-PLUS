@@ -532,6 +532,8 @@ struct AccountDataView: View {
                 throw AccountLifecycleError.cleanupFailed
             }
             learningRepository.eraseLocalData(for: uid)
+            PracticeSessionDraftStore().clear(ownerId: uid)
+            VolunteerReviewNoticeStore().clear(for: uid)
             appState.completeAccountDeletion()
             dismiss()
         } catch {

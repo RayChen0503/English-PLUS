@@ -23,6 +23,9 @@ struct StudentShellView: View {
             PracticeCenterView(
                 onOpenSupport: {
                     selectedTab = .support
+                },
+                onOpenHome: {
+                    selectedTab = .home
                 }
             )
             .tabItem {

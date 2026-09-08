@@ -64,6 +64,77 @@ final class AppState: ObservableObject {
     private var pendingIdentityCredential: FederatedIdentityCredential?
     private var pendingIdentityRole: UserRole?
     private var federatedOnboardingCredential: FederatedIdentityCredential?
+    @Published private(set) var sessionGeneration = UUID()
+    @Published private(set) var classGeneration = UUID()
+    private var operationGenerations: [String: UUID] = [:]
+    private var pendingMembershipClassIds: Set<String>?
+    private var isUploadingVolunteerEvidence = false
+    private var isSavingVolunteerDraft = false
+    private let volunteerDraftDefaults: UserDefaults
+
+    var learningScopeIdentity: String {
+        "\(sessionGeneration):\(classGeneration):\(currentUser?.id ?? "signed-out"):\(currentProfile?.classId ?? "none")"
+    }
+
+    private struct OperationContext {
+        let session: UUID
+        let classroom: UUID?
+        let key: String
+        let request: UUID
+    }
+
+    private func beginOperation(_ key: String = #function, classScoped: Bool = false) -> OperationContext {
+        let request = UUID()
+        operationGenerations[key] = request
+        return OperationContext(session: sessionGeneration, classroom: classScoped ? classGeneration : nil,
+                                key: key, request: request)
+    }
+
+    private func isCurrent(_ context: OperationContext) -> Bool {
+        !Task.isCancelled && ownsOperation(context)
+    }
+
+    private func ownsOperation(_ context: OperationContext) -> Bool {
+        context.session == sessionGeneration
+            && (context.classroom == nil || context.classroom == classGeneration)
+            && operationGenerations[context.key] == context.request
+    }
+
+    private func invalidateSessionOperations() {
+        sessionGeneration = UUID()
+        classGeneration = UUID()
+        operationGenerations.removeAll()
+        pendingMembershipClassIds = nil
+        isReconcilingClassroomMemberships = false
+        signingInRole = nil
+        isManagingAccount = false
+        isSavingConsent = false
+        isUploadingVolunteerEvidence = false
+        isSavingVolunteerDraft = false
+        isLoadingVolunteerReviews = false
+        isLoadingClassrooms = false
+        isLoadingClassroomStudents = false
+        isManagingClassroom = false
+        isLoadingVolunteerServices = false
+        isManagingVolunteerService = false
+    }
+
+    private func invalidateClassOperations() {
+        classGeneration = UUID()
+        classroomRosterListener?.cancel()
+        classroomRosterListener = nil
+        classroomRosterListenerClassId = nil
+        classroomVolunteerListener?.cancel()
+        classroomVolunteerListener = nil
+        classroomVolunteerListenerClassId = nil
+        classroomStudents = []
+        classroomVolunteerServices = []
+        isLoadingClassrooms = false
+        isLoadingClassroomStudents = false
+        isLoadingVolunteerServices = false
+        isManagingVolunteerService = false
+        isManagingClassroom = false
+    }
 
     init(
         authService: AuthService,
@@ -73,7 +144,8 @@ final class AppState: ObservableObject {
         volunteerReviewService: VolunteerReviewService,
         classroomService: ClassroomService,
         accountLifecycleService: AccountLifecycleService,
-        runtimeDiagnostics: RuntimeDiagnosticsSnapshot
+        runtimeDiagnostics: RuntimeDiagnosticsSnapshot,
+        volunteerDraftDefaults: UserDefaults = .standard
     ) {
         self.authService = authService
         self.firestoreService = firestoreService
@@ -83,9 +155,12 @@ final class AppState: ObservableObject {
         self.classroomService = classroomService
         self.accountLifecycleService = accountLifecycleService
         self.runtimeDiagnostics = runtimeDiagnostics
+        self.volunteerDraftDefaults = volunteerDraftDefaults
     }
 
     func chooseRole(_ role: UserRole) {
+        invalidateSessionOperations()
+        signingInRole = nil
         if let pendingIdentityRole, pendingIdentityRole != role {
             pendingIdentityCredential = nil
             self.pendingIdentityRole = nil
@@ -103,6 +178,7 @@ final class AppState: ObservableObject {
 
     func signIn(email: String, password: String, role: UserRole) async {
         guard signingInRole == nil else { return }
+        let operation = beginOperation(classScoped: false)
         selectedRole = role
         signingInRole = role
         signInErrorMessage = nil
@@ -115,9 +191,12 @@ final class AppState: ObservableObject {
                 password: password,
                 expectedRole: role
             )
+            guard isCurrent(operation) else { return }
             await finishAuthenticatedSession(session)
+            guard isCurrent(operation) else { return }
             signingInRole = nil
         } catch {
+            guard isCurrent(operation) else { return }
             clearFailedAuthenticationState()
             if let authError = error as? AuthServiceError,
                case .emailNotVerified = authError {
@@ -145,6 +224,7 @@ final class AppState: ObservableObject {
         role: UserRole
     ) async {
         guard signingInRole == nil else { return }
+        let operation = beginOperation(classScoped: false)
         selectedRole = role
         signingInRole = role
         clearAuthFeedback()
@@ -154,9 +234,12 @@ final class AppState: ObservableObject {
                 with: credential,
                 expectedRole: role
             )
+            guard isCurrent(operation) else { return }
             await finishAuthenticatedSession(session)
+            guard isCurrent(operation) else { return }
             signingInRole = nil
         } catch {
+            guard isCurrent(operation) else { return }
             if let authError = error as? AuthServiceError,
                authError == .profileUnavailable {
                 clearFailedAuthenticationState()
@@ -185,6 +268,7 @@ final class AppState: ObservableObject {
         displayName: String,
         role: UserRole
     ) async {
+        let operation = beginOperation(classScoped: false)
         await createAccount(
             AccountRegistration(
                 email: email,
@@ -195,10 +279,12 @@ final class AppState: ObservableObject {
                 volunteerApplication: nil
             )
         )
+        guard isCurrent(operation) else { return }
     }
 
     func createAccount(_ registration: AccountRegistration) async {
         guard signingInRole == nil else { return }
+        let operation = beginOperation(classScoped: false)
         selectedRole = registration.role
         signingInRole = registration.role
         signInErrorMessage = nil
@@ -207,9 +293,12 @@ final class AppState: ObservableObject {
 
         do {
             let outcome = try await authService.createAccount(registration)
+            guard isCurrent(operation) else { return }
             await handleCreationOutcome(outcome)
+            guard isCurrent(operation) else { return }
             signingInRole = nil
         } catch {
+            guard isCurrent(operation) else { return }
             clearFailedAuthenticationState()
             signInErrorMessage = userMessage(for: error)
         }
@@ -220,6 +309,7 @@ final class AppState: ObservableObject {
         profile: RoleOnboardingProfile
     ) async {
         guard signingInRole == nil else { return }
+        let operation = beginOperation(classScoped: false)
         selectedRole = profile.role
         signingInRole = profile.role
         clearAuthFeedback()
@@ -229,10 +319,13 @@ final class AppState: ObservableObject {
                 with: credential,
                 profile: profile
             )
+            guard isCurrent(operation) else { return }
             clearFederatedOnboardingState()
             await handleCreationOutcome(outcome)
+            guard isCurrent(operation) else { return }
             signingInRole = nil
         } catch {
+            guard isCurrent(operation) else { return }
             clearFailedAuthenticationState()
             signInErrorMessage = userMessage(for: error)
         }
@@ -244,6 +337,7 @@ final class AppState: ObservableObject {
     }
 
     func completeFederatedOnboarding(profile: RoleOnboardingProfile) async {
+        let operation = beginOperation(classScoped: false)
         guard
             profile.role == federatedOnboardingRole,
             let credential = federatedOnboardingCredential
@@ -252,9 +346,11 @@ final class AppState: ObservableObject {
             return
         }
         await createAccount(with: credential, profile: profile)
+        guard isCurrent(operation) else { return }
     }
 
     func cancelFederatedOnboarding() {
+        invalidateSessionOperations()
         authService.signOut()
         clearFederatedOnboardingState()
         clearAuthFeedback()
@@ -279,6 +375,11 @@ final class AppState: ObservableObject {
         from fileURL: URL,
         kind: VolunteerQualificationKind
     ) async throws -> VolunteerEvidenceReference {
+        guard let user = currentUser, let profile = currentProfile,
+              !isUploadingVolunteerEvidence else { throw AuthServiceError.operationUnavailable }
+        let operation = beginOperation()
+        isUploadingVolunteerEvidence = true
+        defer { if ownsOperation(operation) { isUploadingVolunteerEvidence = false } }
         let accessingSecurityScopedResource = fileURL.startAccessingSecurityScopedResource()
         defer {
             if accessingSecurityScopedResource {
@@ -293,20 +394,83 @@ final class AppState: ObservableObject {
         let data = try Data(contentsOf: fileURL, options: [.mappedIfSafe])
         let mimeType = UTType(filenameExtension: fileURL.pathExtension)?.preferredMIMEType
             ?? "application/octet-stream"
-        return try await evidenceUploadService.upload(
+        let reference = try await evidenceUploadService.upload(
             data: data,
             filename: values.name ?? fileURL.lastPathComponent,
             mimeType: mimeType,
             kind: kind
         )
+        // A completed upload belongs to the captured user even if the screen
+        // disappeared or signed out during the network request.
+        var pending = pendingEvidence(uid: user.id)
+        if !pending.contains(where: { $0.id == reference.id }) { pending.append(reference) }
+        try storePendingEvidence(pending, uid: user.id)
+        guard isCurrent(operation) else { throw CancellationError() }
+        let session = AuthSession(user: user, profile: profile)
+        let loadedDraft = try await authService.loadVolunteerApplication(in: session)
+        guard isCurrent(operation) else { throw CancellationError() }
+        let draft = mergingPendingEvidence(into: volunteerApplicationDraft ?? loadedDraft, uid: user.id)
+        volunteerApplicationDraft = draft
+        try await saveVolunteerApplicationDraft(draft)
+        guard isCurrent(operation) else { throw CancellationError() }
+        return reference
     }
 
     func deleteVolunteerEvidence(_ reference: VolunteerEvidenceReference) async throws {
+        guard let user = currentUser else { throw AuthServiceError.invalidCredentials }
+        let operation = beginOperation()
         try await evidenceUploadService.delete(reference)
+        try storePendingEvidence(pendingEvidence(uid: user.id).filter { $0.id != reference.id }, uid: user.id)
+        guard isCurrent(operation) else { throw CancellationError() }
+        let draft = volunteerApplicationDraft ?? emptyVolunteerDraft
+        try await saveVolunteerApplicationDraft(VolunteerApplicationInput(
+            confirmsAge18OrOlder: draft.confirmsAge18OrOlder, acceptedConductVersion: draft.acceptedConductVersion,
+            motivation: draft.motivation, evidence: draft.evidence.filter { $0.id != reference.id }
+        ))
+    }
+
+    func saveVolunteerApplicationDraft(_ draft: VolunteerApplicationInput) async throws {
+        guard let user = currentUser, let profile = currentProfile,
+              user.role == .volunteer, !isSavingVolunteerDraft else { throw AuthServiceError.operationUnavailable }
+        let operation = beginOperation()
+        isSavingVolunteerDraft = true
+        defer { if ownsOperation(operation) { isSavingVolunteerDraft = false } }
+        try await authService.saveVolunteerApplicationDraft(draft, in: AuthSession(user: user, profile: profile))
+        guard isCurrent(operation) else { throw CancellationError() }
+        volunteerApplicationDraft = draft
+        let savedIds = Set(draft.evidence.map(\.id))
+        try storePendingEvidence(pendingEvidence(uid: user.id).filter { !savedIds.contains($0.id) }, uid: user.id)
+    }
+
+    private var emptyVolunteerDraft: VolunteerApplicationInput {
+        VolunteerApplicationInput(confirmsAge18OrOlder: false, acceptedConductVersion: "", motivation: "", evidence: [])
+    }
+
+    private func pendingEvidence(uid: String) -> [VolunteerEvidenceReference] {
+        guard let data = volunteerDraftDefaults.data(forKey: "englishplus.volunteer.uploaded-evidence.\(uid)") else { return [] }
+        return (try? JSONDecoder().decode([VolunteerEvidenceReference].self, from: data)) ?? []
+    }
+
+    private func storePendingEvidence(_ evidence: [VolunteerEvidenceReference], uid: String) throws {
+        let key = "englishplus.volunteer.uploaded-evidence.\(uid)"
+        if evidence.isEmpty { volunteerDraftDefaults.removeObject(forKey: key) }
+        else { volunteerDraftDefaults.set(try JSONEncoder().encode(evidence), forKey: key) }
+    }
+
+    private func mergingPendingEvidence(into draft: VolunteerApplicationInput?, uid: String) -> VolunteerApplicationInput {
+        let draft = draft ?? emptyVolunteerDraft
+        var evidence = draft.evidence
+        for reference in pendingEvidence(uid: uid) where !evidence.contains(where: { $0.id == reference.id }) {
+            evidence.append(reference)
+        }
+        return VolunteerApplicationInput(confirmsAge18OrOlder: draft.confirmsAge18OrOlder,
+                                         acceptedConductVersion: draft.acceptedConductVersion,
+                                         motivation: draft.motivation, evidence: evidence)
     }
 
     func submitVolunteerApplication(_ application: VolunteerApplicationInput) async {
         guard let currentUser, let currentProfile, signingInRole == nil else { return }
+        let operation = beginOperation(classScoped: false)
         signingInRole = .volunteer
         clearAuthFeedback()
         do {
@@ -314,10 +478,13 @@ final class AppState: ObservableObject {
                 application,
                 in: AuthSession(user: currentUser, profile: currentProfile)
             )
+            guard isCurrent(operation) else { return }
             await handleCreationOutcome(outcome)
+            guard isCurrent(operation) else { return }
             route = .demoLogin(.volunteer)
             signingInRole = nil
         } catch {
+            guard isCurrent(operation) else { return }
             signingInRole = nil
             signInErrorMessage = userMessage(for: error)
         }
@@ -325,20 +492,30 @@ final class AppState: ObservableObject {
 
     func loadVolunteerApplicationDraft() async {
         guard let currentUser, let currentProfile else { return }
+        let operation = beginOperation(classScoped: false)
         let session = AuthSession(user: currentUser, profile: currentProfile)
-        volunteerApplicationDraft = try? await authService.loadVolunteerApplication(in: session)
-        volunteerApplicationReviewState = try? await authService.loadVolunteerApplicationReviewState(
+        let draft = try? await authService.loadVolunteerApplication(in: session)
+        guard isCurrent(operation) else { return }
+        volunteerApplicationDraft = mergingPendingEvidence(into: draft, uid: currentUser.id)
+        let reviewState = try? await authService.loadVolunteerApplicationReviewState(
             in: session
         )
+        guard isCurrent(operation) else { return }
+        volunteerApplicationReviewState = reviewState
     }
 
     func loadVolunteerReviewApplications() async {
         guard isAdministrator, !isLoadingVolunteerReviews else { return }
+        let operation = beginOperation(classScoped: false)
         isLoadingVolunteerReviews = true
+        defer { if ownsOperation(operation) { isLoadingVolunteerReviews = false } }
         volunteerReviewErrorMessage = nil
         do {
-            volunteerReviewApplications = try await volunteerReviewService.listApplications()
+            let applications = try await volunteerReviewService.listApplications()
+            guard isCurrent(operation) else { return }
+            volunteerReviewApplications = applications
         } catch {
+            guard isCurrent(operation) else { return }
             volunteerReviewErrorMessage = (error as? LocalizedError)?.errorDescription
                 ?? "無法載入志工申請。"
         }
@@ -351,12 +528,16 @@ final class AppState: ObservableObject {
         note: String
     ) async -> Bool {
         guard isAdministrator else { return false }
+        let operation = beginOperation(classScoped: false)
         volunteerReviewErrorMessage = nil
         do {
             try await volunteerReviewService.review(uid: uid, action: action, note: note)
+            guard isCurrent(operation) else { return false }
             await loadVolunteerReviewApplications()
+            guard isCurrent(operation) else { return false }
             return true
         } catch {
+            guard isCurrent(operation) else { return false }
             volunteerReviewErrorMessage = (error as? LocalizedError)?.errorDescription
                 ?? "審核沒有完成。"
             return false
@@ -364,12 +545,20 @@ final class AppState: ObservableObject {
     }
 
     func downloadVolunteerEvidence(_ evidence: VolunteerReviewEvidence) async throws -> URL {
-        try await volunteerReviewService.downloadEvidence(evidence)
+        let operation = beginOperation()
+        let url = try await volunteerReviewService.downloadEvidence(evidence)
+        guard isCurrent(operation) else {
+            try? FileManager.default.removeItem(at: url)
+            throw CancellationError()
+        }
+        return url
     }
 
     func sendPasswordReset(email: String) async {
         guard !isManagingAccount else { return }
+        let operation = beginOperation(classScoped: false)
         isManagingAccount = true
+        defer { if ownsOperation(operation) { isManagingAccount = false } }
         signInErrorMessage = nil
         authNoticeMessage = nil
 
@@ -377,8 +566,10 @@ final class AppState: ObservableObject {
             try await authService.sendPasswordReset(
                 email: email.trimmingCharacters(in: .whitespacesAndNewlines)
             )
+            guard isCurrent(operation) else { return }
             authNoticeMessage = "如果這個 email 已有帳號，重設密碼信會寄到該信箱。"
         } catch {
+            guard isCurrent(operation) else { return }
             signInErrorMessage = userMessage(for: error)
         }
         isManagingAccount = false
@@ -386,7 +577,9 @@ final class AppState: ObservableObject {
 
     func resendVerification(email: String, password: String) async {
         guard !isManagingAccount else { return }
+        let operation = beginOperation(classScoped: false)
         isManagingAccount = true
+        defer { if ownsOperation(operation) { isManagingAccount = false } }
         signInErrorMessage = nil
         authNoticeMessage = nil
 
@@ -395,9 +588,11 @@ final class AppState: ObservableObject {
                 email: email.trimmingCharacters(in: .whitespacesAndNewlines),
                 password: password
             )
+            guard isCurrent(operation) else { return }
             verificationEmailAddress = email.trimmingCharacters(in: .whitespacesAndNewlines)
             authNoticeMessage = "新的驗證信已寄出，請到信箱完成驗證。"
         } catch {
+            guard isCurrent(operation) else { return }
             signInErrorMessage = userMessage(for: error)
         }
         isManagingAccount = false
@@ -407,7 +602,10 @@ final class AppState: ObservableObject {
         guard currentUser != nil else {
             throw AccountLifecycleError.unauthenticated
         }
-        return try await accountLifecycleService.deletionPreview()
+        let operation = beginOperation(classScoped: false)
+        let result = try await accountLifecycleService.deletionPreview()
+        guard isCurrent(operation) else { throw CancellationError() }
+        return result
     }
 
     func deleteCurrentAccount(
@@ -416,11 +614,14 @@ final class AppState: ObservableObject {
         guard currentUser != nil, !isManagingAccount else {
             throw AccountLifecycleError.unauthenticated
         }
+        let operation = beginOperation(classScoped: false)
         isManagingAccount = true
-        defer { isManagingAccount = false }
-        return try await accountLifecycleService.deleteAccount(
+        defer { if ownsOperation(operation) { isManagingAccount = false } }
+        let result = try await accountLifecycleService.deleteAccount(
             classTransfers: classTransfers
         )
+        guard isCurrent(operation) else { throw CancellationError() }
+        return result
     }
 
     func reauthenticateAndRevokeAppleForAccountDeletion(
@@ -429,9 +630,11 @@ final class AppState: ObservableObject {
         guard currentUser != nil, !isManagingAccount else {
             throw AccountLifecycleError.unauthenticated
         }
+        let operation = beginOperation(classScoped: false)
         isManagingAccount = true
-        defer { isManagingAccount = false }
+        defer { if ownsOperation(operation) { isManagingAccount = false } }
         try await authService.reauthenticateAndRevokeAppleToken(using: credential)
+        guard isCurrent(operation) else { throw CancellationError() }
     }
 
     func reauthenticateAndRevokeGoogleForAccountDeletion(
@@ -440,17 +643,24 @@ final class AppState: ObservableObject {
         guard currentUser != nil, !isManagingAccount else {
             throw AccountLifecycleError.unauthenticated
         }
+        let operation = beginOperation(classScoped: false)
         isManagingAccount = true
-        defer { isManagingAccount = false }
+        defer { if ownsOperation(operation) { isManagingAccount = false } }
         try await authService.reauthenticateAndRevokeGoogleToken(using: credential)
+        guard isCurrent(operation) else { throw CancellationError() }
     }
 
     func completeAccountDeletion() {
+        if let uid = currentUser?.id {
+            try? storePendingEvidence([], uid: uid)
+            UserDefaults.standard.removeObject(forKey: "englishplus.volunteer.pending-draft.\(uid)")
+        }
         signOut()
     }
 
     func restoreSessionIfPossible() async {
         guard !didAttemptSessionRestore else { return }
+        let operation = beginOperation(classScoped: false)
         didAttemptSessionRestore = true
         signInErrorMessage = nil
         authNoticeMessage = nil
@@ -458,11 +668,15 @@ final class AppState: ObservableObject {
         isManagingAccount = false
 
         do {
-            guard let session = try await authService.restorePreviousSession() else {
+            let restoredSession = try await authService.restorePreviousSession()
+            guard isCurrent(operation) else { return }
+            guard let session = restoredSession else {
                 return
             }
             await finishAuthenticatedSession(session)
+            guard isCurrent(operation) else { return }
         } catch {
+            guard isCurrent(operation) else { return }
             currentUser = nil
             currentProfile = nil
             hasAcceptedConsent = false
@@ -475,9 +689,10 @@ final class AppState: ObservableObject {
         guardianConsentStatus: GuardianConsentStatus
     ) async {
         guard let currentUser, let currentProfile, !isSavingConsent else { return }
+        let operation = beginOperation(classScoped: false)
         isSavingConsent = true
         consentErrorMessage = nil
-        defer { isSavingConsent = false }
+        defer { if ownsOperation(operation) { isSavingConsent = false } }
         let record = PrivacyConsentRecord.accepted(
             uid: currentUser.id,
             role: currentUser.role,
@@ -488,15 +703,13 @@ final class AppState: ObservableObject {
         )
         do {
             try await firestoreService.saveConsent(record)
+            guard isCurrent(operation) else { return }
             hasAcceptedConsent = true
-            startClassroomMembershipSyncIfNeeded(userUid: currentUser.id)
-            synchronizeRoleScopedClassroomData(for: currentProfile)
-            startVolunteerServiceSyncIfNeeded(
-                userUid: currentUser.id,
-                role: currentProfile.role
-            )
-            route = .home(currentUser.role)
+            if let profile = self.currentProfile {
+                applyClassSession(AuthSession(user: currentUser, profile: profile))
+            }
         } catch {
+            guard isCurrent(operation) else { return }
             let reason = (error as? LocalizedError)?.errorDescription
                 ?? LearningRepositorySyncFailureClassifier.classify(error).message
             consentErrorMessage = "資料使用確認尚未保存。\(reason) 你不需要重新勾選。"
@@ -504,6 +717,7 @@ final class AppState: ObservableObject {
     }
 
     func signOut() {
+        invalidateSessionOperations()
         authService.signOut()
         selectedRole = nil
         currentUser = nil
@@ -515,6 +729,8 @@ final class AppState: ObservableObject {
         verificationEmailAddress = nil
         isManagingAccount = false
         isSavingConsent = false
+        isUploadingVolunteerEvidence = false
+        isSavingVolunteerDraft = false
         consentErrorMessage = nil
         latestAIResponse = nil
         volunteerApplicationDraft = nil
@@ -563,6 +779,8 @@ final class AppState: ObservableObject {
 
     func selectActiveClass(_ classId: String?) async {
         guard let currentUser, let currentProfile else { return }
+        invalidateClassOperations()
+        let operation = beginOperation(classScoped: false)
         signInErrorMessage = nil
         clearClassroomFeedback()
 
@@ -571,20 +789,14 @@ final class AppState: ObservableObject {
                 classId,
                 in: AuthSession(user: currentUser, profile: currentProfile)
             )
-            self.currentUser = session.user
-            self.currentProfile = session.profile
-            selectedRole = session.user.role
-            startClassroomMembershipSyncIfNeeded(userUid: session.user.id)
-            synchronizeRoleScopedClassroomData(for: session.profile)
-            runtimeDiagnostics = runtimeDiagnostics.withSession(
-                user: session.user,
-                profile: session.profile
-            )
-            route = .home(session.user.role)
+            guard isCurrent(operation) else { return }
+            applyClassSession(session)
             classroomNoticeMessage = classId == nil
                 ? "已切換到個人學習模式。"
                 : "已切換班級。"
         } catch {
+            guard isCurrent(operation) else { return }
+            synchronizeRoleScopedClassroomData(for: currentProfile)
             signInErrorMessage = "無法切換班級，請確認你仍是該班級的成員。"
             classroomErrorMessage = signInErrorMessage
         }
@@ -592,11 +804,17 @@ final class AppState: ObservableObject {
 
     func loadClassrooms() async {
         guard currentUser != nil, !isLoadingClassrooms else { return }
+        let operation = beginOperation(classScoped: true)
         isLoadingClassrooms = true
+        defer { if ownsOperation(operation) { isLoadingClassrooms = false } }
         classroomErrorMessage = nil
         do {
-            classrooms = try await classroomService.listClassrooms()
-            if let restored = try? await authService.restorePreviousSession(),
+            let refreshedClassrooms = try await classroomService.listClassrooms()
+            guard isCurrent(operation) else { return }
+            classrooms = refreshedClassrooms
+            let restored = try? await authService.restorePreviousSession()
+            guard isCurrent(operation) else { return }
+            if let restored,
                currentUser?.id == restored.user.id {
                 applyClassSession(restored)
             }
@@ -610,6 +828,7 @@ final class AppState: ObservableObject {
                 classroomStudents = []
             }
         } catch {
+            guard isCurrent(operation) else { return }
             classroomErrorMessage = classroomMessage(for: error)
         }
         isLoadingClassrooms = false
@@ -619,16 +838,20 @@ final class AppState: ObservableObject {
         guard currentProfile?.role == .teacher,
               currentProfile?.activeClassId == classId
         else { return }
+        let operation = beginOperation(classScoped: true)
         isLoadingClassroomStudents = true
+        defer { if ownsOperation(operation) { isLoadingClassroomStudents = false } }
         classroomRosterErrorMessage = nil
         do {
             let students = try await classroomService.listStudents(classId: classId)
+            guard isCurrent(operation) else { return }
             guard currentProfile?.activeClassId == classId else {
                 isLoadingClassroomStudents = false
                 return
             }
             classroomStudents = students
         } catch {
+            guard isCurrent(operation) else { return }
             if currentProfile?.activeClassId == classId,
                classroomStudents.isEmpty {
                 classroomRosterErrorMessage = classroomMessage(for: error)
@@ -638,6 +861,8 @@ final class AppState: ObservableObject {
     }
 
     private func startClassroomRosterSync(classId: String) {
+        guard hasAcceptedConsent, currentProfile?.role == .teacher,
+              currentProfile?.activeClassId == classId else { return }
         guard classroomRosterListenerClassId != classId || classroomRosterListener == nil else {
             return
         }
@@ -646,38 +871,48 @@ final class AppState: ObservableObject {
         classroomStudents = []
         classroomRosterErrorMessage = nil
         isLoadingClassroomStudents = true
+        defer { if ownsOperation(operation) { isLoadingClassroomStudents = false } }
+        let operation = beginOperation(classScoped: true)
         classroomRosterListener = classroomService.startStudentListener(
             classId: classId
         ) { [weak self] students in
-            guard let self, self.currentProfile?.activeClassId == classId else { return }
+            guard let self, self.isCurrent(operation), self.currentProfile?.activeClassId == classId else { return }
             self.classroomStudents = students
             self.classroomRosterErrorMessage = nil
             self.isLoadingClassroomStudents = false
         } onError: { [weak self] error in
-            guard let self, self.currentProfile?.activeClassId == classId else { return }
+            guard let self, self.isCurrent(operation), self.currentProfile?.activeClassId == classId else { return }
             self.classroomRosterErrorMessage = self.classroomMessage(for: error)
             self.isLoadingClassroomStudents = false
         }
         Task { [weak self] in
-            await self?.loadClassroomStudents(classId: classId)
+            guard let self, self.isCurrent(operation) else { return }
+            await self.loadClassroomStudents(classId: classId)
         }
     }
 
     @discardableResult
     func createClassroom(name: String) async -> Bool {
         guard !isManagingClassroom else { return false }
+        var operation = beginOperation(classScoped: true)
         isManagingClassroom = true
+        defer { if ownsOperation(operation) { isManagingClassroom = false } }
         clearClassroomFeedback()
         do {
             let classroom = try await classroomService.createClassroom(name: name)
+            guard isCurrent(operation) else { return false }
             upsertClassroom(classroom)
-            await refreshClassSession(fallback: classroom)
+            guard await refreshClassSession(fallback: classroom) else { return false }
+            operation = OperationContext(session: operation.session, classroom: classGeneration, key: operation.key, request: operation.request)
+            guard isCurrent(operation) else { return false }
             await refreshClassroomListAfterMutation()
+            guard isCurrent(operation) else { return false }
             startClassroomRosterSync(classId: classroom.classId)
             classroomNoticeMessage = "班級已建立，可以把代碼分享給學生。"
             isManagingClassroom = false
             return true
         } catch {
+            guard isCurrent(operation) else { return false }
             classroomErrorMessage = classroomMessage(for: error)
             isManagingClassroom = false
             return false
@@ -690,19 +925,24 @@ final class AppState: ObservableObject {
               currentProfile?.role == .teacher,
               currentProfile?.activeClassId == classId
         else { return false }
+        let operation = beginOperation(classScoped: true)
         isManagingClassroom = true
+        defer { if ownsOperation(operation) { isManagingClassroom = false } }
         clearClassroomFeedback()
         do {
             let classroom = try await classroomService.updateClassroom(
                 classId: classId,
                 name: name
             )
+            guard isCurrent(operation) else { return false }
             upsertClassroom(classroom)
             await refreshClassroomListAfterMutation()
+            guard isCurrent(operation) else { return false }
             classroomNoticeMessage = "班級名稱已更新。"
             isManagingClassroom = false
             return true
         } catch {
+            guard isCurrent(operation) else { return false }
             classroomErrorMessage = classroomMessage(for: error)
             isManagingClassroom = false
             return false
@@ -715,11 +955,14 @@ final class AppState: ObservableObject {
               currentProfile?.role == .teacher,
               currentProfile?.activeClassId == classId
         else { return false }
+        var operation = beginOperation(classScoped: true)
         isManagingClassroom = true
+        defer { if ownsOperation(operation) { isManagingClassroom = false } }
         clearClassroomFeedback()
         let deletedName = classrooms.first { $0.classId == classId }?.name ?? "這個班級"
         do {
             try await classroomService.deleteClassroom(classId: classId)
+            guard isCurrent(operation) else { return false }
             classroomRosterListener?.cancel()
             classroomRosterListener = nil
             classroomRosterListenerClassId = nil
@@ -733,12 +976,16 @@ final class AppState: ObservableObject {
                 classroomVolunteerListener = nil
                 classroomVolunteerListenerClassId = nil
             }
-            await refreshClassSessionAfterLeaving(classId: classId)
+            guard await refreshClassSessionAfterLeaving(classId: classId) else { return false }
+            operation = OperationContext(session: operation.session, classroom: classGeneration, key: operation.key, request: operation.request)
+            guard isCurrent(operation) else { return false }
             await refreshClassroomListAfterMutation()
+            guard isCurrent(operation) else { return false }
             classroomNoticeMessage = "已刪除「\(deletedName)」。所有成員已退出，個人學習紀錄不受影響。"
             isManagingClassroom = false
             return true
         } catch {
+            guard isCurrent(operation) else { return false }
             classroomErrorMessage = classroomMessage(for: error)
             isManagingClassroom = false
             return false
@@ -748,17 +995,24 @@ final class AppState: ObservableObject {
     @discardableResult
     func joinClassroom(code: String) async -> Bool {
         guard !isManagingClassroom else { return false }
+        var operation = beginOperation(classScoped: true)
         isManagingClassroom = true
+        defer { if ownsOperation(operation) { isManagingClassroom = false } }
         clearClassroomFeedback()
         do {
             let classroom = try await classroomService.joinClassroom(code: code)
+            guard isCurrent(operation) else { return false }
             upsertClassroom(classroom)
-            await refreshClassSession(fallback: classroom)
+            guard await refreshClassSession(fallback: classroom) else { return false }
+            operation = OperationContext(session: operation.session, classroom: classGeneration, key: operation.key, request: operation.request)
+            guard isCurrent(operation) else { return false }
             await refreshClassroomListAfterMutation()
+            guard isCurrent(operation) else { return false }
             classroomNoticeMessage = "已加入「\(classroom.name)」，老師指派的任務會出現在班級頁。"
             isManagingClassroom = false
             return true
         } catch {
+            guard isCurrent(operation) else { return false }
             classroomErrorMessage = classroomMessage(for: error)
             isManagingClassroom = false
             return false
@@ -768,17 +1022,24 @@ final class AppState: ObservableObject {
     @discardableResult
     func leaveClassroom(classId: String) async -> Bool {
         guard !isManagingClassroom else { return false }
+        var operation = beginOperation(classScoped: true)
         isManagingClassroom = true
+        defer { if ownsOperation(operation) { isManagingClassroom = false } }
         clearClassroomFeedback()
         do {
             try await classroomService.leaveClassroom(classId: classId)
+            guard isCurrent(operation) else { return false }
             classrooms.removeAll { $0.classId == classId }
-            await refreshClassSessionAfterLeaving(classId: classId)
+            guard await refreshClassSessionAfterLeaving(classId: classId) else { return false }
+            operation = OperationContext(session: operation.session, classroom: classGeneration, key: operation.key, request: operation.request)
+            guard isCurrent(operation) else { return false }
             await refreshClassroomListAfterMutation()
+            guard isCurrent(operation) else { return false }
             classroomNoticeMessage = "已離開班級。個人學習紀錄與其他功能不受影響。"
             isManagingClassroom = false
             return true
         } catch {
+            guard isCurrent(operation) else { return false }
             classroomErrorMessage = classroomMessage(for: error)
             isManagingClassroom = false
             return false
@@ -788,15 +1049,19 @@ final class AppState: ObservableObject {
     @discardableResult
     func resetClassroomCode(classId: String) async -> Bool {
         guard !isManagingClassroom else { return false }
+        let operation = beginOperation(classScoped: true)
         isManagingClassroom = true
+        defer { if ownsOperation(operation) { isManagingClassroom = false } }
         clearClassroomFeedback()
         do {
             let classroom = try await classroomService.resetJoinCode(classId: classId)
+            guard isCurrent(operation) else { return false }
             upsertClassroom(classroom)
             classroomNoticeMessage = "班級代碼已重設；舊代碼已立即失效。"
             isManagingClassroom = false
             return true
         } catch {
+            guard isCurrent(operation) else { return false }
             classroomErrorMessage = classroomMessage(for: error)
             isManagingClassroom = false
             return false
@@ -809,39 +1074,45 @@ final class AppState: ObservableObject {
     }
 
     func generateDailyMissionWithAI(context: DailyMissionAIContext) async -> AiProxyResponse {
+        let operation = beginOperation(classScoped: true)
         let response = await aiService.generateDailyMission(context: context, currentUser: currentUser)
-        recordAIResponse(response)
+        if isCurrent(operation) { recordAIResponse(response) }
         return response
     }
 
     func explainWrongAnswerWithAI(context: WrongAnswerAIContext) async -> AiProxyResponse? {
         guard context.isEligibleForExplanation else { return nil }
+        let operation = beginOperation(classScoped: true)
         let response = await aiService.explainWrongAnswer(context: context, currentUser: currentUser)
-        recordAIResponse(response)
+        if isCurrent(operation) { recordAIResponse(response) }
         return response
     }
 
     func provideEmotionalSupportWithAI(context: SupportAIContext) async -> AiProxyResponse {
+        let operation = beginOperation(classScoped: true)
         let response = await aiService.provideEmotionalSupport(context: context, currentUser: currentUser)
-        recordAIResponse(response)
+        if isCurrent(operation) { recordAIResponse(response) }
         return response
     }
 
     func draftTeacherFeedbackWithAI(context: SupportAIContext) async -> AiProxyResponse {
+        let operation = beginOperation(classScoped: true)
         let response = await aiService.draftTeacherFeedback(context: context, currentUser: currentUser)
-        recordAIResponse(response)
+        if isCurrent(operation) { recordAIResponse(response) }
         return response
     }
 
     func coachVolunteerReplyWithAI(context: SupportAIContext) async -> AiProxyResponse {
+        let operation = beginOperation(classScoped: true)
         let response = await aiService.coachVolunteerReply(context: context, currentUser: currentUser)
-        recordAIResponse(response)
+        if isCurrent(operation) { recordAIResponse(response) }
         return response
     }
 
     func recommendPracticeWithAI(context: PracticeRecommendationAIContext) async -> AiProxyResponse {
+        let operation = beginOperation(classScoped: true)
         let response = await aiService.recommendPractice(context: context, currentUser: currentUser)
-        recordAIResponse(response)
+        if isCurrent(operation) { recordAIResponse(response) }
         return response
     }
 
@@ -851,10 +1122,12 @@ final class AppState: ObservableObject {
             await finishAuthenticatedSession(session)
         case .emailVerificationRequired(let email):
             clearFailedAuthenticationState()
+            if let selectedRole { route = .demoLogin(selectedRole) }
             verificationEmailAddress = email
             authNoticeMessage = "驗證信已寄出。完成信箱驗證後，就可以回來登入。"
         case .approvalPending(_, let role):
             clearFailedAuthenticationState()
+            route = .demoLogin(role)
             authNoticeMessage = role == .volunteer
                 ? "志工申請已送出，審核通過後即可登入。"
                 : "帳號申請已送出，請等待審核。"
@@ -862,21 +1135,26 @@ final class AppState: ObservableObject {
     }
 
     private func finishAuthenticatedSession(_ initialSession: AuthSession) async {
+        let operation = beginOperation(classScoped: false)
         var session = initialSession
         if let pendingIdentityCredential,
            pendingIdentityRole == session.user.role {
             do {
-                session = try await authService.linkIdentity(
+                let linkedSession = try await authService.linkIdentity(
                     pendingIdentityCredential,
                     to: session
                 )
+                guard isCurrent(operation) else { return }
+                session = linkedSession
                 authNoticeMessage = "登入方式已安全連結；之後可使用任一方式登入同一個帳號。"
                 self.pendingIdentityCredential = nil
                 pendingIdentityRole = nil
             } catch AuthServiceError.identityAlreadyLinked {
+                guard isCurrent(operation) else { return }
                 self.pendingIdentityCredential = nil
                 pendingIdentityRole = nil
             } catch {
+                guard isCurrent(operation) else { return }
                 authNoticeMessage = "帳號已登入，但新的登入方式尚未連結。你可以稍後再試一次。"
             }
         }
@@ -885,12 +1163,18 @@ final class AppState: ObservableObject {
         currentProfile = session.profile
         selectedRole = session.user.role
         runtimeDiagnostics = runtimeDiagnostics.withSession(user: session.user, profile: session.profile)
-        isAdministrator = await authService.currentUserIsAdministrator()
+        let administrator = await authService.currentUserIsAdministrator()
+        guard isCurrent(operation) else { return }
+        isAdministrator = administrator
         if session.user.role == .volunteer {
-            volunteerApplicationDraft = try? await authService.loadVolunteerApplication(in: session)
-            volunteerApplicationReviewState = try? await authService.loadVolunteerApplicationReviewState(
+            let draft = try? await authService.loadVolunteerApplication(in: session)
+            guard isCurrent(operation) else { return }
+            volunteerApplicationDraft = mergingPendingEvidence(into: draft, uid: session.user.id)
+            let reviewState = try? await authService.loadVolunteerApplicationReviewState(
                 in: session
             )
+            guard isCurrent(operation) else { return }
+            volunteerApplicationReviewState = reviewState
             if session.profile.accountStatus == .pendingApplication
                 || session.profile.accountStatus == .pendingApproval {
                 hasAcceptedConsent = false
@@ -898,16 +1182,10 @@ final class AppState: ObservableObject {
                 return
             }
         }
-        startClassroomMembershipSyncIfNeeded(userUid: session.user.id)
-        startVolunteerServiceSyncIfNeeded(
-            userUid: session.user.id,
-            role: session.profile.role
-        )
-        hasAcceptedConsent = await acceptedConsentStatus(for: session.user.id)
-        if hasAcceptedConsent {
-            synchronizeRoleScopedClassroomData(for: session.profile)
-        }
-        route = hasAcceptedConsent ? .home(session.user.role) : .privacyConsent(session.user.role)
+        let acceptedConsent = await acceptedConsentStatus(for: session.user.id)
+        guard isCurrent(operation) else { return }
+        hasAcceptedConsent = acceptedConsent
+        applyClassSession(session)
     }
 
     private func acceptedConsentStatus(for uid: String) async -> Bool {
@@ -917,12 +1195,15 @@ final class AppState: ObservableObject {
         return firestoreService.hasAcceptedRequiredConsent(uid: uid)
     }
 
-    private func refreshClassSession(fallback classroom: ClassroomSummary) async {
-        if let restored = try? await authService.restorePreviousSession() {
+    private func refreshClassSession(fallback classroom: ClassroomSummary) async -> Bool {
+        let operation = beginOperation(classScoped: true)
+        let restored = try? await authService.restorePreviousSession()
+        guard isCurrent(operation) else { return false }
+        if let restored {
             applyClassSession(restored)
-            return
+            return true
         }
-        guard let currentUser, let currentProfile else { return }
+        guard let currentUser, let currentProfile else { return false }
         let profile = currentProfile.upsertingMembership(
             classroom.membership,
             makeActive: true
@@ -937,14 +1218,18 @@ final class AppState: ObservableObject {
                 profile: profile
             )
         )
+        return true
     }
 
-    private func refreshClassSessionAfterLeaving(classId: String) async {
-        if let restored = try? await authService.restorePreviousSession() {
+    private func refreshClassSessionAfterLeaving(classId: String) async -> Bool {
+        let operation = beginOperation(classScoped: true)
+        let restored = try? await authService.restorePreviousSession()
+        guard isCurrent(operation) else { return false }
+        if let restored {
             applyClassSession(restored)
-            return
+            return true
         }
-        guard let currentUser, let currentProfile else { return }
+        guard let currentUser, let currentProfile else { return false }
         let profile = currentProfile.markingMembershipLeft(classId: classId, at: Date())
         applyClassSession(
             AuthSession(
@@ -956,9 +1241,14 @@ final class AppState: ObservableObject {
                 profile: profile
             )
         )
+        return true
     }
 
     private func applyClassSession(_ session: AuthSession) {
+        guard currentUser?.id == session.user.id else { return }
+        if currentProfile?.classId != session.profile.classId {
+            invalidateClassOperations()
+        }
         currentUser = session.user
         currentProfile = session.profile
         selectedRole = session.user.role
@@ -972,17 +1262,29 @@ final class AppState: ObservableObject {
             user: session.user,
             profile: session.profile
         )
-        route = .home(session.user.role)
+        if session.user.role == .volunteer,
+           session.profile.accountStatus == .pendingApplication || session.profile.accountStatus == .pendingApproval {
+            route = .volunteerApplication
+        } else {
+            route = hasAcceptedConsent ? .home(session.user.role) : .privacyConsent(session.user.role)
+        }
     }
 
     func loadVolunteerServices() async {
         guard currentProfile?.role == .volunteer, !isLoadingVolunteerServices else { return }
+        let operation = beginOperation(classScoped: false)
         isLoadingVolunteerServices = true
+        defer { if ownsOperation(operation) { isLoadingVolunteerServices = false } }
         volunteerServiceErrorMessage = nil
         do {
-            volunteerServices = try await classroomService.listVolunteerServices()
-            classrooms = try await classroomService.listClassrooms()
+            let services = try await classroomService.listVolunteerServices()
+            guard isCurrent(operation) else { return }
+            volunteerServices = services
+            let refreshedClassrooms = try await classroomService.listClassrooms()
+            guard isCurrent(operation) else { return }
+            classrooms = refreshedClassrooms
         } catch {
+            guard isCurrent(operation) else { return }
             volunteerServiceErrorMessage = classroomMessage(for: error)
         }
         isLoadingVolunteerServices = false
@@ -991,16 +1293,20 @@ final class AppState: ObservableObject {
     @discardableResult
     func requestVolunteerService(code: String) async -> Bool {
         guard currentProfile?.role == .volunteer, !isManagingVolunteerService else { return false }
+        let operation = beginOperation(classScoped: false)
         isManagingVolunteerService = true
+        defer { if ownsOperation(operation) { isManagingVolunteerService = false } }
         clearVolunteerServiceFeedback()
         do {
             let service = try await classroomService.requestVolunteerService(code: code)
+            guard isCurrent(operation) else { return false }
             volunteerServices.removeAll { $0.classId == service.classId }
             volunteerServices.append(service)
             volunteerServiceNoticeMessage = "申請已送給「\(service.className)」的老師；核准前不會顯示任何學生資料。"
             isManagingVolunteerService = false
             return true
         } catch {
+            guard isCurrent(operation) else { return false }
             volunteerServiceErrorMessage = classroomMessage(for: error)
             isManagingVolunteerService = false
             return false
@@ -1010,17 +1316,27 @@ final class AppState: ObservableObject {
     @discardableResult
     func leaveVolunteerService(classId: String) async -> Bool {
         guard currentProfile?.role == .volunteer, !isManagingVolunteerService else { return false }
+        var operation = beginOperation(classScoped: true)
         isManagingVolunteerService = true
+        defer { if ownsOperation(operation) { isManagingVolunteerService = false } }
         clearVolunteerServiceFeedback()
         do {
             try await classroomService.leaveVolunteerService(classId: classId)
-            volunteerServices = try await classroomService.listVolunteerServices()
-            classrooms = try await classroomService.listClassrooms()
-            await refreshClassSessionAfterLeaving(classId: classId)
+            guard isCurrent(operation) else { return false }
+            let services = try await classroomService.listVolunteerServices()
+            guard isCurrent(operation) else { return false }
+            volunteerServices = services
+            let refreshedClassrooms = try await classroomService.listClassrooms()
+            guard isCurrent(operation) else { return false }
+            classrooms = refreshedClassrooms
+            guard await refreshClassSessionAfterLeaving(classId: classId) else { return false }
+            operation = OperationContext(session: operation.session, classroom: classGeneration, key: operation.key, request: operation.request)
+            guard isCurrent(operation) else { return false }
             volunteerServiceNoticeMessage = "已離開服務班級，學生求助與通知已立即停止。"
             isManagingVolunteerService = false
             return true
         } catch {
+            guard isCurrent(operation) else { return false }
             volunteerServiceErrorMessage = classroomMessage(for: error)
             isManagingVolunteerService = false
             return false
@@ -1032,13 +1348,20 @@ final class AppState: ObservableObject {
               currentProfile?.activeClassId == classId,
               !isLoadingVolunteerServices
         else { return }
+        let operation = beginOperation(classScoped: true)
         startClassroomVolunteerSyncIfNeeded(classId: classId)
         isLoadingVolunteerServices = true
+        defer { if ownsOperation(operation) { isLoadingVolunteerServices = false } }
         volunteerServiceErrorMessage = nil
         do {
-            classroomVolunteerServices = try await classroomService.listClassroomVolunteers(classId: classId)
-            volunteerInviteCodes[classId] = try await classroomService.volunteerInviteCode(classId: classId)
+            let services = try await classroomService.listClassroomVolunteers(classId: classId)
+            guard isCurrent(operation) else { return }
+            classroomVolunteerServices = services
+            let invitation = try await classroomService.volunteerInviteCode(classId: classId)
+            guard isCurrent(operation) else { return }
+            volunteerInviteCodes[classId] = invitation
         } catch {
+            guard isCurrent(operation) else { return }
             volunteerServiceErrorMessage = classroomMessage(for: error)
         }
         isLoadingVolunteerServices = false
@@ -1046,16 +1369,21 @@ final class AppState: ObservableObject {
 
     @discardableResult
     func resetVolunteerInviteCode(classId: String) async -> Bool {
-        guard currentProfile?.role == .teacher, !isManagingVolunteerService else { return false }
+        guard currentProfile?.role == .teacher, currentProfile?.activeClassId == classId,
+              !isManagingVolunteerService else { return false }
+        let operation = beginOperation(classScoped: true)
         isManagingVolunteerService = true
+        defer { if ownsOperation(operation) { isManagingVolunteerService = false } }
         clearVolunteerServiceFeedback()
         do {
             let invitation = try await classroomService.resetVolunteerInviteCode(classId: classId)
+            guard isCurrent(operation) else { return false }
             volunteerInviteCodes[classId] = invitation
             volunteerServiceNoticeMessage = "已建立新的志工邀請碼；舊碼已失效。"
             isManagingVolunteerService = false
             return true
         } catch {
+            guard isCurrent(operation) else { return false }
             volunteerServiceErrorMessage = classroomMessage(for: error)
             isManagingVolunteerService = false
             return false
@@ -1068,8 +1396,11 @@ final class AppState: ObservableObject {
         volunteerUid: String,
         approve: Bool
     ) async -> Bool {
-        guard currentProfile?.role == .teacher, !isManagingVolunteerService else { return false }
+        guard currentProfile?.role == .teacher, currentProfile?.activeClassId == classId,
+              !isManagingVolunteerService else { return false }
+        let operation = beginOperation(classScoped: true)
         isManagingVolunteerService = true
+        defer { if ownsOperation(operation) { isManagingVolunteerService = false } }
         clearVolunteerServiceFeedback()
         do {
             try await classroomService.reviewVolunteerService(
@@ -1077,13 +1408,17 @@ final class AppState: ObservableObject {
                 volunteerUid: volunteerUid,
                 approve: approve
             )
-            classroomVolunteerServices = try await classroomService.listClassroomVolunteers(classId: classId)
+            guard isCurrent(operation) else { return false }
+            let services = try await classroomService.listClassroomVolunteers(classId: classId)
+            guard isCurrent(operation) else { return false }
+            classroomVolunteerServices = services
             volunteerServiceNoticeMessage = approve
                 ? "已核准志工加入；對方現在只能看到本班學生主動送出的求助。"
                 : "已拒絕這筆服務申請。"
             isManagingVolunteerService = false
             return true
         } catch {
+            guard isCurrent(operation) else { return false }
             volunteerServiceErrorMessage = classroomMessage(for: error)
             isManagingVolunteerService = false
             return false
@@ -1092,19 +1427,26 @@ final class AppState: ObservableObject {
 
     @discardableResult
     func removeVolunteerService(classId: String, volunteerUid: String) async -> Bool {
-        guard currentProfile?.role == .teacher, !isManagingVolunteerService else { return false }
+        guard currentProfile?.role == .teacher, currentProfile?.activeClassId == classId,
+              !isManagingVolunteerService else { return false }
+        let operation = beginOperation(classScoped: true)
         isManagingVolunteerService = true
+        defer { if ownsOperation(operation) { isManagingVolunteerService = false } }
         clearVolunteerServiceFeedback()
         do {
             try await classroomService.removeVolunteerService(
                 classId: classId,
                 volunteerUid: volunteerUid
             )
-            classroomVolunteerServices = try await classroomService.listClassroomVolunteers(classId: classId)
+            guard isCurrent(operation) else { return false }
+            let services = try await classroomService.listClassroomVolunteers(classId: classId)
+            guard isCurrent(operation) else { return false }
+            classroomVolunteerServices = services
             volunteerServiceNoticeMessage = "已移除志工；學生求助權限與通知已立即撤回。"
             isManagingVolunteerService = false
             return true
         } catch {
+            guard isCurrent(operation) else { return false }
             volunteerServiceErrorMessage = classroomMessage(for: error)
             isManagingVolunteerService = false
             return false
@@ -1117,7 +1459,7 @@ final class AppState: ObservableObject {
     }
 
     private func synchronizeRoleScopedClassroomData(for profile: AppUserProfile) {
-        guard profile.role == .teacher,
+        guard hasAcceptedConsent, profile.role == .teacher,
               let classId = profile.activeClassId
         else {
             classroomRosterListener?.cancel()
@@ -1163,17 +1505,18 @@ final class AppState: ObservableObject {
         }
         lastVolunteerServiceListenerErrorMessage = nil
         volunteerServiceListenerUid = userUid
+        let operation = beginOperation(classScoped: false)
         volunteerServiceListener = classroomService.startVolunteerServiceListener(
             userUid: userUid
         ) { [weak self] services in
-            guard let self else { return }
+            guard let self, self.isCurrent(operation) else { return }
             self.volunteerServices = services
             if self.volunteerServiceErrorMessage == self.lastVolunteerServiceListenerErrorMessage {
                 self.volunteerServiceErrorMessage = nil
             }
             self.lastVolunteerServiceListenerErrorMessage = nil
         } onError: { [weak self] error in
-            guard let self else { return }
+            guard let self, self.isCurrent(operation) else { return }
             let message = "服務班級：\(self.realtimeListenerMessage(for: error))"
             self.lastVolunteerServiceListenerErrorMessage = message
             if self.volunteerServiceErrorMessage != message {
@@ -1190,17 +1533,18 @@ final class AppState: ObservableObject {
         }
         lastClassroomVolunteerListenerErrorMessage = nil
         classroomVolunteerListenerClassId = classId
+        let operation = beginOperation(classScoped: true)
         classroomVolunteerListener = classroomService.startClassroomVolunteerListener(
             classId: classId
         ) { [weak self] services in
-            guard let self, self.currentProfile?.activeClassId == classId else { return }
+            guard let self, self.isCurrent(operation), self.currentProfile?.activeClassId == classId else { return }
             self.classroomVolunteerServices = services
             if self.volunteerServiceErrorMessage == self.lastClassroomVolunteerListenerErrorMessage {
                 self.volunteerServiceErrorMessage = nil
             }
             self.lastClassroomVolunteerListenerErrorMessage = nil
         } onError: { [weak self] error in
-            guard let self else { return }
+            guard let self, self.isCurrent(operation) else { return }
             let message = "班級志工：\(self.realtimeListenerMessage(for: error))"
             self.lastClassroomVolunteerListenerErrorMessage = message
             if self.volunteerServiceErrorMessage != message {
@@ -1217,11 +1561,12 @@ final class AppState: ObservableObject {
         }
         lastMembershipListenerErrorMessage = nil
         classroomMembershipListenerUid = userUid
+        let operation = beginOperation(classScoped: false)
         classroomMembershipListener = classroomService.startMembershipListener(
             userUid: userUid
         ) { [weak self] activeClassIds in
             Task { @MainActor [weak self] in
-                guard let self else { return }
+                guard let self, self.isCurrent(operation) else { return }
                 if self.classroomErrorMessage == self.lastMembershipListenerErrorMessage {
                     self.classroomErrorMessage = nil
                 }
@@ -1229,7 +1574,7 @@ final class AppState: ObservableObject {
                 await self.reconcileClassroomMemberships(activeClassIds: Set(activeClassIds))
             }
         } onError: { [weak self] error in
-            guard let self else { return }
+            guard let self, self.isCurrent(operation) else { return }
             if self.currentProfile?.activeClassId != nil {
                 let message = "班級狀態：\(self.realtimeListenerMessage(for: error))"
                 self.lastMembershipListenerErrorMessage = message
@@ -1241,17 +1586,26 @@ final class AppState: ObservableObject {
     }
 
     private func reconcileClassroomMemberships(activeClassIds: Set<String>) async {
-        guard !isReconcilingClassroomMemberships,
-              let currentUser,
-              let currentProfile
-        else { return }
+        pendingMembershipClassIds = activeClassIds
+        guard !isReconcilingClassroomMemberships else { return }
+        let generation = sessionGeneration
+        isReconcilingClassroomMemberships = true
+        defer {
+            if sessionGeneration == generation { isReconcilingClassroomMemberships = false }
+        }
+        while generation == sessionGeneration, let latest = pendingMembershipClassIds {
+            pendingMembershipClassIds = nil
+            await applyMembershipSnapshot(activeClassIds: latest, generation: generation)
+        }
+    }
+
+    private func applyMembershipSnapshot(activeClassIds: Set<String>, generation: UUID) async {
+        guard let currentUser, let currentProfile else { return }
         let localActiveClassIds = Set(
             currentProfile.memberships.filter(\.isActive).map(\.classId)
         )
         guard localActiveClassIds != activeClassIds else { return }
 
-        isReconcilingClassroomMemberships = true
-        defer { isReconcilingClassroomMemberships = false }
         let removedClassIds = localActiveClassIds.subtracting(activeClassIds)
         let previousActiveClassId = currentProfile.activeClassId
         let previousActiveClassName = previousActiveClassId.flatMap { classId in
@@ -1259,6 +1613,7 @@ final class AppState: ObservableObject {
         }
 
         let restored = try? await authService.restorePreviousSession()
+        guard generation == sessionGeneration, pendingMembershipClassIds == nil else { return }
         let baseSession = restored?.user.id == currentUser.id ? restored : nil
         var reconciledProfile = baseSession?.profile ?? currentProfile
         for classId in removedClassIds {
@@ -1269,11 +1624,18 @@ final class AppState: ObservableObject {
         }
 
         let refreshedClassrooms = try? await classroomService.listClassrooms()
+        guard generation == sessionGeneration, pendingMembershipClassIds == nil else { return }
+        // A user's class selection during the fetch remains authoritative.
+        let selectedClassId = self.currentProfile?.activeClassId
         for classroom in refreshedClassrooms ?? [] where activeClassIds.contains(classroom.classId) {
             reconciledProfile = reconciledProfile.upsertingMembership(
                 classroom.membership,
                 makeActive: reconciledProfile.activeClassId == classroom.classId
             )
+        }
+        if selectedClassId != previousActiveClassId,
+           let selectedProfile = reconciledProfile.selectingClass(selectedClassId) {
+            reconciledProfile = selectedProfile
         }
         let reconciledUser = baseSession?.user ?? DemoUser(
             id: currentUser.id,
@@ -1285,12 +1647,13 @@ final class AppState: ObservableObject {
         )
 
         if let refreshedClassrooms {
-            classrooms = refreshedClassrooms
+            classrooms = refreshedClassrooms.filter { activeClassIds.contains($0.classId) }
         } else {
             classrooms.removeAll { removedClassIds.contains($0.classId) }
         }
         if let previousActiveClassId,
-           !activeClassIds.contains(previousActiveClassId) {
+           !activeClassIds.contains(previousActiveClassId),
+           self.currentProfile?.activeClassId == nil {
             classroomRosterListener?.cancel()
             classroomRosterListener = nil
             classroomRosterListenerClassId = nil
@@ -1302,7 +1665,10 @@ final class AppState: ObservableObject {
     }
 
     private func refreshClassroomListAfterMutation() async {
-        if let refreshed = try? await classroomService.listClassrooms() {
+        let operation = beginOperation(classScoped: true)
+        let refreshed = try? await classroomService.listClassrooms()
+        guard isCurrent(operation) else { return }
+        if let refreshed {
             classrooms = refreshed
         }
     }
@@ -1327,9 +1693,16 @@ final class AppState: ObservableObject {
     }
 
     private func clearFailedAuthenticationState() {
+        invalidateSessionOperations()
         currentUser = nil
         currentProfile = nil
         hasAcceptedConsent = false
+        isAdministrator = false
+        latestAIResponse = nil
+        volunteerApplicationDraft = nil
+        volunteerApplicationReviewState = nil
+        volunteerReviewApplications = []
+        volunteerReviewErrorMessage = nil
         signingInRole = nil
         classrooms = []
         classroomStudents = []

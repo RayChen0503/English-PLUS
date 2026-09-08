@@ -15,8 +15,15 @@ enum LearningRepositorySyncStatus: Equatable {
     case connecting(classId: String)
     case listening(classId: String)
     case retrying(classId: String, attempt: Int)
+    case pendingWrites(count: Int)
     case offlineFallback(reason: String)
     case syncIssue(reason: String, retryAvailable: Bool)
+}
+
+enum LearningRepositoryWriteStatus: Equatable {
+    case pending(count: Int)
+    case failed(reason: String, retryAvailable: Bool)
+    case synced
 }
 
 enum LearningRepositoryListenerHealthEvent {
@@ -164,13 +171,15 @@ protocol LearningRepositoryBackend: AnyObject {
     var questionPracticeSets: [QuestionPracticeSet] { get }
 
     func refresh() async throws
+    func retryPendingWrites()
     func startRealtimeListener(
         classId: String,
         user: DemoUser?,
         profile: AppUserProfile?,
         onChange: @escaping @MainActor (LearningRepositorySnapshot) -> Void,
         onComponentHealth: @escaping @MainActor (LearningRepositoryListenerHealthEvent) -> Void,
-        onError: @escaping @MainActor (Error) -> Void
+        onError: @escaping @MainActor (Error) -> Void,
+        onWriteStatus: @escaping @MainActor (LearningRepositoryWriteStatus) -> Void
     ) -> LearningRepositoryListenerToken
 
     func generateMission(
@@ -233,6 +242,10 @@ protocol LearningRepositoryBackend: AnyObject {
     func eraseLocalData(for uid: String)
 }
 
+extension LearningRepositoryBackend {
+    func retryPendingWrites() {}
+}
+
 extension MockLearningRepository: LearningRepositoryBackend {
     var snapshot: LearningRepositorySnapshot {
         LearningRepositorySnapshot(
@@ -254,9 +267,11 @@ extension MockLearningRepository: LearningRepositoryBackend {
         profile: AppUserProfile?,
         onChange: @escaping @MainActor (LearningRepositorySnapshot) -> Void,
         onComponentHealth: @escaping @MainActor (LearningRepositoryListenerHealthEvent) -> Void,
-        onError: @escaping @MainActor (Error) -> Void
+        onError: @escaping @MainActor (Error) -> Void,
+        onWriteStatus: @escaping @MainActor (LearningRepositoryWriteStatus) -> Void
     ) -> LearningRepositoryListenerToken {
         onChange(snapshot)
+        onWriteStatus(.synced)
         return AnyLearningRepositoryListenerToken {}
     }
 }

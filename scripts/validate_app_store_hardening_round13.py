@@ -54,8 +54,11 @@ def main() -> int:
     report = read("docs/app-store-hardening/round-13-reliability-decomposition.md")
 
     require(
-        len(store_path.read_text(encoding="utf-8").splitlines()) < 650,
-        "LearningRepositoryStore remains an oversized mixed-responsibility file",
+        all(definition not in store for definition in (
+            "func makeClassroomReportExport", "protocol LearningRepositoryBackend",
+            "final class NetworkConnectivityMonitor",
+        )),
+        "Reporting, backend contracts and connectivity implementations must remain outside the store",
         errors,
     )
     require_markers(
