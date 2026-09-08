@@ -146,12 +146,13 @@ final class SessionIsolationRepairTests: XCTestCase {
 
     private func makeApp(auth: DeferredRepairAuth,
                          firestore: FirestoreService = MockFirestoreService(),
-                         classroom: ClassroomService = UnavailableClassroomService(),
+                         classroom: ClassroomService? = nil,
                          uploader: EvidenceUploadService = UnavailableEvidenceUploadService(),
                          defaults: UserDefaults = .standard) -> AppState {
         AppState(authService: auth, firestoreService: firestore, aiService: MockAIService(),
                  evidenceUploadService: uploader, volunteerReviewService: UnavailableVolunteerReviewService(),
-                 classroomService: classroom, accountLifecycleService: MockAccountLifecycleService(),
+                 classroomService: classroom ?? UnavailableClassroomService(),
+                 accountLifecycleService: MockAccountLifecycleService(),
                  runtimeDiagnostics: RuntimeDiagnosticsSnapshot(backendMode: .firebase, hasFirebaseConfig: true,
                      authProvider: "test", firestoreProvider: "test", learningProvider: "test", aiProvider: "test", aiProxyEndpoint: nil),
                  volunteerDraftDefaults: defaults)
