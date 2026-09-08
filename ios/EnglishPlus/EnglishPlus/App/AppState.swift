@@ -871,7 +871,6 @@ final class AppState: ObservableObject {
         classroomStudents = []
         classroomRosterErrorMessage = nil
         isLoadingClassroomStudents = true
-        defer { if ownsOperation(operation) { isLoadingClassroomStudents = false } }
         let operation = beginOperation(classScoped: true)
         classroomRosterListener = classroomService.startStudentListener(
             classId: classId
