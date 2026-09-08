@@ -5,6 +5,7 @@ struct PracticeCenterView: View {
     @EnvironmentObject private var learningRepository: LearningRepositoryStore
 
     let onOpenSupport: () -> Void
+    let onOpenHome: () -> Void
 
     @State private var selectedPracticeType: QuestionType?
     @State private var selectedPracticeLevel: QuestionLevel?
@@ -35,6 +36,8 @@ struct PracticeCenterView: View {
     @State private var showDiscardSessionConfirmation = false
     @State private var sessionReturnMessage: String?
     @State private var didRestorePracticeDraft = false
+    @State private var draftOwnerId: String?
+    @State private var draftScopeIdentity: String?
     @State private var practiceRecommendationRequestId: UUID?
     @State private var practiceQuestionAIRequestId: UUID?
     @State private var supportRequestId: UUID?
@@ -42,8 +45,9 @@ struct PracticeCenterView: View {
     private let freePracticeSessionLimit = 10
     private let practiceDraftStore = PracticeSessionDraftStore()
 
-    init(onOpenSupport: @escaping () -> Void = {}) {
+    init(onOpenSupport: @escaping () -> Void = {}, onOpenHome: @escaping () -> Void = {}) {
         self.onOpenSupport = onOpenSupport
+        self.onOpenHome = onOpenHome
     }
 
     var body: some View {
@@ -75,6 +79,11 @@ struct PracticeCenterView: View {
         }
         .onDisappear {
             persistPrimarySessionIfNeeded()
+            practiceRecommendationRequestId = nil
+            practiceQuestionAIRequestId = nil
+            supportRequestId = nil
+            isLoadingPracticeAI = false
+            isLoadingPracticeQuestionAI = false
         }
         .confirmationDialog(
             "要改用新的題組嗎？",
@@ -123,6 +132,7 @@ struct PracticeCenterView: View {
                 onPracticeAgain: startFreePracticeSession,
                 onReturnToMission: {
                     learningRepository.returnToMissionFlow()
+                    onOpenHome()
                 }
             )
         }
@@ -689,6 +699,11 @@ struct PracticeCenterView: View {
     }
 
     private func resumePrimarySession() {
+        if practicePhase == .repair, suspendedPrimarySession != nil {
+            pendingSessionProposal = nil
+            restoreSuspendedPrimarySession(message: "已回到原本題組，作答進度已保留。")
+            return
+        }
         guard !freePracticeSessionItems.isEmpty, !isFreePracticeSessionComplete else { return }
         pendingSessionProposal = nil
         sessionReturnMessage = nil
@@ -716,7 +731,7 @@ struct PracticeCenterView: View {
     }
 
     private func finishRepairSession() {
-        restoreSuspendedPrimarySession(message: "三題加練完成，已回到原本題組。")
+        restoreSuspendedPrimarySession(message: "加練完成，已回到原本題組。")
     }
 
     private func restoreSuspendedPrimarySession(message: String) {
@@ -793,7 +808,9 @@ struct PracticeCenterView: View {
     }
 
     private var practiceDraftOwnerId: String? {
-        appState.currentProfile?.id ?? appState.currentUser?.id
+        guard let draftOwnerId, appState.currentUser?.id == draftOwnerId,
+              draftScopeIdentity == appState.learningScopeIdentity else { return nil }
+        return draftOwnerId
     }
 
     private func persistPrimarySessionIfNeeded(snapshot providedSnapshot: PracticeSessionMemorySnapshot? = nil) {
@@ -816,7 +833,8 @@ struct PracticeCenterView: View {
                 optionOrderByQuestionId: snapshot.optionOrderByQuestionId,
                 answeredCount: snapshot.answeredCount,
                 correctCount: snapshot.correctCount,
-                didCountCurrentAnswer: snapshot.didCountCurrentAnswer
+                didCountCurrentAnswer: snapshot.didCountCurrentAnswer,
+                questionVersions: snapshot.items
             ),
             ownerId: ownerId
         )
@@ -825,35 +843,21 @@ struct PracticeCenterView: View {
     private func restorePracticeDraftIfNeeded() {
         guard !didRestorePracticeDraft else { return }
         didRestorePracticeDraft = true
+        draftOwnerId = appState.currentUser?.id
+        draftScopeIdentity = appState.learningScopeIdentity
         guard let ownerId = practiceDraftOwnerId,
               let draft = practiceDraftStore.load(ownerId: ownerId)
         else { return }
 
-        let itemsById = Dictionary(
-            questionBankItems.map { ($0.id, $0) },
-            uniquingKeysWith: { existing, _ in existing }
-        )
-        let restoredItems = draft.questionIds.compactMap { itemsById[$0] }
-        guard !restoredItems.isEmpty else {
+        guard let restoration = PracticeSessionRestoration(draft: draft, questionBank: questionBankItems) else {
             practiceDraftStore.clear(ownerId: ownerId)
             return
         }
-
-        let optionOrders = Dictionary(
-            restoredItems.enumerated().map { index, item in
-                let saved = draft.optionOrderByQuestionId[item.id]
-                let resolvedOrder = (saved?.isEmpty == false ? saved : nil)
-                    ?? QuestionGroupingEngine.balancedOptions(for: item, sessionIndex: index)
-                return (
-                    item.id,
-                    resolvedOrder
-                )
-            },
-            uniquingKeysWith: { _, latest in latest }
-        )
-        let restoredIndex = min(max(draft.index, 0), restoredItems.count - 1)
+        let restoredItems = restoration.items
+        let restoredDraft = restoration.draft
+        let restoredIndex = restoredDraft.index
         let restoredItem = restoredItems[restoredIndex]
-        let repairItems = draft.result?.isCorrect == false
+        let repairItems = restoredDraft.result?.isCorrect == false
             ? QuestionGroupingEngine.repairSelection(
                 after: restoredItem,
                 from: questionBankItems,
@@ -866,23 +870,25 @@ struct PracticeCenterView: View {
             from: PracticeSessionMemorySnapshot(
                 items: restoredItems,
                 index: restoredIndex,
-                answer: draft.answer,
-                result: draft.result,
+                answer: restoredDraft.answer,
+                result: restoredDraft.result,
                 questionAIResponse: nil,
                 wrongAnswerRepairItems: repairItems,
                 supportConfirmation: nil,
                 supportSentQuestionIds: [],
                 sourceTitle: draft.sourceTitle,
                 selectionNote: draft.selectionNote,
-                optionOrderByQuestionId: optionOrders,
-                answeredCount: min(draft.answeredCount, restoredItems.count),
-                correctCount: min(draft.correctCount, restoredItems.count),
-                didCountCurrentAnswer: draft.didCountCurrentAnswer,
+                optionOrderByQuestionId: restoredDraft.optionOrderByQuestionId,
+                answeredCount: restoredDraft.answeredCount,
+                correctCount: restoredDraft.correctCount,
+                didCountCurrentAnswer: restoredDraft.didCountCurrentAnswer,
                 isComplete: false
             )
         )
         practicePhase = .selection
-        sessionReturnMessage = "找到一組尚未完成的練習，可以從原本進度繼續。"
+        sessionReturnMessage = restoration.wasRestarted
+            ? "題庫已更新，已保留可用題目並重新開始這組練習，避免沿用舊答案。"
+            : "找到一組尚未完成的練習，可以從原本進度繼續。"
     }
 
     private func clearPersistedPrimarySession() {
@@ -1406,7 +1412,7 @@ struct PracticeCenterView: View {
         selectedPracticeSetId = nil
         selectedPracticeType = items.first?.question.type
         selectedPracticeLevel = items.first?.level
-        beginPrimarySession(
+        requestPrimarySessionStart(
             PracticeSessionProposal(
                 items: items,
                 sourceTitle: launch.title,
@@ -1427,6 +1433,7 @@ struct PracticeCenterView: View {
               )
         else { return }
         let requestPhase = practicePhase
+        let scope = appState.learningScopeIdentity
         let requestId = UUID()
         practiceQuestionAIRequestId = requestId
         isLoadingPracticeQuestionAI = true
@@ -1456,7 +1463,8 @@ struct PracticeCenterView: View {
             questionItem: item
         )
         guard let response = await appState.explainWrongAnswerWithAI(context: context) else { return }
-        guard practiceQuestionAIRequestId == requestId else { return }
+        guard !Task.isCancelled, scope == appState.learningScopeIdentity,
+              practiceQuestionAIRequestId == requestId else { return }
         guard practicePhase == requestPhase,
               currentPracticeItem?.id == item.id,
               practiceResult?.isCorrect == false
@@ -1476,6 +1484,7 @@ struct PracticeCenterView: View {
               )
         else { return }
         let requestPhase = practicePhase
+        let scope = appState.learningScopeIdentity
         let requestId = UUID()
         supportRequestId = requestId
         let option = practiceSupportOption()
@@ -1488,6 +1497,7 @@ struct PracticeCenterView: View {
             message: practiceSupportMessage(for: item)
         )
         guard supportRequestId == requestId,
+              scope == appState.learningScopeIdentity,
               didSend,
               practicePhase == requestPhase,
               currentPracticeItem?.id == item.id,
@@ -1561,6 +1571,7 @@ struct PracticeCenterView: View {
     @MainActor
     private func requestPracticeRecommendation() async {
         guard practicePhase == .selection else { return }
+        let scope = appState.learningScopeIdentity
         let requestId = UUID()
         practiceRecommendationRequestId = requestId
         isLoadingPracticeAI = true
@@ -1581,6 +1592,7 @@ struct PracticeCenterView: View {
         )
         let response = await appState.recommendPracticeWithAI(context: context)
         guard practiceRecommendationRequestId == requestId,
+              !Task.isCancelled, scope == appState.learningScopeIdentity,
               practicePhase == .selection
         else { return }
         practiceAIResponse = response
@@ -1630,6 +1642,50 @@ struct PracticeSessionDraft: Codable, Equatable {
     let answeredCount: Int
     let correctCount: Int
     let didCountCurrentAnswer: Bool
+    var questionVersions: [QuestionBankItem]? = nil
+}
+
+struct PracticeSessionRestoration {
+    let items: [QuestionBankItem]
+    let draft: PracticeSessionDraft
+    let wasRestarted: Bool
+
+    init?(draft: PracticeSessionDraft, questionBank: [QuestionBankItem]) {
+        let byId = Dictionary(questionBank.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
+        var seen = Set<String>()
+        let items = draft.questionIds.compactMap { id -> QuestionBankItem? in
+            guard seen.insert(id).inserted else { return nil }
+            return byId[id]
+        }
+        guard !items.isEmpty else { return nil }
+        self.items = items
+        // Without the original question versions, even an unchanged ID cannot prove
+        // that a saved answer, explanation or score still belongs to this content.
+        let contentMatches = draft.questionVersions == items && draft.questionIds == items.map(\.id)
+        let validIndex = items.indices.contains(draft.index)
+        let validCounts = draft.correctCount >= 0 && draft.correctCount <= draft.answeredCount
+            && draft.answeredCount <= items.count && draft.answeredCount >= 0
+            && draft.answeredCount == draft.index + (draft.didCountCurrentAnswer ? 1 : 0)
+            && (draft.result != nil) == draft.didCountCurrentAnswer
+        let validOptions = items.allSatisfy { item in
+            guard let order = draft.optionOrderByQuestionId[item.id] else { return false }
+            return order.sorted() == item.question.options.sorted()
+        }
+        wasRestarted = !(contentMatches && validIndex && validCounts && validOptions)
+        if !wasRestarted {
+            self.draft = draft
+        } else {
+            self.draft = PracticeSessionDraft(
+                questionIds: items.map(\.id), index: 0, answer: "", result: nil,
+                sourceTitle: draft.sourceTitle, selectionNote: draft.selectionNote,
+                optionOrderByQuestionId: Dictionary(items.enumerated().map {
+                    ($0.element.id, QuestionGroupingEngine.balancedOptions(for: $0.element, sessionIndex: $0.offset))
+                }, uniquingKeysWith: { first, _ in first }),
+                answeredCount: 0, correctCount: 0, didCountCurrentAnswer: false,
+                questionVersions: items
+            )
+        }
+    }
 }
 
 struct PracticeSessionDraftStore {
@@ -2142,15 +2198,6 @@ private struct PracticeInlineSupportPanel: View {
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(EPTheme.primary.opacity(0.06))
         .clipShape(RoundedRectangle(cornerRadius: EPTheme.cardRadius))
-    }
-}
-
-private extension Array {
-    func uniqued<ID: Hashable>(by keyPath: KeyPath<Element, ID>) -> [Element] {
-        var seen = Set<ID>()
-        return filter { element in
-            seen.insert(element[keyPath: keyPath]).inserted
-        }
     }
 }
 

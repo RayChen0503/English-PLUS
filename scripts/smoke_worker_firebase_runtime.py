@@ -32,7 +32,7 @@ def load_test_account(role: str) -> tuple[str, str]:
     if not email or not password:
         raise SystemExit(
             f"Set {email_variable} and {password_variable} before running "
-            f"--account-preview-only {role}. Never commit these values."
+            f"the {role} smoke checks. Never commit these values."
         )
     return email, password
 
@@ -163,6 +163,7 @@ def create_temporary_student_profile(session: dict[str, str]) -> Response:
                 "accountStatus": {"stringValue": "active"},
                 "emailVerificationRequired": {"booleanValue": True},
                 "provisioningSource": {"stringValue": "selfServiceStudent"},
+                "studentAccessPath": {"stringValue": "age13OrOlder"},
                 "identityProviders": {
                     "arrayValue": {"values": [{"stringValue": "emailPassword"}]}
                 },
@@ -189,6 +190,127 @@ def expect(
             "detail": detail,
         }
     )
+
+
+def cleanup_temporary_account(api_key, temporary, results):
+    # One bounded retry of the owner-token Worker flow can finish all resources.
+    # Direct profile deletion is only a fallback and may be denied by rules.
+    try:
+        response = request_json(
+            f"{WORKER_BASE_URL}/account", method="DELETE", token=temporary["idToken"],
+            payload={"confirmation": "DELETE", "policyVersion": "2026-07-13"},
+        )
+        if response.status == 200 and response.body.get("result", {}).get("completed") is True:
+            expect(True, "temporary_account_worker_cleanup_completed", results, "Worker confirmed complete deletion")
+            return
+        worker_detail = f"HTTP {response.status}"
+    except (OSError, ValueError, RuntimeError) as error:
+        worker_detail = type(error).__name__
+    expect(False, "temporary_account_cleanup_incomplete", results,
+           f"Worker cleanup not confirmed ({worker_detail}); synthetic UID={temporary['localId']} requires manual verification/cleanup")
+    # Attempt both fallbacks independently. Their successes do not prove that
+    # the Worker's complete account-data cleanup succeeded.
+    operations = (
+        ("temporary_profile_emergency_cleanup", lambda: request_json(
+            "https://firestore.googleapis.com/v1/projects/"
+            f"{PROJECT_ID}/databases/(default)/documents/users/{temporary['localId']}",
+            method="DELETE", token=temporary["idToken"]), (200, 204, 404)),
+        ("temporary_auth_emergency_cleanup", lambda: firebase_delete_temporary_account(
+            api_key, temporary["idToken"]), (200,)),
+    )
+    for name, operation, success in operations:
+        try:
+            response = operation()
+            expect(response.status in success, name, results, f"HTTP {response.status}")
+        except (OSError, ValueError, RuntimeError) as error:
+            expect(False, name, results, f"Cleanup failed: {type(error).__name__}")
+
+
+def exercise_account_deletion(api_key, results):
+    suffix = uuid.uuid4().hex
+    temporary = firebase_sign_up(api_key, f"account-delete-{suffix}@englishplus.test", f"EnglishPlus-{suffix}!A1")
+    deletion_completed = False
+    try:
+        profile_create = create_temporary_student_profile(temporary)
+        expect(
+            profile_create.status == 200,
+            "temporary_deletion_account_profile_created",
+            results,
+            f"HTTP {profile_create.status}",
+        )
+
+        deletion_preview = request_json(
+            f"{WORKER_BASE_URL}/account/deletion-preview",
+            token=temporary["idToken"],
+        )
+        expect(
+            deletion_preview.status == 200
+            and deletion_preview.body.get("preview", {}).get("classMembershipCount") == 0,
+            "temporary_account_deletion_preview",
+            results,
+            f"HTTP {deletion_preview.status}",
+        )
+
+        deletion_attempts = 0
+        while deletion_attempts < 120:
+            deletion_attempts += 1
+            deletion = request_json(
+                f"{WORKER_BASE_URL}/account",
+                method="DELETE",
+                token=temporary["idToken"],
+                payload={"confirmation": "DELETE", "policyVersion": "2026-07-13"},
+            )
+            if deletion.status != 202:
+                break
+            time.sleep(0.25)
+        expect(
+            deletion.status == 200
+            and deletion.body.get("result", {}).get("completed") is True
+            and deletion.body.get("result", {}).get("retainedData") == "anonymousAggregateOnly",
+            "temporary_account_deleted_across_worker_and_firebase_auth",
+            results,
+            (
+                f"HTTP {deletion.status}; attempts={deletion_attempts}; "
+                f"result={deletion.body.get('result')}"
+            ),
+        )
+        deletion_completed = deletion.status == 200 and deletion.body.get("result", {}).get("completed") is True
+
+        sign_in_after_delete = request_json(
+            "https://identitytoolkit.googleapis.com/v1/accounts:signInWithPassword"
+            f"?key={api_key}",
+            method="POST",
+            payload={
+                "email": temporary["email"],
+                "password": temporary["password"],
+                "returnSecureToken": True,
+            },
+        )
+        expect(
+            sign_in_after_delete.status == 400,
+            "deleted_account_cannot_sign_in_again",
+            results,
+            f"HTTP {sign_in_after_delete.status}",
+        )
+
+        deleted_profile = request_json(
+            "https://firestore.googleapis.com/v1/projects/"
+            f"{PROJECT_ID}/databases/(default)/documents/users/{temporary['localId']}",
+            token=temporary["idToken"],
+        )
+        expect(
+            deleted_profile.status == 404,
+            "deleted_account_profile_is_absent",
+            results,
+            f"HTTP {deleted_profile.status}",
+        )
+
+    except (OSError, ValueError, RuntimeError) as error:
+        expect(False, "temporary_account_deletion_runtime_error", results,
+               f"Deletion exercise failed: {type(error).__name__}")
+    finally:
+        if not deletion_completed:
+            cleanup_temporary_account(api_key, temporary, results)
 
 
 def main() -> int:
@@ -224,6 +346,7 @@ def main() -> int:
         }, ensure_ascii=False, indent=2))
         return 0 if response.status == 200 else 1
 
+    test_accounts = {role: load_test_account(role) for role in TEST_ACCOUNT_ROLES}
     results: list[dict[str, str]] = []
     health = request_json(f"{WORKER_BASE_URL}/health")
     expect(
@@ -319,7 +442,7 @@ def main() -> int:
     )
 
     sessions: dict[str, dict[str, str]] = {}
-    for role, (email, password) in TEST_ACCOUNTS.items():
+    for role, (email, password) in test_accounts.items():
         try:
             sessions[role] = firebase_sign_in(api_key, email, password)
             expect(True, f"firebase_{role}_sign_in", results, "ID token issued")
@@ -860,95 +983,7 @@ def main() -> int:
             )
 
     if args.exercise_account_deletion:
-        suffix = uuid.uuid4().hex
-        temporary = firebase_sign_up(
-            api_key,
-            f"account-delete-{suffix}@englishplus.test",
-            f"EnglishPlus-{suffix}!A1",
-        )
-        profile_create = create_temporary_student_profile(temporary)
-        expect(
-            profile_create.status == 200,
-            "temporary_deletion_account_profile_created",
-            results,
-            f"HTTP {profile_create.status}",
-        )
-
-        deletion_preview = request_json(
-            f"{WORKER_BASE_URL}/account/deletion-preview",
-            token=temporary["idToken"],
-        )
-        expect(
-            deletion_preview.status == 200
-            and deletion_preview.body.get("preview", {}).get("classMembershipCount") == 0,
-            "temporary_account_deletion_preview",
-            results,
-            f"HTTP {deletion_preview.status}",
-        )
-
-        deletion_attempts = 0
-        while deletion_attempts < 120:
-            deletion_attempts += 1
-            deletion = request_json(
-                f"{WORKER_BASE_URL}/account",
-                method="DELETE",
-                token=temporary["idToken"],
-                payload={"confirmation": "DELETE", "policyVersion": "2026-07-13"},
-            )
-            if deletion.status != 202:
-                break
-            time.sleep(0.25)
-        expect(
-            deletion.status == 200
-            and deletion.body.get("result", {}).get("completed") is True
-            and deletion.body.get("result", {}).get("retainedData") == "anonymousAggregateOnly",
-            "temporary_account_deleted_across_worker_and_firebase_auth",
-            results,
-            (
-                f"HTTP {deletion.status}; attempts={deletion_attempts}; "
-                f"result={deletion.body.get('result')}"
-            ),
-        )
-        if deletion.status != 200 or deletion.body.get("result", {}).get("completed") is not True:
-            emergency_cleanup = firebase_delete_temporary_account(
-                api_key,
-                temporary["idToken"],
-            )
-            expect(
-                emergency_cleanup.status == 200,
-                "failed_deletion_test_account_is_still_cleaned_up",
-                results,
-                f"HTTP {emergency_cleanup.status}",
-            )
-
-        sign_in_after_delete = request_json(
-            "https://identitytoolkit.googleapis.com/v1/accounts:signInWithPassword"
-            f"?key={api_key}",
-            method="POST",
-            payload={
-                "email": temporary["email"],
-                "password": temporary["password"],
-                "returnSecureToken": True,
-            },
-        )
-        expect(
-            sign_in_after_delete.status == 400,
-            "deleted_account_cannot_sign_in_again",
-            results,
-            f"HTTP {sign_in_after_delete.status}",
-        )
-
-        deleted_profile = request_json(
-            "https://firestore.googleapis.com/v1/projects/"
-            f"{PROJECT_ID}/databases/(default)/documents/users/{temporary['localId']}",
-            token=temporary["idToken"],
-        )
-        expect(
-            deleted_profile.status == 404,
-            "deleted_account_profile_is_absent",
-            results,
-            f"HTTP {deleted_profile.status}",
-        )
+        exercise_account_deletion(api_key, results)
 
     print(json.dumps({"tests": results}, ensure_ascii=True, indent=2))
     return 1 if any(item["status"] == "failed" for item in results) else 0

@@ -22,7 +22,7 @@ final class FirebaseFirestoreService: FirestoreService {
     init(fallback: MockFirestoreService = MockFirestoreService()) {
         self.fallback = fallback
         #if canImport(FirebaseFirestore)
-        db = FirebaseAppConfigurator.hasBundledConfig ? Firestore.firestore() : nil
+        db = FirebaseAppConfigurator.hasConfiguredApp ? Firestore.firestore() : nil
         #endif
     }
 

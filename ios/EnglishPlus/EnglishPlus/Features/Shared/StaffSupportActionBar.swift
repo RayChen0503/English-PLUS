@@ -210,11 +210,32 @@ struct StaffSupportQueueRow: View {
 }
 
 struct StaffSupportDetailView: View {
+    @EnvironmentObject private var learningRepository: LearningRepositoryStore
+    let initialRequest: StudentSupportRequest
+    let role: StaffSupportWorkspaceRole
+
+    var body: some View {
+        if let request = learningRepository.supportRequests.first(where: {
+            $0.id == initialRequest.id && $0.isVisibleInStaffQueue(for: role == .teacher ? .teacher : .volunteer)
+        }) {
+            StaffSupportLiveDetailView(request: request, role: role)
+        } else {
+            EPContentStateView(state: .empty(
+                systemImage: "doc.text.magnifyingglass", title: "這筆接力已不在目前待辦",
+                detail: "學生可能已收回，或你已切換服務班級。請回到接力清單查看最新內容。"
+            ))
+            .padding(EPTheme.pagePadding)
+            .navigationTitle("接力詳情")
+        }
+    }
+}
+
+private struct StaffSupportLiveDetailView: View {
     @Environment(\.dismiss) private var dismiss
     @EnvironmentObject private var appState: AppState
     @EnvironmentObject private var learningRepository: LearningRepositoryStore
 
-    let initialRequest: StudentSupportRequest
+    let request: StudentSupportRequest
     let role: StaffSupportWorkspaceRole
 
     @State private var replyDraft = ""
@@ -222,12 +243,14 @@ struct StaffSupportDetailView: View {
     @State private var aiDraftResponse: AiProxyResponse?
     @State private var completionMessage: String?
 
-    private var request: StudentSupportRequest {
-        learningRepository.supportRequests.first { $0.id == initialRequest.id } ?? initialRequest
+    private var canReply: Bool {
+        isRequestCurrent && !replyDraft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
     }
 
-    private var canReply: Bool {
-        !replyDraft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    private var isRequestCurrent: Bool {
+        learningRepository.supportRequests.contains {
+            $0.id == request.id && $0.isVisibleInStaffQueue(for: role == .teacher ? .teacher : .volunteer)
+        }
     }
 
     var body: some View {
@@ -383,15 +406,18 @@ struct StaffSupportDetailView: View {
     }
 
     private func sendReply() {
+        let scope = appState.learningScopeIdentity
+        let body = replyDraft
         Task {
+            guard scope == appState.learningScopeIdentity, isRequestCurrent else { return }
             let succeeded: Bool
             switch role {
             case .teacher:
-                succeeded = await learningRepository.addTeacherReply(to: request.id, body: replyDraft)
+                succeeded = await learningRepository.addTeacherReply(to: request.id, body: body)
             case .volunteer:
-                succeeded = await learningRepository.addVolunteerReply(to: request.id, body: replyDraft)
+                succeeded = await learningRepository.addVolunteerReply(to: request.id, body: body)
             }
-            if succeeded {
+            if succeeded && scope == appState.learningScopeIdentity {
                 replyDraft = ""
                 aiDraftResponse = nil
                 completionMessage = "回覆已同步給學生。"
@@ -400,8 +426,11 @@ struct StaffSupportDetailView: View {
     }
 
     private func archiveThread() {
+        let scope = appState.learningScopeIdentity
         Task {
-            if await learningRepository.archiveSupportThreadForStaff(request.id, by: appState.currentUser) {
+            guard scope == appState.learningScopeIdentity, isRequestCurrent else { return }
+            if await learningRepository.archiveSupportThreadForStaff(request.id, by: appState.currentUser),
+               scope == appState.learningScopeIdentity {
                 dismiss()
             }
         }
@@ -409,18 +438,26 @@ struct StaffSupportDetailView: View {
 
     @MainActor
     private func fillDraftWithAI() async {
+        guard isRequestCurrent, !isDraftingWithAI else { return }
+        let scope = appState.learningScopeIdentity
+        let requestId = request.id
         isDraftingWithAI = true
         defer { isDraftingWithAI = false }
-
+        let response: AiProxyResponse
         switch role {
         case .teacher:
-            aiDraftResponse = await appState.draftTeacherFeedbackWithAI(
+            response = await appState.draftTeacherFeedbackWithAI(
                 context: SupportAIContext(request: request)
             )
         case .volunteer:
-            aiDraftResponse = await appState.coachVolunteerReplyWithAI(
+            response = await appState.coachVolunteerReplyWithAI(
                 context: SupportAIContext(request: request)
             )
         }
+        guard !Task.isCancelled, scope == appState.learningScopeIdentity,
+              learningRepository.supportRequests.contains(where: {
+                  $0.id == requestId && $0.isVisibleInStaffQueue(for: role == .teacher ? .teacher : .volunteer)
+              }) else { return }
+        aiDraftResponse = response
     }
 }

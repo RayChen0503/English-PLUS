@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 import sys
+import subprocess
 from pathlib import Path
 
 
@@ -102,7 +103,17 @@ def validate_firebase_ready(errors):
         "GoogleService-Info.plist must stay ignored",
         errors,
     )
-    require(not list(ROOT.glob("**/GoogleService-Info.plist")), "GoogleService-Info.plist must not be committed", errors)
+    tracked_files = subprocess.run(
+        ["git", "ls-files"],
+        cwd=ROOT,
+        check=True,
+        capture_output=True,
+        text=True,
+    ).stdout.splitlines()
+    tracked_configs = [
+        path for path in tracked_files if Path(path).name == "GoogleService-Info.plist"
+    ]
+    require(not tracked_configs, "GoogleService-Info.plist must not be committed", errors)
 
 
 def validate_sync_ready(errors):

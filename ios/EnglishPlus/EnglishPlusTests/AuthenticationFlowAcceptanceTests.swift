@@ -113,6 +113,27 @@ final class AuthenticationFlowAcceptanceTests: XCTestCase {
         XCTAssertFalse(appState.isManagingAccount)
     }
 
+    func testGoogleAccountDeletionRequiresFreshCredentialAndRevokesAuthorization() async throws {
+        let auth = RecordingAuthService()
+        auth.providerSignInResult = .success(session(role: .student))
+        auth.usesGoogleProvider = true
+        let appState = makeAppState(auth: auth)
+        await appState.signIn(
+            with: .google(idToken: "initial-id", accessToken: "initial-access"),
+            role: .student
+        )
+        let credential = GoogleAccountDeletionCredential(
+            idToken: "fresh-id",
+            accessToken: "fresh-access"
+        )
+
+        XCTAssertTrue(appState.currentAccountUsesGoogleSignIn)
+        try await appState.reauthenticateAndRevokeGoogleForAccountDeletion(using: credential)
+
+        XCTAssertEqual(auth.revokedGoogleCredential, credential)
+        XCTAssertFalse(appState.isManagingAccount)
+    }
+
     func testWrongRoleDoesNotCreateAnotherProfile() async {
         let auth = RecordingAuthService()
         auth.providerSignInResult = .failure(.roleMismatch(expected: .teacher, actual: .student))
@@ -173,7 +194,7 @@ final class AuthenticationFlowAcceptanceTests: XCTestCase {
 
         XCTAssertNil(appState.currentUser)
         XCTAssertEqual(appState.verificationEmailAddress, "new@englishplus.test")
-        XCTAssertEqual(appState.route, .roleSelection)
+        XCTAssertEqual(appState.route, .demoLogin(.student))
         XCTAssertTrue(appState.authNoticeMessage?.contains("驗證信") == true)
     }
 
@@ -589,6 +610,75 @@ final class StabilizationDashboardAcceptanceTests: XCTestCase {
 
 @MainActor
 final class LearningRepositoryReliabilityTests: XCTestCase {
+    func testDayChangeRestartsQueriesOnlyOnce() {
+        var date = Date(timeIntervalSince1970: 1_789_000_000)
+        let backend = ReliabilityTestLearningBackend(behaviors: [.snapshot, .snapshot])
+        let store = LearningRepositoryStore(backend: backend, now: { date })
+        store.startRealtimeSync(classId: "personal-a", user: nil, profile: nil)
+        store.refreshForCurrentDay()
+        XCTAssertEqual(backend.listenerStartCount, 1)
+        date = date.addingTimeInterval(86_400)
+        store.refreshForCurrentDay()
+        store.refreshForCurrentDay()
+        XCTAssertEqual(backend.listenerStartCount, 2)
+    }
+
+    func testOldSupportCompletionCannotClearNewScopePendingAction() async {
+        let store = LearningRepositoryStore(backend: ReliabilityTestLearningBackend(behaviors: [.snapshot, .snapshot, .snapshot]))
+        store.startRealtimeSync(classId: "class-a", user: nil, profile: nil)
+        var oldContinuation: CheckedContinuation<Void, Error>?
+        let oldTask = Task { await store.performSupportAction(key: "same-key") {
+            try await withCheckedThrowingContinuation { oldContinuation = $0 }
+        } }
+        while oldContinuation == nil { await Task.yield() }
+        store.startRealtimeSync(classId: "class-b", user: nil, profile: nil)
+        store.startRealtimeSync(classId: "class-a", user: nil, profile: nil)
+        var newContinuation: CheckedContinuation<Void, Error>?
+        let newTask = Task { await store.performSupportAction(key: "same-key") {
+            try await withCheckedThrowingContinuation { newContinuation = $0 }
+        } }
+        while newContinuation == nil { await Task.yield() }
+        oldContinuation?.resume(throwing: ReliabilityTestError.offline)
+        let oldResult = await oldTask.value
+        XCTAssertFalse(oldResult)
+        XCTAssertNil(store.supportActionErrorMessage)
+        XCTAssertTrue(store.pendingSupportActionKeys.contains("same-key"))
+        newContinuation?.resume()
+        let newResult = await newTask.value
+        XCTAssertTrue(newResult)
+        XCTAssertTrue(store.pendingSupportActionKeys.isEmpty)
+    }
+
+    func testRefreshCompletionCannotRestartAnOldClass() async {
+        let backend = ReliabilityTestLearningBackend(behaviors: [.snapshot, .snapshot])
+        var continuation: CheckedContinuation<Void, Error>?
+        backend.refreshAction = { try await withCheckedThrowingContinuation { continuation = $0 } }
+        let store = LearningRepositoryStore(backend: backend)
+        store.startRealtimeSync(classId: "class-a", user: nil, profile: nil)
+        let task = Task { await store.refresh() }
+        while continuation == nil { await Task.yield() }
+        store.startRealtimeSync(classId: "class-b", user: nil, profile: nil)
+        continuation?.resume()
+        await task.value
+        XCTAssertEqual(backend.listenerStartCount, 2)
+        XCTAssertEqual(store.syncStatus, .listening(classId: "class-b"))
+    }
+
+    func testWriteFailureStaysVisibleAcrossHealthySnapshotsUntilAcknowledged() {
+        let backend = ReliabilityTestLearningBackend(behaviors: [.snapshot])
+        let store = LearningRepositoryStore(backend: backend)
+        store.startRealtimeSync(classId: "class-a", user: nil, profile: nil)
+        backend.emitWriteStatus(.pending(count: 2), forListenerAt: 0)
+        XCTAssertEqual(store.syncStatus, .pendingWrites(count: 2))
+        backend.emitSnapshot(forListenerAt: 0)
+        XCTAssertEqual(store.syncStatus, .pendingWrites(count: 2))
+        backend.emitWriteStatus(.failed(reason: "Save failed", retryAvailable: true), forListenerAt: 0)
+        backend.emitSnapshot(forListenerAt: 0)
+        XCTAssertEqual(store.syncStatus, .syncIssue(reason: "Save failed", retryAvailable: true))
+        backend.emitWriteStatus(.synced, forListenerAt: 0)
+        XCTAssertEqual(store.syncStatus, .listening(classId: "class-a"))
+    }
+
     func testDisconnectKeepsLocalDataAndReconnectRestartsListener() async {
         let connectivity = ManualNetworkConnectivityMonitor(initialStatus: .connected)
         let backend = ReliabilityTestLearningBackend(behaviors: [.snapshot, .snapshot])
@@ -902,12 +992,14 @@ private final class ReliabilityTestLearningBackend: LearningRepositoryBackend {
         let onChange: @MainActor (LearningRepositorySnapshot) -> Void
         let onComponentHealth: @MainActor (LearningRepositoryListenerHealthEvent) -> Void
         let onError: @MainActor (Error) -> Void
+        let onWriteStatus: @MainActor (LearningRepositoryWriteStatus) -> Void
     }
 
     private let base = MockLearningRepository(localPersistence: MemoryLearningPersistence())
     private var behaviors: [ListenerBehavior]
     private var listeners: [ListenerCallbacks] = []
     private(set) var listenerStartCount = 0
+    var refreshAction: (() async throws -> Void)?
 
     init(behaviors: [ListenerBehavior]) {
         self.behaviors = behaviors
@@ -919,7 +1011,7 @@ private final class ReliabilityTestLearningBackend: LearningRepositoryBackend {
     var questionBankItems: [QuestionBankItem] { base.questionBankItems }
     var questionPracticeSets: [QuestionPracticeSet] { base.questionPracticeSets }
 
-    func refresh() async throws {}
+    func refresh() async throws { try await refreshAction?() }
 
     func startRealtimeListener(
         classId: String,
@@ -927,14 +1019,16 @@ private final class ReliabilityTestLearningBackend: LearningRepositoryBackend {
         profile: AppUserProfile?,
         onChange: @escaping @MainActor (LearningRepositorySnapshot) -> Void,
         onComponentHealth: @escaping @MainActor (LearningRepositoryListenerHealthEvent) -> Void,
-        onError: @escaping @MainActor (Error) -> Void
+        onError: @escaping @MainActor (Error) -> Void,
+        onWriteStatus: @escaping @MainActor (LearningRepositoryWriteStatus) -> Void
     ) -> LearningRepositoryListenerToken {
         listenerStartCount += 1
         listeners.append(
             ListenerCallbacks(
                 onChange: onChange,
                 onComponentHealth: onComponentHealth,
-                onError: onError
+                onError: onError,
+                onWriteStatus: onWriteStatus
             )
         )
         let behavior = behaviors.isEmpty ? .snapshot : behaviors.removeFirst()
@@ -951,6 +1045,10 @@ private final class ReliabilityTestLearningBackend: LearningRepositoryBackend {
 
     func emitSnapshot(forListenerAt index: Int) {
         listeners[index].onChange(snapshot)
+    }
+
+    func emitWriteStatus(_ status: LearningRepositoryWriteStatus, forListenerAt index: Int) {
+        listeners[index].onWriteStatus(status)
     }
 
     func emitError(
@@ -2267,7 +2365,9 @@ private final class RecordingAuthService: AuthService {
     var emailSignInResult: Result<AuthSession, AuthServiceError> = .failure(.invalidCredentials)
     var restoredSession: AuthSession?
     var usesAppleProvider = false
+    var usesGoogleProvider = false
     var revokedAppleCredential: AppleAccountDeletionCredential?
+    var revokedGoogleCredential: GoogleAccountDeletionCredential?
 
     private(set) var providerSignInCallCount = 0
     private(set) var providerCreationCallCount = 0
@@ -2332,7 +2432,20 @@ private final class RecordingAuthService: AuthService {
     }
 
     func currentUserUses(_ provider: AccountIdentityProvider) -> Bool {
-        provider == .apple && usesAppleProvider
+        switch provider {
+        case .apple:
+            return usesAppleProvider
+        case .google:
+            return usesGoogleProvider
+        case .emailPassword:
+            return false
+        }
+    }
+
+    func reauthenticateAndRevokeGoogleToken(
+        using credential: GoogleAccountDeletionCredential
+    ) async throws {
+        revokedGoogleCredential = credential
     }
 
     func reauthenticateAndRevokeAppleToken(

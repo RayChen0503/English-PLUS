@@ -43,6 +43,7 @@ struct FirestoreSeedMapper {
                 accountStatus: .active,
                 emailVerificationRequired: false,
                 provisioningSource: .internalSeed,
+                studentAccessPath: account.role == .student ? .legacyUnspecified : .notApplicable,
                 identityProviders: [.emailPassword]
             )
             writePlan.append(.init(

@@ -68,6 +68,25 @@ enum FederatedSignInCoordinator {
         #endif
     }
 
+    static func googleAccountDeletionCredential() async throws -> GoogleAccountDeletionCredential {
+        let credential = try await googleCredential()
+        guard case .google(let idToken, let accessToken) = credential else {
+            throw FederatedSignInCoordinatorError.invalidCredential
+        }
+        return GoogleAccountDeletionCredential(
+            idToken: idToken,
+            accessToken: accessToken
+        )
+    }
+
+    static func disconnectGoogle() async throws {
+        #if canImport(GoogleSignIn)
+        try await GIDSignIn.sharedInstance.disconnect()
+        #else
+        throw FederatedSignInCoordinatorError.configurationMissing
+        #endif
+    }
+
     static func prepareAppleRequest(
         _ request: ASAuthorizationAppleIDRequest
     ) throws -> String {

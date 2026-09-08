@@ -34,7 +34,10 @@ def main() -> int:
             "enum StaffSupportWorkspaceRole",
             "struct StaffSupportQueueRow",
             "struct StaffSupportDetailView",
-            "learningRepository.supportRequests.first { $0.id == initialRequest.id }",
+            "if let request = learningRepository.supportRequests.first(where:",
+            "$0.id == initialRequest.id && $0.isVisibleInStaffQueue",
+            "StaffSupportLiveDetailView(request: request, role: role)",
+            "isRequestCurrent && !replyDraft",
             'accessibilityIdentifier("staff.handoff.detail")',
             'accessibilityIdentifier("staff.handoff.reply")',
             "learningRepository.addTeacherReply",
@@ -47,6 +50,8 @@ def main() -> int:
         "shared staff handoff flow",
         errors,
     )
+
+    require("?? initialRequest" not in shared, "Staff detail must not fall back to a stale request", errors)
 
     require_markers(
         teacher,

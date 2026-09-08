@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 import json
+import tomllib
 import sys
 from pathlib import Path
 
@@ -34,6 +35,17 @@ def require(condition, message, errors):
         errors.append(message)
 
 
+def validate_model_config(wrangler, errors):
+    try:
+        config = tomllib.loads(wrangler)
+        for label, values in (("competition", config.get("vars", {})),
+                              ("production", config.get("env", {}).get("production", {}).get("vars", {}))):
+            require(values.get("GROQ_DEFAULT_MODEL") == "openai/gpt-oss-20b",
+                    f"{label} GROQ_DEFAULT_MODEL must match the gpt-oss-20b migration", errors)
+    except tomllib.TOMLDecodeError as error:
+        errors.append(f"Invalid wrangler.toml: {error}")
+
+
 def validate_worker(errors):
     files = {
         "worker package": WORKER_ROOT / "package.json",
@@ -56,9 +68,10 @@ def validate_worker(errors):
         'main = "src/index.js"',
         'compatibility_date',
         'GROQ_DEFAULT_MODEL',
-        'llama-3.1-8b-instant',
     ]:
         require(token in wrangler, f"wrangler.toml missing {token}", errors)
+
+    validate_model_config(wrangler, errors)
 
     source = read(files["worker source"])
     for token in [

@@ -56,25 +56,25 @@ struct RepositorySyncBanner: View {
 
     private var presentation: SyncBannerPresentation? {
         switch status {
-        case .idle, .listening:
+        case .idle, .connecting, .listening:
             return nil
-        case .connecting:
+        case .pendingWrites(let count):
             return SyncBannerPresentation(
-                title: "正在同步最新資料",
-                detail: "已儲存的內容仍可使用。",
-                systemImage: "arrow.triangle.2.circlepath",
-                tint: EPTheme.primary,
-                showsRetry: false,
-                showsProgress: true
+                title: "正在儲存學習紀錄", detail: "還有 \(count) 筆操作等待雲端確認，裝置上的進度已保留。",
+                systemImage: "icloud.and.arrow.up", tint: EPTheme.primary,
+                showsRetry: false, showsProgress: true
             )
-        case .retrying(_, let attempt):
+        case .retrying:
             return SyncBannerPresentation(
-                title: "正在重新連線",
-                detail: "第 \(attempt) 次嘗試，畫面會保留目前資料。",
-                systemImage: "arrow.clockwise",
-                tint: EPTheme.primary,
-                showsRetry: false,
-                showsProgress: true
+                title: "正在重新同步", detail: "目前顯示已載入的資料，連線恢復後會更新。",
+                systemImage: "arrow.triangle.2.circlepath", tint: EPTheme.primary,
+                showsRetry: false, showsProgress: true
+            )
+        case .syncIssue(let reason, let retryAvailable):
+            return SyncBannerPresentation(
+                title: "資料同步暫時中斷", detail: reason,
+                systemImage: "exclamationmark.arrow.triangle.2.circlepath", tint: EPTheme.warning,
+                showsRetry: retryAvailable, showsProgress: false
             )
         case .offlineFallback(let reason):
             let lastSyncText = lastSuccessfulSyncAt.map {
@@ -86,18 +86,6 @@ struct RepositorySyncBanner: View {
                 systemImage: "wifi.slash",
                 tint: EPTheme.warning,
                 showsRetry: false,
-                showsProgress: false
-            )
-        case .syncIssue(let reason, let retryAvailable):
-            let lastSyncText = lastSuccessfulSyncAt.map {
-                "上次同步：\($0.formatted(date: .omitted, time: .shortened))"
-            } ?? "已保留裝置上的資料"
-            return SyncBannerPresentation(
-                title: "部分資料暫時無法同步",
-                detail: "\(reason) \(lastSyncText)",
-                systemImage: "exclamationmark.arrow.triangle.2.circlepath",
-                tint: EPTheme.warning,
-                showsRetry: retryAvailable,
                 showsProgress: false
             )
         }

@@ -223,11 +223,18 @@ enum SpacedRepetitionEngine {
                     && !lastSemanticKeys.contains($0.semanticKey)
                     && !seenSemanticKeys.contains($0.semanticKey)
             }
-            guard let item = QuestionGroupingEngine.balancedItems(
+            let newVariation = QuestionGroupingEngine.balancedItems(
                 from: candidates,
                 limit: 1,
                 rotationSeed: "\(rotationSeed)-\(record.id)"
-            ).first else { continue }
+            ).first
+            // An exhausted skill must keep its place in the due-priority order.
+            // Prefer an unseen variation, then revisit its recorded question.
+            let repeatedQuestion = questionBank.first {
+                $0.curriculumKey == record.curriculumKey && $0.id == record.lastQuestionId
+            } ?? questionBank.first { $0.curriculumKey == record.curriculumKey }
+            guard let item = newVariation ?? repeatedQuestion,
+                  !seenSemanticKeys.contains(item.semanticKey) else { continue }
             selected.append(item)
             seenSemanticKeys.insert(item.semanticKey)
         }

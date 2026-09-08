@@ -231,7 +231,7 @@ struct RemoteAccountLifecycleService: AccountLifecycleService {
                 throw AccountLifecycleError.classTransferSelectionRequired
             case "ACCOUNT_CLASS_TRANSFER_SELECTION_STALE":
                 throw AccountLifecycleError.classTransferSelectionStale
-            case "ACCOUNT_AUTH_DELETION_FAILED", "FIRESTORE_COMMIT_FAILED", "ACCOUNT_EVIDENCE_STORAGE_UNAVAILABLE":
+            case "ACCOUNT_AUTH_DELETION_FAILED", "FIRESTORE_COMMIT_FAILED", "FIRESTORE_QUERY_FAILED", "ACCOUNT_EVIDENCE_STORAGE_UNAVAILABLE":
                 throw AccountLifecycleError.cleanupFailed
             default:
                 throw AccountLifecycleError.unavailable

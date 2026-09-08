@@ -253,7 +253,7 @@ test("teacher deletion transfers an owned class to a confirmed active co-teacher
     assert.equal(assignment.assignedByUid, "deleted-account");
     assert.equal(assignment.assignedByName, "已刪除的老師");
 
-    const metric = (await getDoc(doc(db, "anonymousProductMetrics", "account-deletions-2026-07"))).data();
+    const metric = (await getDoc(doc(db, "anonymousProductMetrics", `account-deletions-${new Date().toISOString().slice(0, 7)}`))).data();
     assert.equal(metric.totalAccountsDeleted, 1);
     assert.equal(JSON.stringify(metric).includes(UID), false);
   });

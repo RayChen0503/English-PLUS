@@ -93,7 +93,7 @@ final class EnglishPlusCriticalFlowsUITests: XCTestCase {
         )
 
         XCTAssertTrue(app.staticTexts["目前為離線模式"].waitForExistence(timeout: 5))
-        XCTAssertTrue(app.buttons["重試"].exists)
+        XCTAssertFalse(app.buttons["重試"].exists)
         assertTabBarContains(["首頁", "練習", "班級", "支持", "地圖"])
     }
 

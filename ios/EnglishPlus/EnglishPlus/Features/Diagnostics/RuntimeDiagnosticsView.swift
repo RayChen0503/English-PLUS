@@ -85,6 +85,8 @@ struct RuntimeDiagnosticsView: View {
             return "listening \(classId)"
         case .retrying(let classId, let attempt):
             return "retrying \(classId) attempt \(attempt)"
+        case .pendingWrites(let count):
+            return "pending writes \(count)"
         case .offlineFallback(let reason):
             return "fallback \(reason)"
         case .syncIssue(let reason, let retryAvailable):

@@ -1,4 +1,4 @@
-import { initializeApp } from "firebase/app";
+import { initializeApp, getApps } from "firebase/app";
 import {
   browserLocalPersistence,
   getAuth,
@@ -49,6 +49,8 @@ import {
   canonicalWebAppHost,
   firebaseConfig,
 } from "./config.js";
+import { createAuthenticationInitializer } from "./admin-authentication.js";
+import { createAdminController, reportKey } from "./admin-controller.js";
 import "./styles.css";
 
 const iconSet = {
@@ -110,10 +112,34 @@ const state = {
   theme: localStorage.getItem("englishplus-admin-theme") || "system",
 };
 
+const controller = createAdminController({ state, render, notify: showToast,
+  messageForError: (code, reports) => reports ? supportReportErrorMessage(code) : errorMessage(code) });
+const startAuthentication = createAuthenticationInitializer({
+  state, controller, render,
+  getAuth: () => getAuth(getApps()[0] || initializeApp(firebaseConfig)),
+  persist: (auth) => setPersistence(auth, browserLocalPersistence),
+  listen: onAuthStateChanged,
+  createApi: (auth, user) => createAdminApi({
+    baseURL: adminApiBaseURL,
+    getToken: async (forceRefresh = false) => {
+      if (auth.currentUser !== user) throw new AdminApiError("AUTH_REQUIRED", 401);
+      return user.getIdToken(forceRefresh);
+    },
+  }),
+});
+
 applyTheme();
 appElement.addEventListener("click", handleClick);
 appElement.addEventListener("submit", handleSubmit);
 appElement.addEventListener("change", handleChange);
+appElement.addEventListener("input", (event) => {
+  if (event.target.matches('#review-form textarea')) state.reviewNote = event.target.value;
+  if (event.target.matches('#report-review-form textarea')) state.reportReviewNote = event.target.value;
+});
+appElement.addEventListener("cancel", (event) => {
+  event.preventDefault();
+  controller.closeReview(event.target.id === "report-review-dialog");
+}, true);
 
 if (shouldUseCanonicalOrigin) {
   const canonicalURL = new URL(location.href);
@@ -125,129 +151,10 @@ if (shouldUseCanonicalOrigin) {
   startAuthentication();
 }
 
-async function startAuthentication() {
-  const firebaseApp = initializeApp(firebaseConfig);
-  const auth = getAuth(firebaseApp);
-  await setPersistence(auth, browserLocalPersistence);
-  state.auth = auth;
-  state.api = createAdminApi({
-    baseURL: adminApiBaseURL,
-    getToken: async (forceRefresh = false) => {
-      const user = auth.currentUser;
-      if (!user) throw new AdminApiError("AUTH_REQUIRED", 401);
-      return user.getIdToken(forceRefresh);
-    },
-  });
-
-  onAuthStateChanged(auth, async (user) => {
-    state.authUser = user;
-    state.errorCode = "";
-    state.errorRequestId = "";
-    if (!user) {
-      state.phase = "signedOut";
-      state.admin = null;
-      state.applications = [];
-      state.selectedUid = "";
-      state.reports = [];
-      state.selectedReportId = "";
-      render();
-      return;
-    }
-    state.phase = "verifying";
-    render();
-    await verifyAdministrator();
-  });
-}
-
-async function verifyAdministrator() {
-  try {
-    const result = await state.api.session();
-    state.admin = result.admin;
-    state.phase = "ready";
-    await loadCurrentWorkspace({ preserveSelection: false });
-  } catch (error) {
-    rememberError(error);
-    state.phase = error.status === 403 ? "unauthorized" : "sessionError";
-    render();
-  }
-}
-
-function loadCurrentWorkspace(options = {}) {
-  return state.workspaceMode === "reports"
-    ? loadSupportReports(options)
-    : loadApplications(options);
-}
-
-async function loadApplications({ preserveSelection = true } = {}) {
-  state.listLoading = true;
-  state.listErrorCode = "";
-  state.listErrorRequestId = "";
-  render();
-  try {
-    const result = await state.api.applications({
-      status: state.filterStatus,
-      query: state.filterQuery,
-    });
-    state.applications = result.applications || [];
-    state.summary = result.summary || emptySummary();
-    if (
-      !preserveSelection ||
-      !state.applications.some((item) => item.uid === state.selectedUid)
-    ) {
-      state.selectedUid = state.applications[0]?.uid || "";
-    }
-    await loadAuditForSelection();
-  } catch (error) {
-    state.listErrorCode = error?.code || "APPLICATION_LIST_FAILED";
-    state.listErrorRequestId = error?.requestId || "";
-  } finally {
-    state.listLoading = false;
-    render();
-  }
-}
-
-async function loadAuditForSelection() {
-  state.audit = [];
-  state.auditErrorCode = "";
-  if (!state.selectedUid) return;
-  state.auditLoading = true;
-  render();
-  try {
-    const result = await state.api.audit(state.selectedUid);
-    state.audit = result.events || [];
-  } catch (error) {
-    state.auditErrorCode = error?.code || "AUDIT_LIST_FAILED";
-  } finally {
-    state.auditLoading = false;
-  }
-}
-
-async function loadSupportReports({ preserveSelection = true } = {}) {
-  state.listLoading = true;
-  state.listErrorCode = "";
-  state.listErrorRequestId = "";
-  render();
-  try {
-    const result = await state.api.supportReports({
-      status: state.reportFilterStatus,
-      query: state.reportFilterQuery,
-    });
-    state.reports = result.reports || [];
-    state.reportSummary = result.summary || emptyReportSummary();
-    if (
-      !preserveSelection ||
-      !state.reports.some((item) => item.reportId === state.selectedReportId)
-    ) {
-      state.selectedReportId = state.reports[0]?.reportId || "";
-    }
-  } catch (error) {
-    state.listErrorCode = error?.code || "SUPPORT_REPORT_LIST_FAILED";
-    state.listErrorRequestId = error?.requestId || "";
-  } finally {
-    state.listLoading = false;
-    render();
-  }
-}
+const verifyAdministrator = () => controller.verify();
+const loadCurrentWorkspace = (options) => controller.load(options);
+const loadApplications = (options) => controller.load(options);
+const loadSupportReports = (options) => controller.load(options);
 
 async function handleClick(event) {
   const trigger = event.target.closest("[data-action]");
@@ -258,7 +165,15 @@ async function handleClick(event) {
     const email = document.querySelector('#email-login-form input[name="email"]')?.value;
     return resetPassword(email);
   }
-  if (action === "sign-out") return state.auth ? signOut(state.auth) : resetPreview();
+  if (action === "sign-out") {
+    const auth = state.auth;
+    controller.resetSession();
+    if (!auth) return;
+    try { await signOut(auth); }
+    catch (error) { showToast(firebaseAuthMessage(error.code), "error"); await startAuthentication(); }
+    return;
+  }
+  if (action === "retry-auth") return startAuthentication();
   if (action === "refresh-session") return verifyAdministrator();
   if (action === "reload") return loadCurrentWorkspace();
   if (action === "toggle-theme") return toggleTheme();
@@ -275,8 +190,7 @@ async function handleClick(event) {
     return loadApplications({ preserveSelection: false });
   }
   if (action === "select-application") {
-    state.selectedUid = trigger.dataset.uid || "";
-    await loadAuditForSelection();
+    await controller.selectApplication(trigger.dataset.uid || "");
     return render();
   }
   if (action === "select-report-status") {
@@ -284,29 +198,22 @@ async function handleClick(event) {
     return loadSupportReports({ preserveSelection: false });
   }
   if (action === "select-report") {
-    state.selectedReportId = trigger.dataset.reportId || "";
-    return render();
+    return controller.selectReport(trigger.dataset.reportId || "");
   }
   if (action === "open-review") {
-    state.pendingAction = trigger.dataset.reviewAction || "";
-    render();
-    requestAnimationFrame(() => document.querySelector("#review-dialog")?.showModal());
+    controller.openReview(selectedApplication(), trigger.dataset.reviewAction || "");
     return;
   }
   if (action === "close-review") {
-    document.querySelector("#review-dialog")?.close();
-    state.pendingAction = "";
+    controller.closeReview();
     return;
   }
   if (action === "open-report-review") {
-    state.pendingReportAction = trigger.dataset.reportAction || "";
-    render();
-    requestAnimationFrame(() => document.querySelector("#report-review-dialog")?.showModal());
+    controller.openReview(selectedSupportReport(), trigger.dataset.reportAction || "", true);
     return;
   }
   if (action === "close-report-review") {
-    document.querySelector("#report-review-dialog")?.close();
-    state.pendingReportAction = "";
+    controller.closeReview(true);
     return;
   }
   if (action === "open-evidence") return openEvidence(trigger.dataset.objectKey);
@@ -372,87 +279,18 @@ async function resetPassword(email) {
   }
 }
 
-async function commitReview(note) {
-  const application = selectedApplication();
-  const action = state.pendingAction;
-  if (!application || !action) return;
-  if (note.length < 3) {
-    showToast("請填寫至少 3 個字的審核原因。", "error");
-    return;
-  }
-
-  state.actionLoading = true;
-  setDialogSubmitting("#review-dialog", true, "儲存中…");
-  try {
-    await state.api.review(application.uid, {
-      action,
-      note,
-      expectedVersion: application.version,
-    });
-    document.querySelector("#review-dialog")?.close();
-    state.pendingAction = "";
-    showToast("審核結果已儲存，帳號狀態也已同步更新。", "success");
-    await loadApplications();
-  } catch (error) {
-    showToast(errorMessage(error.code), "error");
-    state.actionLoading = false;
-    setDialogSubmitting("#review-dialog", false, actionPresentation[action]?.label || "儲存");
-    return;
-  }
-  state.actionLoading = false;
-  render();
-}
-
-async function commitSupportReportReview(note) {
-  const report = selectedSupportReport();
-  const action = state.pendingReportAction;
-  if (!report || !action) return;
-  if (note.length < 3) {
-    showToast("請填寫至少 3 個字的處理紀錄。", "error");
-    return;
-  }
-
-  state.actionLoading = true;
-  setDialogSubmitting("#report-review-dialog", true, "儲存中…");
-  try {
-    await state.api.reviewSupportReport(report.classId, report.reportId, {
-      action,
-      note,
-      expectedVersion: report.version,
-    });
-    document.querySelector("#report-review-dialog")?.close();
-    state.pendingReportAction = "";
-    showToast("檢舉案件狀態與處理紀錄已更新。", "success");
-    await loadSupportReports();
-  } catch (error) {
-    showToast(supportReportErrorMessage(error?.code), "error");
-    state.actionLoading = false;
-    setDialogSubmitting("#report-review-dialog", false, supportReportActionPresentation(action).label);
-    return;
-  }
-  state.actionLoading = false;
-  render();
-}
-
-function setDialogSubmitting(dialogSelector, isSubmitting, label) {
-  const dialog = document.querySelector(dialogSelector);
-  const submit = dialog?.querySelector('button[type="submit"]');
-  const closeButtons = dialog?.querySelectorAll('[data-action^="close-"]') || [];
-  if (submit) {
-    submit.disabled = isSubmitting;
-    submit.textContent = label;
-  }
-  closeButtons.forEach((button) => {
-    button.disabled = isSubmitting;
-  });
-}
+const commitReview = (note) => controller.commit(note);
+const commitSupportReportReview = (note) => controller.commit(note, true);
 
 async function openEvidence(objectKey) {
   if (!objectKey) return;
   let popup = null;
+  const currentSession = controller.sessionTicket();
+  const api = state.api;
   try {
     popup = window.open("", "_blank");
-    const result = await state.api.evidencePreview(objectKey);
+    const result = await api.evidencePreview(objectKey);
+    if (!currentSession()) { popup?.close(); return; }
     const previewURL = new URL(result.previewURL || "");
     const workerOrigin = new URL(adminApiBaseURL).origin;
     if (
@@ -473,6 +311,7 @@ async function openEvidence(objectKey) {
     if (popup) popup.opener = null;
   } catch (error) {
     popup?.close();
+    if (!currentSession()) return;
     const requestReference = error?.requestId ? `（參考編號 ${error.requestId}）` : "";
     console.error("Evidence preview failed", {
       code: error?.code || "UNKNOWN",
@@ -484,18 +323,35 @@ async function openEvidence(objectKey) {
 }
 
 function render() {
+  const focused = document.activeElement;
+  const noteForm = focused?.matches('textarea[name="note"]') ? focused.form?.id : null;
+  const caret = noteForm ? [focused.selectionStart, focused.selectionEnd] : null;
   if (["starting", "verifying"].includes(state.phase)) {
     appElement.innerHTML = loadingScreen();
   } else if (state.phase === "signedOut") {
     appElement.innerHTML = loginScreen();
   } else if (state.phase === "unauthorized") {
     appElement.innerHTML = accessDeniedScreen();
+  } else if (state.phase === "authInitError") {
+    appElement.innerHTML = `<main class="center-screen"><h1>無法初始化登入</h1><p>${escapeHtml(firebaseAuthMessage(state.errorCode))}</p><button class="button primary" data-action="retry-auth">重新嘗試登入初始化</button></main>`;
   } else if (state.phase === "sessionError") {
     appElement.innerHTML = sessionErrorScreen();
   } else {
     appElement.innerHTML = dashboardScreen();
   }
   createIcons({ icons: iconSet, attrs: { "aria-hidden": "true" } });
+  for (const [id, pending] of [["review-dialog", state.pendingAction], ["report-review-dialog", state.pendingReportAction]]) {
+    const dialog = document.getElementById(id);
+    if (pending && dialog && state.phase === "ready") {
+      dialog.showModal();
+      if (noteForm) {
+        const note = dialog.querySelector(`#${noteForm} textarea[name="note"]`);
+        note?.focus();
+        note?.setSelectionRange(...caret);
+      }
+      dialog.querySelectorAll('[data-action^="close-"]').forEach((button) => { button.disabled = state.actionLoading; });
+    }
+  }
 }
 
 function loadingScreen() {
@@ -560,8 +416,8 @@ function dashboardScreen() {
         ${workspaceTabs()}
         ${state.workspaceMode === "reports" ? reportWorkspace(report) : applicationWorkspace(application)}
       </main>
-      ${reviewDialog(application)}
-      ${supportReportReviewDialog(report)}
+      ${reviewDialog(state.reviewTarget)}
+      ${supportReportReviewDialog(state.reportReviewTarget)}
     </div>`;
 }
 
@@ -676,7 +532,7 @@ function supportReportList() {
   if (!state.reports.length) return `<div class="rail-state"><i data-lucide="check-circle-2"></i><p>目前沒有符合條件的檢舉案件。</p></div>`;
   return `<div class="application-list">${state.reports.map((report) => {
     const presentation = supportReportStatusPresentation(report.status);
-    return `<button class="application-row ${state.selectedReportId === report.reportId ? "selected" : ""}" data-action="select-report" data-report-id="${escapeHtml(report.reportId)}">
+    return `<button class="application-row ${state.selectedReportId === reportKey(report) ? "selected" : ""}" data-action="select-report" data-report-id="${escapeHtml(reportKey(report))}">
       <span class="row-main"><strong>${escapeHtml(report.studentName || "學生")} · ${escapeHtml(supportReportReasonLabel(report.reason))}</strong><small>${escapeHtml(report.replyAuthorName || roleLabel(report.reportedRole))} · ${escapeHtml(formatDate(report.createdAt))}</small></span>
       <span class="status-pill ${presentation.tone}">${escapeHtml(supportReportStatusLabel(report.status))}</span>
       <i data-lucide="chevron-right"></i>
@@ -733,7 +589,7 @@ function supportReportDetail(report) {
 }
 
 function evidenceList(application) {
-  if (application.evidenceDeletedAt) return `<div class="inline-state">證明文件已依保存政策刪除（${escapeHtml(formatDate(application.evidenceDeletedAt))}）。</div>`;
+  if (application.evidenceDeletedAt && !application.evidence.length) return `<div class="inline-state">證明文件已依保存政策刪除（${escapeHtml(formatDate(application.evidenceDeletedAt))}）。</div>`;
   if (!application.evidence.length) return `<div class="inline-state warning"><i data-lucide="circle-alert"></i>尚未附上任何資格證明，不建議核准。</div>`;
   return `<div class="evidence-list">${application.evidence.map((item) => `<button class="evidence-row" data-action="open-evidence" data-object-key="${escapeHtml(item.objectKey)}">
     <i data-lucide="file-check-2"></i><span><strong>${escapeHtml(item.filename || qualificationLabel(item.kind))}</strong><small>${escapeHtml(qualificationLabel(item.kind))} · ${formatBytes(item.sizeBytes)}</small></span><span class="download-label"><i data-lucide="download"></i>檢視</span>
@@ -762,7 +618,7 @@ function reviewDialog(application) {
     <form id="review-form" method="dialog">
       <div class="dialog-heading"><div><p class="eyebrow">${escapeHtml(application.displayName)}</p><h2>${escapeHtml(action.confirm)}</h2></div><button class="icon-button" type="button" data-action="close-review" aria-label="關閉"><i data-lucide="x"></i></button></div>
       <p>${reviewActionExplanation(state.pendingAction)}</p>
-      <label>審核備註（必填）<textarea name="note" rows="4" minlength="3" maxlength="1000" placeholder="說明結果與下一步；申請人會在 App 中看到這段文字" required></textarea></label>
+      <label>審核備註（必填）<textarea name="note" rows="4" minlength="3" maxlength="1000" placeholder="說明結果與下一步；申請人會在 App 中看到這段文字" required>${escapeHtml(state.reviewNote || "")}</textarea></label>
       <div class="dialog-actions"><button class="button secondary" type="button" data-action="close-review">取消</button><button class="button ${action.tone}" type="submit" ${state.actionLoading ? "disabled" : ""}>${state.actionLoading ? "儲存中…" : escapeHtml(action.label)}</button></div>
     </form>
   </dialog>`;
@@ -775,7 +631,7 @@ function supportReportReviewDialog(report) {
     <form id="report-review-form" method="dialog">
       <div class="dialog-heading"><div><p class="eyebrow">${escapeHtml(report.studentName || "學生")}的檢舉</p><h2>${escapeHtml(action.confirm)}</h2></div><button class="icon-button" type="button" data-action="close-report-review" aria-label="關閉"><i data-lucide="x"></i></button></div>
       <p>${escapeHtml(supportReportActionExplanation(state.pendingReportAction))}</p>
-      <label>處理紀錄（必填）<textarea name="note" rows="4" minlength="3" maxlength="1000" placeholder="記錄查核依據與處理結果，供後續管理稽核" required></textarea></label>
+      <label>處理紀錄（必填）<textarea name="note" rows="4" minlength="3" maxlength="1000" placeholder="記錄查核依據與處理結果，供後續管理稽核" required>${escapeHtml(state.reportReviewNote || "")}</textarea></label>
       <div class="dialog-actions"><button class="button secondary" type="button" data-action="close-report-review">取消</button><button class="button ${action.tone}" type="submit" ${state.actionLoading ? "disabled" : ""}>${state.actionLoading ? "儲存中…" : escapeHtml(action.label)}</button></div>
     </form>
   </dialog>`;
@@ -848,12 +704,7 @@ function selectedApplication() {
 }
 
 function selectedSupportReport() {
-  return state.reports.find((item) => item.reportId === state.selectedReportId) || null;
-}
-
-function rememberError(error) {
-  state.errorCode = error?.code || "REQUEST_FAILED";
-  state.errorRequestId = error?.requestId || "";
+  return state.reports.find((item) => reportKey(item) === state.selectedReportId) || null;
 }
 
 function clearLoginError() {
@@ -1076,12 +927,7 @@ function loadPreviewState() {
     },
   };
   state.selectedUid = state.applications[0].uid;
-  state.selectedReportId = state.reports[0].reportId;
+  state.selectedReportId = reportKey(state.reports[0]);
   state.audit = [];
-  render();
-}
-
-function resetPreview() {
-  state.phase = "signedOut";
   render();
 }

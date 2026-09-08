@@ -223,7 +223,7 @@ final class MockLearningRepository: ObservableObject {
 
         currentCheckIn = checkIn
         currentMission = DailyMission(
-            id: "mission-\(checkIn.dateKey)-r\(roundNumber)-\(studentUid)",
+            id: "mission-\(checkIn.dateKey)-r\(roundNumber)-\(studentUid)-\(UUID().uuidString)",
             studentUid: studentUid,
             dateKey: checkIn.dateKey,
             sourceCheckInId: checkIn.id,
@@ -254,7 +254,7 @@ final class MockLearningRepository: ObservableObject {
         let isCorrect = acceptedAnswers.contains(normalizedAnswer)
         let attemptNumber = missionAttempts.filter { $0.questionId == questionItem.id }.count + 1
         let attempt = MissionAttempt(
-            id: "attempt-\(mission.id)-\(questionItem.id)-\(attemptNumber)",
+            id: "attempt-\(UUID().uuidString)",
             missionId: mission.id,
             questionId: questionItem.id,
             prompt: questionItem.question.prompt,
@@ -320,14 +320,19 @@ final class MockLearningRepository: ObservableObject {
     }
 
     func assignPracticeSet(_ set: QuestionPracticeSet, to student: StaffStudentSummary, by teacher: DemoUser?) {
+        guard !assignedPracticeTasks.contains(where: {
+            $0.classId == student.classCode && $0.studentUid == student.studentUid
+                && $0.setId == set.id && ($0.status == .pending || $0.status == .active)
+        }) else { return }
         let date = now()
-        let assignmentSeed = "assignment-\(student.studentUid)-\(set.id)-\(date.timeIntervalSince1970)"
+        let assignmentId = "practice-assignment-\(UUID().uuidString)"
+        let assignmentSeed = "assignment-\(student.studentUid)-\(set.id)-\(assignmentId)"
         let assignmentQuestions = balancedAssignmentQuestions(
             for: set,
             rotationSeed: assignmentSeed
         )
         let assignment = TeacherAssignedPracticeTask(
-            id: "practice-assignment-\(date.timeIntervalSince1970)-\(student.studentUid)-\(set.id)",
+            id: assignmentId,
             classId: student.classCode,
             studentUid: student.studentUid,
             studentName: student.studentName,
@@ -340,16 +345,11 @@ final class MockLearningRepository: ObservableObject {
             createdAt: date,
             updatedAt: date
         )
-        assignedPracticeTasks.removeAll {
-            $0.studentUid == student.studentUid
-                && $0.setId == set.id
-                && ($0.status == .pending || $0.status == .active)
-        }
         assignedPracticeTasks.insert(assignment, at: 0)
         persistSnapshot()
     }
 
-    func startAssignedPracticeTask(_ assignment: TeacherAssignedPracticeTask) async throws {
+    func startAssignedPracticeTask(_ assignment: TeacherAssignedPracticeTask) throws {
         guard assignment.status != .withdrawn else {
             throw PracticeAssignmentMutationError.assignmentUnavailable
         }
@@ -372,7 +372,7 @@ final class MockLearningRepository: ObservableObject {
     func submitAssignedPracticeAnswer(
         _ answer: String,
         assignmentId: String
-    ) async throws -> PracticeAssignmentQuestionResult? {
+    ) throws -> PracticeAssignmentQuestionResult? {
         guard let index = assignedPracticeTasks.firstIndex(where: {
             $0.id == assignmentId && $0.status == .active
         }) else {
@@ -396,7 +396,8 @@ final class MockLearningRepository: ObservableObject {
         let trimmedAnswer = answer.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmedAnswer.isEmpty else { return nil }
         let previousResult = existingResults.first { $0.questionId == questionId }
-        let isCorrect = trimmedAnswer.caseInsensitiveCompare(item.question.answer) == .orderedSame
+        let acceptedAnswers = ([item.question.answer] + item.question.acceptedAnswers).map(normalize)
+        let isCorrect = acceptedAnswers.contains(normalize(trimmedAnswer))
         let result = PracticeAssignmentQuestionResult(
             id: "assignment-result-\(assignment.id)-\(questionId)",
             questionId: questionId,
@@ -433,7 +434,7 @@ final class MockLearningRepository: ObservableObject {
         return result
     }
 
-    func withdrawAssignedPracticeTask(_ assignmentId: String) async throws {
+    func withdrawAssignedPracticeTask(_ assignmentId: String) throws {
         guard let index = assignedPracticeTasks.firstIndex(where: { $0.id == assignmentId }) else {
             throw PracticeAssignmentMutationError.assignmentUnavailable
         }
@@ -557,7 +558,7 @@ final class MockLearningRepository: ObservableObject {
         profile: AppUserProfile?,
         option: SupportOption,
         message: String? = nil
-    ) async {
+    ) {
         let date = now()
         let studentUid = user?.id ?? profile?.id ?? "demo-student"
         let studentName = user?.displayName ?? profile?.displayName ?? "展示學生"
@@ -591,7 +592,7 @@ final class MockLearningRepository: ObservableObject {
         questionItem: QuestionBankItem,
         selectedAnswer: String?,
         message: String
-    ) async {
+    ) {
         let date = now()
         let studentUid = user?.id ?? profile?.id ?? "demo-student"
         let studentName = user?.displayName ?? profile?.displayName ?? "學生"
@@ -617,7 +618,7 @@ final class MockLearningRepository: ObservableObject {
         persistSnapshot()
     }
 
-    func addTeacherReply(to requestId: String, body: String) async {
+    func addTeacherReply(to requestId: String, body: String) {
         addReply(
             to: requestId,
             authorUid: "demo-teacher-1",
@@ -627,7 +628,7 @@ final class MockLearningRepository: ObservableObject {
         )
     }
 
-    func addVolunteerReply(to requestId: String, body: String) async {
+    func addVolunteerReply(to requestId: String, body: String) {
         addReply(
             to: requestId,
             authorUid: "demo-volunteer-1",
@@ -637,7 +638,7 @@ final class MockLearningRepository: ObservableObject {
         )
     }
 
-    func markSupportThreadReadByStudent(_ requestId: String) async {
+    func markSupportThreadReadByStudent(_ requestId: String) {
         guard let index = supportRequests.firstIndex(where: { $0.id == requestId }) else { return }
         guard supportRequests[index].status == .replied else { return }
         supportRequests[index].status = .readByStudent
@@ -647,7 +648,7 @@ final class MockLearningRepository: ObservableObject {
         persistSnapshot()
     }
 
-    func archiveSupportThreadForStudent(_ requestId: String) async {
+    func archiveSupportThreadForStudent(_ requestId: String) {
         guard let index = supportRequests.firstIndex(where: { $0.id == requestId }) else { return }
         let date = now()
         supportRequests[index].studentArchivedAt = date
@@ -659,7 +660,7 @@ final class MockLearningRepository: ObservableObject {
         persistSnapshot()
     }
 
-    func withdrawSupportRequest(_ requestId: String) async {
+    func withdrawSupportRequest(_ requestId: String) {
         guard let index = supportRequests.firstIndex(where: { $0.id == requestId }) else { return }
         let date = now()
         supportRequests[index].withdrawnAt = date
@@ -673,7 +674,7 @@ final class MockLearningRepository: ObservableObject {
         requestId: String,
         reply: SupportReply,
         reason: SupportSafetyReportReason
-    ) async throws {
+    ) throws {
         guard let request = supportRequests.first(where: { $0.id == requestId }),
               request.replies.contains(where: { $0.id == reply.id }),
               reply.isStaffReply
@@ -683,7 +684,7 @@ final class MockLearningRepository: ObservableObject {
         _ = reason
     }
 
-    func blockSupportAuthor(_ reply: SupportReply, requestId: String) async throws {
+    func blockSupportAuthor(_ reply: SupportReply, requestId: String) throws {
         guard let requestIndex = supportRequests.firstIndex(where: { $0.id == requestId }),
               reply.isStaffReply
         else {
@@ -703,7 +704,7 @@ final class MockLearningRepository: ObservableObject {
         persistSnapshot()
     }
 
-    func markSupportThreadHandledWithoutReply(_ requestId: String, by staffUser: DemoUser?) async {
+    func markSupportThreadHandledWithoutReply(_ requestId: String, by staffUser: DemoUser?) {
         guard let index = supportRequests.firstIndex(where: { $0.id == requestId }) else { return }
         let date = now()
         markStaffThreadHandled(at: index, date: date, by: staffUser)
@@ -711,7 +712,7 @@ final class MockLearningRepository: ObservableObject {
         persistSnapshot()
     }
 
-    func archiveSupportThreadForStaff(_ requestId: String, by staffUser: DemoUser?) async {
+    func archiveSupportThreadForStaff(_ requestId: String, by staffUser: DemoUser?) {
         guard let index = supportRequests.firstIndex(where: { $0.id == requestId }) else { return }
         let date = now()
         archiveStaffThread(at: index, date: date, by: staffUser)
@@ -1210,6 +1211,7 @@ final class MockLearningRepository: ObservableObject {
         supportRequests = []
         assignedPracticeTasks = []
         learningFlow = .initial(dateKey: Self.dateKey(from: now()), updatedAt: now())
+        masteryRecords = []
     }
 
     private func questionLevels(
@@ -1489,14 +1491,5 @@ struct UserDefaultsLearningPersistence: LocalLearningPersistence {
             key: "\(baseKey).scope.\(encodedScope)",
             fallbackKey: fallbackKey
         )
-    }
-}
-
-private extension Array {
-    func uniqued<ID: Hashable>(by keyPath: KeyPath<Element, ID>) -> [Element] {
-        var seen = Set<ID>()
-        return filter { element in
-            seen.insert(element[keyPath: keyPath]).inserted
-        }
     }
 }

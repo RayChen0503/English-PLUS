@@ -38,7 +38,8 @@ only the dedicated review scope and never touches ordinary production users.
 The accounts cannot be created safely until the isolated production Firebase,
 Worker, R2 and admin portal from STORE-0 are deployed. Creating them in
 `englishplus-testflight` would alter the competition backend and violates the
-build-52 freeze. Provision them only in `englishplus-production`, then run a
+frozen-source/public-build-53 boundary. Provision them only in
+`englishplus-production`, then run a
 three-device smoke test before entering credentials in App Store Connect.
 
 ## Manual secret procedure

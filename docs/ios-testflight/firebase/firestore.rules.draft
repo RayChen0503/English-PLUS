@@ -20,7 +20,7 @@ service cloud.firestore {
 
     function accountIsActive(uid) {
       let profile = get(userPath(uid)).data;
-      return (
+      return profile.get("accountDeletionPending", false) != true && (
           ("accountStatus" in profile && profile.accountStatus == "active")
           || (!("accountStatus" in profile) && profile.active == true)
         );
@@ -122,6 +122,7 @@ service cloud.firestore {
     function isPendingVolunteerAfter(uid) {
       let profile = getAfter(userPath(uid)).data;
       return profile.primaryRole == "volunteer"
+        && profile.get("accountDeletionPending", false) != true
         && profile.accountStatus in ["pendingApplication", "pendingApproval"]
         && profile.provisioningSource == "selfServiceVolunteer";
     }
@@ -135,6 +136,7 @@ service cloud.firestore {
       let nextProfile = request.resource.data;
       let application = getAfter(volunteerApplicationPath(uid)).data;
       return currentProfile.primaryRole == "volunteer"
+        && currentProfile.get("accountDeletionPending", false) != true
         && currentProfile.accountStatus == "pendingApplication"
         && nextProfile.primaryRole == "volunteer"
         && nextProfile.accountStatus == "pendingApproval"
@@ -233,6 +235,7 @@ service cloud.firestore {
 
     function isActiveStudentMember(classId, studentUid) {
       return classIsOperational(classId)
+        && accountIsActive(studentUid)
         && exists(memberPath(classId, studentUid))
         && membershipIsActive(get(memberPath(classId, studentUid)).data)
         && get(memberPath(classId, studentUid)).data.role == "student";
@@ -503,6 +506,15 @@ service cloud.firestore {
       allow delete: if false;
     }
 
+    function evidenceKeysAreNotRetired(data, retired) {
+      return data.evidence is list && data.evidence.size() <= 5
+        && (data.evidence.size() < 1 || !(data.evidence[0].storageObjectKey in retired))
+        && (data.evidence.size() < 2 || !(data.evidence[1].storageObjectKey in retired))
+        && (data.evidence.size() < 3 || !(data.evidence[2].storageObjectKey in retired))
+        && (data.evidence.size() < 4 || !(data.evidence[3].storageObjectKey in retired))
+        && (data.evidence.size() < 5 || !(data.evidence[4].storageObjectKey in retired));
+    }
+
     match /volunteerApplications/{uid} {
       allow read: if isSelf(uid);
       allow create: if isSelf(uid)
@@ -536,11 +548,24 @@ service cloud.firestore {
         );
       allow update: if isSelf(uid)
         && resource.data.status in ["draft", "needsMoreInformation", "rejected"]
-        && request.resource.data.status == "pendingReview"
-        && getAfter(userPath(uid)).data.accountStatus == "pendingApproval"
+        && getAfter(userPath(uid)).data.get("accountDeletionPending", false) != true
         && request.resource.data.uid == uid
+        && evidenceKeysAreNotRetired(request.resource.data, resource.data.get("retiredEvidenceKeys", []))
+        && request.resource.data.evidence is list
+        && request.resource.data.evidence.size() <= 5
+        && (
+          (request.resource.data.status == "pendingReview"
+            && request.resource.data.evidence.size() > 0
+            && getAfter(userPath(uid)).data.accountStatus == "pendingApproval")
+          || (request.resource.data.status == resource.data.status
+            && getAfter(userPath(uid)).data.primaryRole == "volunteer"
+            && getAfter(userPath(uid)).data.accountStatus == "pendingApplication"
+            && !request.resource.data.diff(resource.data).affectedKeys().hasAny(["submittedAt"]))
+        )
         && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
           "status",
+          "confirmsAge18OrOlder",
+          "acceptedConductVersion",
           "motivation",
           "evidence",
           "submittedAt",
@@ -605,6 +630,15 @@ service cloud.firestore {
 
       match /settings/{settingId} {
         allow read, create, update, delete: if hasAccountAccess(uid);
+      }
+
+      match /learningWriteReceipts/{operationId} {
+        allow get: if hasAccountAccess(uid);
+        allow create: if hasAccountAccess(uid)
+          && request.resource.data.keys().hasOnly(["operationId", "createdAt"])
+          && request.resource.data.operationId == operationId
+          && request.resource.data.createdAt is timestamp;
+        allow list, update, delete: if false;
       }
 
       match /blockedSupportAuthors/{blockedUid} {

@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 import json
+import subprocess
 import sys
 from pathlib import Path
 
@@ -15,6 +16,20 @@ def read_json(path):
 def require(condition, message, errors):
     if not condition:
         errors.append(message)
+
+
+def tracked_files():
+    result = subprocess.run(
+        ["git", "ls-files", "-z"],
+        cwd=ROOT,
+        check=True,
+        capture_output=True,
+    )
+    return {
+        Path(path.decode("utf-8")).as_posix()
+        for path in result.stdout.split(b"\0")
+        if path
+    }
 
 
 def main():
@@ -62,8 +77,17 @@ def main():
         require("must not be deployed" in archived_notice, "archived Functions source needs a deployment warning", errors)
         require("workers/englishplus-ai-proxy" in archived_notice, "archived Functions notice must name the active Worker", errors)
 
-        require(not list(ROOT.glob("**/GoogleService-Info.plist")), "GoogleService-Info.plist must not be committed", errors)
-        require(not list(ROOT.glob("**/.secret.local")), "local secret files must not be committed", errors)
+        tracked = tracked_files()
+        require(
+            not any(path.endswith("/GoogleService-Info.plist") for path in tracked),
+            "GoogleService-Info.plist must not be committed",
+            errors,
+        )
+        require(
+            not any(path.endswith("/.secret.local") for path in tracked),
+            "local secret files must not be committed",
+            errors,
+        )
 
     if errors:
         for error in errors:

@@ -1,6 +1,12 @@
 import Foundation
 
 struct MockAuthService: AuthService, Sendable {
+    private let volunteerDrafts = MockVolunteerDraftStore()
+
+    func saveVolunteerApplicationDraft(_ application: VolunteerApplicationInput, in session: AuthSession) async throws {
+        await volunteerDrafts.save(application, uid: session.user.id)
+    }
+
     func demoSession(for role: UserRole) -> AuthSession {
         if let account = SeedData.demoAccount(for: role) {
             return AuthSession(
@@ -108,6 +114,7 @@ struct MockAuthService: AuthService, Sendable {
         in session: AuthSession
     ) async throws -> VolunteerApplicationInput? {
         guard session.user.role == .volunteer else { return nil }
+        if let draft = await volunteerDrafts.load(uid: session.user.id) { return draft }
         return VolunteerApplicationInput(
             confirmsAge18OrOlder: true,
             acceptedConductVersion: "volunteer-conduct-v1",
@@ -144,4 +151,10 @@ struct MockAuthService: AuthService, Sendable {
             updatedAt: now
         )
     }
+}
+
+private actor MockVolunteerDraftStore {
+    private var drafts: [String: VolunteerApplicationInput] = [:]
+    func save(_ draft: VolunteerApplicationInput, uid: String) { drafts[uid] = draft }
+    func load(uid: String) -> VolunteerApplicationInput? { drafts[uid] }
 }

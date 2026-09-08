@@ -350,6 +350,11 @@ struct AppleAccountDeletionCredential: Equatable {
     let authorizationCode: String
 }
 
+struct GoogleAccountDeletionCredential: Equatable {
+    let idToken: String
+    let accessToken: String
+}
+
 struct EducationInstitutionCatalogSeed: SeedLoadable, Equatable {
     static let seedFileName = "education_institutions_seed"
 

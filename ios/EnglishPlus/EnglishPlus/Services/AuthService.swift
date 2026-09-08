@@ -101,11 +101,15 @@ protocol AuthService {
     func loadVolunteerApplication(
         in session: AuthSession
     ) async throws -> VolunteerApplicationInput?
+    func saveVolunteerApplicationDraft(_ application: VolunteerApplicationInput, in session: AuthSession) async throws
     func loadVolunteerApplicationReviewState(
         in session: AuthSession
     ) async throws -> VolunteerApplicationReviewState?
     func currentUserIsAdministrator() async -> Bool
     func currentUserUses(_ provider: AccountIdentityProvider) -> Bool
+    func reauthenticateAndRevokeGoogleToken(
+        using credential: GoogleAccountDeletionCredential
+    ) async throws
     func reauthenticateAndRevokeAppleToken(
         using credential: AppleAccountDeletionCredential
     ) async throws
@@ -117,6 +121,9 @@ protocol AuthService {
 }
 
 extension AuthService {
+    func saveVolunteerApplicationDraft(_ application: VolunteerApplicationInput, in session: AuthSession) async throws {
+        throw AuthServiceError.operationUnavailable
+    }
     func createAccount(
         email: String,
         password: String,
@@ -178,6 +185,12 @@ extension AuthService {
     func currentUserIsAdministrator() async -> Bool { false }
 
     func currentUserUses(_ provider: AccountIdentityProvider) -> Bool { false }
+
+    func reauthenticateAndRevokeGoogleToken(
+        using credential: GoogleAccountDeletionCredential
+    ) async throws {
+        throw AuthServiceError.identityProviderUnavailable
+    }
 
     func reauthenticateAndRevokeAppleToken(
         using credential: AppleAccountDeletionCredential

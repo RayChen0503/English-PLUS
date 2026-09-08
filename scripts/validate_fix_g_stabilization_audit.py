@@ -25,11 +25,13 @@ tests = read("ios/EnglishPlus/EnglishPlusTests/AuthenticationFlowAcceptanceTests
 report = read("docs/app-store-hardening/fix-g-stabilization-audit.md")
 
 require(
-    app_state.count("synchronizeRoleScopedClassroomData(for: session.profile)") >= 3,
+    "private func applyClassSession(_ session: AuthSession)" in app_state
+    and "synchronizeRoleScopedClassroomData(for: session.profile)" in app_state
+    and app_state.count("applyClassSession(") >= 5,
     "Role-scoped classroom data must reconcile on login, class selection and restored sessions",
 )
 require(
-    "if hasAcceptedConsent {\n            synchronizeRoleScopedClassroomData(for: session.profile)" in app_state,
+    "guard hasAcceptedConsent, profile.role == .teacher," in app_state,
     "Teacher roster data must wait until required consent is accepted",
 )
 require(

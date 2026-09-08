@@ -4,6 +4,7 @@ struct RootView: View {
     @EnvironmentObject private var appState: AppState
     @EnvironmentObject private var learningRepository: LearningRepositoryStore
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.scenePhase) private var scenePhase
 
     var body: some View {
         Group {
@@ -71,6 +72,13 @@ struct RootView: View {
 
     private var realtimeLifecycleContent: some View {
         routeLifecycleContent
+            .onChange(of: appState.sessionGeneration) { _, _ in
+                learningRepository.stopRealtimeSync()
+                startRealtimeSyncIfNeeded()
+            }
+            .onChange(of: scenePhase) { _, phase in
+                if phase == .active { learningRepository.refreshForCurrentDay() }
+            }
             .onChange(of: appState.currentProfile?.activeClassId) { _, _ in
                 startRealtimeSyncIfNeeded()
             }
@@ -118,10 +126,13 @@ struct RootView: View {
                 switch role {
                 case .student:
                     StudentShellView()
+                        .id(appState.learningScopeIdentity)
                 case .teacher:
                     TeacherShellView()
+                        .id(appState.learningScopeIdentity)
                 case .volunteer:
                     VolunteerShellView()
+                        .id(appState.learningScopeIdentity)
                 }
             }
         }
@@ -160,6 +171,8 @@ struct RootView: View {
             AppDiagnostics.shared.log(.realtimeSyncOffline)
         case .syncIssue:
             AppDiagnostics.shared.log(.realtimeSyncIssue)
+        case .pendingWrites:
+            break // Queued offline work is progress, not a sync failure.
         default:
             break
         }

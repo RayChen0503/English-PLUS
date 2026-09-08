@@ -6,8 +6,8 @@ workers_dev = true
 
 [vars]
 FIREBASE_PROJECT_ID = "englishplus-testflight"
-GROQ_DEFAULT_MODEL = "llama-3.1-8b-instant"
-GROQ_QUALITY_MODEL = "llama-3.3-70b-versatile"
+GROQ_DEFAULT_MODEL = "openai/gpt-oss-20b"
+GROQ_QUALITY_MODEL = "openai/gpt-oss-120b"
 AI_QUOTA_MODE = "internal"
 
 [[durable_objects.bindings]]
@@ -51,8 +51,8 @@ workers_dev = true
 
 [env.production.vars]
 FIREBASE_PROJECT_ID = "englishplus-production"
-GROQ_DEFAULT_MODEL = "llama-3.1-8b-instant"
-GROQ_QUALITY_MODEL = "llama-3.3-70b-versatile"
+GROQ_DEFAULT_MODEL = "openai/gpt-oss-20b"
+GROQ_QUALITY_MODEL = "openai/gpt-oss-120b"
 AI_QUOTA_MODE = "public"
 
 [[env.production.durable_objects.bindings]]

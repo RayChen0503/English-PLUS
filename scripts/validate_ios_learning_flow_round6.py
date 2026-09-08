@@ -10,12 +10,14 @@ def read(relative: str) -> str:
 
 def require(label: str, text: str, markers: list[str]) -> None:
     missing = [marker for marker in markers if marker not in text]
-    assert not missing, f"Missing {label}: {missing}"
+    if not (not missing):
+        raise AssertionError(f"Missing {label}: {missing}")
 
 
 def require_absent(label: str, text: str, markers: list[str]) -> None:
     present = [marker for marker in markers if marker in text]
-    assert not present, f"Forbidden {label}: {present}"
+    if not (not present):
+        raise AssertionError(f"Forbidden {label}: {present}")
 
 
 student_shell = read("ios/EnglishPlus/EnglishPlus/Features/Student/StudentShellView.swift")

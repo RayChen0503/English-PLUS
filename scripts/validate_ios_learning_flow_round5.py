@@ -10,12 +10,14 @@ def read(relative: str) -> str:
 
 def require_markers(label: str, text: str, markers: list[str]) -> None:
     for marker in markers:
-        assert marker in text, f"Missing {label}: {marker}"
+        if not (marker in text):
+            raise AssertionError(f"Missing {label}: {marker}")
 
 
 def require_absent(label: str, text: str, markers: list[str]) -> None:
     for marker in markers:
-        assert marker not in text, f"Forbidden {label}: {marker}"
+        if not (marker not in text):
+            raise AssertionError(f"Forbidden {label}: {marker}")
 
 
 practice_center = read("ios/EnglishPlus/EnglishPlus/Features/Practice/PracticeCenterView.swift")

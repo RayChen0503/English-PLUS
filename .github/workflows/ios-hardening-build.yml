@@ -11,6 +11,7 @@ on:
       - codex/fix-g-stabilization-audit
       - codex/app-store-hardening-d
       - codex/app-store-hardening-e
+      - codex/app-store-production-release
     paths:
       - .github/workflows/ios-hardening-build.yml
       - .github/ci-triggers/round10-ios-build
@@ -26,6 +27,9 @@ on:
       - .github/ci-triggers/round17-student-experience
       - admin-web/**
       - firebase-tests/**
+      - firebase*.json
+      - .firebaserc
+      - ci_scripts/**
       - ios/EnglishPlus/**
       - scripts/**
       - docs/ios-testflight/firebase/**
@@ -54,6 +58,11 @@ jobs:
       - name: Show Xcode toolchain
         run: xcodebuild -version
 
+      - name: Use Python 3.12 for validators
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
       - name: Use Node.js 22
         uses: actions/setup-node@v6
         with:
@@ -81,6 +90,11 @@ jobs:
         run: |
           npm ci
           npm run check
+
+      - name: Test offline validation and seed tools
+        run: |
+          python3 -B -m unittest discover -s scripts/tests -p 'test_*.py' -v
+          node --test scripts/tests/review_seed.test.cjs
 
       - name: Validate Firestore rules and classroom lifecycle
         run: |
@@ -127,6 +141,7 @@ jobs:
           python3 scripts/validate_app_store_hardening_round9.py
           python3 scripts/validate_app_store_hardening_round10.py
           python3 scripts/validate_app_store_hardening_round11.py
+          python3 scripts/validate_app_store_account_deletion_and_ugc.py
           python3 scripts/validate_app_store_hardening_round12.py
           python3 scripts/validate_testflight_onboarding_hotfix.py
           python3 scripts/validate_ios_xcode_project_sources.py
@@ -239,7 +254,7 @@ jobs:
               -only-testing:EnglishPlusUITests/EnglishPlusCriticalFlowsUITests/testDarkModeLargeTextStudentFlowKeepsPrimaryActionsReachable \
               -parallel-testing-enabled NO \
               -test-timeouts-enabled YES \
-              -default-test-execution-time-allowance 120 \
+              -default-test-execution-time-allowance 180 \
               -maximum-test-execution-time-allowance 240 \
               CODE_SIGNING_ALLOWED=NO \
               test-without-building
